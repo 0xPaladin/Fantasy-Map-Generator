@@ -35,7 +35,7 @@ concurrency:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       ref: ${{ steps.target.outputs.ref }}
       tag: ${{ steps.target.outputs.tag }}
@@ -79,7 +79,7 @@ jobs:
   compile:
     needs: prepare
     if: needs.prepare.outputs.skip != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Compiling needs no Electron binary, only its type definitions
       ELECTRON_SKIP_BINARY_DOWNLOAD: 1
@@ -117,7 +117,7 @@ jobs:
             platform: macos
           - os: windows-latest
             platform: windows
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             platform: linux
 
     runs-on: ${{ matrix.os }}
@@ -160,7 +160,7 @@ jobs:
   release:
     needs: [prepare, build]
     if: needs.prepare.outputs.tag != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ needs.prepare.outputs.tag }}
