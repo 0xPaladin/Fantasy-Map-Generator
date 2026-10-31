@@ -53,3 +53,35 @@ describe("HeightmapGenerator Power tool", () => {
     expect(result[2]).toBe(70); // > 50 untouched
   });
 });
+
+describe("globeWorld template", () => {
+  it("is registered with id 14 and expected attributes", async () => {
+    const { heightmapTemplates } = await import("@/data/heightmap-templates");
+    expect(heightmapTemplates.globeWorld).toBeDefined();
+    expect(heightmapTemplates.globeWorld.id).toBe(14);
+    expect(heightmapTemplates.globeWorld.probability).toBe(5);
+    expect(heightmapTemplates.globeWorld.template).toContain("Mask 2");
+  });
+
+  it("leaves edge columns as ocean across multiple seeds", async () => {
+    const { Grid } = await import("@/model/graph/grid-generator");
+    const { Options } = await import("@/model/options/options-model");
+
+    for (const seed of ["1", "42", "9999", "globe-test"]) {
+      globalThis.options = Options.getDefaultOptions();
+      options.map.seed = seed;
+      options.map.graph = { width: 1000, height: 500, points: 2000, sampling: "square", jitter: 0.9 };
+
+      const grid = Grid.generate("old");
+      const heights = HeightmapGenerator.fromTemplate(grid, "globeWorld");
+
+      // All cells within 2% of left and right margins should be water (< 20)
+      for (let i = 0; i < grid.cells.i.length; i++) {
+        const [x] = grid.points[i];
+        if (x < 20 || x > 980) {
+          expect(heights[i]).toBeLessThan(20);
+        }
+      }
+    }
+  });
+});
