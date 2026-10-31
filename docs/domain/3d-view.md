@@ -125,6 +125,11 @@ river drops).
 
 - Projects the map onto a sphere using an **equirectangular projection** — maps with a 2:1
   aspect ratio give the best (least distorted) result; distortion is greatest at the poles.
+- For full-globe maps (360° longitude), the `Globe World` heightmap template
+  leaves the left and right frame edges as ocean, eliminating any vertical seam
+  line, and sea routes wrap seamlessly across the antimeridian. See
+  [docs/plans/globe-world.md](../plans/globe-world.md) and
+  [docs/wiki/Globe-generation-and-use.md](../wiki/Globe-generation-and-use.md).
 - Standalone starfield background (independent of the mesh view's sky settings).
 - **Texture resolution** select: 0.5x / 1x / 2x / 4x / 8x, mapped to a 512–8192 px texture.
 - **Rotation** slider for auto-spin, same 0–10 scale as the mesh view.
