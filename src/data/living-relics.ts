@@ -1,6 +1,6 @@
 // Relic definitions and lore templates for Guild excavation (slice 3).
 // See docs/plans/living-idle-guild.md section 4.
-import type { HistoricalRelic, RelicCategory } from "@/types/living";
+import type { GuildState, HistoricalRelic, RelicCategory } from "@/types/living";
 import type { Rng } from "@/utils/rng";
 
 /** Marker types the Guild can target with excavate missions */
@@ -166,6 +166,15 @@ export function sumRelicBonuses(relics: readonly HistoricalRelic[]): RelicBonus 
 
 export const vaultRelics = (relics: readonly HistoricalRelic[]): HistoricalRelic[] =>
   relics.filter(relic => relic.holder.kind === "vault");
+
+export const reserveRelics = (relics: readonly HistoricalRelic[]): HistoricalRelic[] =>
+  relics.filter(relic => relic.holder.kind === "reserve");
+
+/** The vault holds at most one active relic per guild tier. */
+export const vaultLimit = (guild: Pick<GuildState, "tier">): number => Math.max(1, guild.tier);
+
+export const vaultHasRoom = (guild: Pick<GuildState, "tier" | "relics">): boolean =>
+  vaultRelics(guild.relics ?? []).length < vaultLimit(guild);
 
 export const vaultBonuses = (relics: readonly HistoricalRelic[]): RelicBonus => sumRelicBonuses(vaultRelics(relics));
 

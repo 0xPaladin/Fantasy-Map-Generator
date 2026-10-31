@@ -50,7 +50,8 @@ import {
   relicGoldMultiplier,
   relicSurvivalBonus,
   relicXpMultiplier,
-  vaultBonuses
+  vaultBonuses,
+  vaultHasRoom
 } from "@/data/living-relics";
 import {
   BURG_TROUBLE_IDS,
@@ -118,6 +119,8 @@ export const GUILD_MAX_HEROES = [3, 4, 6, 8, 10] as const;
 
 const GUILD_DUES_PER_CHAPTER = 2;
 const GUILD_CANDIDATES_PER_YEAR = 3;
+/** Auto-dispatch will not send a hero on a contract with less than this estimated chance. */
+const MIN_AUTO_DISPATCH_FIT = 0.25;
 const HERO_RETIREMENT_AGE = 55;
 const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
@@ -568,10 +571,11 @@ class LivingModel {
     const relic = guild.relics?.find(entry => entry.id === relicId);
     if (!relic) return false;
 
-    for (const held of guild.relics ?? []) {
-      if (held.holder.kind === "figure" && held.holder.id === figureId) held.holder = { kind: "vault" };
-    }
+    const previous = (guild.relics ?? []).find(
+      held => held.holder.kind === "figure" && held.holder.id === figureId && held.id !== relicId
+    );
     relic.holder = { kind: "figure", id: figureId };
+    if (previous) this.placeRelic(previous, guild);
     return true;
   }
 
@@ -581,9 +585,7 @@ class LivingModel {
     const relic = guild.relics?.find(entry => entry.id === relicId);
     if (!relic) return false;
     if (relic.holder.kind === "vault") return true;
-
-    const vaulted = guild.relics.filter(entry => entry.holder.kind === "vault").length;
-    if (vaulted >= guild.tier) return false;
+    if (!vaultHasRoom(guild)) return false;
 
     relic.holder = { kind: "vault" };
     return true;
@@ -604,14 +606,14 @@ class LivingModel {
     return true;
   }
 
-  /** Return a relic from any holder to the Guild Vault. */
+  /** Return a relic from any holder to the Guild Vault, or the reserve when it is full. */
   recallRelic(relicId: number): boolean {
     const guild = this.getGuild();
     const relic = guild.relics?.find(entry => entry.id === relicId);
     if (!relic || relic.holder.kind === "vault" || relic.holder.kind === "ruin") return false;
 
     const previous = relic.holder;
-    relic.holder = { kind: "vault" };
+    relic.holder = vaultHasRoom(guild) ? { kind: "vault" } : { kind: "reserve" };
     if (previous.kind === "state") {
       const sSim = this.getState().states[previous.id];
       if (sSim) sSim.capacity = this.recomputeStateCapacity(previous.id);
@@ -687,7 +689,7 @@ class LivingModel {
         if (role.to === undefined) role.to = year;
       }
       for (const held of guild.relics ?? []) {
-        if (held.holder.kind === "figure" && held.holder.id === id) held.holder = { kind: "vault" };
+        if (held.holder.kind === "figure" && held.holder.id === id) this.placeRelic(held, guild);
       }
       if (figureLevel(hero.xp ?? 0) < 3 || nextRoster.length >= maxHeroesForTier(guild.tier)) continue;
       nextRoster.push(this.spawnScion(living, hero, guild.legacyTier).i);
@@ -1694,21 +1696,49 @@ class LivingModel {
     };
   }
 
-  /** Pick the next mission for the guild's current doctrine */
-  private pickMissionTarget(living: LivingWorldState, guild: GuildState): GuildTarget | null {
-    if (guild.doctrine === "manual") return null;
+  /** A pacify mission in a burg with unrest. */
+  private burgTarget(living: LivingWorldState, guild: GuildState, burgId: number): GuildTarget | null {
+    const burg = pack.burgs?.[burgId];
+    const bSim = living.burgs?.[burgId];
+    if (!burg?.i || burg.removed || !burg.state || !bSim || bSim.unrest <= 0) return null;
+    if (guild.missions.some(mission => mission.kind === "pacify" && mission.burgId === burgId)) return null;
+
+    const provinceId = pack.cells.province?.[burg.cell];
+    return {
+      kind: "pacify",
+      cell: burg.cell,
+      provinceId: provinceId && pack.provinces?.[provinceId]?.i ? provinceId : undefined,
+      burgId,
+      pool: "s",
+      dc: 12 + guild.tier,
+      rewardGold: 15 + Math.round(bSim.unrest / 2),
+      rewardRenown: 10,
+      priority: 2,
+      level: Math.round(bSim.unrest)
+    };
+  }
+
+  /** The next mission for the guild's current doctrine */
+  private missionTargets(living: LivingWorldState, guild: GuildState): GuildTarget[] {
+    if (guild.doctrine === "manual") return [];
 
     const targets: GuildTarget[] = [];
-    if (guild.doctrine !== "auto_excavate") {
+    if (guild.doctrine === "auto_excavate") {
+      for (const marker of pack.markers ?? []) {
+        const target = this.excavationTarget(guild, marker);
+        if (target) targets.push(target);
+      }
+    } else if (guild.doctrine === "auto_pacify") {
+      for (const burg of pack.burgs ?? []) {
+        if (!burg?.i || burg.removed) continue;
+        const target = this.burgTarget(living, guild, burg.i);
+        if (target) targets.push(target);
+      }
+    } else {
       for (const province of pack.provinces ?? []) {
         if (!province?.i || province.removed) continue;
         if (guild.doctrine === "auto_patron" && province.state !== guild.favoredStateId) continue;
         const target = this.provinceTarget(living, guild, province.i);
-        if (target) targets.push(target);
-      }
-    } else {
-      for (const marker of pack.markers ?? []) {
-        const target = this.excavationTarget(guild, marker);
         if (target) targets.push(target);
       }
     }
@@ -1716,6 +1746,7 @@ class LivingModel {
     for (const target of targets) {
       if (guild.doctrine === "auto_lairs") target.priority = target.kind === "lair" ? 3 : 2;
       else if (guild.doctrine === "auto_bounties") target.priority = target.kind === "trouble" ? 3 : 2;
+      else if (guild.doctrine === "auto_pacify") target.priority = target.kind === "pacify" ? 3 : 2;
       else target.priority = target.kind === "trouble" ? 2 : 1;
     }
 
@@ -1723,9 +1754,43 @@ class LivingModel {
       (a, b) =>
         b.priority - a.priority ||
         b.level - a.level ||
-        (a.provinceId ?? a.markerId ?? 0) - (b.provinceId ?? b.markerId ?? 0)
+        (a.provinceId ?? a.markerId ?? a.burgId ?? 0) - (b.provinceId ?? b.markerId ?? b.burgId ?? 0)
     );
-    return targets[0] ?? null;
+    return targets;
+  }
+
+  /** Chance that a hero succeeds at a target with the current state and guild bonuses. */
+  private missionChance(
+    living: LivingWorldState,
+    guild: GuildState,
+    figure: HistoricalFigure,
+    target: GuildTarget
+  ): number {
+    const province = target.provinceId !== undefined ? pack.provinces?.[target.provinceId] : undefined;
+    const sSim = province?.state ? living.states[province.state] : undefined;
+    const poolGen = sSim?.capacity[target.pool]?.gen ?? 0;
+    const carried = equippedRelic(guild.relics ?? [], figure.i);
+    const modifier =
+      (figure.skills?.[target.pool] ?? 0) +
+      valueModifier(poolGen) +
+      (figure.virtues?.length ?? 0) -
+      (figure.vices?.length ?? 0) +
+      guildCheckBonus(guild.tier) +
+      (carried?.bonuses[target.pool] ?? 0);
+    return minmax((21 - target.dc + modifier) / 20, 0, 1);
+  }
+
+  private targetKey(target: GuildTarget): string {
+    if (target.markerId !== undefined) return `marker:${target.markerId}`;
+    if (target.kind === "pacify" && target.burgId !== undefined) return `burg:${target.burgId}`;
+    return `province:${target.provinceId}`;
+  }
+
+  private missionNewsKind(kind: GuildMissionKind): LivingNewsKind {
+    if (kind === "lair") return "lair";
+    if (kind === "trouble") return "trouble";
+    if (kind === "pacify") return "pacify";
+    return "develop";
   }
 
   private createMission(
@@ -1755,7 +1820,7 @@ class LivingModel {
     figure.cell = target.cell;
 
     this.pushNews(living, {
-      kind: target.kind === "lair" ? "lair" : target.kind === "trouble" ? "trouble" : "develop",
+      kind: this.missionNewsKind(target.kind),
       text: `${figure.name} set out on a Guild ${target.kind} mission.`,
       cell: target.cell,
       stateId: target.provinceId !== undefined ? pack.provinces?.[target.provinceId]?.state : undefined
@@ -1774,7 +1839,8 @@ class LivingModel {
         return (pack.markers ?? []).some(marker => marker.i === mission.markerId && !marker.hidden);
       case "pacify": {
         const burg = mission.burgId ? pack.burgs?.[mission.burgId] : undefined;
-        return Boolean(burg?.i && !burg.removed);
+        const bSim = mission.burgId !== undefined ? living.burgs?.[mission.burgId] : undefined;
+        return Boolean(burg?.i && !burg.removed && (bSim?.unrest ?? 0) > 0);
       }
     }
   }
@@ -1922,16 +1988,40 @@ class LivingModel {
     const guild = this.getGuild();
     if (guild.doctrine === "manual") return;
 
+    const targets = this.missionTargets(living, guild);
+    if (targets.length === 0) return;
+
     const idle = guild.roster
       .filter(id => this.isHeroIdle(guild, id))
       .map(id => this.findFigure(id))
-      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
-      .sort((a, b) => a.i - b.i);
+      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined);
+    if (idle.length === 0) return;
 
+    // Pair heroes and targets by fit instead of assigning in roster order.
+    const pairs: { figure: HistoricalFigure; target: GuildTarget; score: number }[] = [];
     for (const figure of idle) {
-      const target = this.pickMissionTarget(living, guild);
-      if (!target) return;
-      this.createMission(living, guild, figure, target);
+      for (const target of targets) {
+        const chance = this.missionChance(living, guild, figure, target);
+        if (chance < MIN_AUTO_DISPATCH_FIT) continue;
+        pairs.push({ figure, target, score: chance * (1 + target.rewardGold / 100) * target.priority });
+      }
+    }
+    pairs.sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.target.level - a.target.level ||
+        (a.target.markerId ?? a.target.burgId ?? a.target.provinceId ?? 0) -
+          (b.target.markerId ?? b.target.burgId ?? b.target.provinceId ?? 0) ||
+        a.figure.i - b.figure.i
+    );
+
+    const assignedHeroes = new Set<number>();
+    const assignedTargets = new Set<string>();
+    for (const pair of pairs) {
+      if (assignedHeroes.has(pair.figure.i) || assignedTargets.has(this.targetKey(pair.target))) continue;
+      assignedHeroes.add(pair.figure.i);
+      assignedTargets.add(this.targetKey(pair.target));
+      this.createMission(living, guild, pair.figure, pair.target);
     }
   }
 
@@ -1982,7 +2072,7 @@ class LivingModel {
     if (!figure || figure.death !== undefined || !this.missionStillValid(living, mission)) {
       if (figure && figure.death === undefined) {
         this.pushNews(living, {
-          kind: mission.kind === "lair" ? "lair" : mission.kind === "trouble" ? "trouble" : "develop",
+          kind: this.missionNewsKind(mission.kind),
           text: `${figure.name}'s Guild contract ended with nothing left to resolve.`,
           cell: mission.targetCell,
           stateId: province?.state
@@ -2063,9 +2153,9 @@ class LivingModel {
           guild.excavatedMarkers.push(mission.markerId);
         }
         // relics buried here by a fallen capital are recovered alongside any new find
-        this.recoverRelicsFromMarker(guild, mission.markerId);
+        this.recoverRelicsFromMarker(guild, mission.markerId, figure);
         if (mission.rewardRelic && marker) {
-          const relic = this.mintRelicFromMarker(marker, mission.id);
+          const relic = this.mintRelicFromMarker(marker, mission.id, figure);
           text = `${figure.name} excavated ${marker.name} and recovered ${relic.name}.`;
         } else {
           text = `${figure.name} excavated ${marker?.name ?? "a ruin site"} and recovered ${mission.rewardGold} gold in relics.`;
@@ -2098,7 +2188,7 @@ class LivingModel {
     this.syncGuildTier(living, guild);
 
     this.pushNews(living, {
-      kind: mission.kind === "lair" ? "lair" : mission.kind === "trouble" ? "trouble" : "develop",
+      kind: this.missionNewsKind(mission.kind),
       text: `${text} (+${paidGold}g, +${paidRenown} renown)`,
       cell: mission.targetCell,
       stateId: province?.state
@@ -2133,7 +2223,7 @@ class LivingModel {
 
     if (sSim && province?.state) sSim.capacity = this.recomputeStateCapacity(province.state);
     this.pushNews(living, {
-      kind: mission.kind === "lair" ? "lair" : mission.kind === "trouble" ? "trouble" : "develop",
+      kind: this.missionNewsKind(mission.kind),
       text: `${figure.name}'s Guild mission failed (rolled ${check.total} vs DC ${check.dc}).${aftermath}`,
       cell: mission.targetCell,
       stateId: province?.state
@@ -2156,7 +2246,7 @@ class LivingModel {
       }
       guild.roster = guild.roster.filter(id => id !== figure.i);
       for (const held of guild.relics ?? []) {
-        if (held.holder.kind === "figure" && held.holder.id === figure.i) held.holder = { kind: "vault" };
+        if (held.holder.kind === "figure" && held.holder.id === figure.i) this.placeRelic(held, guild);
       }
       let aftermath = ` ${figure.name} did not survive the mission.`;
 
@@ -3907,8 +3997,19 @@ class LivingModel {
     return markerIndex;
   }
 
+  /** Place a found relic: carried by the digger, stored in the vault, or held in reserve. */
+  private placeRelic(relic: HistoricalRelic, guild: GuildState, figure?: HistoricalFigure): void {
+    if (figure && !equippedRelic(guild.relics ?? [], figure.i)) {
+      relic.holder = { kind: "figure", id: figure.i };
+    } else if (vaultHasRoom(guild)) {
+      relic.holder = { kind: "vault" };
+    } else {
+      relic.holder = { kind: "reserve" };
+    }
+  }
+
   /** Mint a lore-linked relic named after the nearest fallen realm, a dead hero, or the site itself */
-  private mintRelicFromMarker(marker: Marker, seedId: number): HistoricalRelic {
+  private mintRelicFromMarker(marker: Marker, seedId: number, figure?: HistoricalFigure): HistoricalRelic {
     const guild = this.getGuild();
     const rng = this.rng("guild:relic", seedId);
     const history = Chronicle.sync();
@@ -3953,15 +4054,18 @@ class LivingModel {
       cursed: RELIC_CATALOG[category].cursed,
       holder: { kind: "vault" }
     };
+    this.placeRelic(relic, guild, figure);
     guild.relics.push(relic);
     return relic;
   }
 
   /** Recover any relics a fallen capital buried at this marker */
-  private recoverRelicsFromMarker(guild: GuildState, markerId: number | undefined): void {
+  private recoverRelicsFromMarker(guild: GuildState, markerId: number | undefined, figure?: HistoricalFigure): void {
     if (markerId === undefined) return;
     for (const relic of guild.relics ?? []) {
-      if (relic.holder.kind === "ruin" && relic.holder.markerId === markerId) relic.holder = { kind: "vault" };
+      if (relic.holder.kind === "ruin" && relic.holder.markerId === markerId) {
+        this.placeRelic(relic, guild, figure);
+      }
     }
   }
 
