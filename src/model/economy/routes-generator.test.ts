@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { MIN_NAVIGABLE_FLUX, Rivers } from "@/model/physical/river-generator";
-import { Routes } from "./routes-generator";
+import { isWrapEnabled, Routes, wrapDeltaX, wrapDistanceSquared } from "./routes-generator";
 
 describe("RoutesModule river-aware water cost", () => {
   beforeEach(async () => {
@@ -592,5 +592,137 @@ describe("ensureRouteGroupStyles before a map exists", () => {
 
     expect(() => Routes.ensureRouteGroupStyles()).not.toThrow();
     expect(Object.keys((globalThis as any).styles.routes.groups)).toEqual(["roads"]);
+  });
+});
+
+describe("Seam-wrapping routes (lonT === 360)", () => {
+  beforeEach(() => {
+    globalThis.options = {
+      map: {
+        graph: { width: 1000, height: 500, points: 1000 },
+        geography: { coordinates: { lonT: 360 } }
+      }
+    } as any;
+  });
+
+  it("gates wrap helpers on lonT 360 vs 359.9", () => {
+    expect(isWrapEnabled()).toBe(true);
+
+    options.map.geography.coordinates.lonT = 359.9;
+    expect(isWrapEnabled()).toBe(false);
+
+    options.map.geography.coordinates.lonT = 360;
+    expect(isWrapEnabled()).toBe(true);
+
+    // wrapDeltaX
+    expect(wrapDeltaX(40, 1000)).toBe(40);
+    expect(wrapDeltaX(960, 1000)).toBe(40);
+    expect(wrapDeltaX(-960, 1000)).toBe(40);
+    expect(wrapDeltaX(0, 1000)).toBe(0);
+
+    // wrapDistanceSquared
+    const p1: [number, number] = [980, 50];
+    const p2: [number, number] = [20, 50];
+    expect(wrapDistanceSquared(p1, p2, true, 1000)).toBe(1600); // 40^2
+    expect(wrapDistanceSquared(p1, p2, false, 1000)).toBe(921600); // 960^2
+  });
+
+  it("connects toroidal Urquhart points across the seam only when wrap is on", () => {
+    const points: [number, number][] = [
+      [5, 50],
+      [95, 50],
+      [50, 80],
+      [50, 20]
+    ];
+
+    const edgesWithoutWrap = Routes.calculateUrquhartEdges(points, false, 100);
+    const has01WithoutWrap = edgesWithoutWrap.some(([a, b]) => (a === 0 && b === 1) || (a === 1 && b === 0));
+    expect(has01WithoutWrap).toBe(false);
+
+    const edgesWithWrap = Routes.calculateUrquhartEdges(points, true, 100);
+    const has01WithWrap = edgesWithWrap.some(([a, b]) => (a === 0 && b === 1) || (a === 1 && b === 0));
+    expect(has01WithWrap).toBe(true);
+  });
+
+  it("buildSeaAdjacency links west/east water cells and leaves land and pack.cells.c untouched", () => {
+    globalThis.grid = { spacing: 10 } as any;
+    const initialC = [[1], [0, 2, 3], [1], [1]];
+    globalThis.pack = {
+      cells: {
+        h: [10, 10, 10, 50], // 0, 1, 2 water; 3 land
+        p: [
+          [5, 50], // 0: west water
+          [50, 50], // 1: interior water
+          [995, 52], // 2: east water
+          [5, 80] // 3: west land
+        ],
+        c: initialC.map(n => [...n])
+      }
+    } as any;
+
+    const adj = Routes.buildSeaAdjacency();
+
+    // 0 and 2 should be linked across seam
+    expect(adj[0]).toContain(2);
+    expect(adj[2]).toContain(0);
+
+    // 3 (land) should not be linked across seam
+    expect(adj[3]).toEqual([1]);
+
+    // Original pack.cells.c must be untouched
+    expect(pack.cells.c[0]).toEqual([1]);
+    expect(pack.cells.c[2]).toEqual([1]);
+    expect(pack.cells.c[3]).toEqual([1]);
+  });
+
+  it("splits a seam-crossing route into two M sub-paths in getPath, keeping normal route as one path", () => {
+    // Normal route without crossing
+    const normalPoints = [
+      [10, 20],
+      [30, 40],
+      [50, 60]
+    ];
+    const normalPath = Routes.getPath({ group: "searoutes", points: normalPoints });
+    const normalMCount = (normalPath.match(/M/g) || []).length;
+    expect(normalMCount).toBe(1);
+
+    // Seam-crossing route
+    const crossingPoints = [
+      [980, 300],
+      [20, 300]
+    ];
+    const crossingPath = Routes.getPath({ group: "searoutes", points: crossingPoints });
+    const crossingMCount = (crossingPath.match(/M/g) || []).length;
+    expect(crossingMCount).toBe(2);
+
+    // With wrap disabled (lonT !== 360), crossing route is not split
+    options.map.geography.coordinates.lonT = 180;
+    const noWrapPath = Routes.getPath({ group: "searoutes", points: crossingPoints });
+    expect((noWrapPath.match(/M/g) || []).length).toBe(1);
+  });
+
+  it("calculates wrapped length for seam-crossing routes", () => {
+    globalThis.pack = {
+      routes: [
+        {
+          i: 0,
+          group: "searoutes",
+          points: [
+            [980, 300, 1],
+            [20, 300, 2]
+          ]
+        }
+      ]
+    } as any;
+
+    // With wrap on (lonT === 360, width = 1000)
+    options.map.geography.coordinates.lonT = 360;
+    const wrappedLength = Routes.getLength(0);
+    expect(wrappedLength).toBeCloseTo(40, 0);
+
+    // With wrap off (lonT === 180)
+    options.map.geography.coordinates.lonT = 180;
+    const unwrappedLength = Routes.getLength(0);
+    expect(unwrappedLength).toBeGreaterThan(900);
   });
 });

@@ -835,6 +835,36 @@ describe("LivingHud", () => {
     expect(bar?.textContent).not.toContain("Mount Keld");
   });
 
+  it("holds vault overflow in reserve and enshrines it when space opens", () => {
+    Object.assign(mocks.state.guild, {
+      tier: 1,
+      relics: [
+        {
+          id: 7,
+          name: "Diadem of the Fallen",
+          category: "regalia",
+          lore: "A crown without a kingdom.",
+          originYear: 733,
+          bonuses: { s: 2 },
+          holder: { kind: "reserve" }
+        }
+      ]
+    });
+    LivingHud.open();
+
+    const bar = document.getElementById("livingHudGuild");
+    expect(bar?.textContent).toContain("Reserve (1)");
+    expect(bar?.textContent).toContain("reserve");
+
+    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect-relic"]')?.click();
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Held in reserve");
+
+    inspector?.querySelector<HTMLElement>('[data-guild="enshrine"]')?.click();
+    expect(Living.enshrineRelic).toHaveBeenCalledWith(7);
+    expect(document.getElementById("livingHudStatus")?.textContent).toContain("enshrined");
+  });
+
   it("inspects an excavation site from the guild bar and dispatches a hero", () => {
     pack.markers = [
       { i: 4, type: "dungeons", icon: "☠️", x: 10, y: 10, cell: 1, name: "The Ashen Deep" }

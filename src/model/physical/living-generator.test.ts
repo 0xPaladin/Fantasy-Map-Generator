@@ -1143,6 +1143,36 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(mission?.required).toBe(2);
     });
 
+    it("auto-dispatches the best-fitting idle hero instead of the lowest id", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "auto_bounties";
+      const weakId = addGuildHero({ m: 0, w: 0, s: 0, c: 4 });
+      const strongId = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [weakId, strongId];
+
+      Living.spawnTrouble(1, "monsters", "burg", 1);
+      Living.tick(1);
+
+      const mission = Living.getMissions().find(entry => entry.provinceId === 1);
+      expect(mission?.figureId).toBe(strongId);
+    });
+
+    it("auto-dispatches a pacify mission under the pacify doctrine", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "auto_pacify";
+      living.burgs[1]!.unrest = 40;
+      const heroId = addGuildHero({ m: 0, w: 0, s: 5, c: 0 });
+      guild.roster = [heroId];
+
+      Living.tick(1);
+
+      const mission = Living.getMissions().find(entry => entry.kind === "pacify");
+      expect(mission?.burgId).toBe(1);
+      expect(mission?.figureId).toBe(heroId);
+    });
+
     it("resolves a dispatched mission and pays its gold, renown and xp", () => {
       const living = Living.init();
       const guild = Living.getGuild();
@@ -1271,7 +1301,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(guild.excavatedMarkers).toContain(0);
       expect(guild.relics).toHaveLength(1);
       const relic = guild.relics[0]!;
-      expect(relic.holder).toEqual({ kind: "vault" });
+      expect(relic.holder).toEqual({ kind: "figure", id: heroId });
       expect(relic.originRealmId).toBe(0);
       expect(["Vhaelen", "Old Vhaelen"].some(part => relic.name.includes(part))).toBe(true);
       expect(relic.lore.length).toBeGreaterThan(0);
@@ -1319,6 +1349,21 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(Living.excavateMarker(99)).toBe(false);
     });
 
+    it("caps the vault at the guild tier and holds overflow in reserve", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 1;
+      guild.relics = [makeRelic(1)];
+      pack.markers = [];
+      addMarker({ i: 0, type: "libraries", cell: 1, name: "Great Library", chronicle: true });
+
+      expect(Living.excavateMarker(0)).toBe(true);
+      expect(guild.relics).toHaveLength(2);
+      expect(guild.relics[0]!.holder).toEqual({ kind: "vault" });
+      expect(guild.relics[1]!.holder).toEqual({ kind: "reserve" });
+      expect(Living.enshrineRelic(2)).toBe(false);
+    });
+
     it("equips one relic per hero and caps enshrinement at the guild tier", () => {
       Living.init();
       const guild = Living.getGuild();
@@ -1338,6 +1383,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       guild.tier = 1; // vault cap 1, already holding relic 1
       expect(Living.enshrineRelic(2)).toBe(false);
       expect(Living.recallRelic(2)).toBe(true);
+      expect(guild.relics[1]!.holder).toEqual({ kind: "reserve" });
+
+      // free the vault and the reserve relic can be enshrined
+      const secondHero = addGuildHero({ m: 0, w: 0, s: 0, c: 0 });
+      guild.roster.push(secondHero);
+      expect(Living.equipRelic(1, secondHero)).toBe(true);
+      expect(Living.enshrineRelic(2)).toBe(true);
       expect(guild.relics[1]!.holder).toEqual({ kind: "vault" });
     });
 
@@ -1391,7 +1443,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       Living.tick(1);
 
-      expect(relic.holder).toEqual({ kind: "vault" });
+      expect(relic.holder).toEqual({ kind: "figure", id: heroId });
       // the chronicle ruin also yields its own fresh relic
       expect(guild.relics).toHaveLength(2);
     });

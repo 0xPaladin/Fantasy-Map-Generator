@@ -198,6 +198,7 @@ export type RelicCategory = "regalia" | "weapon" | "tome" | "charter" | "idol";
 
 export type RelicHolder =
   | { kind: "vault" }
+  | { kind: "reserve" }
   | { kind: "figure"; id: number }
   | { kind: "state"; id: number }
   | { kind: "ruin"; markerId: number; cell: number };
@@ -216,7 +217,7 @@ export interface HistoricalRelic {
   holder: RelicHolder;
 }
 
-export type IdleDoctrine = "auto_bounties" | "auto_lairs" | "auto_excavate" | "auto_patron" | "manual";
+export type IdleDoctrine = "auto_bounties" | "auto_lairs" | "auto_excavate" | "auto_pacify" | "auto_patron" | "manual";
 
 /** Player guild: wallet, hero stable, idle doctrine and the transient on-map popups. */
 export interface GuildState {

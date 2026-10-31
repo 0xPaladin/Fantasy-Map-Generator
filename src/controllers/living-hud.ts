@@ -6,7 +6,14 @@ import { Controllers } from "@/controllers";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
-import { describeRelicBonuses, isExcavationMarker, RELIC_CATALOG, vaultRelics } from "@/data/living-relics";
+import {
+  describeRelicBonuses,
+  isExcavationMarker,
+  RELIC_CATALOG,
+  reserveRelics,
+  vaultHasRoom,
+  vaultRelics
+} from "@/data/living-relics";
 import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import { Pack } from "@/model/graph/pack-generator";
 import { figureLevel, GUILD_TIER_TITLES, Living, maxHeroesForTier } from "@/model/physical/living-generator";
@@ -178,6 +185,7 @@ const DOCTRINE_LABELS: Record<IdleDoctrine, string> = {
   auto_bounties: "Hunt Troubles",
   auto_lairs: "Hunt Lairs",
   auto_excavate: "Excavate Ruins",
+  auto_pacify: "Pacify Unrest",
   auto_patron: "Guard Favored State",
   manual: "Manual Dispatch"
 };
@@ -360,6 +368,8 @@ function relicHolderLabel(relic: HistoricalRelic): string {
   switch (holder.kind) {
     case "vault":
       return "vault";
+    case "reserve":
+      return "reserve";
     case "figure":
       return pack.history?.figures?.find(figure => figure.i === holder.id)?.name ?? "hero";
     case "state":
@@ -393,6 +403,8 @@ function renderGuildBar(): void {
   const roster = guild.roster ?? [];
   const candidates = guild.candidates ?? [];
   const relics = guild.relics ?? [];
+  const vaultCount = vaultRelics(relics).length;
+  const reserveCount = reserveRelics(relics).length;
   const doctrine = guild.doctrine ?? "auto_bounties";
   const sandbox = Boolean(guild.sandboxGodMode);
   const favored = guild.favoredStateId !== undefined ? pack.states[guild.favoredStateId]?.name : undefined;
@@ -455,7 +467,7 @@ function renderGuildBar(): void {
     ${
       relics.length > 0
         ? `<div class="livingGuildRow">
-            <span class="livingGuildMuted">Vault (${vaultRelics(relics).length}/${tier}):</span>
+            <span class="livingGuildMuted">Vault (${vaultCount}/${tier})${reserveCount > 0 ? ` · Reserve (${reserveCount})` : ""}:</span>
             ${relics
               .slice(0, MAX_GUILD_CHIPS)
               .map(relic => renderRelicChip(relic))
@@ -733,6 +745,8 @@ function relicHolderText(relic: HistoricalRelic): string {
   switch (holder.kind) {
     case "vault":
       return "Held in the Guild Vault";
+    case "reserve":
+      return "Held in reserve — the vault is full";
     case "figure":
       return `Carried by ${pack.history?.figures?.find(figure => figure.i === holder.id)?.name ?? "a hero"}`;
     case "state":
@@ -764,6 +778,10 @@ function renderRelicCard(relicId: number): string {
   let actions = "";
   if (relic.holder.kind === "ruin") {
     actions = `<button type="button" data-guild="dispatch-marker" data-marker="${relic.holder.markerId}">Send Expedition</button>`;
+  } else if (relic.holder.kind === "reserve") {
+    actions = vaultHasRoom(guild ?? { tier: 1, relics: [] })
+      ? `<button type="button" data-guild="enshrine" data-relic="${relic.id}">Enshrine in Vault</button>`
+      : `<div class="livingMuted">Held in reserve until vault space opens.</div>`;
   } else if (relic.holder.kind !== "vault") {
     actions = `<button type="button" data-guild="recall" data-relic="${relic.id}">Return to Vault</button>`;
   } else {
@@ -1358,6 +1376,11 @@ function runGuildOperation(button: HTMLElement): void {
       ok = Living.equipRelic(relicId, figureId);
       const name = (Living.getRelics?.() ?? []).find(relic => relic.id === relicId)?.name;
       message = ok ? `${name ?? "The relic"} is now carried by the hero.` : "The relic could not be equipped.";
+      break;
+    }
+    case "enshrine": {
+      ok = Living.enshrineRelic(Number(button.dataset.relic ?? 0));
+      message = ok ? "The relic was enshrined in the Guild Vault." : "The vault is full; the relic stays in reserve.";
       break;
     }
     case "recall": {

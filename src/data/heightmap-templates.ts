@@ -150,6 +150,16 @@ const fractious = `Hill 12-15 50-80 5-95 5-95
   Add -20 30-100 0 0
   Range 6-8 40-50 5-95 10-90`;
 
+const globeWorld = `Hill 1 60-70 22-38 20-80
+  Hill 1 60-70 62-78 20-80
+  Hill 4-5 15-25 20-80 15-85
+  Smooth 2 0 0 0
+  Multiply 0.35 land 0 0
+  Range 2-3 60-75 25-75 25-75
+  Smooth 2 0 0 0
+  Mask 2 0 0 0
+  Smooth 3 0 0 0`;
+
 type HeightmapTemplate = {
   id: number;
   name: string;
@@ -171,7 +181,8 @@ export const heightmapTemplates: Record<string, HeightmapTemplate> = {
   shattered: { id: 10, name: t("Shattered"), template: shattered, probability: 7 },
   taklamakan: { id: 11, name: t("Taklamakan"), template: taklamakan, probability: 1 },
   oldWorld: { id: 12, name: t("Old World"), template: oldWorld, probability: 8 },
-  fractious: { id: 13, name: t("Fractious"), template: fractious, probability: 3 }
+  fractious: { id: 13, name: t("Fractious"), template: fractious, probability: 3 },
+  globeWorld: { id: 14, name: t("Globe World"), template: globeWorld, probability: 5 }
 };
 
 // temp legacy compatibility

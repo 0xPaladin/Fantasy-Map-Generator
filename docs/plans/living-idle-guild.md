@@ -1,10 +1,11 @@
 # Plan — Living Idle Game: The Grand Guild, Relics, Map Juice & The Wheel of Ages
 
-Updated: 2026-10-30. Status: **planned**.
+Updated: 2026-10-31. Status: **slices 1-5 shipped; follow-on planned**.
 
 Companions: [living-world.md](living-world.md), [unified-figures.md](unified-figures.md),
-[lair-ascension.md](lair-ascension.md), [history-epochs.md](history-epochs.md),
-[history-fall-markers.md](history-fall-markers.md), [culture-traits.md](culture-traits.md).
+[lair-ascension.md](lair-ascension.md), [hero-diversity.md](hero-diversity.md),
+[history-epochs.md](history-epochs.md), [history-fall-markers.md](history-fall-markers.md),
+[culture-traits.md](culture-traits.md).
 
 ---
 
@@ -127,6 +128,7 @@ Guild heroes are standard `HistoricalFigure` entries in `pack.history.figures` r
      - `auto_bounties`: Automatically dispatches idle heroes to the highest-odds Trouble or Lair matching their primary pool/specialty.
      - `auto_lairs`: Prioritizes entrenched Lairs (`ProvinceLair`) and emergent warlord states before they can raid or ascend.
      - `auto_excavate`: Prioritizes unexcavated `chronicle` ruins, battlefields, and dungeons to farm Relics.
+     - `auto_pacify`: Sends idle heroes to burgs with `unrest > 0` to clear the unrest.
      - `auto_patron`: Only accepts contracts inside your **Favored State** (`guild.favoredStateId`), acting as that realm's guardian order.
      - `manual`: Waits at the Guild Hall for player click-dispatch.
 3. **Mission Execution (`ActiveGuildMission`)**:
@@ -254,7 +256,10 @@ assignment:
    - Up to `guild.tier` Relics can sit in the Guild Vault, applying passive idle multipliers to the
      whole Guild (`+10%` contract gold per `w` point, `+10%` renown per `s` point, `+10%` XP per `c`
      point, `+1` global delve roll per `m` point).
-3. **Leased to a Sovereign State (`{ kind: "state", id: stateId }`)**:
+3. **Held in Reserve (`{ kind: "reserve" }`)**:
+   - Overflow relics wait outside the active vault until space opens; the HUD offers **Enshrine**
+     when the guild tier allows it.
+4. **Leased to a Sovereign State (`{ kind: "state", id: stateId }`)**:
    - Grants the Relic's `m`/`w`/`s`/`c` bonuses directly to that state's `CapacityLedger` generation
      (`gen`) and reduces its `unravel` clock by `-1` per season, while paying the Guild `10 Gold` per
      season in lease tribute!
@@ -329,6 +334,7 @@ export type IdleDoctrine =
   | "auto_bounties"
   | "auto_lairs"
   | "auto_excavate"
+  | "auto_pacify"
   | "auto_patron"
   | "manual";
 
@@ -354,6 +360,7 @@ export type RelicCategory = "regalia" | "weapon" | "tome" | "charter" | "idol";
 
 export type RelicHolder =
   | { kind: "vault" }
+  | { kind: "reserve" }
   | { kind: "figure"; id: number }
   | { kind: "state"; id: number }
   | { kind: "ruin"; markerId: number; cell: number };
@@ -427,7 +434,8 @@ export interface LivingWorldState {
 ## 7. Implementation Slices
 
 Each slice is independently shippable, tested with Vitest, and keeps old `.map` saves working via
-lazy defaults.
+lazy defaults. Slices 1-5 are shipped; the hero-diversity follow-on is tracked in
+[hero-diversity.md](hero-diversity.md).
 
 | Slice | Scope | Key Modules | Description & Acceptance |
 | :---: | :--- | :--- | :--- |

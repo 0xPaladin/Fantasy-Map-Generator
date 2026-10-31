@@ -8,7 +8,18 @@ import { log } from "@/utils/logger";
 import { lim, minmax } from "@/utils/number-utils";
 import { getNumberInRange, P, rand } from "@/utils/probability-utils";
 
-type Tool = "Hill" | "Pit" | "Range" | "Trough" | "Strait" | "Mask" | "Invert" | "Add" | "Multiply" | "Smooth";
+type Tool =
+  | "Hill"
+  | "Pit"
+  | "Range"
+  | "Trough"
+  | "Strait"
+  | "Mask"
+  | "Invert"
+  | "Add"
+  | "Multiply"
+  | "Power"
+  | "Smooth";
 
 class HeightmapModule {
   grid: GridGraph | null = null;
@@ -541,6 +552,10 @@ class HeightmapModule {
     }
     if (tool === "Multiply") {
       this.modify(a3, 0, +a2);
+      return;
+    }
+    if (tool === "Power") {
+      this.modify(a3, 0, 1, +a2); // syntax: Power <exponent> <range>
       return;
     }
     if (tool === "Smooth") {
