@@ -30,6 +30,74 @@ const ROUTE_TYPE_MODIFIERS: Record<string, number> = {
   default: 8 // far ocean
 };
 
+export const isWrapEnabled = (): boolean => options?.map?.geography?.coordinates?.lonT === 360;
+export const graphWidth = (): number => options?.map?.graph?.width ?? 0;
+
+export function wrapDeltaX(dx: number, width: number): number {
+  const abs = Math.abs(dx);
+  return width > 0 ? Math.min(abs, width - abs) : abs;
+}
+
+export function wrapDistanceSquared(a: Point, b: Point, wrap: boolean, width: number): number {
+  const dx = wrap ? wrapDeltaX(a[0] - b[0], width) : a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy;
+}
+
+export function hasSeamCrossing(points: number[][], width: number): boolean {
+  if (width <= 0) return false;
+  const halfWidth = width / 2;
+  for (let i = 0; i < points.length - 1; i++) {
+    if (Math.abs(points[i + 1][0] - points[i][0]) > halfWidth) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function splitAtSeam(points: number[][], width: number): [number, number][][] {
+  if (points.length < 2 || width <= 0) return [points.map(p => [p[0], p[1]])];
+
+  const runs: [number, number][][] = [];
+  let currentRun: [number, number][] = [[points[0][0], points[0][1]]];
+  const halfWidth = width / 2;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const dx = p1[0] - p0[0];
+
+    if (Math.abs(dx) > halfWidth) {
+      let crossingY: number;
+      let exitPoint: [number, number];
+      let enterPoint: [number, number];
+
+      if (p0[0] > p1[0]) {
+        const totalDx = width - p0[0] + p1[0];
+        const t = (width - p0[0]) / (totalDx || 1);
+        crossingY = p0[1] + (p1[1] - p0[1]) * t;
+        exitPoint = [width, rn(crossingY, 2)];
+        enterPoint = [0, rn(crossingY, 2)];
+      } else {
+        const totalDx = p0[0] + (width - p1[0]);
+        const t = p0[0] / (totalDx || 1);
+        crossingY = p0[1] + (p1[1] - p0[1]) * t;
+        exitPoint = [0, rn(crossingY, 2)];
+        enterPoint = [width, rn(crossingY, 2)];
+      }
+
+      currentRun.push(exitPoint);
+      runs.push(currentRun);
+      currentRun = [enterPoint, [p1[0], p1[1]]];
+    } else {
+      currentRun.push([p1[0], p1[1]]);
+    }
+  }
+
+  runs.push(currentRun);
+  return runs;
+}
+
 export const UNNAMED_ROUTE = "Unnamed route segment";
 
 // name generator data
@@ -264,7 +332,10 @@ class RoutesModule {
   // Urquhart graph is obtained by removing the longest edge from each triangle in the Delaunay triangulation
   // this gives us an aproximation of a desired road network, i.e. connections between burgs
   // code from https://observablehq.com/@mbostock/urquhart-graph
-  private calculateUrquhartEdges(points: Point[]) {
+  calculateUrquhartEdges(points: Point[], wrap = false, width = 0): [number, number][] {
+    if (wrap && width > 0 && points.length >= 2) {
+      return this.calculateWrapUrquhartEdges(points, width);
+    }
     if (points.length < 2) return []; // No connection for less than 2 points
     if (points.length === 2) return [[0, 1]]; // Direct connection for exactly two points
 
@@ -274,7 +345,7 @@ class RoutesModule {
     const n = triangles.length;
 
     const removed = new Uint8Array(n);
-    const edges = [];
+    const edges: [number, number][] = [];
 
     for (let e = 0; e < n; e += 3) {
       const p0 = triangles[e],
@@ -299,6 +370,75 @@ class RoutesModule {
         const t0 = triangles[e];
         const t1 = triangles[e % 3 === 2 ? e - 2 : e + 1];
         edges.push([t0, t1]);
+      }
+    }
+
+    return edges;
+  }
+
+  private calculateWrapUrquhartEdges(points: Point[], width: number): [number, number][] {
+    const nPoints = points.length;
+    const augmentedPoints: Point[] = [];
+    const realOf: number[] = [];
+
+    for (let i = 0; i < nPoints; i++) {
+      augmentedPoints.push(points[i]);
+      realOf.push(i);
+    }
+    for (let i = 0; i < nPoints; i++) {
+      augmentedPoints.push([points[i][0] - width, points[i][1]]);
+      realOf.push(i);
+    }
+    for (let i = 0; i < nPoints; i++) {
+      augmentedPoints.push([points[i][0] + width, points[i][1]]);
+      realOf.push(i);
+    }
+
+    const { halfedges, triangles } = Delaunator.from(augmentedPoints);
+    const n = triangles.length;
+    if (n === 0) {
+      return this.calculateUrquhartEdges(points, false, 0);
+    }
+
+    const score = (p0: number, p1: number) => distanceSquared(augmentedPoints[p0], augmentedPoints[p1]);
+    const removed = new Uint8Array(n);
+
+    for (let e = 0; e < n; e += 3) {
+      const p0 = triangles[e],
+        p1 = triangles[e + 1],
+        p2 = triangles[e + 2];
+
+      const p01 = score(p0, p1),
+        p12 = score(p1, p2),
+        p20 = score(p2, p0);
+
+      removed[
+        p20 > p01 && p20 > p12
+          ? Math.max(e + 2, halfedges[e + 2])
+          : p12 > p01 && p12 > p20
+            ? Math.max(e + 1, halfedges[e + 1])
+            : Math.max(e, halfedges[e])
+      ] = 1;
+    }
+
+    const edgeSet = new Set<string>();
+    const edges: [number, number][] = [];
+
+    for (let e = 0; e < n; ++e) {
+      if (e > halfedges[e] && !removed[e]) {
+        const t0 = triangles[e];
+        const t1 = triangles[e % 3 === 2 ? e - 2 : e + 1];
+        const r0 = realOf[t0];
+        const r1 = realOf[t1];
+        if (r0 === r1) continue;
+
+        const min = Math.min(r0, r1);
+        const max = Math.max(r0, r1);
+        const key = `${min}-${max}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push([min, max]);
+        }
       }
     }
 
@@ -346,7 +486,7 @@ class RoutesModule {
     }
     if (grid.cells.temp[g[next]] < MIN_PASSABLE_SEA_TEMP) return Infinity;
 
-    const distanceCost = distanceSquared(p[current], p[next]);
+    const distanceCost = wrapDistanceSquared(p[current], p[next], isWrapEnabled(), graphWidth());
     const typeModifier = ROUTE_TYPE_MODIFIERS[t[next]] || ROUTE_TYPE_MODIFIERS.default;
     return distanceCost * typeModifier * connectionModifier;
   }
@@ -397,10 +537,78 @@ class RoutesModule {
     };
   }
 
-  private findPathSegments({ isWater, start, exit }: { isWater: boolean; start: number; exit: number }) {
+  buildSeaAdjacency(): number[][] {
+    const { cells } = pack;
+    const spacing = grid?.spacing || 10;
+    const width = graphWidth();
+
+    const westCells: number[] = [];
+    const eastCells: number[] = [];
+
+    for (let i = 0; i < cells.h.length; i++) {
+      if (cells.h[i] >= 20) continue;
+      const [x] = cells.p[i];
+      if (x <= spacing) westCells.push(i);
+      else if (x >= width - spacing) eastCells.push(i);
+    }
+
+    const adjacency: number[][] = cells.c.slice();
+    if (!westCells.length || !eastCells.length) return adjacency;
+
+    eastCells.sort((a, b) => cells.p[a][1] - cells.p[b][1]);
+
+    const findNearestEast = (westY: number): number => {
+      let low = 0;
+      let high = eastCells.length - 1;
+      while (low <= high) {
+        const mid = (low + high) >> 1;
+        const midY = cells.p[eastCells[mid]][1];
+        if (midY < westY) low = mid + 1;
+        else high = mid - 1;
+      }
+      let best = eastCells[Math.max(0, Math.min(eastCells.length - 1, low))];
+      const bestDist = Math.abs(cells.p[best][1] - westY);
+      if (low > 0) {
+        const prev = eastCells[low - 1];
+        const dist = Math.abs(cells.p[prev][1] - westY);
+        if (dist < bestDist) {
+          best = prev;
+        }
+      }
+      return best;
+    };
+
+    for (const w of westCells) {
+      const westY = cells.p[w][1];
+      const e = findNearestEast(westY);
+
+      if (!adjacency[w].includes(e)) {
+        adjacency[w] = [...adjacency[w], e];
+      }
+      if (!adjacency[e].includes(w)) {
+        adjacency[e] = [...adjacency[e], w];
+      }
+    }
+
+    return adjacency;
+  }
+
+  private findPathSegments({
+    isWater,
+    start,
+    exit,
+    seaAdjacency
+  }: {
+    isWater: boolean;
+    start: number;
+    exit: number;
+    seaAdjacency?: number[][];
+  }) {
     const getCost = this.createCostEvaluator({ isWater });
     const isExit = isWater ? this.createWaterExitCheck(exit) : (next: number) => next === exit;
-    const pathCells = findPath(start, isExit, getCost, pack);
+    const wrap = isWater && isWrapEnabled() && !!seaAdjacency;
+    const graph = wrap ? { ...pack, cells: { ...pack.cells, c: seaAdjacency } } : pack;
+    const pathCells = findPath(start, isExit, getCost, graph);
     if (!pathCells) return [];
     const segments = this.getRouteSegments(pathCells);
     return segments;
@@ -411,8 +619,10 @@ class RoutesModule {
    * Follows the same rules as generated searoutes: ports are left and entered through their
    * haven, navigable rivers are passable, colder seas are not, and existing routes are cheap.
    */
-  findWaterPath(start: number, exit: number): number[] | null {
-    return findPath(start, this.createWaterExitCheck(exit), this.getWaterPathCost.bind(this), pack);
+  findWaterPath(start: number, exit: number, seaAdjacency?: number[][]): number[] | null {
+    const adj = seaAdjacency ?? (isWrapEnabled() ? this.buildSeaAdjacency() : undefined);
+    const graph = adj ? { ...pack, cells: { ...pack.cells, c: adj } } : pack;
+    return findPath(start, this.createWaterExitCheck(exit), this.getWaterPathCost.bind(this), graph);
   }
 
   /** Sea route geometry for a cell chain: burg positions at ports, meandering along river runs */
@@ -483,19 +693,21 @@ class RoutesModule {
     return trails;
   }
 
-  private generateSeaRoutes() {
+  private generateSeaRoutes(seaAdjacency?: number[][]) {
     log.time("generateSeaRoutes");
     const { portsByFeature } = this.sortBurgsByFeature(pack.burgs);
     const seaRoutes: Route[] = [];
+    const wrap = isWrapEnabled();
+    const width = graphWidth();
 
     for (const [featureId, featurePorts] of Object.entries(portsByFeature)) {
       const points = featurePorts.map(burg => [burg.x, burg.y] as Point);
-      const urquhartEdges = this.calculateUrquhartEdges(points);
+      const urquhartEdges = this.calculateUrquhartEdges(points, wrap, width);
 
       urquhartEdges.forEach(([fromId, toId]) => {
         const start = featurePorts[fromId].cell;
         const exit = featurePorts[toId].cell;
-        const segments = this.findPathSegments({ isWater: true, start, exit });
+        const segments = this.findPathSegments({ isWater: true, start, exit, seaAdjacency });
         for (const segment of segments) {
           this.addConnections(segment);
           seaRoutes.push({ feature: Number(featureId), cells: segment } as Route);
@@ -702,7 +914,8 @@ class RoutesModule {
   }
 
   private createRoutesData(routes: Route[]) {
-    const seaRoutes = this.generateSeaRoutes();
+    const seaAdjacency = isWrapEnabled() ? this.buildSeaAdjacency() : undefined;
+    const seaRoutes = this.generateSeaRoutes(seaAdjacency);
     const mainRoads = this.generateMainRoads();
     const trails = this.generateTrails();
     const pointsArray = this.preparePointsArray();
@@ -1052,6 +1265,16 @@ class RoutesModule {
     const lineGen = line();
     const curve = this.ROUTE_CURVES[group] || this.ROUTE_CURVES.default;
     lineGen.curve(curve);
+
+    const width = graphWidth();
+    if (isWrapEnabled() && width > 0 && hasSeamCrossing(points, width)) {
+      const runs = splitAtSeam(points, width);
+      return runs
+        .map(run => round(lineGen(run)!, 1))
+        .filter(Boolean)
+        .join(" ");
+    }
+
     const path = round(lineGen(points.map(p => [p[0], p[1]]))!, 1);
     return path;
   }
@@ -1059,6 +1282,17 @@ class RoutesModule {
   getLength(routeId: number): number {
     const route = pack.routes.find(route => route.i === routeId);
     if (!route) return 0;
+
+    const width = graphWidth();
+    if (isWrapEnabled() && width > 0 && hasSeamCrossing(route.points, width)) {
+      let length = 0;
+      for (let i = 0; i < route.points.length - 1; i++) {
+        const p0: Point = [route.points[i][0], route.points[i][1]];
+        const p1: Point = [route.points[i + 1][0], route.points[i + 1][1]];
+        length += Math.sqrt(wrapDistanceSquared(p0, p1, true, width));
+      }
+      return rn(length, 2);
+    }
 
     const curve = this.ROUTE_CURVES[route.group] || this.ROUTE_CURVES.default;
     return curveLength(
