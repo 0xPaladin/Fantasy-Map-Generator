@@ -188,7 +188,7 @@ function getRegimentColumns(): EditorColumn<RegimentRow>[] {
     label: capitalize(unit.name.replace(/_/g, " ")),
     width: "5em",
     mobileHidden: true,
-tip: sentences(t("{{unit}} units number", { unit: unit.name }), t("Click to sort")),
+    tip: sentences(t("{{unit}} units number", { unit: unit.name }), t("Click to sort")),
     sortBy: row => getRegimentUnitCount(row.regiment, unit.name).count
   }));
 
@@ -280,7 +280,7 @@ function renderRegimentsPage(view: TableView<RegimentRow>): void {
     .map(({ state, regiment }) => {
       const unitCells = options.map.military.units
         .map(unit => {
-const { count: value, breakdown } = getRegimentUnitCount(regiment, unit.name);
+          const { count: value, breakdown } = getRegimentUnitCount(regiment, unit.name);
           const bdEntries = Object.entries(breakdown);
           const bdTip =
             bdEntries.length > 1 || (bdEntries.length === 1 && bdEntries[0][0] !== unit.name)

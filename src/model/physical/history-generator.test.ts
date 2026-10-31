@@ -988,7 +988,7 @@ describe("Chronicle.generate fall markers", () => {
   });
 
   it("skips burgs that already host a marker", () => {
-    pack.markers.push({ i: 9, name: "The Old Fair", type: "fairs", cell: 3 } as typeof pack.markers[number]); // Dale's cell is taken
+    pack.markers.push({ i: 9, name: "The Old Fair", type: "fairs", cell: 3 } as (typeof pack.markers)[number]); // Dale's cell is taken
     options.map.lore.history.ruins = 5;
     Chronicle.generate();
     const names = pack.markers.filter(marker => marker.type !== "battlefields").map(marker => marker.name);
@@ -1010,7 +1010,7 @@ describe("Chronicle.generate fall markers", () => {
   });
 
   it("replaces its own markers when history regenerates, and keeps the user's", () => {
-    pack.markers.push({ i: 99, name: "The Old Fair", type: "fairs", cell: 9 } as typeof pack.markers[number]);
+    pack.markers.push({ i: 99, name: "The Old Fair", type: "fairs", cell: 9 } as (typeof pack.markers)[number]);
     Chronicle.generate();
     const count = pack.markers.length;
     Chronicle.generate();

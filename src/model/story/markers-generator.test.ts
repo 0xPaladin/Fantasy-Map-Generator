@@ -39,7 +39,7 @@ describe("MarkersModule.addEncounter", () => {
     });
 
     await import("./markers-generator");
-markers = Markers;
+    markers = Markers;
   });
 
   afterEach(() => {
@@ -145,7 +145,18 @@ describe("MarkersModule chronicle-owned types", () => {
   const world = () => {
     globalThis.pack = {
       markers: [],
-      cells: { i: [1], burg: [0, 0], culture: [0, 1], h: [0, 40], state: [0, 1], pop: [0, 5], p: [[0, 0], [50, 50]] }
+      cells: {
+        i: [1],
+        burg: [0, 0],
+        culture: [0, 1],
+        h: [0, 40],
+        state: [0, 1],
+        pop: [0, 5],
+        p: [
+          [0, 0],
+          [50, 50]
+        ]
+      }
     } as any;
   };
   const twoTypes = [
@@ -172,8 +183,16 @@ describe("MarkersModule chronicle-owned types", () => {
       add: () => {}
     }
   ];
-  const history = (over: Record<string, unknown>) =>
-    ({ mode: "archaeologist", span: 1000, realms: 2, density: 1, echoes: true, ruins: 3, renames: false, ...over });
+  const history = (over: Record<string, unknown>) => ({
+    mode: "archaeologist",
+    span: 1000,
+    realms: 2,
+    density: 1,
+    echoes: true,
+    ruins: 3,
+    renames: false,
+    ...over
+  });
 
   it("leaves both to the epochs' chronicle", async () => {
     await import("./markers-generator");

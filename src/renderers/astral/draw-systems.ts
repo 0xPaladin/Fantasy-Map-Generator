@@ -1,7 +1,7 @@
 ﻿// Star systems: one class-coloured marker per burg, drawn as a viewport layer like the burg icons
+import { type StarSystem, systemsOf } from "@/model/physical/astral-naming";
 import { Layers } from "@/renderers/layers";
 import { zoomFontSize } from "@/renderers/viewport/viewport";
-import { type StarSystem, systemsOf } from "@/model/physical/astral-naming";
 import { ViewportLayers, type ViewportRenderContext } from "@/renderers/viewport/viewport-renderer";
 import type { StylesData } from "@/types/styles";
 import { rn } from "@/utils/number-utils";

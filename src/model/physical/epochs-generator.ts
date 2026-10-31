@@ -8,13 +8,13 @@ import {
   FOUNDING_TEMPLATES,
   GOLDEN_AGE_TEMPLATES
 } from "@/data/history-events";
+import type { Burg } from "@/model/political/burgs-generator";
+import { STATE_FORMS, type State, States } from "@/model/political/states-generator";
+import { Names } from "@/model/society/names-generator";
 import type { EpochPolity, HistoryEpoch, HistoryEvent, HistRef } from "@/types/history";
 import type { TypedArray } from "@/types/packed-graph";
 import { P, ra, rand, rn, rw } from "@/utils";
 import { getRandomColor } from "@/utils/color-utils";
-import type { Burg } from "@/model/political/burgs-generator";
-import { Names } from "@/model/society/names-generator";
-import { STATE_FORMS, type State, States } from "@/model/political/states-generator";
 
 export interface EpochArtifact {
   epochs: HistoryEpoch[];

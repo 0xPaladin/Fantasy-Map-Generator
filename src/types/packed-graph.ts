@@ -15,8 +15,8 @@ import type { Zone } from "@/model/political/zones-generator";
 import type { Culture } from "@/model/society/cultures-generator";
 import type { Religion } from "@/model/society/religions-generator";
 import type { Marker } from "@/model/story/markers-generator";
-import type { Journey } from "./journey";
 import type { History } from "./history";
+import type { Journey } from "./journey";
 import type { Legend } from "./legend";
 
 export type TypedArray = Uint8Array | Uint16Array | Uint32Array | Int8Array | Int16Array | Float32Array | Float64Array;
@@ -77,6 +77,6 @@ export interface PackedGraph {
   measurers: Measurer[];
   addedLabels: AddedLabel[];
   journeys: Journey[];
-history: History;
+  history: History;
   legends: Legend[];
 }

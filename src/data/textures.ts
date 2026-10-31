@@ -1,7 +1,7 @@
 import { t } from "@/utils/i18n";
 // The bundled texture images the Style tab offers, href → label
 export const TEXTURES: Record<string, string> = {
-"": t("No texture"),
+  "": t("No texture"),
   "./images/textures/folded-paper-big.jpg": t("Folded paper big"),
   "./images/textures/folded-paper-small.jpg": t("Folded paper small"),
   "./images/textures/gray-paper.jpg": t("Gray paper"),

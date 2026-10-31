@@ -84,7 +84,7 @@ function prepareMapData(viewOnly = false): string {
   const settings = JSON.stringify(viewOnly ? { ...options.map, viewOnly } : options.map); // the requests and preferences stay out
   const measurers = JSON.stringify(pack.measurers ?? []);
   const journeys = JSON.stringify(pack.journeys ?? []);
-const { json: history, snapshotRecords } = serializeHistory(pack.history, pack.cells.i.length);
+  const { json: history, snapshotRecords } = serializeHistory(pack.history, pack.cells.i.length);
   const legends = JSON.stringify(pack.legends);
   const fonts = JSON.stringify(
     getUsedFonts(
@@ -203,7 +203,7 @@ const { json: history, snapshotRecords } = serializeHistory(pack.history, pack.c
     layers,
     graphOverride,
     journeys,
-legends,
+    legends,
     history,
     ...snapshotRecords // records 55 and up: one border snapshot per epoch
   ].join("\r\n");

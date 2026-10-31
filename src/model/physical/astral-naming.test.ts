@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NameBase } from "@/data/name-bases";
+import { Names } from "@/model/society/names-generator";
 import {
   applyNaming,
   groupsOf,
@@ -12,7 +13,6 @@ import {
   systemTraits,
   toSystem
 } from "./astral-naming";
-import { Names } from "@/model/society/names-generator";
 
 const ASTRAL_BASE = "TRKCO";
 

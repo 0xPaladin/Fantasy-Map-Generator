@@ -1,9 +1,9 @@
-﻿import { Layers, type LayersState } from "@/renderers/layers";
-import { is3dView, isAstralView } from "@/renderers/view-mode";
-import { setFallbackVisible } from "@/conquest/ui/button";
+﻿import { setFallbackVisible } from "@/conquest/ui/button";
 import { twLayerIds } from "@/conquest/ui/layers";
 import { applyPreset } from "@/conquest/ui/presets";
 import { Controllers } from "@/controllers";
+import { Layers, type LayersState } from "@/renderers/layers";
+import { is3dView, isAstralView } from "@/renderers/view-mode";
 import { findEl } from "@/utils";
 
 let conquestEnabled = false;

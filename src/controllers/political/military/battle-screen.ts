@@ -1,9 +1,4 @@
 ﻿import { select, sum } from "d3";
-import { Dialog } from "@/ui/dialog/dialog";
-import { applySortingByHeader } from "@/ui/dialog/sorting";
-import { Icons } from "@/model/icons";
-import { Layers } from "@/renderers/layers";
-import { tip } from "@/ui/tooltips";
 import { currentContent } from "@/conquest/content/store";
 import type { UnitType } from "@/conquest/engine/common/content";
 import {
@@ -18,8 +13,7 @@ import {
   stepBattleRound
 } from "@/conquest/engine/game/battle";
 import { Pack } from "@/model/graph/pack-generator";
-import { moveRegiment } from "@/renderers/draw-military";
-import type { Marker } from "@/model/story/markers-generator";
+import { Icons } from "@/model/icons";
 import {
   getCategoryForUnit,
   Military,
@@ -28,6 +22,12 @@ import {
   syncRegimentTotals
 } from "@/model/political/military-generator";
 import type { State } from "@/model/political/states-generator";
+import type { Marker } from "@/model/story/markers-generator";
+import { moveRegiment } from "@/renderers/draw-military";
+import { Layers } from "@/renderers/layers";
+import { Dialog } from "@/ui/dialog/dialog";
+import { applySortingByHeader } from "@/ui/dialog/sorting";
+import { tip } from "@/ui/tooltips";
 import { capitalize, ensureEl, escapeHtml, last, wiki } from "@/utils";
 
 interface RegimentEntry {

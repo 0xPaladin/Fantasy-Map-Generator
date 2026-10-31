@@ -314,11 +314,11 @@ const TEMPLATE = /* html */ `
       <td>
         <select id="culturesSet" data-option="culturesSet">
 ${Object.entries(CULTURE_SETS)
-            .map(
-              ([key, set]) =>
-                `<option value="${key}" data-max="${set.max}"${key === "world" ? " selected" : ""}>${t(set.name)}</option>`
-            )
-            .join("\n          ")}
+  .map(
+    ([key, set]) =>
+      `<option value="${key}" data-max="${set.max}"${key === "world" ? " selected" : ""}>${t(set.name)}</option>`
+  )
+  .join("\n          ")}
         </select>
       </td>
       <td></td>

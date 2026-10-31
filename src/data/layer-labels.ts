@@ -66,8 +66,7 @@ const PERMANENT_LAYER_LABELS: Record<string, string> = {
 export function layerLabel(id: string): string {
   if (id === "map") return t("Map");
   const label =
-    LAYER_TOGGLES.get(id as LayerId)?.label ??
-    ASTRAL_LAYER_TOGGLES.get(id as LayerId)?.label.replace(/<\/?u>/g, "");
+    LAYER_TOGGLES.get(id as LayerId)?.label ?? ASTRAL_LAYER_TOGGLES.get(id as LayerId)?.label.replace(/<\/?u>/g, "");
   return label ?? PERMANENT_LAYER_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 }
 

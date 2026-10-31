@@ -171,7 +171,7 @@ function updateRegimentData(regiment: Regiment): void {
 
   const totalSlots = regiment.units?.length ?? 0;
   const composition = ensureEl("regimentComposition");
-let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.9em; opacity:0.85">
+  let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.9em; opacity:0.85">
     <span>${t("Army Units")}</span>
     <span>${t("Slots")}: <b>${totalSlots} / 20</b></span>
   </div>`;
@@ -367,7 +367,7 @@ function changeType(): void {
   if (!reg || !selectedRegiment) return;
   Military.setNaval(reg.state, reg.i, !reg.n);
   ensureEl("regimentType").className = reg.n ? "icon-anchor" : "icon-users";
-updateRegimentElement(reg, selectedRegiment);
+  updateRegimentElement(reg, selectedRegiment);
 }
 
 function changeName(this: HTMLInputElement): void {
@@ -448,7 +448,7 @@ function changeUnit(this: HTMLInputElement): void {
   const count = (value: number) => Math.max(0, Math.round(value || 0)); // older maps may hold fractional troops
   const units = Object.fromEntries(Object.entries(reg.u).map(([name, value]) => [name, count(value)]));
   Military.setUnits(reg.state, reg.i, { ...units, [u]: count(+this.value) });
-updateRegimentElement(reg, selectedRegiment);
+  updateRegimentElement(reg, selectedRegiment);
 
   refreshEditors();
 }
@@ -465,7 +465,7 @@ function splitRegiment(): void {
     return;
   }
 
-ensureEl("regimentComposition")
+  ensureEl("regimentComposition")
     .querySelectorAll<HTMLInputElement>("input")
     .forEach(el => {
       el.value = String(reg.u[el.dataset.u!] || 0);

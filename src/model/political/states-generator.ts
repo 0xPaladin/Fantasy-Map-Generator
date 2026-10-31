@@ -42,7 +42,7 @@ export interface State {
   center: number;
   culture: number;
   coa: Emblem;
-rosterId?: string;
+  rosterId?: string;
   tags?: string[];
   lock?: boolean;
   removed?: boolean;
@@ -1560,7 +1560,7 @@ class StatesModule {
         name,
         formName,
         fullName: `${name} ${formName}`,
-color: getSectorColor(states[stateId].color!, states[stateId].provinces?.length ?? 0),
+        color: getSectorColor(states[stateId].color!, states[stateId].provinces?.length ?? 0),
         coa,
         tags: []
       } as Province);

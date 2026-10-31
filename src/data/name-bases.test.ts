@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { pinSchemas } from "@/model/options/options-schema";
+import { CULTURE_SETS } from "@/data/culture-sets";
 import { shields } from "@/data/emblems/shields";
 import { getDefaultNameBases, isAstralBase, type NameBase } from "@/data/name-bases";
-import { CULTURE_SETS } from "@/data/culture-sets";
+import { pinSchemas } from "@/model/options/options-schema";
 import { Cultures } from "@/model/society/cultures-generator";
 
 const ASTRAL_SETS = {

@@ -156,7 +156,7 @@ function createBasesList(): void {
 }
 
 function updateInputs(): void {
-const base = Names.getNameBase(selectedId());
+  const base = Names.getNameBase(selectedId());
   if (!base) {
     tip(t("Namesbase {{base}} is not defined", { base: selectedId() }), false, "error");
     return;
@@ -207,7 +207,7 @@ function updateBaseName(rawName: string): void {
 }
 
 function updateBaseMin(value: string): void {
-const base = Names.getNameBase(selectedId());
+  const base = Names.getNameBase(selectedId());
   if (!base) return;
   if (+value > base.max) {
     tip(t("Minimal length cannot be greater than maximal"), false, "error");
@@ -217,7 +217,7 @@ const base = Names.getNameBase(selectedId());
 }
 
 function updateBaseMax(value: string): void {
-const base = Names.getNameBase(selectedId());
+  const base = Names.getNameBase(selectedId());
   if (!base) return;
   if (+value < base.min) {
     tip(t("Maximal length should be greater than minimal"), false, "error");
@@ -331,7 +331,7 @@ function namesbaseAdd(): void {
 }
 
 function namesbaseRestoreDefault(): void {
-Dialog.confirm({
+  Dialog.confirm({
     title: t("Restore default data"),
     message: t("Are you sure you want to restore default namesbase?"),
     confirm: t("Restore"),
@@ -384,7 +384,7 @@ function namesbaseUpload(dataLoaded: string, override = true): void {
       const name = rawName?.replace(unsafe, "");
       if (!name) throw new Error(t("Name is missing"));
       const names = rawNames?.replace(unsafe, "");
-if (!names) throw new Error(t("Names are missing"));
+      if (!names) throw new Error(t("Names are missing"));
 
       const candidate = rawId?.trim().toUpperCase();
       const id =
@@ -427,9 +427,9 @@ if (!names) throw new Error(t("Names are missing"));
       message: /* html */ `<div>
         <p style="margin:0.75em;">
 <strong>${t("File parsing error. Only {{added}} out of {{total}} namebases added.", {
-            added: lines.length - errors.length,
-            total: lines.length
-          })}</strong>
+        added: lines.length - errors.length,
+        total: lines.length
+      })}</strong>
           ${t("Each namebase should be on its own line and follow the format: id|name|min|max|duplication|m|names. Files without the id column are still accepted; ids are then derived from the name. Parameters should be separated with the | character, and this character should not be used within the parameters. Another prohibited character is /. The most common issue is names and other parameters being on two separate lines.")}
           <ul style="margin:0.5em;">
             <li><code>id</code>: ${t("stable identity of the base, five uppercase letters. It stays the same when the base is renamed.")}</li>

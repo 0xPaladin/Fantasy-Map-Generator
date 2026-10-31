@@ -72,12 +72,7 @@ class LoreModel {
     }
     if (config.echoes !== undefined) history.echoes = Boolean(config.echoes);
     if (config.ruins !== undefined) {
-      if (
-        typeof config.ruins !== "number" ||
-        !Number.isInteger(config.ruins) ||
-        config.ruins < 1 ||
-        config.ruins > 5
-      )
+      if (typeof config.ruins !== "number" || !Number.isInteger(config.ruins) || config.ruins < 1 || config.ruins > 5)
         throw new Error("The ruins setting must be a whole number from 1 to 5");
       history.ruins = config.ruins;
     }

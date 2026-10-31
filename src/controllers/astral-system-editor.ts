@@ -4,7 +4,7 @@
 // see docs/plans/astral-system-dialog.md and docs/plans/astral-system-details.md
 import { select } from "d3";
 import { Controllers } from "@/controllers";
-import { Markets, type Market } from "@/model/economy/markets-generator";
+import { type Market, Markets } from "@/model/economy/markets-generator";
 import { peopleOf, starClassFor } from "@/model/physical/astral-naming";
 import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-system";
 import { Burgs } from "@/model/political/burgs-generator";
@@ -213,7 +213,8 @@ function updateSystemValues(): void {
 
   ensureEl<HTMLInputElement>("systemPopulation").value = String(peopleOf(burg));
   ensureEl<HTMLInputElement>("systemTreasury").value = String(rn(burg.treasury || 0, 2));
-  ensureEl("systemWealth").innerHTML = `ðŸŸ¡ ${rn(burg.population! > 0 ? (burg.product || 0) / burg.population! : 0, 2)}`;
+  ensureEl("systemWealth").innerHTML =
+    `ðŸŸ¡ ${rn(burg.population! > 0 ? (burg.product || 0) / burg.population! : 0, 2)}`;
 
   for (const feature of FEATURES) {
     ensureEl(featureId(feature)).classList.toggle("inactive", !burg[feature]);

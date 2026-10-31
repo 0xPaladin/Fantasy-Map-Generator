@@ -186,7 +186,7 @@ class EntityLookup {
       name: id => this.byId(pack.burgs, id)?.name || "",
       refs: () => this.refsOf("burg", pack.burgs, true),
       element: id => `burg${id}`,
-isAt: (ref, cell) => pack.cells.burg[cell] === ref.id,
+      isAt: (ref, cell) => pack.cells.burg[cell] === ref.id,
       highlight: id => `#burg${id}, #system${id}`,
       position: id => {
         const burg = this.byId(pack.burgs, id);
@@ -716,7 +716,7 @@ isAt: (ref, cell) => pack.cells.burg[cell] === ref.id,
         const ref = this.parseKey(`${type}:${id}`);
         if (ref) return ref;
       }
-for (const [layer, attribute, type] of DATA_TARGETS) {
+      for (const [layer, attribute, type] of DATA_TARGETS) {
         const value = element.getAttribute(attribute);
         const ref = value !== null && element.closest(layer) ? this.parseKey(`${type}:${value}`) : undefined;
         if (ref) return ref;
