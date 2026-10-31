@@ -7,6 +7,7 @@ import { ALIGNMENT_COLORS } from "@/data/culture-traits";
 import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel } from "@/data/hero-archetypes";
 import { activeAspects, aspectBonus } from "@/data/hero-aspects";
 import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
+import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import {
@@ -33,6 +34,8 @@ import { Layers } from "@/renderers/layers";
 import type { HistoricalFigure } from "@/types/history";
 import {
   type GuildState,
+  type HeroDoctrine,
+  type HeroGuildState,
   type HistoricalRelic,
   type IdleDoctrine,
   type LivingNewsItem,
@@ -152,6 +155,12 @@ const TEMPLATE = /* html */ `
     #${INSPECTOR_ID} .livingBar > i { display: block; height: 100%; background: #5e4fa2; }
     #${INSPECTOR_ID} .livingBar.danger > i { background: #a33d3d; }
     #${INSPECTOR_ID} .livingPool { display: grid; grid-template-columns: 3.4em 1fr auto; gap: 0.2em 0.35em; align-items: center; }
+    #${INSPECTOR_ID} .livingPoolVitals { display: grid; gap: 0.25em; margin-bottom: 0.25em; }
+    #${INSPECTOR_ID} .livingVital { display: grid; grid-template-columns: 4.6em 3.2em 1fr; gap: 0.3em; align-items: center; }
+    #${INSPECTOR_ID} .livingVital .livingBar { grid-column: 3; }
+    #${INSPECTOR_ID} .livingDiscipline.injury { border-color: #a33d3d; color: #7b2525; }
+    #${INSPECTOR_ID} .livingDiscipline.pressed { background: #5e4fa2; color: #fff; }
+    #${INSPECTOR_ID} .dangerText { color: #a33d3d; }
     #${INSPECTOR_ID} .livingPool.over { color: #a33d3d; }
     #${INSPECTOR_ID} .livingPool .livingBar { grid-column: 2 / 4; }
     #${INSPECTOR_ID} .livingRuler { display: flex; gap: 0.4em; align-items: baseline; flex-wrap: wrap; }
@@ -201,6 +210,15 @@ const DOCTRINE_LABELS: Record<IdleDoctrine, string> = {
   auto_pacify: "Pacify Unrest",
   auto_patron: "Guard Favored State",
   manual: "Manual Dispatch"
+};
+
+const HERO_DOCTRINE_LABELS: Record<HeroDoctrine, string> = {
+  hunt_troubles: "Troubles",
+  hunt_lairs: "Lairs",
+  excavate: "Excavate",
+  support: "Support",
+  patrol: "Patrol",
+  manual: "Manual"
 };
 
 let playing = 0;
@@ -938,6 +956,53 @@ function renderPathChoices(figure: HistoricalFigure, figureId: number, isHero: b
   </div>`;
 }
 
+function vitalBar(label: string, value: number, max: number): string {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  return `<div class="livingVital"><span>${label}</span><span>${value}/${max}</span><div class="livingBar"><i style="width:${pct}%"></i></div></div>`;
+}
+
+function renderVitals(figureId: number, state: HeroGuildState | undefined, isHero: boolean): string {
+  if (!state) return "";
+  const temperament = heroTemperamentTags(state.temperament)
+    .map(tag => `<span class="livingDiscipline">${escapeHtml(tag)}</span>`)
+    .join("");
+  const injuries = state.injuries
+    .filter(injury => injuryIsActive(injury, Living.getState().tick))
+    .map(injury => {
+      const label = HERO_INJURY_LABELS[injury.kind];
+      return `<span class="livingDiscipline injury">${escapeHtml(label)}${
+        injury.untilTick === undefined ? " · until treated" : ""
+      }</span>`;
+    })
+    .join("");
+  const down =
+    state.downUntilTick !== undefined && state.downUntilTick > Living.getState().tick
+      ? `<div class="livingMuted dangerText">Downed until tick ${state.downUntilTick}</div>`
+      : "";
+  const doctrineButtons = isHero
+    ? `<div class="livingButtons">${(Object.keys(HERO_DOCTRINE_LABELS) as HeroDoctrine[])
+        .map(
+          doctrine =>
+            `<button type="button" class="livingDiscipline${state.doctrine === doctrine ? " pressed" : ""}" data-guild="hero-doctrine" data-figure="${figureId}" data-doctrine="${doctrine}" title="Set this hero's doctrine">${HERO_DOCTRINE_LABELS[doctrine]}</button>`
+        )
+        .join(
+          ""
+        )}<button type="button" class="livingDiscipline${state.push ? " pressed" : ""}" data-guild="toggle-push" data-figure="${figureId}" title="Spend Stamina on harder checks">Push: ${state.push ? "On" : "Off"}</button></div>`
+    : "";
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Vitals</div>
+    <div class="livingPoolVitals">
+      ${vitalBar("Resolve", state.resolve, state.maxResolve)}
+      ${vitalBar("Stamina", state.stamina, state.maxStamina)}
+    </div>
+    <div class="livingChips">${temperament}${injuries}</div>
+    ${down}
+    <div class="livingMuted">Doctrine: ${HERO_DOCTRINE_LABELS[state.doctrine]}</div>
+    ${doctrineButtons}
+  </div>`;
+}
+
 function renderFigureCard(figureId: number): string {
   const living = Living.getState();
   const guild = Living.getGuild?.();
@@ -954,6 +1019,8 @@ function renderFigureCard(figureId: number): string {
   const onCooldown = cooldownUntil !== undefined && cooldownUntil > living.tick;
   const isCandidate = candidates.includes(figureId);
   const isHero = roster.includes(figureId);
+  const heroState = isHero || isCandidate ? Living.getHeroState?.(figureId) : undefined;
+  const isDown = heroState?.downUntilTick !== undefined && heroState.downUntilTick > living.tick;
   const culture = pack.cultures?.[figure.culture]?.name;
   const alignment = figure.alignment
     ? `<span class="livingBadge" style="background:${ALIGNMENT_COLORS[figure.alignment]}">${figure.alignment}</span>`
@@ -975,10 +1042,12 @@ function renderFigureCard(figureId: number): string {
   else if (mission) {
     const tags = missionTagsText(mission.tags);
     const fit = fitSummary(figure, mission.tags);
+    const stamina = mission.staminaSpent ? ` · ${mission.staminaSpent} Stamina spent` : "";
     status = `<div class="livingMuted">On a ${mission.kind} mission — ${mission.progress}/${mission.required} seasons${
       tags ? ` · ${escapeHtml(tags)}` : ""
-    }</div>${fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""}`;
-  } else if (onCooldown) status = `<div class="livingMuted">Recovering until tick ${cooldownUntil}</div>`;
+    }${stamina}</div>${fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""}`;
+  } else if (isDown) status = `<div class="livingMuted dangerText">Downed until tick ${heroState!.downUntilTick}</div>`;
+  else if (onCooldown) status = `<div class="livingMuted">Recovering until tick ${cooldownUntil}</div>`;
   else if (isHero) status = `<div class="livingMuted">At the Guild Hall</div>`;
   else if (isCandidate) status = `<div class="livingMuted">Seeking a contract</div>`;
 
@@ -992,7 +1061,7 @@ function renderFigureCard(figureId: number): string {
   } else if (isHero && figure.death === undefined) {
     if (age >= 55)
       actions = `<button type="button" data-guild="retire" data-figure="${figureId}">Retire & Mentor</button>`;
-    if (!mission && !onCooldown)
+    if (!mission && !onCooldown && !isDown)
       actions += `<div class="livingMuted">Select a province, state or excavation site and dispatch a hero.</div>`;
     if (carried)
       actions += `<button type="button" data-guild="recall" data-relic="${carried.id}">Return ${escapeHtml(carried.name)} to Vault</button>`;
@@ -1018,6 +1087,7 @@ function renderFigureCard(figureId: number): string {
       <div class="livingChips">${disciplineChips(figure)}</div>
       ${aspectNotes || `<div class="livingMuted">${escapeHtml(archetype.temperament)}</div>`}
     </div>
+    ${renderVitals(figureId, heroState, isHero)}
     <div class="livingSection">
       <div class="livingSectionTitle">Progression</div>
       <div>Level ${level} <span class="livingMuted">· ${figure.xp ?? 0} xp</span></div>
@@ -1461,6 +1531,24 @@ function runGuildOperation(button: HTMLElement): void {
       ok = true;
       message = `${pack.states[stateId]?.name ?? "The state"} is now the Guild's patron.`;
       break;
+    case "hero-doctrine": {
+      const doctrine = button.dataset.doctrine as HeroDoctrine | undefined;
+      if (!doctrine) {
+        message = "The doctrine could not be changed.";
+        break;
+      }
+      ok = Living.setHeroDoctrine(figureId, doctrine);
+      message = ok ? `Hero doctrine set to ${HERO_DOCTRINE_LABELS[doctrine]}.` : "The doctrine could not be changed.";
+      break;
+    }
+    case "toggle-push": {
+      const state = Living.getHeroState?.(figureId);
+      ok = Living.setHeroPush(figureId, !state?.push);
+      message = ok
+        ? `Push ${!state?.push ? "enabled" : "disabled"} for this hero.`
+        : "The push setting could not be changed.";
+      break;
+    }
     case "choose-path": {
       ok = Living.chooseHeroPath(figureId, button.dataset.path ?? "");
       message = ok ? "The hero's path is chosen." : "That path choice is not available.";

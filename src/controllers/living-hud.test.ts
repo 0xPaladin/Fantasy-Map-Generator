@@ -52,6 +52,9 @@ const mocks = vi.hoisted(() => {
     recruitCost: vi.fn(() => 80),
     recruitCandidate: vi.fn(() => true),
     chooseHeroPath: vi.fn(() => true),
+    getHeroState: vi.fn((): unknown => undefined),
+    setHeroDoctrine: vi.fn(() => true),
+    setHeroPush: vi.fn(() => true),
     dispatchHero: vi.fn(() => true),
     dispatchBestHero: vi.fn(() => true),
     dispatchHeroToMarker: vi.fn(() => true),
@@ -278,6 +281,7 @@ beforeEach(() => {
     popups: []
   });
   mocks.living.claimPopup.mockReturnValue(null);
+  mocks.living.getHeroState.mockReturnValue(undefined);
   mocks.living.getState.mockReturnValue(mocks.state);
 });
 
@@ -818,6 +822,39 @@ describe("LivingHud", () => {
 
     inspector?.querySelector<HTMLElement>('[data-guild="choose-path"][data-path="warden_shieldwall"]')?.click();
     expect(Living.chooseHeroPath).toHaveBeenCalledWith(1, "warden_shieldwall");
+  });
+
+  it("shows vitals, temperament, doctrine and injury status on the hero card", () => {
+    mocks.living.getHeroState.mockReturnValue({
+      resolve: 7,
+      stamina: 4,
+      maxResolve: 12,
+      maxStamina: 8,
+      doctrine: "hunt_lairs",
+      temperament: { boldness: 0.7, caution: 0.5, teamplay: 0.85, greed: 0.2 },
+      injuries: [{ kind: "wounded", untilTick: 5 }],
+      push: false
+    });
+    Object.assign(mocks.state.guild, { roster: [1] });
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Resolve");
+    expect(inspector?.textContent).toContain("7/12");
+    expect(inspector?.textContent).toContain("Stamina");
+    expect(inspector?.textContent).toContain("4/8");
+    expect(inspector?.textContent).toContain("Bold");
+    expect(inspector?.textContent).toContain("Loyal");
+    expect(inspector?.textContent).toContain("Wounded");
+    expect(inspector?.textContent).toContain("Doctrine: Lairs");
+    expect(inspector?.textContent).toContain("Push: Off");
+
+    inspector?.querySelector<HTMLElement>('[data-guild="hero-doctrine"][data-doctrine="manual"]')?.click();
+    expect(Living.setHeroDoctrine).toHaveBeenCalledWith(1, "manual");
+    inspector?.querySelector<HTMLElement>('[data-guild="toggle-push"]')?.click();
+    expect(Living.setHeroPush).toHaveBeenCalledWith(1, true);
   });
 
   it("recruits a tavern candidate from the figure card", () => {

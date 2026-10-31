@@ -23,7 +23,36 @@ export type TroubleSaveKind = "disorder" | "uprising" | "poverty" | "ignorance" 
 export type TroubleUnitRole = "guardsmen" | "military" | "merchant" | "sage" | "prophet" | "magistrate";
 
 export type HeroPool = "m" | "w" | "s" | "c";
-export type HeroDoctrine = "hunt_lairs" | "hunt_troubles" | "excavate" | "support" | "patrol";
+export type HeroDoctrine = "hunt_lairs" | "hunt_troubles" | "excavate" | "support" | "patrol" | "manual";
+
+export interface HeroTemperament {
+  boldness: number;
+  caution: number;
+  teamplay: number;
+  greed: number;
+}
+
+export type HeroInjuryKind = "wounded" | "shaken" | "lost";
+
+export interface HeroInjury {
+  kind: HeroInjuryKind;
+  /** absent for `lost`, which lasts until a healer treats it */
+  untilTick?: number;
+}
+
+/** Per-hero guild state; kept out of the chronicle figure so old maps stay additive. */
+export interface HeroGuildState {
+  resolve: number;
+  stamina: number;
+  maxResolve: number;
+  maxStamina: number;
+  doctrine: HeroDoctrine;
+  temperament: HeroTemperament;
+  injuries: HeroInjury[];
+  downUntilTick?: number;
+  /** manual Push toggle: spend Stamina even when the auto policy stays reserved */
+  push?: boolean;
+}
 
 export type HeroArchetypeId =
   | "warden"
@@ -260,6 +289,8 @@ export interface ActiveGuildMission {
   rewardRenown: number;
   /** target tags used for discipline and aspect fit */
   tags?: MissionTag[];
+  /** Stamina spent to push the mission check */
+  staminaSpent?: number;
   /** excavate missions: a named HistoricalRelic is minted on success */
   rewardRelic?: boolean;
 }
@@ -307,6 +338,8 @@ export interface GuildState {
   candidates: number[];
   /** permanent +1 base skill per prestige age, inherited by hero scions */
   legacyTier?: number;
+  /** figureId -> vitals, temperament, injuries and per-hero doctrine */
+  heroes?: Record<number, HeroGuildState>;
   missions: ActiveGuildMission[];
   /** all discovered relics, whatever their current holder */
   relics: HistoricalRelic[];

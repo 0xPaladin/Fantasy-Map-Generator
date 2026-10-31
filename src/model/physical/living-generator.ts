@@ -35,6 +35,14 @@ import {
 import { aspectBonus } from "@/data/hero-aspects";
 import { disciplineBonus, matchingDisciplines } from "@/data/hero-disciplines";
 import {
+  HERO_INJURY_LABELS,
+  heroMaxVitals,
+  heroTemperamentFor,
+  injuryPenalty,
+  recoverInjuries,
+  STAMINA_RESERVE_MINIMUM
+} from "@/data/hero-vitals";
+import {
   createProvinceLair,
   getLairDef,
   growLair,
@@ -96,6 +104,9 @@ import {
   type GuildMissionKind,
   type GuildState,
   type HeroArchetypeId,
+  type HeroDoctrine,
+  type HeroGuildState,
+  type HeroInjury,
   type HistoricalRelic,
   type IdleDoctrine,
   type LivingNewsItem,
@@ -195,6 +206,8 @@ export interface FigureCheck {
   success: boolean;
   matchedDisciplines?: DisciplineId[];
   aspect?: number;
+  staminaSpent?: number;
+  injuryPenalty?: number;
 }
 
 export interface HeroMissionFit {
@@ -315,20 +328,33 @@ export function figureCheckRoll(
   dc: number,
   guildTierBonus = 0,
   relicBonus = 0,
-  tags: readonly MissionTag[] = []
+  tags: readonly MissionTag[] = [],
+  staminaSpent = 0,
+  injuryPenaltyValue = 0
 ): FigureCheck {
   const roll = rng.d(20);
   const skill = figure.skills?.[pool] ?? 0;
   const fit = heroMissionFit(figure, tags);
   const total =
-    roll + skill + valueModifier(poolGen) + fit.alignment + fit.aspect + fit.discipline + guildTierBonus + relicBonus;
+    roll +
+    skill +
+    valueModifier(poolGen) +
+    fit.alignment +
+    fit.aspect +
+    fit.discipline +
+    guildTierBonus +
+    relicBonus +
+    staminaSpent -
+    injuryPenaltyValue;
   return {
     roll,
     total,
     dc,
     success: total >= dc,
     matchedDisciplines: fit.matchedDisciplines,
-    aspect: fit.aspect
+    aspect: fit.aspect,
+    staminaSpent,
+    injuryPenalty: injuryPenaltyValue
   };
 }
 
@@ -341,9 +367,22 @@ export function figureCheck(
   dc: number,
   guildTierBonus = 0,
   relicBonus = 0,
-  tags: readonly MissionTag[] = []
+  tags: readonly MissionTag[] = [],
+  staminaSpent = 0,
+  injuryPenaltyValue = 0
 ): boolean {
-  return figureCheckRoll(rng, figure, pool, poolGen, dc, guildTierBonus, relicBonus, tags).success;
+  return figureCheckRoll(
+    rng,
+    figure,
+    pool,
+    poolGen,
+    dc,
+    guildTierBonus,
+    relicBonus,
+    tags,
+    staminaSpent,
+    injuryPenaltyValue
+  ).success;
 }
 
 export function settlementTierFromPop(populationThousands: number): number {
@@ -529,6 +568,7 @@ class LivingModel {
     guild.chapterBurgIds ??= [];
     guild.roster ??= [];
     guild.candidates ??= [];
+    guild.heroes ??= {};
     guild.missions ??= [];
     guild.relics ??= [];
     guild.cooldowns ??= {};
@@ -543,7 +583,7 @@ class LivingModel {
 
     for (const id of [...guild.roster, ...guild.candidates]) {
       const figure = this.findFigure(id);
-      if (figure) ensureHeroIdentity(figure);
+      if (figure) this.ensureHeroGuildState(guild, figure);
     }
     return guild;
   }
@@ -577,6 +617,29 @@ class LivingModel {
     this.getGuild().favoredStateId = stateId;
   }
 
+  /** Vitals, temperament, injuries and doctrine for one hero; lazily initialized. */
+  getHeroState(figureId: number): HeroGuildState | undefined {
+    const figure = this.findFigure(figureId);
+    if (!figure) return undefined;
+    return this.ensureHeroGuildState(this.getGuild(), figure);
+  }
+
+  setHeroDoctrine(figureId: number, doctrine: HeroDoctrine): boolean {
+    const figure = this.findFigure(figureId);
+    if (!figure) return false;
+    const state = this.ensureHeroGuildState(this.getGuild(), figure);
+    state.doctrine = doctrine;
+    return true;
+  }
+
+  setHeroPush(figureId: number, enabled: boolean): boolean {
+    const figure = this.findFigure(figureId);
+    if (!figure) return false;
+    const state = this.ensureHeroGuildState(this.getGuild(), figure);
+    state.push = enabled;
+    return true;
+  }
+
   /** Spend one pending level 3/6 choice on a path from the hero's archetype. */
   chooseHeroPath(figureId: number, pathId: string): boolean {
     const figure = this.findFigure(figureId);
@@ -602,6 +665,16 @@ class LivingModel {
     progression.picks.push(path.id);
     progression.pendingChoices = Math.max(0, (progression.pendingChoices ?? 0) - 1);
     progression.choiceSinceTick = undefined;
+
+    const guild = this.getGuild();
+    const state = this.ensureHeroGuildState(guild, figure);
+    if (path.temperament) {
+      for (const key of Object.keys(path.temperament) as (keyof typeof path.temperament)[]) {
+        const nudge = path.temperament[key] ?? 0;
+        state.temperament[key] = Math.max(0, Math.min(1, state.temperament[key] + nudge));
+      }
+    }
+    this.ensureHeroGuildState(guild, figure);
     return true;
   }
 
@@ -626,7 +699,7 @@ class LivingModel {
 
     const figure = this.findFigure(figureId);
     if (!figure || figure.death !== undefined) return false;
-    ensureHeroIdentity(figure);
+    this.ensureHeroGuildState(guild, figure);
 
     guild.gold -= cost;
     guild.candidates = guild.candidates.filter(id => id !== figureId);
@@ -668,7 +741,10 @@ class LivingModel {
       .map(id => this.findFigure(id))
       .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
       .sort(
-        (a, b) => this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) || a.i - b.i
+        (a, b) =>
+          this.missionChance(living, guild, b, target) - this.missionChance(living, guild, a, target) ||
+          this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) ||
+          a.i - b.i
       )[0];
     if (!hero) return false;
 
@@ -706,7 +782,10 @@ class LivingModel {
       .map(id => this.findFigure(id))
       .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
       .sort(
-        (a, b) => this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) || a.i - b.i
+        (a, b) =>
+          this.missionChance(living, guild, b, target) - this.missionChance(living, guild, a, target) ||
+          this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) ||
+          a.i - b.i
       )[0];
     if (!hero) return false;
 
@@ -1771,6 +1850,38 @@ class LivingModel {
     return Chronicle.sync().figures?.find(figure => figure.i === figureId);
   }
 
+  /** Lazy vitals for old saves and fresh candidates alike. */
+  private ensureHeroGuildState(guild: GuildState, figure: HistoricalFigure): HeroGuildState {
+    ensureHeroIdentity(figure);
+    guild.heroes ??= {};
+
+    const def = figureArchetype(figure);
+    const max = heroMaxVitals(def.id, figureLevel(figure.xp ?? 0), figure.progression?.picks ?? []);
+    let state = guild.heroes[figure.i];
+    if (!state) {
+      state = {
+        resolve: max.maxResolve,
+        stamina: max.maxStamina,
+        maxResolve: max.maxResolve,
+        maxStamina: max.maxStamina,
+        doctrine: def.defaultDoctrine,
+        temperament: heroTemperamentFor(def.id),
+        injuries: []
+      };
+      guild.heroes[figure.i] = state;
+      return state;
+    }
+
+    state.maxResolve = max.maxResolve;
+    state.maxStamina = max.maxStamina;
+    state.resolve = Math.min(state.resolve ?? max.maxResolve, max.maxResolve);
+    state.stamina = Math.min(state.stamina ?? max.maxStamina, max.maxStamina);
+    state.doctrine ??= def.defaultDoctrine;
+    state.temperament ??= heroTemperamentFor(def.id);
+    state.injuries ??= [];
+    return state;
+  }
+
   private heroScore(figure: HistoricalFigure, pool: "m" | "w" | "s" | "c", tags: readonly MissionTag[] = []): number {
     const fit = heroMissionFit(figure, tags);
     return (figure.skills?.[pool] ?? 0) + fit.alignment + fit.aspect + fit.discipline;
@@ -1778,7 +1889,10 @@ class LivingModel {
 
   private isHeroIdle(guild: GuildState, figureId: number): boolean {
     if (guild.missions.some(mission => mission.figureId === figureId)) return false;
-    return (guild.cooldowns[figureId] ?? 0) <= this.getState().tick;
+    const state = guild.heroes?.[figureId];
+    const tick = this.getState().tick;
+    if (state?.downUntilTick !== undefined && state.downUntilTick > tick) return false;
+    return (guild.cooldowns[figureId] ?? 0) <= tick;
   }
 
   private hasTargetMission(guild: GuildState, kind: GuildMissionKind, provinceId?: number, markerId?: number): boolean {
@@ -1924,13 +2038,16 @@ class LivingModel {
     living: LivingWorldState,
     guild: GuildState,
     figure: HistoricalFigure,
-    target: GuildTarget
+    target: Pick<GuildTarget, "provinceId" | "pool" | "dc"> & { tags?: MissionTag[] }
   ): number {
     const province = target.provinceId !== undefined ? pack.provinces?.[target.provinceId] : undefined;
     const sSim = province?.state ? living.states[province.state] : undefined;
     const poolGen = sSim?.capacity[target.pool]?.gen ?? 0;
     const carried = equippedRelic(guild.relics ?? [], figure.i);
-    const fit = heroMissionFit(figure, target.tags);
+    const tags = target.tags ?? [];
+    const fit = heroMissionFit(figure, tags);
+    const state = this.ensureHeroGuildState(guild, figure);
+    const injuries = injuryPenalty(state.injuries, tags, living.tick);
     const modifier =
       (figure.skills?.[target.pool] ?? 0) +
       valueModifier(poolGen) +
@@ -1938,8 +2055,18 @@ class LivingModel {
       fit.aspect +
       fit.discipline +
       guildCheckBonus(guild.tier) +
-      (carried?.bonuses[target.pool] ?? 0);
+      (carried?.bonuses[target.pool] ?? 0) -
+      injuries;
     return minmax((21 - target.dc + modifier) / 20, 0, 1);
+  }
+
+  private doctrineWeight(doctrine: HeroDoctrine, kind: GuildMissionKind): number {
+    if (doctrine === "manual") return 0;
+    if (doctrine === "hunt_lairs") return kind === "lair" ? 2 : kind === "trouble" ? 1 : 0.25;
+    if (doctrine === "hunt_troubles") return kind === "trouble" ? 2 : kind === "lair" ? 1 : 0.25;
+    if (doctrine === "excavate") return kind === "excavate" ? 2 : 0.1;
+    if (doctrine === "support") return kind === "pacify" ? 2 : kind === "trouble" ? 1 : 0.5;
+    return kind === "pacify" ? 1.5 : 0.5;
   }
 
   private targetKey(target: GuildTarget): string {
@@ -2047,6 +2174,7 @@ class LivingModel {
     });
 
     this.autoPickPendingPaths(living, guild);
+    this.recoverHeroes(living, guild);
 
     for (const mission of [...guild.missions]) {
       mission.progress += 1;
@@ -2208,6 +2336,23 @@ class LivingModel {
     }
   }
 
+  /** Guild Hall rest: Resolve, Stamina and injury treatment, once per season. */
+  private recoverHeroes(living: LivingWorldState, guild: GuildState): void {
+    for (const id of guild.roster) {
+      const figure = this.findFigure(id);
+      if (!figure || figure.death !== undefined) continue;
+      if (guild.missions.some(mission => mission.figureId === id)) continue;
+
+      const state = this.ensureHeroGuildState(guild, figure);
+      if (state.downUntilTick !== undefined && living.tick >= state.downUntilTick) state.downUntilTick = undefined;
+
+      const healer = figureDisciplines(figure).includes("healing");
+      state.resolve = Math.min(state.maxResolve, state.resolve + (healer ? 2 : 1));
+      state.stamina = Math.min(state.maxStamina, state.stamina + 1);
+      state.injuries = recoverInjuries(state.injuries, living.tick, healer);
+    }
+  }
+
   private autoDispatch(living: LivingWorldState): void {
     const guild = this.getGuild();
     if (guild.doctrine === "manual") return;
@@ -2218,16 +2363,22 @@ class LivingModel {
     const idle = guild.roster
       .filter(id => this.isHeroIdle(guild, id))
       .map(id => this.findFigure(id))
-      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined);
+      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
+      .filter(figure => this.ensureHeroGuildState(guild, figure).doctrine !== "manual");
     if (idle.length === 0) return;
 
     // Pair heroes and targets by fit instead of assigning in roster order.
     const pairs: { figure: HistoricalFigure; target: GuildTarget; score: number }[] = [];
     for (const figure of idle) {
+      const doctrine = this.ensureHeroGuildState(guild, figure).doctrine;
       for (const target of targets) {
         const chance = this.missionChance(living, guild, figure, target);
         if (chance < MIN_AUTO_DISPATCH_FIT) continue;
-        pairs.push({ figure, target, score: chance * (1 + target.rewardGold / 100) * target.priority });
+        pairs.push({
+          figure,
+          target,
+          score: chance * (1 + target.rewardGold / 100) * target.priority + this.doctrineWeight(doctrine, target.kind)
+        });
       }
     }
     pairs.sort(
@@ -2311,6 +2462,26 @@ class LivingModel {
     const rng = this.rng("guild:mission", mission.id * 1000 + mission.figureId);
     const carried = equippedRelic(guild.relics ?? [], figure.i);
     const tags = mission.tags ?? this.missionTagsFor(living, mission);
+    const state = this.ensureHeroGuildState(guild, figure);
+    const level = figureLevel(figure.xp ?? 0);
+    const maxStaminaSpend = level >= 5 ? 2 : 1;
+    const reserve = STAMINA_RESERVE_MINIMUM[figureArchetype(figure).id];
+    const expected = this.missionChance(living, guild, figure, {
+      provinceId: mission.provinceId,
+      pool: mission.pool,
+      dc: mission.dc,
+      tags
+    });
+    const autoPush =
+      state.stamina > reserve && expected < 0.6 && (state.temperament.boldness >= 0.5 || guild.tier >= 3);
+    const staminaSpent = state.push
+      ? Math.min(maxStaminaSpend, state.stamina)
+      : autoPush
+        ? Math.min(maxStaminaSpend, Math.max(0, state.stamina - reserve))
+        : 0;
+    state.stamina -= staminaSpent;
+    mission.staminaSpent = staminaSpent;
+    const injuries = injuryPenalty(state.injuries, tags, living.tick);
     const check = figureCheckRoll(
       rng,
       figure,
@@ -2319,7 +2490,9 @@ class LivingModel {
       mission.dc,
       guildCheckBonus(guild.tier),
       carried?.bonuses[mission.pool] ?? 0,
-      tags
+      tags,
+      staminaSpent,
+      injuries
     );
 
     if (check.success) {
@@ -2410,13 +2583,14 @@ class LivingModel {
     guild.renown += paidRenown;
     figure.xp = (figure.xp ?? 0) + xp;
     applyHeroLevels(figure);
+    this.ensureHeroGuildState(guild, figure);
     figure.cell = mission.targetCell;
     if (sSim && province?.state) sSim.capacity = this.recomputeStateCapacity(province.state);
     this.syncGuildTier(living, guild);
 
     this.pushNews(living, {
       kind: this.missionNewsKind(mission.kind),
-      text: `${text} (+${paidGold}g, +${paidRenown} renown)`,
+      text: `${text}${mission.staminaSpent ? ` Pushed with ${mission.staminaSpent} Stamina.` : ""} (+${paidGold}g, +${paidRenown} renown)`,
       cell: mission.targetCell,
       stateId: province?.state
     });
@@ -2442,31 +2616,66 @@ class LivingModel {
     sSim: StatePolitySim | undefined
   ): void {
     guild.cooldowns[figure.i] = living.tick + rng.int(1, 2);
-    let aftermath = "";
+    const state = this.ensureHeroGuildState(guild, figure);
+    const fumble = check.roll === 1 || check.total <= check.dc - 8;
+    state.resolve = Math.max(0, state.resolve - (fumble ? 4 : 2));
+    if (state.resolve === 0) this.markHeroDown(living, state);
 
-    if (check.roll === 1 || check.total <= check.dc - 8) {
-      aftermath = this.fumbleAftermath(living, guild, figure, rng, equippedRelic(guild.relics ?? [], figure.i));
+    let aftermath = "";
+    if (fumble) {
+      aftermath = this.fumbleAftermath(
+        living,
+        guild,
+        figure,
+        rng,
+        check,
+        mission.tags ?? this.missionTagsFor(living, mission),
+        equippedRelic(guild.relics ?? [], figure.i)
+      );
     }
 
     if (sSim && province?.state) sSim.capacity = this.recomputeStateCapacity(province.state);
+    const push = mission.staminaSpent ? ` Pushed with ${mission.staminaSpent} Stamina.` : "";
     this.pushNews(living, {
       kind: this.missionNewsKind(mission.kind),
-      text: `${figure.name}'s Guild mission failed (rolled ${check.total} vs DC ${check.dc}).${aftermath}`,
+      text: `${figure.name}'s Guild mission failed (rolled ${check.total} vs DC ${check.dc}).${push} -${fumble ? 4 : 2} Resolve.${aftermath}`,
       cell: mission.targetCell,
       stateId: province?.state
     });
   }
 
-  /** Fumble aftermath: a DC 12 survival save (aided by weapons) decides between death and a lasting scar. */
+  private markHeroDown(living: LivingWorldState, state: HeroGuildState): void {
+    state.resolve = 0;
+    state.downUntilTick = Math.max(state.downUntilTick ?? 0, living.tick + 2);
+  }
+
+  private injuryForTags(tags: readonly MissionTag[], rng: Rng): HeroInjury["kind"] {
+    if (tags.some(tag => tag === "combat" || tag === "lair")) return "wounded";
+    if (tags.some(tag => tag === "social" || tag === "petition" || tag === "intrigue")) return "shaken";
+    if (tags.some(tag => tag === "travel" || tag === "wild")) return "lost";
+    return rng.choice(["wounded", "shaken", "lost"] as const);
+  }
+
+  /** Fumble aftermath: a DC 12 survival save decides between death, an injury or being downed. */
   private fumbleAftermath(
     living: LivingWorldState,
     guild: GuildState,
     figure: HistoricalFigure,
     rng: Rng,
+    check: FigureCheck,
+    tags: readonly MissionTag[],
     relic: HistoricalRelic | undefined
   ): string {
-    const year = options.map?.lore?.calendar?.year ?? 1000;
-    if (rng.d(20) + relicSurvivalBonus(relic) < 12) {
+    const state = this.ensureHeroGuildState(guild, figure);
+    const survived = rng.d(20) + relicSurvivalBonus(relic) >= 12;
+
+    if (!survived) {
+      if (state.resolve > 0 && check.roll !== 1) {
+        this.markHeroDown(living, state);
+        return ` ${figure.name} was downed by the ordeal.`;
+      }
+
+      const year = options.map?.lore?.calendar?.year ?? 1000;
       figure.death = year;
       for (const role of figure.roles) {
         if (role.to === undefined) role.to = year;
@@ -2487,21 +2696,10 @@ class LivingModel {
       return aftermath;
     }
 
-    const vice = drawVice(rng, figure);
-    if (vice) {
-      figure.vices ??= [];
-      figure.vices.push(vice);
-      return ` The ordeal left ${figure.name} ${vice}.`;
-    }
-    if (relic?.cursed) {
-      const curseVice = drawVice(rng, figure);
-      if (curseVice) {
-        figure.vices ??= [];
-        figure.vices.push(curseVice);
-        return ` The cursed ${relic.name} whispered to ${figure.name}, leaving them ${curseVice}.`;
-      }
-    }
-    return ` ${figure.name} barely survived the ordeal.`;
+    const kind = this.injuryForTags(tags, rng);
+    state.injuries.push({ kind, ...(kind === "lost" ? {} : { untilTick: living.tick + 2 }) });
+    if (state.resolve === 0) this.markHeroDown(living, state);
+    return ` The ordeal left ${figure.name} ${HERO_INJURY_LABELS[kind].toLowerCase()}.`;
   }
 
   private syncBurgs(living: LivingWorldState): void {

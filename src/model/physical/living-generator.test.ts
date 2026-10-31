@@ -1134,7 +1134,129 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(hero.disciplines).toEqual(["melee", "tactics", "ride"]);
       expect(hero.progression?.pendingChoices).toBe(0);
       expect(hero.progression?.picks).toEqual(["warden_standard"]);
+      expect(Living.getHeroState(id)?.temperament.teamplay).toBeCloseTo(0.95);
       expect(Living.chooseHeroPath(id, "warden_shieldwall")).toBe(false);
+    });
+
+    it("lazily initializes hero vitals, temperament and per-hero doctrine", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+
+      const state = Living.getHeroState(id)!;
+      expect(state.resolve).toBe(state.maxResolve);
+      expect(state.stamina).toBe(state.maxStamina);
+      expect(state.temperament.boldness).toBe(0.6);
+      expect(state.doctrine).toBe("hunt_lairs");
+      expect(state.injuries).toEqual([]);
+
+      expect(Living.setHeroDoctrine(id, "manual")).toBe(true);
+      expect(Living.getHeroState(id)?.doctrine).toBe("manual");
+      expect(Living.setHeroPush(id, true)).toBe(true);
+      expect(Living.getHeroState(id)?.push).toBe(true);
+    });
+
+    it("never dispatches a downed hero", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      Living.spawnTrouble(1, "monsters", "burg", 1);
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      const state = Living.getHeroState(id)!;
+      state.resolve = 0;
+      state.downUntilTick = 10;
+
+      expect(Living.dispatchBestHero(1)).toBe(false);
+      expect(Living.dispatchHero(id, 1)).toBe(false);
+      expect(Living.getMissions()).toHaveLength(0);
+    });
+
+    it("spends at most one Stamina per mission below level 5 and two at level 5+", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 3;
+      guild.doctrine = "manual";
+      Living.spawnTrouble(1, "monsters", "burg", 1);
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      const state = Living.getHeroState(id)!;
+      state.stamina = 7;
+      state.push = true;
+
+      expect(Living.dispatchHero(id, 1)).toBe(true);
+      Living.tick(1);
+      expect(state.stamina).toBe(6);
+
+      const veteranId = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      pack.history.figures!.find(figure => figure.i === veteranId)!.xp = 360;
+      guild.roster.push(veteranId);
+      const veteran = Living.getHeroState(veteranId)!;
+      veteran.stamina = 10;
+      veteran.push = true;
+      Living.spawnTrouble(1, "monsters", "burg", 1);
+
+      expect(Living.dispatchHero(veteranId, 1)).toBe(true);
+      Living.tick(1);
+      expect(veteran.stamina).toBe(8);
+    });
+
+    it("turns a guaranteed fumble into injury, down state, or death only at zero Resolve", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 3;
+      guild.doctrine = "manual";
+      Living.spawnLair(1, "bandit_camp", 10, 1);
+      const id = addGuildHero({ m: -100, w: 5, s: 0, c: 0 }); // a test-only impossible pool forces the fumble branch
+      guild.roster = [id];
+
+      expect(Living.dispatchHero(id, 1)).toBe(true);
+      Living.tick(1);
+
+      const figure = pack.history.figures!.find(entry => entry.i === id)!;
+      const state = Living.getHeroState(id)!;
+      if (figure.death !== undefined) {
+        expect(state.resolve).toBe(0);
+      } else {
+        expect(state.injuries.length > 0 || (state.downUntilTick ?? 0) > Living.getState().tick).toBe(true);
+      }
+    });
+
+    it("lets a manual hero doctrine opt out of auto-dispatch", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "auto_bounties";
+      Living.spawnTrouble(1, "monsters", "burg", 1);
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      Living.getHeroState(id)!.doctrine = "manual";
+
+      Living.tick(1);
+
+      expect(Living.getMissions()).toHaveLength(0);
+    });
+
+    it("round-trips hero vitals and injuries through the map history", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      const state = Living.getHeroState(id)!;
+      state.stamina = 2;
+      state.doctrine = "manual";
+      state.push = true;
+      state.injuries = [{ kind: "wounded", untilTick: 4 }];
+
+      const { json, snapshotRecords } = serializeHistory(pack.history, pack.cells.i.length);
+      const restored = parseHistory(json, snapshotRecords, pack.cells.i.length);
+
+      expect(restored.living?.guild?.heroes?.[id]).toMatchObject({
+        stamina: 2,
+        doctrine: "manual",
+        push: true,
+        injuries: [{ kind: "wounded", untilTick: 4 }]
+      });
     });
 
     it("maps renown and experience onto the tier and level ladders", () => {

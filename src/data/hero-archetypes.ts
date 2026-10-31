@@ -3,7 +3,7 @@
 import type { Alignment } from "@/data/culture-traits";
 import type { Culture } from "@/model/society/cultures-generator";
 import type { FigureSkills, HistoricalFigure } from "@/types/history";
-import type { DisciplineId, HeroArchetypeId, HeroDoctrine, HeroPool } from "@/types/living";
+import type { DisciplineId, HeroArchetypeId, HeroDoctrine, HeroPool, HeroTemperament } from "@/types/living";
 import type { Rng } from "@/utils/rng";
 
 export type HeroPathKind = "martial" | "lore" | "support" | "social" | "stealth";
@@ -14,7 +14,9 @@ export interface HeroPathDef {
   kind: HeroPathKind;
   pool?: HeroPool;
   discipline?: DisciplineId;
-  /** Resolve and Stamina grants land in Phase 2. */
+  maxResolve?: number;
+  maxStamina?: number;
+  temperament?: Partial<HeroTemperament>;
   note: string;
 }
 
@@ -68,13 +70,21 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
       {
         level: 3,
         options: [
-          { id: "warden_shieldwall", name: "Shieldwall", kind: "martial", pool: "m", note: "+1 M, +1 max Resolve" },
+          {
+            id: "warden_shieldwall",
+            name: "Shieldwall",
+            kind: "martial",
+            pool: "m",
+            maxResolve: 1,
+            note: "+1 M, +1 max Resolve"
+          },
           {
             id: "warden_standard",
             name: "Standard-Bearer",
             kind: "support",
             pool: "s",
             discipline: "tactics",
+            temperament: { teamplay: 0.1 },
             note: "+1 S, +1 teamplay"
           }
         ]
@@ -135,6 +145,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "lore",
             pool: "c",
             discipline: "scout",
+            maxStamina: 1,
             note: "+1 C, scout"
           }
         ]
@@ -150,7 +161,14 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             discipline: "survival",
             note: "+1 M, survival"
           },
-          { id: "ranger_horizon_walker", name: "Horizon Walker", kind: "lore", pool: "c", note: "+1 C, travel" }
+          {
+            id: "ranger_horizon_walker",
+            name: "Horizon Walker",
+            kind: "lore",
+            pool: "c",
+            maxStamina: 1,
+            note: "+1 C, travel"
+          }
         ]
       }
     ],
@@ -180,6 +198,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "lore",
             pool: "c",
             discipline: "artifice",
+            maxStamina: 1,
             note: "+1 C, artifice"
           },
           {
@@ -188,6 +207,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "lore",
             pool: "w",
             discipline: "arcana",
+            maxResolve: 1,
             note: "+1 W, arcana"
           }
         ]
@@ -240,6 +260,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "martial",
             pool: "m",
             discipline: "melee",
+            maxResolve: 1,
             note: "+1 M, melee"
           },
           {
@@ -248,6 +269,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "support",
             pool: "s",
             discipline: "arcana_divination",
+            maxStamina: 1,
             note: "+1 S, divination"
           }
         ]
@@ -300,6 +322,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "martial",
             pool: "m",
             discipline: "melee",
+            maxStamina: 1,
             note: "+1 M, melee"
           },
           {
@@ -308,6 +331,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "stealth",
             pool: "s",
             discipline: "court_etiquette",
+            temperament: { teamplay: 0.1 },
             note: "+1 S, court etiquette"
           }
         ]
@@ -360,9 +384,17 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "support",
             pool: "m",
             discipline: "siegecraft",
+            maxResolve: 1,
             note: "+1 M, siegecraft"
           },
-          { id: "factor_magnate", name: "Magnate", kind: "social", pool: "w", note: "+1 W, +1 greed" }
+          {
+            id: "factor_magnate",
+            name: "Magnate",
+            kind: "social",
+            pool: "w",
+            temperament: { greed: 0.1 },
+            note: "+1 W, +1 greed"
+          }
         ]
       },
       {
@@ -407,7 +439,14 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
       {
         level: 3,
         options: [
-          { id: "envoy_diplomat", name: "Diplomat", kind: "social", pool: "s", note: "+1 S, +1 teamplay" },
+          {
+            id: "envoy_diplomat",
+            name: "Diplomat",
+            kind: "social",
+            pool: "s",
+            temperament: { teamplay: 0.1 },
+            note: "+1 S, +1 teamplay"
+          },
           {
             id: "envoy_spymaster",
             name: "Spymaster",
@@ -466,6 +505,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "support",
             pool: "s",
             discipline: "healing",
+            maxResolve: 1,
             note: "+1 S, healing"
           },
           {
@@ -474,6 +514,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "martial",
             pool: "m",
             discipline: "artifice",
+            maxStamina: 1,
             note: "+1 M, artifice"
           }
         ]
@@ -526,6 +567,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "lore",
             pool: "c",
             discipline: "arcana_necromancy",
+            maxStamina: 1,
             note: "+1 C, necromancy"
           },
           {
@@ -534,6 +576,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "support",
             pool: "s",
             discipline: "arcana_divination",
+            maxResolve: 1,
             note: "+1 S, divination"
           }
         ]
@@ -586,6 +629,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "martial",
             pool: "m",
             discipline: "melee",
+            maxResolve: 1,
             note: "+1 M, melee"
           },
           {
@@ -594,6 +638,7 @@ export const HERO_ARCHETYPES: Record<HeroArchetypeId, HeroArchetypeDef> = {
             kind: "support",
             pool: "w",
             discipline: "barter",
+            maxStamina: 1,
             note: "+1 W, barter"
           }
         ]
