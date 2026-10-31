@@ -1095,6 +1095,48 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(guild.candidates).toEqual([ids[3]!]);
     });
 
+    it("mints tavern candidates with archetypes, disciplines and starting levels", () => {
+      Living.init();
+      Living.tick(4);
+      const guild = Living.getGuild();
+      const figures = pack.history.figures ?? [];
+
+      expect(guild.candidates).toHaveLength(3);
+      for (const id of guild.candidates) {
+        const figure = figures.find(entry => entry.i === id)!;
+        expect(figure.archetype).toBeDefined();
+        expect(figure.disciplines?.length).toBeGreaterThanOrEqual(3);
+        expect(figure.progression?.appliedLevel).toBe(figureLevel(figure.xp ?? 0));
+        expect(figure.skills!.m + figure.skills!.w + figure.skills!.s + figure.skills!.c).toBeGreaterThanOrEqual(3);
+      }
+    });
+
+    it("applies a chosen level 3 path once and clears the pending choice", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      pack.history.figures ??= [];
+      const figures = pack.history.figures;
+      const id = figures.length;
+      figures.push(
+        makeGuildFigure(id, {
+          archetype: "warden",
+          disciplines: ["melee", "tactics", "ride"],
+          skills: { m: 2, w: 0, s: 1, c: 0 },
+          xp: 140,
+          progression: { appliedLevel: 3, pendingChoices: 1, picks: [] }
+        })
+      );
+      guild.roster = [id];
+
+      expect(Living.chooseHeroPath(id, "warden_standard")).toBe(true);
+      const hero = figures.find(entry => entry.i === id)!;
+      expect(hero.skills).toEqual({ m: 2, w: 0, s: 2, c: 0 });
+      expect(hero.disciplines).toEqual(["melee", "tactics", "ride"]);
+      expect(hero.progression?.pendingChoices).toBe(0);
+      expect(hero.progression?.picks).toEqual(["warden_standard"]);
+      expect(Living.chooseHeroPath(id, "warden_shieldwall")).toBe(false);
+    });
+
     it("maps renown and experience onto the tier and level ladders", () => {
       expect(guildTierForRenown(0)).toBe(1);
       expect(guildTierForRenown(49)).toBe(1);
@@ -1141,6 +1183,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const mission = Living.getMissions().find(entry => entry.figureId === heroId);
       expect(mission?.kind).toBe("trouble");
       expect(mission?.required).toBe(2);
+      expect(mission?.tags).toEqual(expect.arrayContaining(["trouble", "combat", "role:guardsmen"]));
     });
 
     it("auto-dispatches the best-fitting idle hero instead of the lowest id", () => {
@@ -1171,6 +1214,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const mission = Living.getMissions().find(entry => entry.kind === "pacify");
       expect(mission?.burgId).toBe(1);
       expect(mission?.figureId).toBe(heroId);
+      expect(mission?.tags).toEqual(["social", "order"]);
     });
 
     it("resolves a dispatched mission and pays its gold, renown and xp", () => {

@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => {
     }),
     recruitCost: vi.fn(() => 80),
     recruitCandidate: vi.fn(() => true),
+    chooseHeroPath: vi.fn(() => true),
     dispatchHero: vi.fn(() => true),
     dispatchBestHero: vi.fn(() => true),
     dispatchHeroToMarker: vi.fn(() => true),
@@ -786,9 +787,37 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Bran Quickfoot");
     expect(inspector?.textContent).toContain("Level 2");
     expect(inspector?.textContent).toContain("Guild Hero");
+    expect(inspector?.textContent).toContain("Ranger");
+    expect(inspector?.textContent).toContain("Scout");
+    expect(inspector?.textContent).toContain("Survival");
+    expect(inspector?.textContent).toContain("Archery");
+    expect(inspector?.textContent).toContain("M d10 · W d6 · S d4 · C d8");
 
     inspector?.querySelector<HTMLElement>('[data-guild="retire"]')?.click();
     expect(Living.retireHero).toHaveBeenCalledWith(1);
+  });
+
+  it("offers level 3 path choices on the hero card", () => {
+    const hero = pack.history.figures!.find(figure => figure.i === 1)!;
+    Object.assign(hero, {
+      archetype: "warden",
+      disciplines: ["melee", "tactics", "ride"],
+      xp: 140,
+      skills: { m: 2, w: 0, s: 1, c: 0 },
+      progression: { appliedLevel: 3, pendingChoices: 1, picks: [] }
+    });
+    Object.assign(mocks.state.guild, { roster: [1] });
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Choose a path (level 3)");
+    expect(inspector?.textContent).toContain("Shieldwall");
+    expect(inspector?.textContent).toContain("Standard-Bearer");
+
+    inspector?.querySelector<HTMLElement>('[data-guild="choose-path"][data-path="warden_shieldwall"]')?.click();
+    expect(Living.chooseHeroPath).toHaveBeenCalledWith(1, "warden_shieldwall");
   });
 
   it("recruits a tavern candidate from the figure card", () => {

@@ -23,6 +23,18 @@ import { garrisonUnits, minorGarrisonUnits } from "@/conquest/engine/game/units"
 import type { Alignment } from "@/data/culture-traits";
 import { aggressiveTraits, drawVice, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import {
+  defaultPathForDoctrine,
+  figureArchetype,
+  figureDisciplines,
+  findHeroPath,
+  HERO_ARCHETYPES,
+  inferHeroArchetype,
+  pendingPathLevel,
+  rollHeroArchetype
+} from "@/data/hero-archetypes";
+import { aspectBonus } from "@/data/hero-aspects";
+import { disciplineBonus, matchingDisciplines } from "@/data/hero-disciplines";
+import {
   createProvinceLair,
   getLairDef,
   growLair,
@@ -62,6 +74,7 @@ import {
   troubleUnitMatchMultiplier,
   UNIT_ROLE_POOLS
 } from "@/data/living-troubles";
+import { excavationMissionTags, lairMissionTags, PACIFY_MISSION_TAGS, troubleMissionTags } from "@/data/mission-tags";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import {
   Military,
@@ -78,9 +91,11 @@ import {
   type ActiveGuildMission,
   type BurgSimState,
   type CapacityLedger,
+  type DisciplineId,
   type GrudgeReason,
   type GuildMissionKind,
   type GuildState,
+  type HeroArchetypeId,
   type HistoricalRelic,
   type IdleDoctrine,
   type LivingNewsItem,
@@ -88,6 +103,7 @@ import {
   type LivingPopup,
   type LivingPopupKind,
   type LivingWorldState,
+  type MissionTag,
   type ProvinceLair,
   type ProvinceSimState,
   type ProvinceTrouble,
@@ -177,6 +193,90 @@ export interface FigureCheck {
   total: number;
   dc: number;
   success: boolean;
+  matchedDisciplines?: DisciplineId[];
+  aspect?: number;
+}
+
+export interface HeroMissionFit {
+  matchedDisciplines: DisciplineId[];
+  discipline: number;
+  aspect: number;
+  alignment: number;
+  total: number;
+}
+
+/** xp needed to enter a level: L1 0, L2 60, L3 140, ... */
+export function xpForHeroLevel(level: number): number {
+  let xp = 0;
+  for (let step = 1; step < Math.max(1, level); step++) xp += 40 + 20 * step;
+  return xp;
+}
+
+/** Old saves receive no retroactive points: absent progression starts at the current level. */
+export function applyHeroLevels(figure: HistoricalFigure): boolean {
+  const level = figureLevel(figure.xp ?? 0);
+  figure.progression ??= {};
+
+  if (figure.progression.appliedLevel === undefined) {
+    figure.progression.appliedLevel = level;
+    figure.progression.pendingChoices ??= 0;
+    return false;
+  }
+
+  const appliedLevel = figure.progression.appliedLevel;
+  if (level <= appliedLevel) return false;
+
+  const def = figureArchetype(figure);
+  figure.skills ??= { m: 0, w: 0, s: 0, c: 0 };
+
+  let growthIndex = 0;
+  for (let step = 2; step <= appliedLevel; step++) {
+    if (step !== 3 && step !== 6) growthIndex += 1;
+  }
+
+  let pending = figure.progression.pendingChoices ?? 0;
+  let gained = false;
+  for (let step = appliedLevel + 1; step <= level; step++) {
+    if (step === 3 || step === 6) {
+      pending += 1;
+      continue;
+    }
+    const pool = def.growthOrder[growthIndex % def.growthOrder.length]!;
+    growthIndex += 1;
+    if (figure.skills[pool] < 5) {
+      figure.skills[pool] += 1;
+      gained = true;
+    }
+  }
+
+  figure.progression.appliedLevel = level;
+  figure.progression.pendingChoices = Math.min(2, pending);
+  if (pending > 0) figure.progression.choiceSinceTick = undefined;
+  return gained;
+}
+
+/** Lazily give an old roster hero identity without changing their existing pool ratings. */
+export function ensureHeroIdentity(figure: HistoricalFigure): void {
+  figure.progression ??= {};
+  if (!figure.archetype) figure.archetype = inferHeroArchetype(figure);
+  if (!figure.disciplines?.length) figure.disciplines = [...HERO_ARCHETYPES[figure.archetype].disciplines];
+  figure.progression.appliedLevel ??= figureLevel(figure.xp ?? 0);
+  figure.progression.pendingChoices ??= 0;
+}
+
+export function heroAlignmentModifier(figure: HistoricalFigure): number {
+  return Math.max(-1, Math.min(1, (figure.virtues?.length ?? 0) - (figure.vices?.length ?? 0)));
+}
+
+export function heroMissionFit(figure: HistoricalFigure, tags: readonly MissionTag[] = []): HeroMissionFit {
+  const matchedDisciplines = matchingDisciplines(figure.disciplines, tags);
+  return {
+    matchedDisciplines,
+    discipline: Math.min(2, matchedDisciplines.length),
+    aspect: aspectBonus(figure, tags),
+    alignment: heroAlignmentModifier(figure),
+    total: disciplineBonus(figure.disciplines, tags) + aspectBonus(figure, tags)
+  };
 }
 
 interface GuildTarget {
@@ -191,6 +291,7 @@ interface GuildTarget {
   rewardRenown: number;
   priority: number;
   level: number;
+  tags: MissionTag[];
   /** excavate missions: success mints a named HistoricalRelic */
   wantsRelic?: boolean;
 }
@@ -205,7 +306,7 @@ interface PetitionTarget {
   context: PetitionContext;
 }
 
-/** Unified figure roll: 1d20 + pool skill + domain modifier + traits + guild bonus + relic bonus */
+/** Unified figure roll: 1d20 + pool skill + domain modifier + clamped traits + aspects + disciplines + guild + relic */
 export function figureCheckRoll(
   rng: Rng,
   figure: HistoricalFigure,
@@ -213,13 +314,22 @@ export function figureCheckRoll(
   poolGen: number,
   dc: number,
   guildTierBonus = 0,
-  relicBonus = 0
+  relicBonus = 0,
+  tags: readonly MissionTag[] = []
 ): FigureCheck {
   const roll = rng.d(20);
   const skill = figure.skills?.[pool] ?? 0;
-  const traits = (figure.virtues?.length ?? 0) - (figure.vices?.length ?? 0);
-  const total = roll + skill + valueModifier(poolGen) + traits + guildTierBonus + relicBonus;
-  return { roll, total, dc, success: total >= dc };
+  const fit = heroMissionFit(figure, tags);
+  const total =
+    roll + skill + valueModifier(poolGen) + fit.alignment + fit.aspect + fit.discipline + guildTierBonus + relicBonus;
+  return {
+    roll,
+    total,
+    dc,
+    success: total >= dc,
+    matchedDisciplines: fit.matchedDisciplines,
+    aspect: fit.aspect
+  };
 }
 
 /** Boolean form of the unified figure check */
@@ -230,9 +340,10 @@ export function figureCheck(
   poolGen: number,
   dc: number,
   guildTierBonus = 0,
-  relicBonus = 0
+  relicBonus = 0,
+  tags: readonly MissionTag[] = []
 ): boolean {
-  return figureCheckRoll(rng, figure, pool, poolGen, dc, guildTierBonus, relicBonus).success;
+  return figureCheckRoll(rng, figure, pool, poolGen, dc, guildTierBonus, relicBonus, tags).success;
 }
 
 export function settlementTierFromPop(populationThousands: number): number {
@@ -429,6 +540,11 @@ class LivingModel {
     if (guild.favoredStateId === undefined) {
       guild.favoredStateId = pack.states?.find(state => state?.i && !state.removed)?.i;
     }
+
+    for (const id of [...guild.roster, ...guild.candidates]) {
+      const figure = this.findFigure(id);
+      if (figure) ensureHeroIdentity(figure);
+    }
     return guild;
   }
 
@@ -461,10 +577,41 @@ class LivingModel {
     this.getGuild().favoredStateId = stateId;
   }
 
-  /** Gold cost to recruit the next hero */
-  recruitCost(): number {
+  /** Spend one pending level 3/6 choice on a path from the hero's archetype. */
+  chooseHeroPath(figureId: number, pathId: string): boolean {
+    const figure = this.findFigure(figureId);
+    if (!figure || figure.death !== undefined) return false;
+    ensureHeroIdentity(figure);
+
+    const progression = figure.progression!;
+    if ((progression.pendingChoices ?? 0) <= 0) return false;
+
+    const level = pendingPathLevel(figure);
+    const found = findHeroPath(figure.archetype!, pathId);
+    if (!found || found.choice.level !== level) return false;
+
+    const path = found.path;
+    figure.skills ??= { m: 0, w: 0, s: 0, c: 0 };
+    if (path.pool) figure.skills[path.pool] = Math.min(5, figure.skills[path.pool] + 1);
+    if (path.discipline && !figure.disciplines?.includes(path.discipline)) {
+      figure.disciplines ??= [];
+      figure.disciplines.push(path.discipline);
+    }
+
+    progression.picks ??= [];
+    progression.picks.push(path.id);
+    progression.pendingChoices = Math.max(0, (progression.pendingChoices ?? 0) - 1);
+    progression.choiceSinceTick = undefined;
+    return true;
+  }
+
+  /** Gold cost to recruit a hero: base by guild tier plus a premium for starting level. */
+  recruitCost(figureId?: number): number {
     const guild = this.getGuild();
-    return 40 + guild.tier * 20;
+    const base = 40 + guild.tier * 20;
+    if (figureId === undefined) return base;
+    const figure = this.findFigure(figureId);
+    return base + Math.max(0, figureLevel(figure?.xp ?? 0) - 1) * 15;
   }
 
   /** Recruit a tavern candidate into the hero roster. */
@@ -474,11 +621,12 @@ class LivingModel {
     if (!guild.candidates.includes(figureId)) return false;
     if (guild.roster.length >= maxHeroesForTier(guild.tier)) return false;
 
-    const cost = this.recruitCost();
+    const cost = this.recruitCost(figureId);
     if (guild.gold < cost) return false;
 
     const figure = this.findFigure(figureId);
     if (!figure || figure.death !== undefined) return false;
+    ensureHeroIdentity(figure);
 
     guild.gold -= cost;
     guild.candidates = guild.candidates.filter(id => id !== figureId);
@@ -519,7 +667,9 @@ class LivingModel {
       .filter(id => this.isHeroIdle(guild, id))
       .map(id => this.findFigure(id))
       .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
-      .sort((a, b) => this.heroScore(b, target.pool) - this.heroScore(a, target.pool) || a.i - b.i)[0];
+      .sort(
+        (a, b) => this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) || a.i - b.i
+      )[0];
     if (!hero) return false;
 
     this.createMission(living, guild, hero, target);
@@ -555,7 +705,9 @@ class LivingModel {
       .filter(id => this.isHeroIdle(guild, id))
       .map(id => this.findFigure(id))
       .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
-      .sort((a, b) => this.heroScore(b, target.pool) - this.heroScore(a, target.pool) || a.i - b.i)[0];
+      .sort(
+        (a, b) => this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) || a.i - b.i
+      )[0];
     if (!hero) return false;
 
     this.createMission(living, guild, hero, target);
@@ -911,7 +1063,10 @@ class LivingModel {
       vices: traits.vices,
       cell: guild.hqBurgId !== undefined ? pack.burgs[guild.hqBurgId]?.cell : undefined,
       xp: 0,
-      skills
+      skills,
+      archetype: figureArchetype(ancestor).id,
+      disciplines: [...figureDisciplines(ancestor)],
+      progression: { appliedLevel: 1, pendingChoices: 0, picks: [] }
     };
     figures.push(scion);
     return scion;
@@ -1616,8 +1771,9 @@ class LivingModel {
     return Chronicle.sync().figures?.find(figure => figure.i === figureId);
   }
 
-  private heroScore(figure: HistoricalFigure, pool: "m" | "w" | "s" | "c"): number {
-    return (figure.skills?.[pool] ?? 0) + (figure.virtues?.length ?? 0) - (figure.vices?.length ?? 0);
+  private heroScore(figure: HistoricalFigure, pool: "m" | "w" | "s" | "c", tags: readonly MissionTag[] = []): number {
+    const fit = heroMissionFit(figure, tags);
+    return (figure.skills?.[pool] ?? 0) + fit.alignment + fit.aspect + fit.discipline;
   }
 
   private isHeroIdle(guild: GuildState, figureId: number): boolean {
@@ -1651,7 +1807,8 @@ class LivingModel {
         rewardGold: 15 + trouble.level * 5,
         rewardRenown: 5,
         priority: 2,
-        level: trouble.level
+        level: trouble.level,
+        tags: troubleMissionTags(trouble)
       };
     }
 
@@ -1667,7 +1824,8 @@ class LivingModel {
         rewardGold: 30 + lair.level * 10,
         rewardRenown: 15,
         priority: 1,
-        level: lair.level
+        level: lair.level,
+        tags: lairMissionTags(lair)
       };
     }
     return null;
@@ -1692,6 +1850,7 @@ class LivingModel {
       rewardRenown: 20,
       priority: 1,
       level: 0,
+      tags: excavationMissionTags(marker),
       wantsRelic
     };
   }
@@ -1714,7 +1873,8 @@ class LivingModel {
       rewardGold: 15 + Math.round(bSim.unrest / 2),
       rewardRenown: 10,
       priority: 2,
-      level: Math.round(bSim.unrest)
+      level: Math.round(bSim.unrest),
+      tags: [...PACIFY_MISSION_TAGS]
     };
   }
 
@@ -1770,11 +1930,13 @@ class LivingModel {
     const sSim = province?.state ? living.states[province.state] : undefined;
     const poolGen = sSim?.capacity[target.pool]?.gen ?? 0;
     const carried = equippedRelic(guild.relics ?? [], figure.i);
+    const fit = heroMissionFit(figure, target.tags);
     const modifier =
       (figure.skills?.[target.pool] ?? 0) +
       valueModifier(poolGen) +
-      (figure.virtues?.length ?? 0) -
-      (figure.vices?.length ?? 0) +
+      fit.alignment +
+      fit.aspect +
+      fit.discipline +
       guildCheckBonus(guild.tier) +
       (carried?.bonuses[target.pool] ?? 0);
     return minmax((21 - target.dc + modifier) / 20, 0, 1);
@@ -1814,6 +1976,7 @@ class LivingModel {
       required: guild.tier >= 3 ? 1 : 2,
       rewardGold: target.rewardGold,
       rewardRenown: target.rewardRenown,
+      tags: [...target.tags],
       ...(target.wantsRelic ? { rewardRelic: true } : {})
     };
     guild.missions.push(mission);
@@ -1826,6 +1989,19 @@ class LivingModel {
       stateId: target.provinceId !== undefined ? pack.provinces?.[target.provinceId]?.state : undefined
     });
     return mission;
+  }
+
+  /** Tags for missions saved before tags were stored. */
+  private missionTagsFor(living: LivingWorldState, mission: ActiveGuildMission): MissionTag[] {
+    const pSim = mission.provinceId !== undefined ? living.provinces?.[mission.provinceId] : undefined;
+    if (mission.kind === "trouble" && pSim?.trouble) return troubleMissionTags(pSim.trouble);
+    if (mission.kind === "lair" && pSim?.lair) return lairMissionTags(pSim.lair);
+    if (mission.kind === "excavate") {
+      const marker =
+        mission.markerId !== undefined ? (pack.markers ?? []).find(entry => entry?.i === mission.markerId) : undefined;
+      return marker ? excavationMissionTags(marker) : ["ruin"];
+    }
+    return [...PACIFY_MISSION_TAGS];
   }
 
   private missionStillValid(living: LivingWorldState, mission: ActiveGuildMission): boolean {
@@ -1870,6 +2046,8 @@ class LivingModel {
       return Boolean(figure) && figure!.death === undefined;
     });
 
+    this.autoPickPendingPaths(living, guild);
+
     for (const mission of [...guild.missions]) {
       mission.progress += 1;
       if (mission.progress >= mission.required) this.resolveMission(living, mission);
@@ -1896,12 +2074,19 @@ class LivingModel {
 
     guild.candidates = free.slice(0, GUILD_CANDIDATES_PER_YEAR).map(figure => figure.i);
     while (guild.candidates.length < GUILD_CANDIDATES_PER_YEAR) {
-      guild.candidates.push(this.mintCandidate(living).i);
+      const avoid = guild.candidates
+        .map(id => this.findFigure(id))
+        .filter((figure): figure is HistoricalFigure => Boolean(figure))
+        .map(figure => {
+          ensureHeroIdentity(figure);
+          return figure.archetype!;
+        });
+      guild.candidates.push(this.mintCandidate(living, avoid).i);
     }
   }
 
   /** A fresh, unaffiliated adventurer for the tavern. */
-  private mintCandidate(living: LivingWorldState): HistoricalFigure {
+  private mintCandidate(living: LivingWorldState, avoid: HeroArchetypeId[] = []): HistoricalFigure {
     const history = Chronicle.sync();
     history.figures ??= [];
     const figures = history.figures;
@@ -1909,12 +2094,23 @@ class LivingModel {
     const rng = createRng(`${living.seed}:guild:candidate:${index}`);
     const cultures = (pack.cultures ?? []).filter(culture => culture?.i && !culture.removed);
     const culture = cultures.length > 0 ? cultures[rng.int(0, cultures.length - 1)]!.i : 0;
+    const archetype = rollHeroArchetype(rng, pack.cultures?.[culture], avoid);
+    const def = HERO_ARCHETYPES[archetype];
     const alignment = rollAlignment(rng, pack.cultures?.[culture]?.alignment);
     const { virtues, vices } = rollFigureTraits(rng, alignment);
     const year = options.map?.lore?.calendar?.year ?? 1000;
-    const skills = { m: 0, w: 0, s: 0, c: 0 };
-    const pools = ["m", "w", "s", "c"] as const;
-    skills[pools[rng.int(0, pools.length - 1)]!] = rng.int(1, 3);
+
+    const quality = rng.next();
+    const level = quality < 0.7 ? 1 : quality < 0.95 ? 2 : 3;
+    const skills = { ...def.baseSkills };
+    let growthIndex = 0;
+    for (let step = 2; step <= level; step++) {
+      if (step === 3 || step === 6) continue;
+      const pool = def.growthOrder[growthIndex % def.growthOrder.length]!;
+      growthIndex += 1;
+      skills[pool] = Math.min(5, skills[pool] + 1);
+    }
+
     const guild = this.getGuild();
 
     const figure: HistoricalFigure = {
@@ -1927,8 +2123,11 @@ class LivingModel {
       virtues,
       vices,
       cell: guild.hqBurgId !== undefined ? pack.burgs[guild.hqBurgId]?.cell : undefined,
-      xp: 0,
-      skills
+      xp: xpForHeroLevel(level),
+      skills,
+      archetype,
+      disciplines: [...def.disciplines],
+      progression: { appliedLevel: level, pendingChoices: level >= 3 ? 1 : 0, picks: [] }
     };
     figures.push(figure);
     return figure;
@@ -1955,6 +2154,7 @@ class LivingModel {
     const pools = ["m", "w", "s", "c"] as const;
     const best = pools.reduce((chosen, pool) => (skills[pool] > skills[chosen] ? pool : chosen), pools[0]!);
     skills[best] = Math.min(5, skills[best] + 1);
+    ensureHeroIdentity(veteran);
 
     const protege: HistoricalFigure = {
       i: index,
@@ -1967,7 +2167,10 @@ class LivingModel {
       vices,
       cell: veteran.cell,
       xp: 0,
-      skills
+      skills,
+      archetype: veteran.archetype,
+      disciplines: [...figureDisciplines(veteran)],
+      progression: { appliedLevel: 1, pendingChoices: 0, picks: [] }
     };
     figures.push(protege);
     return protege;
@@ -1982,6 +2185,27 @@ class LivingModel {
       kind: "muster",
       text: `The Guild Hall was raised to tier ${tier}: ${GUILD_TIER_TITLES[tier - 1]}.`
     });
+  }
+
+  /** Ignored level 3/6 choices are auto-picked after two seasons by the archetype's doctrine. */
+  private autoPickPendingPaths(living: LivingWorldState, guild: GuildState): void {
+    for (const id of guild.roster) {
+      const figure = this.findFigure(id);
+      if (!figure || figure.death !== undefined) continue;
+      ensureHeroIdentity(figure);
+
+      const progression = figure.progression!;
+      if ((progression.pendingChoices ?? 0) <= 0) continue;
+      if (progression.choiceSinceTick === undefined) {
+        progression.choiceSinceTick = living.tick;
+        continue;
+      }
+      if (living.tick - progression.choiceSinceTick < 2) continue;
+
+      const def = figureArchetype(figure);
+      const path = defaultPathForDoctrine(def.id, def.defaultDoctrine, pendingPathLevel(figure));
+      this.chooseHeroPath(id, path.id);
+    }
   }
 
   private autoDispatch(living: LivingWorldState): void {
@@ -2086,6 +2310,7 @@ class LivingModel {
     const poolGen = sSim?.capacity[mission.pool]?.gen ?? 0;
     const rng = this.rng("guild:mission", mission.id * 1000 + mission.figureId);
     const carried = equippedRelic(guild.relics ?? [], figure.i);
+    const tags = mission.tags ?? this.missionTagsFor(living, mission);
     const check = figureCheckRoll(
       rng,
       figure,
@@ -2093,7 +2318,8 @@ class LivingModel {
       poolGen,
       mission.dc,
       guildCheckBonus(guild.tier),
-      carried?.bonuses[mission.pool] ?? 0
+      carried?.bonuses[mission.pool] ?? 0,
+      tags
     );
 
     if (check.success) {
@@ -2183,6 +2409,7 @@ class LivingModel {
     guild.gold += paidGold;
     guild.renown += paidRenown;
     figure.xp = (figure.xp ?? 0) + xp;
+    applyHeroLevels(figure);
     figure.cell = mission.targetCell;
     if (sSim && province?.state) sSim.capacity = this.recomputeStateCapacity(province.state);
     this.syncGuildTier(living, guild);
@@ -2981,7 +3208,8 @@ class LivingModel {
     // unified-figures slice 2: when the state fields a matching specialist, its
     // named commander leads the attempt and the roll carries the person.
     const history = Chronicle.sync();
-    const figures = (history.figures ??= []);
+    history.figures ??= [];
+    const figures = history.figures;
     const commander = bestReg?.crew
       ?.map(id => figures[id])
       .find(

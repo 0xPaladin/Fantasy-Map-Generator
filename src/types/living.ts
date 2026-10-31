@@ -22,6 +22,74 @@ export type TroublePool = "m" | "w" | "s";
 export type TroubleSaveKind = "disorder" | "uprising" | "poverty" | "ignorance" | "despair" | "corruption";
 export type TroubleUnitRole = "guardsmen" | "military" | "merchant" | "sage" | "prophet" | "magistrate";
 
+export type HeroPool = "m" | "w" | "s" | "c";
+export type HeroDoctrine = "hunt_lairs" | "hunt_troubles" | "excavate" | "support" | "patrol";
+
+export type HeroArchetypeId =
+  | "warden"
+  | "ranger"
+  | "scholar"
+  | "priest"
+  | "shadow"
+  | "factor"
+  | "envoy"
+  | "alchemist"
+  | "warlock"
+  | "freeblade";
+
+export type DisciplineId =
+  | "court_etiquette"
+  | "persuasion"
+  | "planar_lore"
+  | "athletics"
+  | "barter"
+  | "tongues"
+  | "artifice"
+  | "archery"
+  | "siegecraft"
+  | "investigate"
+  | "healing"
+  | "melee"
+  | "brawling"
+  | "ride"
+  | "scout"
+  | "nature_lore"
+  | "alchemy"
+  | "perception"
+  | "stealth"
+  | "survival"
+  | "tactics"
+  | "arcana"
+  | "arcana_evocation"
+  | "arcana_nature"
+  | "arcana_holy"
+  | "arcana_abjuration"
+  | "arcana_divination"
+  | "arcana_necromancy"
+  | "arcana_illusion"
+  | "arcana_transmutation"
+  | "arcana_enchantment"
+  | "arcana_shadow";
+
+export type MissionTag =
+  | "combat"
+  | "lair"
+  | "ruin"
+  | "wild"
+  | "travel"
+  | "arcane"
+  | "curse"
+  | "plague"
+  | "undead"
+  | "social"
+  | "petition"
+  | "intrigue"
+  | "trap"
+  | "order"
+  | "trouble"
+  | `save:${TroubleSaveKind}`
+  | `role:${TroubleUnitRole}`;
+
 export interface ProvinceTrouble {
   id: string;
   name: string;
@@ -190,6 +258,8 @@ export interface ActiveGuildMission {
   required: number;
   rewardGold: number;
   rewardRenown: number;
+  /** target tags used for discipline and aspect fit */
+  tags?: MissionTag[];
   /** excavate missions: a named HistoricalRelic is minted on success */
   rewardRelic?: boolean;
 }
