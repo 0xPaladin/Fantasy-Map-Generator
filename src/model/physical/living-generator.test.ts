@@ -1237,6 +1237,81 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(Living.getMissions()).toHaveLength(0);
     });
 
+    it("runs paid pacify and charter operations with qualified idle heroes", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      const mediator = addGuildHero({ m: 0, w: 0, s: 5, c: 0 });
+      pack.history.figures!.find(figure => figure.i === mediator)!.archetype = "priest";
+      const factor = addGuildHero({ m: 0, w: 5, s: 0, c: 0 });
+      pack.history.figures!.find(figure => figure.i === factor)!.archetype = "factor";
+      guild.roster = [mediator, factor];
+      guild.gold = 150;
+      living.burgs[1]!.unrest = 40;
+      const orderBefore = living.provinces[1]!.order;
+
+      expect(Living.guildPacifyMediate(1)).toBe(true);
+      expect(living.burgs[1]!.unrest).toBe(0);
+      expect(living.provinces[1]!.order).toBe(orderBefore + 10);
+      expect(guild.gold).toBe(110);
+
+      expect(Living.startBuild(1, 1, "walls3")).toBe(true);
+      expect(Living.guildRushAssetCharter(1)).toBe(true);
+      expect(living.burgs[1]!.construction).toBeNull();
+      expect(living.burgs[1]!.buildings).toContain("walls3");
+      expect(guild.gold).toBe(60);
+    });
+
+    it("runs paid sedition, assassination and war brokerage", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      const shadow = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
+      pack.history.figures!.find(figure => figure.i === shadow)!.archetype = "shadow";
+      const cutthroat = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
+      pack.history.figures!.find(figure => figure.i === cutthroat)!.archetype = "shadow";
+      const envoy = addGuildHero({ m: 0, w: 0, s: 30, c: 0 });
+      pack.history.figures!.find(figure => figure.i === envoy)!.archetype = "envoy";
+      const diplomat = addGuildHero({ m: 0, w: 0, s: 30, c: 0 });
+      pack.history.figures!.find(figure => figure.i === diplomat)!.archetype = "envoy";
+      guild.roster = [shadow, cutthroat, envoy, diplomat];
+      guild.gold = 400;
+      pack.burgs[4].state = 1;
+      pack.cells.state[5] = 1;
+
+      expect(Living.guildInciteUprising(4)).toBe(true);
+      expect(pack.burgs[4].state).toBe(0);
+      expect(guild.gold).toBe(325);
+
+      const rulerId = living.states[1].rulerId!;
+      expect(Living.guildAssassinateRuler(1)).toBe(true);
+      expect(pack.history.figures!.find(figure => figure.i === rulerId)?.death).toBeDefined();
+      expect(guild.gold).toBe(225);
+
+      expect(Living.guildBrokerWar(1, 2)).toBe(true);
+      expect(pack.states[1].diplomacy?.[2]).toBe("Enemy");
+      expect(guild.gold).toBe(145);
+
+      expect(Living.guildBrokerWar(1, 2)).toBe(true);
+      expect(pack.states[1].diplomacy?.[2]).toBe("Neutral");
+      expect(pack.states[2].diplomacy?.[1]).toBe("Neutral");
+      expect(guild.gold).toBe(65);
+    });
+
+    it("refuses a paid operation without a qualified idle hero or enough gold", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      const wrongHero = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [wrongHero];
+      guild.gold = 30;
+      living.burgs[1]!.unrest = 40;
+
+      expect(Living.guildPacifyMediate(1)).toBe(false);
+      expect(living.burgs[1]!.unrest).toBe(40);
+      expect(guild.gold).toBe(30);
+    });
+
     it("round-trips hero vitals and injuries through the map history", () => {
       Living.init();
       const guild = Living.getGuild();

@@ -22,6 +22,7 @@ import { assetCheckDifficulties, valueModifier } from "@/conquest/engine/game/sa
 import { garrisonUnits, minorGarrisonUnits } from "@/conquest/engine/game/units";
 import type { Alignment } from "@/data/culture-traits";
 import { aggressiveTraits, drawVice, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
+import { GUILD_OPERATIONS, type GuildOperationKind } from "@/data/guild-operations";
 import {
   defaultPathForDoctrine,
   figureArchetype,
@@ -665,6 +666,250 @@ class LivingModel {
     if (!figure) return false;
     const state = this.ensureHeroGuildState(this.getGuild(), figure);
     state.push = enabled;
+    return true;
+  }
+
+  guildOperationCost(kind: GuildOperationKind): number {
+    return GUILD_OPERATIONS[kind].cost;
+  }
+
+  /** The best idle roster hero allowed to lead this operation. */
+  guildOperator(kind: GuildOperationKind): HistoricalFigure | undefined {
+    const guild = this.getGuild();
+    const def = GUILD_OPERATIONS[kind];
+    return guild.roster
+      .filter(id => this.isHeroIdle(guild, id))
+      .map(id => this.findFigure(id))
+      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
+      .filter(figure => def.archetypes.includes(figureArchetype(figure).id))
+      .sort((a, b) => this.operatorScore(b, def.check?.pool) - this.operatorScore(a, def.check?.pool) || a.i - b.i)[0];
+  }
+
+  private operatorScore(figure: HistoricalFigure, pool: "m" | "w" | "s" | "c" | "best_sc" | undefined): number {
+    const skills = figure.skills ?? { m: 0, w: 0, s: 0, c: 0 };
+    if (pool === "best_sc") return Math.max(skills.s, skills.c);
+    if (pool) return skills[pool];
+    return skills.m + skills.w + skills.s + skills.c;
+  }
+
+  private checkPool(figure: HistoricalFigure, pool: "m" | "w" | "s" | "c" | "best_sc"): "m" | "w" | "s" | "c" {
+    if (pool !== "best_sc") return pool;
+    const skills = figure.skills ?? { m: 0, w: 0, s: 0, c: 0 };
+    return skills.c >= skills.s ? "c" : "s";
+  }
+
+  private chargeOperation(
+    living: LivingWorldState,
+    guild: GuildState,
+    operator: HistoricalFigure,
+    kind: GuildOperationKind
+  ): boolean {
+    const def = GUILD_OPERATIONS[kind];
+    if (guild.gold < def.cost) return false;
+    guild.gold -= def.cost;
+    guild.cooldowns[operator.i] = living.tick + 1;
+    return true;
+  }
+
+  /** Paid mediation: clear burg unrest and lift the province's order. */
+  guildPacifyMediate(burgId: number): boolean {
+    const living = this.getState();
+    const guild = this.getGuild();
+    const kind: GuildOperationKind = "pacify_mediate";
+    const operator = this.guildOperator(kind);
+    if (!operator || guild.gold < this.guildOperationCost(kind)) return false;
+    if (!this.pacifyBurg(burgId)) return false;
+    if (!this.chargeOperation(living, guild, operator, kind)) return false;
+
+    const burg = pack.burgs[burgId];
+    const provinceId = burg ? pack.cells.province?.[burg.cell] : undefined;
+    const pSim = provinceId !== undefined ? living.provinces[provinceId] : undefined;
+    if (pSim) pSim.order = Math.min(100, pSim.order + 10);
+    this.pushNews(living, {
+      kind: "pacify",
+      text: `${operator.name} mediated ${burg?.name ?? "the burg"} back to order (+10 province order).`,
+      cell: burg?.cell,
+      burgId,
+      stateId: provinceId !== undefined ? pack.provinces?.[provinceId]?.state : undefined
+    });
+    return true;
+  }
+
+  /** Paid charter: complete the burg's current construction immediately. */
+  guildRushAssetCharter(burgId: number): boolean {
+    const living = this.getState();
+    const guild = this.getGuild();
+    const kind: GuildOperationKind = "rush_charter";
+    const operator = this.guildOperator(kind);
+    if (!operator || guild.gold < this.guildOperationCost(kind)) return false;
+    if (!this.completeAsset(burgId)) return false;
+    if (!this.chargeOperation(living, guild, operator, kind)) return false;
+
+    this.pushNews(living, {
+      kind: "build",
+      text: `${operator.name} chartered the works at ${pack.burgs[burgId]?.name ?? "the burg"}.`,
+      cell: pack.burgs[burgId]?.cell,
+      burgId
+    });
+    return true;
+  }
+
+  /** Paid sedition: spark a revolt or promote a state-capable trouble. */
+  guildInciteUprising(burgId: number): boolean {
+    const living = this.getState();
+    const guild = this.getGuild();
+    const kind: GuildOperationKind = "incite_uprising";
+    const operator = this.guildOperator(kind);
+    if (!operator || guild.gold < this.guildOperationCost(kind)) return false;
+
+    const burg = pack.burgs[burgId];
+    if (!burg?.i || burg.removed || !burg.state) return false;
+    const provinceId = pack.cells.province?.[burg.cell];
+    const trouble = provinceId !== undefined ? living.provinces[provinceId]?.trouble : undefined;
+    const coup =
+      trouble && provinceId !== undefined && isTroubleStatePromotable(trouble.id)
+        ? this.promoteTroubleToState(provinceId, burgId) !== null
+        : false;
+    const ok = coup || this.sparkRebellion(burg.state, burgId);
+    if (!ok) return false;
+    if (!this.chargeOperation(living, guild, operator, kind)) return false;
+
+    this.pushNews(living, {
+      kind: "revolt",
+      text: `${operator.name} incited ${burg.name ?? "the burg"} against ${pack.states[burg.state]?.name ?? "its ruler"}.`,
+      cell: burg.cell,
+      burgId,
+      stateId: burg.state
+    });
+    return true;
+  }
+
+  /** Paid assassination: a Shadow's C check to slay a ruler and force succession. */
+  guildAssassinateRuler(stateId: number): boolean {
+    const living = this.getState();
+    const guild = this.getGuild();
+    const kind: GuildOperationKind = "assassinate_ruler";
+    const def = GUILD_OPERATIONS[kind];
+    const operator = this.guildOperator(kind);
+    const state = pack.states[stateId];
+    const sSim = living.states[stateId];
+    if (!operator || guild.gold < def.cost || !state?.i || state.removed || !sSim) return false;
+    if (sSim.rulerId === undefined || this.findFigure(sSim.rulerId)?.death !== undefined) return false;
+    if (!this.chargeOperation(living, guild, operator, kind)) return false;
+
+    const poolGen = sSim.capacity.c.gen;
+    const rng = this.rng("guild:operation", stateId * 1000 + operator.i);
+    const check = figureCheckRoll(
+      rng,
+      operator,
+      def.check!.pool as "c",
+      poolGen,
+      def.check!.dc,
+      guildCheckBonus(guild.tier),
+      equippedRelic(guild.relics ?? [], operator.i)?.bonuses.c ?? 0,
+      def.check!.tags
+    );
+    if (!check.success || !this.smiteRuler(stateId)) {
+      guild.cooldowns[operator.i] = living.tick + 2;
+      this.pushNews(living, {
+        kind: "succession",
+        text: `${operator.name}'s attempt on ${state.name}'s ruler failed (rolled ${check.total} vs DC ${def.check!.dc}).`,
+        cell: state.center,
+        stateId
+      });
+      return false;
+    }
+
+    this.pushNews(living, {
+      kind: "succession",
+      text: `${operator.name} slew the ruler of ${state.name}; succession follows.`,
+      cell: state.center,
+      stateId
+    });
+    return true;
+  }
+
+  /** Paid diplomacy: broker peace with a current enemy, or provoke a border war. */
+  guildBrokerWar(stateId: number, otherId?: number): boolean {
+    const living = this.getState();
+    const guild = this.getGuild();
+    const kind: GuildOperationKind = "war_broker";
+    const def = GUILD_OPERATIONS[kind];
+    const operator = this.guildOperator(kind);
+    const state = pack.states[stateId];
+    if (!operator || guild.gold < def.cost || !state?.i || state.removed) return false;
+    if (!this.chargeOperation(living, guild, operator, kind)) return false;
+
+    const enemyId =
+      otherId !== undefined && this.isAtWar(stateId, otherId)
+        ? otherId
+        : state.diplomacy?.findIndex((relation, index) => relation === "Enemy" && index !== stateId);
+    const pool = this.checkPool(operator, def.check!.pool);
+    const poolGen = living.states[stateId]?.capacity[pool]?.gen ?? 0;
+    const rng = this.rng("guild:operation", stateId * 1000 + operator.i);
+    const check = figureCheckRoll(
+      rng,
+      operator,
+      pool,
+      poolGen,
+      def.check!.dc,
+      guildCheckBonus(guild.tier),
+      equippedRelic(guild.relics ?? [], operator.i)?.bonuses[pool] ?? 0,
+      def.check!.tags
+    );
+
+    if (!check.success) {
+      guild.cooldowns[operator.i] = living.tick + 2;
+      this.pushNews(living, {
+        kind: "war",
+        text: `${operator.name}'s brokerage in ${state.name} failed (rolled ${check.total} vs DC ${def.check!.dc}).`,
+        cell: state.center,
+        stateId
+      });
+      return false;
+    }
+
+    if (typeof enemyId === "number" && enemyId > 0) {
+      const enemy = pack.states[enemyId];
+      if (!enemy?.i || enemy.removed || !this.isAtWar(stateId, enemyId)) {
+        if (!this.forceWar(stateId, otherId)) return false;
+        return true;
+      }
+      state.diplomacy ??= [];
+      enemy.diplomacy ??= [];
+      state.diplomacy[enemyId] = "Neutral";
+      enemy.diplomacy[stateId] = "Neutral";
+      const sSim = living.states[stateId];
+      const eSim = living.states[enemyId];
+      if (sSim) sSim.warExhaustion = Math.max(0, sSim.warExhaustion - 20);
+      if (eSim) eSim.warExhaustion = Math.max(0, eSim.warExhaustion - 20);
+      const text = `${operator.name} brokered a truce between ${state.name} and ${enemy.name}.`;
+      this.pushNews(living, {
+        kind: "war",
+        text,
+        cell: enemy.center,
+        stateId,
+        burgId: enemy.capital
+      });
+      this.pushHistory(
+        "war",
+        [
+          { kind: "state", id: stateId },
+          { kind: "state", id: enemyId }
+        ],
+        enemy.center,
+        text
+      );
+      return true;
+    }
+
+    if (!this.forceWar(stateId, otherId)) return false;
+    this.pushNews(living, {
+      kind: "war",
+      text: `${operator.name} brokered ${state.name} into a border war.`,
+      cell: state.center,
+      stateId
+    });
     return true;
   }
 

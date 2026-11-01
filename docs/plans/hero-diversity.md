@@ -1,6 +1,6 @@
 # Plan — Hero Diversity: Archetypes, Disciplines, Aspects & Party Play
 
-Updated: 2026-10-31. Status: **Phases 0-3 shipped; Phase 3b optional**.
+Updated: 2026-11-01. Status: **Phases 0-4 shipped**.
 
 Companions: [living-idle-guild.md](living-idle-guild.md), [unified-figures.md](unified-figures.md),
 [culture-traits.md](culture-traits.md), [living-world.md](living-world.md),

@@ -4,6 +4,7 @@ import { select } from "d3";
 import { currentContent } from "@/conquest/content/store";
 import { Controllers } from "@/controllers";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
+import { GUILD_OPERATIONS } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel } from "@/data/hero-archetypes";
 import { activeAspects, aspectBonus } from "@/data/hero-aspects";
 import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
@@ -1213,8 +1214,10 @@ function renderStateCard(stateId: number): string {
            </div>`
         : `<div class="livingGodTitle">Guild Operations</div>
            <div class="livingButtons">
-             ${hasTroubled || hasLairs ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Hero</button>` : ""}
+             ${hasTroubled || hasLairs ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Party</button>` : ""}
              <button type="button" data-guild="patron" data-state="${stateId}" title="Restrict auto_patron contracts to this state">${isPatron ? "Current Patron State" : "Make Patron State"}</button>
+             ${sSim.rulerId !== undefined ? `<button type="button" data-guild="op-assassinate" data-state="${stateId}" title="${escapeHtml(GUILD_OPERATIONS.assassinate_ruler.description)}">Assassinate Ruler — ${GUILD_OPERATIONS.assassinate_ruler.cost}g</button>` : ""}
+             <button type="button" data-guild="op-broker" data-state="${stateId}" title="${escapeHtml(GUILD_OPERATIONS.war_broker.description)}">War Broker — ${GUILD_OPERATIONS.war_broker.cost}g</button>
            </div>`
     }`;
 }
@@ -1508,6 +1511,11 @@ function renderBurgCard(burgId: number): string {
              ${canDispatch ? `<button type="button" data-guild="dispatch" data-province="${provId}">Dispatch Auto-Fill</button>` : ""}
              ${stateId ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch to State</button>` : ""}
              ${stateId ? `<button type="button" data-guild="patron" data-state="${stateId}">Make Patron State</button>` : ""}
+           </div>
+           <div class="livingButtons">
+             ${bSim.unrest > 0 ? `<button type="button" data-guild="op-pacify" data-burg="${burgId}" title="${escapeHtml(GUILD_OPERATIONS.pacify_mediate.description)}">Pacify & Mediate — ${GUILD_OPERATIONS.pacify_mediate.cost}g</button>` : ""}
+             ${bSim.construction ? `<button type="button" data-guild="op-charter" data-burg="${burgId}" title="${escapeHtml(GUILD_OPERATIONS.rush_charter.description)}">Rush Charter — ${GUILD_OPERATIONS.rush_charter.cost}g</button>` : ""}
+             ${burg.state ? `<button type="button" data-guild="op-incite" data-burg="${burgId}" title="${escapeHtml(GUILD_OPERATIONS.incite_uprising.description)}">Incite Uprising — ${GUILD_OPERATIONS.incite_uprising.cost}g</button>` : ""}
            </div>`
     }`;
 }
@@ -1547,6 +1555,7 @@ function runGuildOperation(button: HTMLElement): void {
   const stateId = Number(button.dataset.state ?? 0);
   const provId = Number(button.dataset.province ?? 0);
   const figureId = Number(button.dataset.figure ?? 0);
+  const burgId = Number(button.dataset.burg ?? 0);
   let ok = false;
   let message = "";
 
@@ -1558,6 +1567,26 @@ function runGuildOperation(button: HTMLElement): void {
     case "dispatch-leader":
       ok = Living.dispatchParty(figureId, provId);
       message = ok ? "The pinned leader and their companions set out." : "No idle hero or target is available.";
+      break;
+    case "op-pacify":
+      ok = Living.guildPacifyMediate(burgId);
+      message = ok ? "The Guild mediated the burg back to order." : "No qualified idle hero, unrest, or gold.";
+      break;
+    case "op-charter":
+      ok = Living.guildRushAssetCharter(burgId);
+      message = ok ? "The Guild charter rushed the works." : "No qualified idle hero, works, or gold.";
+      break;
+    case "op-incite":
+      ok = Living.guildInciteUprising(burgId);
+      message = ok ? "The Guild operative lit the fuse." : "No qualified idle hero, target, or gold.";
+      break;
+    case "op-assassinate":
+      ok = Living.guildAssassinateRuler(stateId);
+      message = ok ? "The ruler fell; succession follows." : "The assassination failed or no operative was available.";
+      break;
+    case "op-broker":
+      ok = Living.guildBrokerWar(stateId);
+      message = ok ? "The Guild's diplomacy succeeded." : "The brokerage failed or no envoy was available.";
       break;
     case "dispatch-state": {
       const living = Living.getState();

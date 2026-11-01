@@ -59,6 +59,23 @@ const mocks = vi.hoisted(() => {
     dispatchBestHero: vi.fn(() => true),
     dispatchParty: vi.fn(() => true),
     getPartyPreview: vi.fn((): unknown => null),
+    guildOperationCost: vi.fn(
+      (kind: string) =>
+        (
+          ({
+            pacify_mediate: 40,
+            rush_charter: 50,
+            incite_uprising: 75,
+            assassinate_ruler: 100,
+            war_broker: 80
+          }) as Record<string, number>
+        )[kind] ?? 0
+    ),
+    guildPacifyMediate: vi.fn(() => true),
+    guildRushAssetCharter: vi.fn(() => true),
+    guildInciteUprising: vi.fn(() => true),
+    guildAssassinateRuler: vi.fn(() => true),
+    guildBrokerWar: vi.fn(() => true),
     dispatchHeroToMarker: vi.fn(() => true),
     dispatchBestHeroToMarker: vi.fn(() => true),
     equipRelic: vi.fn(() => true),
@@ -874,6 +891,37 @@ describe("LivingHud", () => {
     expect(Living.setHeroDoctrine).toHaveBeenCalledWith(1, "manual");
     inspector?.querySelector<HTMLElement>('[data-guild="toggle-push"]')?.click();
     expect(Living.setHeroPush).toHaveBeenCalledWith(1, true);
+  });
+
+  it("offers paid guild operations on burg and state cards", () => {
+    Object.assign(mocks.state.guild, { sandboxGodMode: false });
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 1, kind: "build", text: "Oakford builds.", cell: 2, burgId: 2 },
+      { tick: 1, year: 1000, season: 1, kind: "war", text: "Aeloria stirs.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('button.livingNewsItem[data-burg="2"]')?.click();
+    let inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Pacify & Mediate");
+    expect(inspector?.textContent).toContain("Rush Charter");
+    expect(inspector?.textContent).toContain("Incite Uprising");
+
+    inspector?.querySelector<HTMLElement>('[data-guild="op-pacify"]')?.click();
+    expect(Living.guildPacifyMediate).toHaveBeenCalledWith(2);
+    inspector?.querySelector<HTMLElement>('[data-guild="op-charter"]')?.click();
+    expect(Living.guildRushAssetCharter).toHaveBeenCalledWith(2);
+    inspector?.querySelector<HTMLElement>('[data-guild="op-incite"]')?.click();
+    expect(Living.guildInciteUprising).toHaveBeenCalledWith(2);
+
+    document.querySelector<HTMLElement>('button.livingNewsItem[data-state="1"]:not([data-burg])')?.click();
+    inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Assassinate Ruler");
+    expect(inspector?.textContent).toContain("War Broker");
+    inspector?.querySelector<HTMLElement>('[data-guild="op-assassinate"]')?.click();
+    expect(Living.guildAssassinateRuler).toHaveBeenCalledWith(1);
+    inspector?.querySelector<HTMLElement>('[data-guild="op-broker"]')?.click();
+    expect(Living.guildBrokerWar).toHaveBeenCalledWith(1);
   });
 
   it("shows expedition phase progress and results on the hero card", () => {
