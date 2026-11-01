@@ -1003,6 +1003,46 @@ function renderVitals(figureId: number, state: HeroGuildState | undefined, isHer
   </div>`;
 }
 
+function missionPhaseChips(mission: {
+  phases?: { id: string; label: string; pool: string }[];
+  phaseResults?: { phaseId: string; heroId: number; success: boolean; untrained?: boolean }[];
+  progress: number;
+}): string {
+  const phases = mission.phases ?? [];
+  if (phases.length === 0) return "";
+  const results = mission.phaseResults ?? [];
+  return phases
+    .map((phase, index) => {
+      const result = results.find(entry => entry.phaseId === phase.id);
+      const status = result ? (result.success ? "✓" : "✗") : index === mission.progress ? "next" : "·";
+      const untrained = result?.untrained ? " ⚠" : "";
+      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()} ${status}${untrained}</span>`;
+    })
+    .join("");
+}
+
+function renderPartyPreview(provinceId: number): string {
+  const preview = Living.getPartyPreview?.(provinceId);
+  if (!preview || preview.party.length === 0) return "";
+  const names = preview.members.map(member => escapeHtml(member.name)).join(", ");
+  const phases = preview.phases
+    .map(phase => `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()}</span>`)
+    .join("");
+  const buttons = preview.members
+    .map(
+      member =>
+        `<button type="button" data-guild="dispatch-leader" data-province="${provinceId}" data-figure="${member.figureId}" title="Pin ${escapeHtml(member.name)} as leader and auto-fill companions">${escapeHtml(member.name)} +${member.score}</button>`
+    )
+    .join("");
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Expedition Party</div>
+    <div class="livingMuted">Auto-fill: ${names}</div>
+    <div class="livingChips">${phases}</div>
+    <div class="livingButtons">${buttons}</div>
+  </div>`;
+}
+
 function renderFigureCard(figureId: number): string {
   const living = Living.getState();
   const guild = Living.getGuild?.();
@@ -1014,7 +1054,7 @@ function renderFigureCard(figureId: number): string {
   const level = figureLevel(figure.xp ?? 0);
   const roster = guild?.roster ?? [];
   const candidates = guild?.candidates ?? [];
-  const mission = (guild?.missions ?? []).find(entry => entry.figureId === figureId);
+  const mission = (guild?.missions ?? []).find(entry => entry.figureId === figureId || entry.party?.includes(figureId));
   const cooldownUntil = guild?.cooldowns?.[figureId];
   const onCooldown = cooldownUntil !== undefined && cooldownUntil > living.tick;
   const isCandidate = candidates.includes(figureId);
@@ -1043,9 +1083,12 @@ function renderFigureCard(figureId: number): string {
     const tags = missionTagsText(mission.tags);
     const fit = fitSummary(figure, mission.tags);
     const stamina = mission.staminaSpent ? ` · ${mission.staminaSpent} Stamina spent` : "";
-    status = `<div class="livingMuted">On a ${mission.kind} mission — ${mission.progress}/${mission.required} seasons${
+    const phase = Math.min((mission.progress ?? 0) + 1, mission.required || 1);
+    status = `<div class="livingMuted">On expedition: Phase ${phase}/${mission.required || 1}${
       tags ? ` · ${escapeHtml(tags)}` : ""
-    }${stamina}</div>${fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""}`;
+    }${stamina}</div><div class="livingChips">${missionPhaseChips(mission)}</div>${
+      fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""
+    }`;
   } else if (isDown) status = `<div class="livingMuted dangerText">Downed until tick ${heroState!.downUntilTick}</div>`;
   else if (onCooldown) status = `<div class="livingMuted">Recovering until tick ${cooldownUntil}</div>`;
   else if (isHero) status = `<div class="livingMuted">At the Guild Hall</div>`;
@@ -1460,8 +1503,9 @@ function renderBurgCard(burgId: number): string {
              }
            </div>`
         : `<div class="livingGodTitle">Guild Operations</div>
+           ${canDispatch ? renderPartyPreview(provId) : ""}
            <div class="livingButtons">
-             ${canDispatch ? `<button type="button" data-guild="dispatch" data-province="${provId}">Dispatch Hero</button>` : ""}
+             ${canDispatch ? `<button type="button" data-guild="dispatch" data-province="${provId}">Dispatch Auto-Fill</button>` : ""}
              ${stateId ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch to State</button>` : ""}
              ${stateId ? `<button type="button" data-guild="patron" data-state="${stateId}">Make Patron State</button>` : ""}
            </div>`
@@ -1509,7 +1553,11 @@ function runGuildOperation(button: HTMLElement): void {
   switch (button.dataset.guild) {
     case "dispatch":
       ok = Living.dispatchBestHero(provId);
-      message = ok ? "A guild hero set out on a mission." : "No idle hero or target is available.";
+      message = ok ? "A guild hero party set out on an expedition." : "No idle hero or target is available.";
+      break;
+    case "dispatch-leader":
+      ok = Living.dispatchParty(figureId, provId);
+      message = ok ? "The pinned leader and their companions set out." : "No idle hero or target is available.";
       break;
     case "dispatch-state": {
       const living = Living.getState();

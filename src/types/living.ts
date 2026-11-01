@@ -273,6 +273,26 @@ export interface LivingPopup {
 
 export type GuildMissionKind = "trouble" | "lair" | "excavate" | "pacify";
 
+export interface MissionPhase {
+  id: string;
+  label: string;
+  pool: HeroPool;
+  tags: MissionTag[];
+  dc: number;
+  required: boolean;
+}
+
+export interface MissionPhaseResult {
+  phaseId: string;
+  heroId: number;
+  roll: number;
+  total: number;
+  success: boolean;
+  untrained?: boolean;
+}
+
+export type MissionOutcome = "full" | "partial" | "failed";
+
 export interface ActiveGuildMission {
   id: number;
   kind: GuildMissionKind;
@@ -289,7 +309,14 @@ export interface ActiveGuildMission {
   rewardRenown: number;
   /** target tags used for discipline and aspect fit */
   tags?: MissionTag[];
-  /** Stamina spent to push the mission check */
+  /** leader first; two heroes below tier 3, up to three from tier 3 */
+  party?: number[];
+  phases?: MissionPhase[];
+  phaseResults?: MissionPhaseResult[];
+  /** per-hero Stamina committed when that hero first takes a phase */
+  staminaByHero?: Record<number, number>;
+  outcome?: MissionOutcome;
+  /** Stamina spent across the party */
   staminaSpent?: number;
   /** excavate missions: a named HistoricalRelic is minted on success */
   rewardRelic?: boolean;

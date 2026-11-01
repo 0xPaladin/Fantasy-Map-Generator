@@ -82,6 +82,7 @@ import {
   troubleUnitMatchMultiplier,
   UNIT_ROLE_POOLS
 } from "@/data/living-troubles";
+import { buildMissionPhases, type MissionPhaseInput, phasesForParty } from "@/data/mission-phases";
 import { excavationMissionTags, lairMissionTags, PACIFY_MISSION_TAGS, troubleMissionTags } from "@/data/mission-tags";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import {
@@ -114,6 +115,8 @@ import {
   type LivingPopup,
   type LivingPopupKind,
   type LivingWorldState,
+  type MissionOutcome,
+  type MissionPhase,
   type MissionTag,
   type ProvinceLair,
   type ProvinceSimState,
@@ -183,6 +186,9 @@ export function guildTierForRenown(renown: number): number {
 
 export const maxHeroesForTier = (tier: number): number => GUILD_MAX_HEROES[Math.min(4, Math.max(0, tier - 1))]!;
 
+/** Party size: two heroes below tier 3, three from tier 3. */
+export const maxPartyForTier = (tier: number): number => (tier >= 3 ? 3 : 2);
+
 /** Guild hall passive: +1 to checks at tier 2, +2 from tier 4 */
 export const guildCheckBonus = (tier: number): number => (tier >= 4 ? 2 : tier >= 2 ? 1 : 0);
 
@@ -208,6 +214,7 @@ export interface FigureCheck {
   aspect?: number;
   staminaSpent?: number;
   injuryPenalty?: number;
+  partyBonus?: number;
 }
 
 export interface HeroMissionFit {
@@ -319,6 +326,19 @@ interface PetitionTarget {
   context: PetitionContext;
 }
 
+export interface PartyPreviewMember {
+  figureId: number;
+  name: string;
+  score: number;
+  bestPhaseId: string;
+}
+
+export interface PartyPreview {
+  party: number[];
+  phases: MissionPhase[];
+  members: PartyPreviewMember[];
+}
+
 /** Unified figure roll: 1d20 + pool skill + domain modifier + clamped traits + aspects + disciplines + guild + relic */
 export function figureCheckRoll(
   rng: Rng,
@@ -330,7 +350,9 @@ export function figureCheckRoll(
   relicBonus = 0,
   tags: readonly MissionTag[] = [],
   staminaSpent = 0,
-  injuryPenaltyValue = 0
+  injuryPenaltyValue = 0,
+  partyBonus = 0,
+  suppressDiscipline = false
 ): FigureCheck {
   const roll = rng.d(20);
   const skill = figure.skills?.[pool] ?? 0;
@@ -341,10 +363,11 @@ export function figureCheckRoll(
     valueModifier(poolGen) +
     fit.alignment +
     fit.aspect +
-    fit.discipline +
+    (suppressDiscipline ? 0 : fit.discipline) +
     guildTierBonus +
     relicBonus +
-    staminaSpent -
+    staminaSpent +
+    partyBonus -
     injuryPenaltyValue;
   return {
     roll,
@@ -354,7 +377,8 @@ export function figureCheckRoll(
     matchedDisciplines: fit.matchedDisciplines,
     aspect: fit.aspect,
     staminaSpent,
-    injuryPenalty: injuryPenaltyValue
+    injuryPenalty: injuryPenaltyValue,
+    partyBonus
   };
 }
 
@@ -369,7 +393,9 @@ export function figureCheck(
   relicBonus = 0,
   tags: readonly MissionTag[] = [],
   staminaSpent = 0,
-  injuryPenaltyValue = 0
+  injuryPenaltyValue = 0,
+  partyBonus = 0,
+  suppressDiscipline = false
 ): boolean {
   return figureCheckRoll(
     rng,
@@ -381,7 +407,9 @@ export function figureCheck(
     relicBonus,
     tags,
     staminaSpent,
-    injuryPenaltyValue
+    injuryPenaltyValue,
+    partyBonus,
+    suppressDiscipline
   ).success;
 }
 
@@ -715,8 +743,13 @@ class LivingModel {
     return true;
   }
 
-  /** Click-dispatch: send one hero to the trouble or lair in a province. */
+  /** Click-dispatch: pin a leader and auto-fill companions for the province target. */
   dispatchHero(figureId: number, provinceId: number): boolean {
+    return this.dispatchParty(figureId, provinceId);
+  }
+
+  /** Manually pin a leader for a province mission; companions are auto-filled. */
+  dispatchParty(figureId: number, provinceId: number): boolean {
     const living = this.getState();
     const guild = this.getGuild();
     if (!guild.roster.includes(figureId) || !this.isHeroIdle(guild, figureId)) return false;
@@ -725,35 +758,50 @@ class LivingModel {
     const target = this.provinceTarget(living, guild, provinceId);
     if (!figure || figure.death !== undefined || !target) return false;
 
-    this.createMission(living, guild, figure, target);
+    const party = this.autoFillParty(living, guild, target, figureId);
+    if (party.length === 0) return false;
+    this.createMission(living, guild, party[0]!, target, party);
     return true;
   }
 
-  /** Send the best idle hero to a province (used by the HUD guild operations). */
+  /** Recommended party and phase fits for the province dispatch card. */
+  getPartyPreview(provinceId: number, leaderId?: number): PartyPreview | null {
+    const living = this.getState();
+    const guild = this.getGuild();
+    const target = this.provinceTarget(living, guild, provinceId);
+    return target ? this.partyPreview(living, guild, target, leaderId) : null;
+  }
+
+  /** Recommended party and phase fits for an excavation site. */
+  getPartyPreviewForMarker(markerId: number, leaderId?: number): PartyPreview | null {
+    const living = this.getState();
+    const guild = this.getGuild();
+    const marker = (pack.markers ?? []).find(entry => entry?.i === markerId);
+    const target = marker ? this.excavationTarget(guild, marker) : null;
+    return target ? this.partyPreview(living, guild, target, leaderId) : null;
+  }
+
+  /** Send the best auto-filled party to a province (used by the HUD guild operations). */
   dispatchBestHero(provinceId: number): boolean {
     const living = this.getState();
     const guild = this.getGuild();
     const target = this.provinceTarget(living, guild, provinceId);
     if (!target) return false;
 
-    const hero = guild.roster
-      .filter(id => this.isHeroIdle(guild, id))
-      .map(id => this.findFigure(id))
-      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
-      .sort(
-        (a, b) =>
-          this.missionChance(living, guild, b, target) - this.missionChance(living, guild, a, target) ||
-          this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) ||
-          a.i - b.i
-      )[0];
-    if (!hero) return false;
+    const best = this.bestPartyForTarget(living, guild, target);
+    if (!best) return false;
 
-    this.createMission(living, guild, hero, target);
+    this.createMission(living, guild, best[0]!, target, best);
     return true;
   }
 
-  /** Click-dispatch: send one idle hero to excavate a landmark. */
+  /** Click-dispatch: pin a leader and auto-fill companions for an excavation. */
   dispatchHeroToMarker(figureId: number, markerId: number): boolean {
+    return this.dispatchPartyToMarker(figureId, markerId);
+  }
+
+  /** Manually pin a leader for an excavation; companions are auto-filled. */
+  dispatchPartyToMarker(figureId: number, markerId: number): boolean {
     const living = this.getState();
     const guild = this.getGuild();
     if (!guild.roster.includes(figureId) || !this.isHeroIdle(guild, figureId)) return false;
@@ -765,11 +813,13 @@ class LivingModel {
     const target = marker ? this.excavationTarget(guild, marker) : null;
     if (!target) return false;
 
-    this.createMission(living, guild, figure, target);
+    const party = this.autoFillParty(living, guild, target, figureId);
+    if (party.length === 0) return false;
+    this.createMission(living, guild, party[0]!, target, party);
     return true;
   }
 
-  /** Send the best idle Culture hero to excavate a landmark. */
+  /** Send the best auto-filled party to excavate a landmark. */
   dispatchBestHeroToMarker(markerId: number): boolean {
     const living = this.getState();
     const guild = this.getGuild();
@@ -777,19 +827,10 @@ class LivingModel {
     const target = marker ? this.excavationTarget(guild, marker) : null;
     if (!target) return false;
 
-    const hero = guild.roster
-      .filter(id => this.isHeroIdle(guild, id))
-      .map(id => this.findFigure(id))
-      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
-      .sort(
-        (a, b) =>
-          this.missionChance(living, guild, b, target) - this.missionChance(living, guild, a, target) ||
-          this.heroScore(b, target.pool, target.tags) - this.heroScore(a, target.pool, target.tags) ||
-          a.i - b.i
-      )[0];
-    if (!hero) return false;
+    const best = this.bestPartyForTarget(living, guild, target);
+    if (!best) return false;
 
-    this.createMission(living, guild, hero, target);
+    this.createMission(living, guild, best[0]!, target, best);
     return true;
   }
 
@@ -1887,8 +1928,175 @@ class LivingModel {
     return (figure.skills?.[pool] ?? 0) + fit.alignment + fit.aspect + fit.discipline;
   }
 
+  private missionPhaseInput(target: GuildTarget): MissionPhaseInput {
+    const chronicle =
+      target.kind === "excavate" &&
+      target.markerId !== undefined &&
+      Boolean((pack.markers ?? []).find(marker => marker?.i === target.markerId)?.chronicle);
+    return {
+      kind: target.kind,
+      dc: target.dc,
+      tags: target.tags,
+      level: target.level,
+      chronicle
+    };
+  }
+
+  private missionPhases(target: GuildTarget): MissionPhase[] {
+    return buildMissionPhases(this.missionPhaseInput(target));
+  }
+
+  /** Party companions wait for click-dispatch when their doctrine is manual. */
+  private idlePartyCandidates(guild: GuildState): HistoricalFigure[] {
+    return guild.roster
+      .filter(id => this.isHeroIdle(guild, id))
+      .map(id => this.findFigure(id))
+      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
+      .filter(figure => this.ensureHeroGuildState(guild, figure).doctrine !== "manual");
+  }
+
+  private phaseScore(figure: HistoricalFigure, phase: MissionPhase): number {
+    return this.heroScore(figure, phase.pool, phase.tags) + (figure.skills?.[phase.pool] ?? 0) * 5;
+  }
+
+  /** Leader first, then the best coverage companions up to the tier's party limit. */
+  private autoFillParty(
+    _living: LivingWorldState,
+    guild: GuildState,
+    target: GuildTarget,
+    leaderId?: number
+  ): HistoricalFigure[] {
+    const limit = maxPartyForTier(guild.tier);
+    const phases = this.missionPhases(target);
+    const leader =
+      leaderId !== undefined && guild.roster.includes(leaderId) && this.isHeroIdle(guild, leaderId)
+        ? this.findFigure(leaderId)
+        : undefined;
+
+    const party: HistoricalFigure[] = [];
+    if (leader && leader.death === undefined) party.push(leader);
+
+    const candidates = this.idlePartyCandidates(guild).filter(figure => !party.some(hero => hero.i === figure.i));
+    if (party.length === 0) {
+      const ranked = [...candidates].sort(
+        (a, b) =>
+          Math.max(...phases.map(phase => this.phaseScore(b, phase))) -
+            Math.max(...phases.map(phase => this.phaseScore(a, phase))) || a.i - b.i
+      );
+      if (ranked.length === 0) return [];
+      party.push(ranked[0]!);
+      candidates.splice(candidates.indexOf(ranked[0]!), 1);
+    }
+
+    while (party.length < limit && candidates.length > 0) {
+      candidates.sort(
+        (a, b) =>
+          phases.reduce((sum, phase) => sum + Math.max(0, this.phaseScore(b, phase)), 0) -
+            phases.reduce((sum, phase) => sum + Math.max(0, this.phaseScore(a, phase)), 0) || a.i - b.i
+      );
+      party.push(candidates.shift()!);
+    }
+
+    return party;
+  }
+
+  private partyChance(
+    living: LivingWorldState,
+    guild: GuildState,
+    party: readonly HistoricalFigure[],
+    target: GuildTarget
+  ): number {
+    if (party.length === 0) return 0;
+    const phases = phasesForParty(this.missionPhases(target), party.length);
+    const contributions = new Map<number, number>();
+    let total = 0;
+    for (const phase of phases) {
+      const choice = this.pickPhaseHero(party, contributions, phase);
+      if (!choice) continue;
+      contributions.set(choice.figure.i, (contributions.get(choice.figure.i) ?? 0) + 1);
+      total += this.missionChance(living, guild, choice.figure, phase);
+    }
+    return total / Math.max(1, phases.length);
+  }
+
+  private pickPhaseHero(
+    party: readonly HistoricalFigure[],
+    contributions: ReadonlyMap<number, number>,
+    phase: MissionPhase
+  ): { figure: HistoricalFigure; untrained: boolean } | undefined {
+    const eligible = party.filter(figure => (contributions.get(figure.i) ?? 0) < 2);
+    if (eligible.length === 0) return undefined;
+    const trained = eligible.filter(figure => (figure.skills?.[phase.pool] ?? 0) > 0);
+    const pool = trained.length > 0 ? trained : eligible;
+    const figure = [...pool].sort((a, b) => this.phaseScore(b, phase) - this.phaseScore(a, phase) || a.i - b.i)[0];
+    return figure ? { figure, untrained: trained.length === 0 } : undefined;
+  }
+
+  private partySynergy(guild: GuildState, party: readonly HistoricalFigure[]): number {
+    if (party.length === 0) return 0;
+    const primaryPools = party.map(figure => figureArchetype(figure).primaryPool);
+    const distinct = new Set(primaryPools).size;
+    const leaderState = this.ensureHeroGuildState(guild, party[0]!);
+    const support = party.some(figure => {
+      const state = this.ensureHeroGuildState(guild, figure);
+      return state.doctrine === "support" || figureDisciplines(figure).includes("healing");
+    });
+    const duplicated = primaryPools.some((pool, index) => primaryPools.indexOf(pool) !== index);
+
+    let synergy = 0;
+    if (distinct >= 3) synergy += 1;
+    if (leaderState.temperament.teamplay >= 0.7) synergy += 1;
+    if (duplicated && !support) synergy -= 1;
+    return Math.max(-1, Math.min(1, synergy));
+  }
+
+  /** HUD helper: the recommended party and each member's best phase. */
+  private partyPreview(
+    living: LivingWorldState,
+    guild: GuildState,
+    target: GuildTarget,
+    leaderId?: number
+  ): PartyPreview {
+    const party = this.autoFillParty(living, guild, target, leaderId);
+    const phases = phasesForParty(this.missionPhases(target), party.length);
+    const members = party.map(figure => {
+      const best = [...phases].sort((a, b) => this.phaseScore(figure, b) - this.phaseScore(figure, a))[0];
+      return {
+        figureId: figure.i,
+        name: figure.name,
+        score: best ? this.phaseScore(figure, best) : 0,
+        bestPhaseId: best?.id ?? ""
+      };
+    });
+    return { party: party.map(figure => figure.i), phases, members };
+  }
+
+  private bestPartyForTarget(
+    living: LivingWorldState,
+    guild: GuildState,
+    target: GuildTarget
+  ): HistoricalFigure[] | undefined {
+    let best: { party: HistoricalFigure[]; score: number } | undefined;
+    for (const leader of this.idlePartyCandidates(guild)) {
+      const party = this.autoFillParty(living, guild, target, leader.i);
+      if (party.length === 0) continue;
+      const chance = this.partyChance(living, guild, party, target);
+      if (chance < MIN_AUTO_DISPATCH_FIT) continue;
+      const doctrine = this.ensureHeroGuildState(guild, leader).doctrine;
+      const phases = phasesForParty(this.missionPhases(target), party.length);
+      const leaderFit = Math.max(...phases.map(phase => this.phaseScore(leader, phase))) * 0.01;
+      const score =
+        chance * (1 + target.rewardGold / 100) * target.priority +
+        this.doctrineWeight(doctrine, target.kind) +
+        leaderFit;
+      if (!best || score > best.score) best = { party, score };
+    }
+    return best?.party;
+  }
+
   private isHeroIdle(guild: GuildState, figureId: number): boolean {
-    if (guild.missions.some(mission => mission.figureId === figureId)) return false;
+    if (guild.missions.some(mission => mission.figureId === figureId || mission.party?.includes(figureId)))
+      return false;
     const state = guild.heroes?.[figureId];
     const tick = this.getState().tick;
     if (state?.downUntilTick !== undefined && state.downUntilTick > tick) return false;
@@ -2086,9 +2294,17 @@ class LivingModel {
     living: LivingWorldState,
     guild: GuildState,
     figure: HistoricalFigure,
-    target: GuildTarget
+    target: GuildTarget,
+    partyFigures: HistoricalFigure[] = [figure]
   ): ActiveGuildMission {
     const id = guild.missions.reduce((max, mission) => Math.max(max, mission.id), 0) + 1;
+    const limit = maxPartyForTier(guild.tier);
+    const party = [figure, ...partyFigures].filter(
+      (hero, index, list) => hero.death === undefined && list.findIndex(entry => entry.i === hero.i) === index
+    );
+    const members = party.slice(0, limit);
+    const phases = phasesForParty(this.missionPhases(target), members.length);
+    const finalPhase = phases[phases.length - 1];
     const mission: ActiveGuildMission = {
       id,
       kind: target.kind,
@@ -2097,21 +2313,26 @@ class LivingModel {
       provinceId: target.provinceId,
       burgId: target.burgId,
       markerId: target.markerId,
-      pool: target.pool,
-      dc: target.dc,
+      pool: finalPhase?.pool ?? target.pool,
+      dc: finalPhase?.dc ?? target.dc,
       progress: 0,
-      required: guild.tier >= 3 ? 1 : 2,
+      required: phases.length || 1,
       rewardGold: target.rewardGold,
       rewardRenown: target.rewardRenown,
       tags: [...target.tags],
+      party: members.map(hero => hero.i),
+      phases,
+      phaseResults: [],
+      staminaByHero: {},
       ...(target.wantsRelic ? { rewardRelic: true } : {})
     };
     guild.missions.push(mission);
-    figure.cell = target.cell;
+    for (const hero of members) hero.cell = target.cell;
 
+    const names = members.map(hero => hero.name).join(", ");
     this.pushNews(living, {
       kind: this.missionNewsKind(target.kind),
-      text: `${figure.name} set out on a Guild ${target.kind} mission.`,
+      text: `${names} set out on a Guild ${target.kind} expedition (${phases.length} phases).`,
       cell: target.cell,
       stateId: target.provinceId !== undefined ? pack.provinces?.[target.provinceId]?.state : undefined
     });
@@ -2178,7 +2399,7 @@ class LivingModel {
 
     for (const mission of [...guild.missions]) {
       mission.progress += 1;
-      if (mission.progress >= mission.required) this.resolveMission(living, mission);
+      this.resolveMission(living, mission);
     }
 
     if (living.season === 0) this.refreshCandidates(living);
@@ -2341,7 +2562,7 @@ class LivingModel {
     for (const id of guild.roster) {
       const figure = this.findFigure(id);
       if (!figure || figure.death !== undefined) continue;
-      if (guild.missions.some(mission => mission.figureId === id)) continue;
+      if (guild.missions.some(mission => mission.figureId === id || mission.party?.includes(id))) continue;
 
       const state = this.ensureHeroGuildState(guild, figure);
       if (state.downUntilTick !== undefined && living.tick >= state.downUntilTick) state.downUntilTick = undefined;
@@ -2360,43 +2581,14 @@ class LivingModel {
     const targets = this.missionTargets(living, guild);
     if (targets.length === 0) return;
 
-    const idle = guild.roster
-      .filter(id => this.isHeroIdle(guild, id))
-      .map(id => this.findFigure(id))
-      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined)
-      .filter(figure => this.ensureHeroGuildState(guild, figure).doctrine !== "manual");
-    if (idle.length === 0) return;
-
-    // Pair heroes and targets by fit instead of assigning in roster order.
-    const pairs: { figure: HistoricalFigure; target: GuildTarget; score: number }[] = [];
-    for (const figure of idle) {
-      const doctrine = this.ensureHeroGuildState(guild, figure).doctrine;
-      for (const target of targets) {
-        const chance = this.missionChance(living, guild, figure, target);
-        if (chance < MIN_AUTO_DISPATCH_FIT) continue;
-        pairs.push({
-          figure,
-          target,
-          score: chance * (1 + target.rewardGold / 100) * target.priority + this.doctrineWeight(doctrine, target.kind)
-        });
-      }
-    }
-    pairs.sort(
-      (a, b) =>
-        b.score - a.score ||
-        b.target.level - a.target.level ||
-        (a.target.markerId ?? a.target.burgId ?? a.target.provinceId ?? 0) -
-          (b.target.markerId ?? b.target.burgId ?? b.target.provinceId ?? 0) ||
-        a.figure.i - b.figure.i
-    );
-
-    const assignedHeroes = new Set<number>();
     const assignedTargets = new Set<string>();
-    for (const pair of pairs) {
-      if (assignedHeroes.has(pair.figure.i) || assignedTargets.has(this.targetKey(pair.target))) continue;
-      assignedHeroes.add(pair.figure.i);
-      assignedTargets.add(this.targetKey(pair.target));
-      this.createMission(living, guild, pair.figure, pair.target);
+    for (const target of targets) {
+      const key = this.targetKey(target);
+      if (assignedTargets.has(key)) continue;
+      const party = this.bestPartyForTarget(living, guild, target);
+      if (!party) continue;
+      assignedTargets.add(key);
+      this.createMission(living, guild, party[0]!, target, party);
     }
   }
 
@@ -2440,15 +2632,15 @@ class LivingModel {
     const guild = this.getGuild();
     const index = guild.missions.findIndex(entry => entry.id === mission.id);
     if (index === -1) return;
-    guild.missions.splice(index, 1);
 
-    const figure = this.findFigure(mission.figureId);
+    const leader = this.findFigure(mission.figureId);
     const province = mission.provinceId !== undefined ? pack.provinces?.[mission.provinceId] : undefined;
-    if (!figure || figure.death !== undefined || !this.missionStillValid(living, mission)) {
-      if (figure && figure.death === undefined) {
+    if (!leader || leader.death !== undefined || !this.missionStillValid(living, mission)) {
+      guild.missions.splice(index, 1);
+      if (leader && leader.death === undefined) {
         this.pushNews(living, {
           kind: this.missionNewsKind(mission.kind),
-          text: `${figure.name}'s Guild contract ended with nothing left to resolve.`,
+          text: `${leader.name}'s Guild contract ended with nothing left to resolve.`,
           cell: mission.targetCell,
           stateId: province?.state
         });
@@ -2456,92 +2648,251 @@ class LivingModel {
       return;
     }
 
-    const pSim = mission.provinceId !== undefined ? living.provinces?.[mission.provinceId] : undefined;
-    const sSim = province?.state ? living.states[province.state] : undefined;
-    const poolGen = sSim?.capacity[mission.pool]?.gen ?? 0;
-    const rng = this.rng("guild:mission", mission.id * 1000 + mission.figureId);
-    const carried = equippedRelic(guild.relics ?? [], figure.i);
     const tags = mission.tags ?? this.missionTagsFor(living, mission);
-    const state = this.ensureHeroGuildState(guild, figure);
-    const level = figureLevel(figure.xp ?? 0);
-    const maxStaminaSpend = level >= 5 ? 2 : 1;
-    const reserve = STAMINA_RESERVE_MINIMUM[figureArchetype(figure).id];
-    const expected = this.missionChance(living, guild, figure, {
-      provinceId: mission.provinceId,
-      pool: mission.pool,
-      dc: mission.dc,
-      tags
-    });
-    const autoPush =
-      state.stamina > reserve && expected < 0.6 && (state.temperament.boldness >= 0.5 || guild.tier >= 3);
-    const staminaSpent = state.push
-      ? Math.min(maxStaminaSpend, state.stamina)
-      : autoPush
-        ? Math.min(maxStaminaSpend, Math.max(0, state.stamina - reserve))
-        : 0;
-    state.stamina -= staminaSpent;
-    mission.staminaSpent = staminaSpent;
-    const injuries = injuryPenalty(state.injuries, tags, living.tick);
+    mission.phases ??= [
+      {
+        id: `${mission.kind}_legacy`,
+        label: mission.kind,
+        pool: mission.pool,
+        tags,
+        dc: mission.dc,
+        required: true
+      }
+    ];
+    const phases = mission.phases;
+    mission.party ??= [mission.figureId];
+    mission.phaseResults ??= [];
+    mission.staminaByHero ??= {};
+    const party = mission.party
+      .map(id => this.findFigure(id))
+      .filter((figure): figure is HistoricalFigure => Boolean(figure) && figure!.death === undefined);
+    if (party.length === 0) {
+      guild.missions.splice(index, 1);
+      return;
+    }
+    mission.party = party.map(figure => figure.i);
+
+    const phaseIndex = Math.min(phases.length - 1, Math.max(0, mission.progress - 1));
+    const phase = phases[phaseIndex];
+    if (!phase || mission.phaseResults.some(result => result.phaseId === phase.id)) return;
+
+    const contributions = new Map<number, number>();
+    for (const result of mission.phaseResults) {
+      contributions.set(result.heroId, (contributions.get(result.heroId) ?? 0) + 1);
+    }
+    const choice = this.pickPhaseHero(party, contributions, phase) ?? { figure: party[0]!, untrained: true };
+
+    const stamina = this.phaseStamina(living, guild, mission, choice.figure, phase);
+    const state = this.ensureHeroGuildState(guild, choice.figure);
+    const injuries = injuryPenalty(state.injuries, phase.tags, living.tick) + (choice.untrained ? 2 : 0);
+    const synergy = this.partySynergy(guild, party);
+    const poolGen = province?.state ? (living.states[province.state]?.capacity[phase.pool]?.gen ?? 0) : 0;
+    const carried = equippedRelic(guild.relics ?? [], choice.figure.i);
+    const rng = this.rng("guild:phase", mission.id * 1000 + phaseIndex * 100 + choice.figure.i);
     const check = figureCheckRoll(
       rng,
-      figure,
-      mission.pool,
+      choice.figure,
+      phase.pool,
       poolGen,
-      mission.dc,
+      phase.dc,
       guildCheckBonus(guild.tier),
-      carried?.bonuses[mission.pool] ?? 0,
-      tags,
-      staminaSpent,
-      injuries
+      carried?.bonuses[phase.pool] ?? 0,
+      phase.tags,
+      stamina,
+      injuries,
+      synergy,
+      choice.untrained
     );
 
-    if (check.success) {
-      this.completeMission(living, guild, mission, figure, rng, province, pSim, sSim);
-    } else {
-      this.failMission(living, guild, mission, figure, rng, check, province, sSim);
+    mission.phaseResults.push({
+      phaseId: phase.id,
+      heroId: choice.figure.i,
+      roll: check.roll,
+      total: check.total,
+      success: check.success,
+      ...(choice.untrained ? { untrained: true } : {})
+    });
+    mission.staminaSpent = Object.values(mission.staminaByHero).reduce((sum, value) => sum + value, 0);
+
+    const phaseText = `${choice.figure.name} ${check.success ? "passed" : "failed"} ${phase.label} (${check.total} vs DC ${phase.dc}).`;
+    this.pushNews(living, {
+      kind: this.missionNewsKind(mission.kind),
+      text: phaseText,
+      cell: mission.targetCell,
+      stateId: province?.state
+    });
+
+    if (mission.phaseResults.length >= phases.length) {
+      this.finalizeMission(living, guild, mission, party, province);
     }
   }
 
-  private completeMission(
+  /** Spend Stamina once per hero per mission, on the first phase they take. */
+  private phaseStamina(
     living: LivingWorldState,
     guild: GuildState,
     mission: ActiveGuildMission,
     figure: HistoricalFigure,
-    _rng: Rng,
-    province: Province | undefined,
-    pSim: ProvinceSimState | undefined,
-    sSim: StatePolitySim | undefined
+    phase: MissionPhase
+  ): number {
+    mission.staminaByHero ??= {};
+    const existing = mission.staminaByHero[figure.i];
+    if (existing !== undefined) return 0;
+
+    const state = this.ensureHeroGuildState(guild, figure);
+    const maxSpend = figureLevel(figure.xp ?? 0) >= 5 ? 2 : 1;
+    const reserve = STAMINA_RESERVE_MINIMUM[figureArchetype(figure).id];
+    const expected = this.missionChance(living, guild, figure, phase);
+    const autoPush =
+      state.stamina > reserve && expected < 0.6 && (state.temperament.boldness >= 0.5 || guild.tier >= 3);
+    const spent = state.push
+      ? Math.min(maxSpend, state.stamina)
+      : autoPush
+        ? Math.min(maxSpend, Math.max(0, state.stamina - reserve))
+        : 0;
+    state.stamina -= spent;
+    mission.staminaByHero[figure.i] = spent;
+    return spent;
+  }
+
+  private finalizeMission(
+    living: LivingWorldState,
+    guild: GuildState,
+    mission: ActiveGuildMission,
+    party: readonly HistoricalFigure[],
+    province: Province | undefined
   ): void {
-    // reward multipliers are frozen before resolution so a freshly minted relic does not boost itself
-    const carried = equippedRelic(guild.relics ?? [], figure.i);
-    const vault = vaultBonuses(guild.relics ?? []);
-    let text = "";
+    const index = guild.missions.findIndex(entry => entry.id === mission.id);
+    if (index === -1) return;
+    guild.missions.splice(index, 1);
+
+    const results = mission.phaseResults ?? [];
+    const successes = results.filter(result => result.success).length;
+    const total = Math.max(1, mission.phases?.length ?? results.length);
+    const outcome: MissionOutcome = successes === total ? "full" : successes * 2 >= total ? "partial" : "failed";
+    mission.outcome = outcome;
+
+    const pSim = mission.provinceId !== undefined ? living.provinces?.[mission.provinceId] : undefined;
+    const sSim = province?.state ? living.states[province.state] : undefined;
+    const leader = party[0]!;
+    const text = this.applyMissionTargetEffect(living, guild, mission, outcome, leader, province, pSim);
+
+    if (outcome !== "failed") {
+      const multiplier = outcome === "full" ? 1 : 0.5;
+      const carried = equippedRelic(guild.relics ?? [], leader.i);
+      const vault = vaultBonuses(guild.relics ?? []);
+      const paidGold = Math.round(
+        mission.rewardGold * multiplier * (1 + 0.1 * (vault.w ?? 0)) * relicGoldMultiplier(carried)
+      );
+      const paidRenown = Math.round(mission.rewardRenown * multiplier * (1 + 0.1 * (vault.s ?? 0)));
+      guild.gold += paidGold;
+      guild.renown += paidRenown;
+
+      for (const hero of party) {
+        const heroRelic = equippedRelic(guild.relics ?? [], hero.i);
+        const baseXp = mission.kind === "lair" ? 50 : mission.kind === "excavate" ? 30 : 25;
+        const xp = Math.round(baseXp * multiplier * (1 + 0.1 * (vault.c ?? 0)) * relicXpMultiplier(heroRelic));
+        hero.xp = (hero.xp ?? 0) + xp;
+        applyHeroLevels(hero);
+        this.ensureHeroGuildState(guild, hero);
+        hero.cell = mission.targetCell;
+      }
+
+      this.pushNews(living, {
+        kind: this.missionNewsKind(mission.kind),
+        text: `${text}${mission.staminaSpent ? ` ${mission.staminaSpent} Stamina spent.` : ""} (${outcome}, +${paidGold}g, +${paidRenown} renown)`,
+        cell: mission.targetCell,
+        stateId: province?.state
+      });
+      this.pushHistory(
+        "deed",
+        [
+          { kind: "figure", id: leader.i },
+          ...(province?.state ? [{ kind: "state", id: province.state } as HistRef] : [])
+        ],
+        mission.targetCell,
+        text
+      );
+    } else {
+      const rng = this.rng("guild:failure", mission.id * 1000 + leader.i);
+      const phaseById = new Map((mission.phases ?? []).map(phase => [phase.id, phase]));
+      const fumbles: string[] = [];
+      for (const hero of party) {
+        const state = this.ensureHeroGuildState(guild, hero);
+        state.resolve = Math.max(0, state.resolve - 2);
+        if (state.resolve === 0) this.markHeroDown(living, state);
+        guild.cooldowns[hero.i] = living.tick + rng.int(1, 2);
+
+        const worst = results
+          .filter(result => result.heroId === hero.i)
+          .find(result => result.roll === 1 || result.total <= (phaseById.get(result.phaseId)?.dc ?? mission.dc) - 8);
+        if (worst) {
+          const phase = phaseById.get(worst.phaseId);
+          const aftermath = this.fumbleAftermath(
+            living,
+            guild,
+            hero,
+            rng,
+            { roll: worst.roll, total: worst.total, dc: phase?.dc ?? mission.dc, success: false },
+            phase?.tags ?? mission.tags ?? [],
+            equippedRelic(guild.relics ?? [], hero.i)
+          );
+          if (aftermath) fumbles.push(aftermath.trim());
+        }
+      }
+      this.pushNews(living, {
+        kind: this.missionNewsKind(mission.kind),
+        text: `The ${mission.kind} expedition failed (${successes}/${total} phases). ${text} -2 Resolve to each survivor.${
+          fumbles.length > 0 ? ` ${fumbles.join(" ")}` : ""
+        }`,
+        cell: mission.targetCell,
+        stateId: province?.state
+      });
+    }
+
+    if (sSim && province?.state) sSim.capacity = this.recomputeStateCapacity(province.state);
+    this.syncGuildTier(living, guild);
+  }
+
+  private applyMissionTargetEffect(
+    living: LivingWorldState,
+    guild: GuildState,
+    mission: ActiveGuildMission,
+    outcome: MissionOutcome,
+    leader: HistoricalFigure,
+    province: Province | undefined,
+    pSim: ProvinceSimState | undefined
+  ): string {
+    if (outcome === "failed") return `The ${mission.kind} target remains.`;
+    const partial = outcome === "partial";
+
     switch (mission.kind) {
       case "trouble": {
         const trouble = pSim?.trouble;
-        if (!pSim || !trouble) return;
+        if (!pSim || !trouble) return "Nothing was left to resolve.";
         const def = getTroubleDef(trouble.id);
-        trouble.level -= 2;
+        trouble.level -= partial ? 1 : 2;
         if (trouble.level <= 0) {
           pSim.trouble = null;
-          pSim.order = Math.min(100, pSim.order + 10);
+          pSim.order = Math.min(100, pSim.order + (partial ? 5 : 10));
           pSim.stability += 1;
-          text = `${figure.name} quelled ${def.name} in ${province?.name ?? "the province"}.`;
-        } else {
-          text = `${figure.name} broke ${def.name} in ${province?.name ?? "the province"} (reduced to level ${trouble.level}).`;
+          return `${leader.name} quelled ${def.name} in ${province?.name ?? "the province"}.`;
         }
-        break;
+        return `${leader.name} broke ${def.name} in ${province?.name ?? "the province"} (reduced to level ${trouble.level}).`;
       }
       case "lair": {
         const lair = pSim?.lair;
-        if (!pSim || !lair) return;
+        if (!pSim || !lair) return "Nothing was left to resolve.";
+        if (partial) {
+          lair.level = Math.max(1, lair.level - 1);
+          return `${leader.name} weakened ${lair.name} in ${province?.name ?? "the province"} (level ${lair.level}).`;
+        }
         this.removeLairMarker(lair.markerId);
         pSim.lair = null;
         pSim.order = Math.min(100, pSim.order + 12);
         pSim.stability += 1;
         this.relieveEschaton(living);
-        text = `${figure.name} purged ${lair.name} in ${province?.name ?? "the province"}.`;
-        break;
+        return `${leader.name} purged ${lair.name} in ${province?.name ?? "the province"}.`;
       }
       case "excavate": {
         const marker =
@@ -2551,97 +2902,23 @@ class LivingModel {
         if (mission.markerId !== undefined && !guild.excavatedMarkers.includes(mission.markerId)) {
           guild.excavatedMarkers.push(mission.markerId);
         }
-        // relics buried here by a fallen capital are recovered alongside any new find
-        this.recoverRelicsFromMarker(guild, mission.markerId, figure);
-        if (mission.rewardRelic && marker) {
-          const relic = this.mintRelicFromMarker(marker, mission.id, figure);
-          text = `${figure.name} excavated ${marker.name} and recovered ${relic.name}.`;
-        } else {
-          text = `${figure.name} excavated ${marker?.name ?? "a ruin site"} and recovered ${mission.rewardGold} gold in relics.`;
+        this.recoverRelicsFromMarker(guild, mission.markerId, leader);
+        if (partial) {
+          return `${leader.name} excavated ${marker?.name ?? "a ruin site"} and recovered a cache of ${mission.rewardGold} gold.`;
         }
-        break;
+        if (mission.rewardRelic && marker) {
+          const relic = this.mintRelicFromMarker(marker, mission.id, leader);
+          return `${leader.name} excavated ${marker.name} and recovered ${relic.name}.`;
+        }
+        return `${leader.name} excavated ${marker?.name ?? "a ruin site"} and recovered ${mission.rewardGold} gold in relics.`;
       }
       case "pacify": {
         const burg = mission.burgId !== undefined ? pack.burgs[mission.burgId] : undefined;
         const bSim = mission.burgId !== undefined ? living.burgs[mission.burgId] : undefined;
-        if (bSim) bSim.unrest = 0;
-        text = `${figure.name} pacified ${burg?.name ?? "the burg"}.`;
-        break;
+        if (bSim) bSim.unrest = partial ? Math.floor(bSim.unrest / 2) : 0;
+        return `${leader.name} ${partial ? "calmed" : "pacified"} ${burg?.name ?? "the burg"}.`;
       }
     }
-
-    // vault relics grant +10% gold per W point, +10% renown per S point; tomes boost hero xp
-    const paidGold = Math.round(mission.rewardGold * (1 + 0.1 * (vault.w ?? 0)) * relicGoldMultiplier(carried));
-    const paidRenown = Math.round(mission.rewardRenown * (1 + 0.1 * (vault.s ?? 0)));
-    const xp = Math.round(
-      (mission.kind === "lair" ? 50 : mission.kind === "excavate" ? 30 : 25) *
-        (1 + 0.1 * (vault.c ?? 0)) *
-        relicXpMultiplier(carried)
-    );
-
-    guild.gold += paidGold;
-    guild.renown += paidRenown;
-    figure.xp = (figure.xp ?? 0) + xp;
-    applyHeroLevels(figure);
-    this.ensureHeroGuildState(guild, figure);
-    figure.cell = mission.targetCell;
-    if (sSim && province?.state) sSim.capacity = this.recomputeStateCapacity(province.state);
-    this.syncGuildTier(living, guild);
-
-    this.pushNews(living, {
-      kind: this.missionNewsKind(mission.kind),
-      text: `${text}${mission.staminaSpent ? ` Pushed with ${mission.staminaSpent} Stamina.` : ""} (+${paidGold}g, +${paidRenown} renown)`,
-      cell: mission.targetCell,
-      stateId: province?.state
-    });
-    this.pushHistory(
-      "deed",
-      [
-        { kind: "figure", id: figure.i },
-        ...(province?.state ? [{ kind: "state", id: province.state } as HistRef] : [])
-      ],
-      mission.targetCell,
-      text
-    );
-  }
-
-  private failMission(
-    living: LivingWorldState,
-    guild: GuildState,
-    mission: ActiveGuildMission,
-    figure: HistoricalFigure,
-    rng: Rng,
-    check: FigureCheck,
-    province: Province | undefined,
-    sSim: StatePolitySim | undefined
-  ): void {
-    guild.cooldowns[figure.i] = living.tick + rng.int(1, 2);
-    const state = this.ensureHeroGuildState(guild, figure);
-    const fumble = check.roll === 1 || check.total <= check.dc - 8;
-    state.resolve = Math.max(0, state.resolve - (fumble ? 4 : 2));
-    if (state.resolve === 0) this.markHeroDown(living, state);
-
-    let aftermath = "";
-    if (fumble) {
-      aftermath = this.fumbleAftermath(
-        living,
-        guild,
-        figure,
-        rng,
-        check,
-        mission.tags ?? this.missionTagsFor(living, mission),
-        equippedRelic(guild.relics ?? [], figure.i)
-      );
-    }
-
-    if (sSim && province?.state) sSim.capacity = this.recomputeStateCapacity(province.state);
-    const push = mission.staminaSpent ? ` Pushed with ${mission.staminaSpent} Stamina.` : "";
-    this.pushNews(living, {
-      kind: this.missionNewsKind(mission.kind),
-      text: `${figure.name}'s Guild mission failed (rolled ${check.total} vs DC ${check.dc}).${push} -${fumble ? 4 : 2} Resolve.${aftermath}`,
-      cell: mission.targetCell,
-      stateId: province?.state
-    });
   }
 
   private markHeroDown(living: LivingWorldState, state: HeroGuildState): void {

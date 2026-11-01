@@ -57,6 +57,8 @@ const mocks = vi.hoisted(() => {
     setHeroPush: vi.fn(() => true),
     dispatchHero: vi.fn(() => true),
     dispatchBestHero: vi.fn(() => true),
+    dispatchParty: vi.fn(() => true),
+    getPartyPreview: vi.fn((): unknown => null),
     dispatchHeroToMarker: vi.fn(() => true),
     dispatchBestHeroToMarker: vi.fn(() => true),
     equipRelic: vi.fn(() => true),
@@ -282,6 +284,7 @@ beforeEach(() => {
   });
   mocks.living.claimPopup.mockReturnValue(null);
   mocks.living.getHeroState.mockReturnValue(undefined);
+  mocks.living.getPartyPreview.mockReturnValue(null);
   mocks.living.getState.mockReturnValue(mocks.state);
 });
 
@@ -771,14 +774,30 @@ describe("LivingHud", () => {
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 3, kind: "lair", text: "Forest Hideout active.", cell: 2, burgId: 2 }
     ];
+    mocks.living.getPartyPreview.mockReturnValue({
+      party: [1, 2],
+      phases: [
+        { id: "lair_approach", label: "Approach", pool: "c", tags: ["ruin"], dc: 19, required: true },
+        { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 20, required: true }
+      ],
+      members: [
+        { figureId: 1, name: "Bran Quickfoot", score: 4, bestPhaseId: "lair_breach" },
+        { figureId: 2, name: "Sable Vane", score: 2, bestPhaseId: "lair_approach" }
+      ]
+    });
     LivingHud.open();
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.querySelector<HTMLElement>("[data-god]")).toBeNull();
+    expect(inspector?.textContent).toContain("Expedition Party");
+    expect(inspector?.textContent).toContain("Bran Quickfoot");
+    expect(inspector?.textContent).toContain("Approach C");
     inspector?.querySelector<HTMLElement>('[data-guild="dispatch"]')?.click();
     expect(Living.dispatchBestHero).toHaveBeenCalledWith(1);
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("guild hero");
+    inspector?.querySelector<HTMLElement>('[data-guild="dispatch-leader"][data-figure="1"]')?.click();
+    expect(Living.dispatchParty).toHaveBeenCalledWith(1, 1);
   });
 
   it("inspects a hero and retires a veteran from the figure card", () => {
@@ -855,6 +874,41 @@ describe("LivingHud", () => {
     expect(Living.setHeroDoctrine).toHaveBeenCalledWith(1, "manual");
     inspector?.querySelector<HTMLElement>('[data-guild="toggle-push"]')?.click();
     expect(Living.setHeroPush).toHaveBeenCalledWith(1, true);
+  });
+
+  it("shows expedition phase progress and results on the hero card", () => {
+    Object.assign(mocks.state.guild, {
+      roster: [1],
+      missions: [
+        {
+          id: 4,
+          kind: "lair",
+          figureId: 1,
+          targetCell: 1,
+          pool: "m",
+          dc: 15,
+          progress: 1,
+          required: 2,
+          rewardGold: 10,
+          rewardRenown: 2,
+          party: [1, 2],
+          tags: ["lair", "combat"],
+          phases: [
+            { id: "lair_approach", label: "Approach", pool: "c", tags: ["lair"], dc: 14, required: true },
+            { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 15, required: true }
+          ],
+          phaseResults: [{ phaseId: "lair_approach", heroId: 1, roll: 12, total: 18, success: true }]
+        }
+      ]
+    });
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("On expedition: Phase 2/2");
+    expect(inspector?.textContent).toContain("Approach C");
+    expect(inspector?.textContent).toContain("Breach M");
   });
 
   it("recruits a tavern candidate from the figure card", () => {
