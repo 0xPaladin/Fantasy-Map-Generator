@@ -1,6 +1,6 @@
 # Plan — Living Idle Game: The Grand Guild, Relics, Map Juice & The Wheel of Ages
 
-Updated: 2026-10-31. Status: **slices 1-5 shipped; follow-on planned**.
+Updated: 2026-11-01. Status: **slices 1-5 and the hero-diversity follow-on shipped; Astral follow-on planned**.
 
 Companions: [living-world.md](living-world.md), [unified-figures.md](unified-figures.md),
 [lair-ascension.md](lair-ascension.md), [hero-diversity.md](hero-diversity.md),
@@ -434,8 +434,10 @@ export interface LivingWorldState {
 ## 7. Implementation Slices
 
 Each slice is independently shippable, tested with Vitest, and keeps old `.map` saves working via
-lazy defaults. Slices 1-5 are shipped; the hero-diversity follow-on is tracked in
-[hero-diversity.md](hero-diversity.md).
+lazy defaults. Slices 1-5 are shipped. The hero-diversity follow-on is also shipped: its Phases
+0-4 add hero archetypes, disciplines, aspects, vitals, temperament, party expeditions and paid
+Guild Operations in [hero-diversity.md](hero-diversity.md). The Astral Cartographer overhaul below
+remains a post-MVP follow-on.
 
 | Slice | Scope | Key Modules | Description & Acceptance |
 | :---: | :--- | :--- | :--- |
