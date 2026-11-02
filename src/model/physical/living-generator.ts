@@ -44,6 +44,11 @@ import {
   STAMINA_RESERVE_MINIMUM
 } from "@/data/hero-vitals";
 import {
+  convertDangerMarkerToRuins,
+  createLairFromMarker,
+  isDangerMarker
+} from "@/data/danger-markers";
+import {
   createProvinceLair,
   getLairDef,
   growLair,
@@ -1521,11 +1526,63 @@ class LivingModel {
 
     living.provinces ??= {};
     living.recentNews ??= [];
+    living.activeLairs ??= {};
+    living.activeTroubles ??= {};
     this.syncBurgs(living);
     this.syncProvinces(living);
     this.syncStates(living);
+    this.syncDangerMarkers(living);
     this.ensureCommanders();
     this.recomputeAllCapacities(living);
+  }
+
+  /** Synchronize active lairs with all danger markers on the map */
+  syncDangerMarkers(living: LivingWorldState): void {
+    living.activeLairs ??= {};
+    living.activeTroubles ??= {};
+
+    const activeMarkerIds = new Set<number>();
+
+    for (const marker of pack.markers ?? []) {
+      if (marker.hidden || !isDangerMarker(marker)) {
+        if (marker.threatId && living.activeLairs[marker.threatId]) {
+          delete living.activeLairs[marker.threatId];
+          delete marker.threatId;
+        }
+        continue;
+      }
+
+      activeMarkerIds.add(marker.i);
+      const key = "lair:" + marker.i;
+      marker.threatId = key;
+
+      let lair = living.activeLairs[key];
+      if (!lair) {
+        lair = createLairFromMarker(marker, Military.getUnitTypes());
+        living.activeLairs[key] = lair;
+      } else {
+        lair.markerId = marker.i;
+        lair.name = marker.name;
+        lair.cell = marker.cell;
+        lair.provinceId = pack.cells?.province?.[marker.cell] ?? 0;
+      }
+
+      if (lair.provinceId && living.provinces[lair.provinceId]) {
+        const pSim = living.provinces[lair.provinceId]!;
+        if (!pSim.lair || pSim.lair.level < lair.level) {
+          pSim.lair = lair;
+        }
+      }
+    }
+
+    for (const [key, lair] of Object.entries(living.activeLairs)) {
+      if (lair.markerId !== undefined && !activeMarkerIds.has(lair.markerId)) {
+        delete living.activeLairs[key];
+        if (lair.provinceId && living.provinces[lair.provinceId]?.lair?.markerId === lair.markerId) {
+          living.provinces[lair.provinceId]!.lair = null;
+        }
+      }
+    }
   }
 
   /** Check whether a burg shares culture OR religion with a state (Free Burg peaceful integration rule) */
@@ -2468,6 +2525,26 @@ class LivingModel {
         const target = this.provinceTarget(living, guild, province.i);
         if (target) targets.push(target);
       }
+      if (living.activeLairs) {
+        for (const lair of Object.values(living.activeLairs)) {
+          if (lair.markerId !== undefined && !this.hasTargetMission(guild, "lair", lair.provinceId, lair.markerId)) {
+            targets.push({
+              kind: "lair",
+              cell: lair.cell,
+              provinceId: lair.provinceId && pack.provinces?.[lair.provinceId]?.i ? lair.provinceId : undefined,
+              burgId: lair.burgId,
+              markerId: lair.markerId,
+              pool: "m",
+              dc: 14 + lair.level,
+              rewardGold: 30 + lair.level * 10,
+              rewardRenown: 15,
+              priority: guild.doctrine === "auto_lairs" ? 3 : 1,
+              level: lair.level,
+              tags: lairMissionTags(lair)
+            });
+          }
+        }
+      }
     }
 
     for (const target of targets) {
@@ -2603,6 +2680,9 @@ class LivingModel {
       case "trouble":
         return Boolean(pSim?.trouble);
       case "lair":
+        if (mission.markerId !== undefined) {
+          return Boolean(living.activeLairs?.["lair:" + mission.markerId]);
+        }
         return Boolean(pSim?.lair);
       case "excavate":
         return (pack.markers ?? []).some(marker => marker.i === mission.markerId && !marker.hidden);
@@ -2858,8 +2938,11 @@ class LivingModel {
   /** Each season, every level 8+ lair pushes the world one step closer to the finale. */
   private stepEschaton(living: LivingWorldState): void {
     let doom = 0;
-    for (const pSim of Object.values(living.provinces)) {
-      if (pSim.lair && pSim.lair.level >= 8) doom += 1;
+    const lairs = living.activeLairs
+      ? Object.values(living.activeLairs)
+      : Object.values(living.provinces).map(p => p.lair).filter(Boolean);
+    for (const lair of lairs) {
+      if (lair && lair.level >= 8) doom += 1;
     }
     if (doom > 0) this.exaltEschaton(living, doom);
   }
@@ -3126,18 +3209,18 @@ class LivingModel {
         return `${leader.name} broke ${def.name} in ${province?.name ?? "the province"} (reduced to level ${trouble.level}).`;
       }
       case "lair": {
-        const lair = pSim?.lair;
-        if (!pSim || !lair) return "Nothing was left to resolve.";
+        const lair =
+          (mission.markerId !== undefined && living.activeLairs?.["lair:" + mission.markerId]) ??
+          pSim?.lair ??
+          (living.activeLairs && Object.values(living.activeLairs).find(l => l.provinceId === mission.provinceId));
+        if (!lair) return "Nothing was left to resolve.";
         if (partial) {
           lair.level = Math.max(1, lair.level - 1);
-          return `${leader.name} weakened ${lair.name} in ${province?.name ?? "the province"} (level ${lair.level}).`;
+          return `${leader.name} weakened ${lair.name} in ${province?.name ?? "the wilderness"} (level ${lair.level}).`;
         }
-        this.removeLairMarker(lair.markerId);
-        pSim.lair = null;
-        pSim.order = Math.min(100, pSim.order + 12);
-        pSim.stability += 1;
+        this.clearLair(lair, leader.name);
         this.relieveEschaton(living);
-        return `${leader.name} purged ${lair.name} in ${province?.name ?? "the province"}.`;
+        return `${leader.name} purged ${lair.name} in ${province?.name ?? "the wilderness"}.`;
       }
       case "excavate": {
         const marker =
@@ -4178,11 +4261,8 @@ class LivingModel {
     this.addBattleMarker(lair.cell, lair.name);
 
     if (outcome.winner === "attacker") {
-      this.removeLairMarker(lair.markerId);
       const lairName = lair.name;
-      pSim.lair = null;
-      pSim.order = Math.min(100, pSim.order + 15);
-      pSim.stability += 2;
+      this.clearLair(lair, state.name);
       sSim.warExhaustion = Math.max(0, sSim.warExhaustion - 2);
       sSim.capacity = this.recomputeStateCapacity(stateId);
       this.relieveEschaton(living);
@@ -4205,10 +4285,8 @@ class LivingModel {
     // Defenders repulsed the assault: surviving defenders persist for attrition
     lair.defenders = outcome.defender.units.filter(u => u.count > 0).map(u => ({ ...u }));
     if (lair.defenders.length === 0) {
-      this.removeLairMarker(lair.markerId);
       const lairName = lair.name;
-      pSim.lair = null;
-      pSim.order = Math.min(100, pSim.order + 10);
+      this.clearLair(lair, state.name);
       sSim.capacity = this.recomputeStateCapacity(stateId);
       this.pushNews(living, {
         kind: "lair",
@@ -4921,10 +4999,40 @@ class LivingModel {
     return markerIndex;
   }
 
-  private removeLairMarker(markerId?: number): void {
+  private removeLairMarker(markerId?: number, victorName?: string): void {
     if (markerId === undefined || !pack.markers) return;
     const marker = pack.markers[markerId];
-    if (marker) marker.hidden = true;
+    if (!marker) return;
+    if (isDangerMarker(marker)) {
+      convertDangerMarkerToRuins(marker, victorName);
+    } else {
+      marker.hidden = true;
+    }
+  }
+
+  /** Clears a defeated lair: converts marker to ruins, prunes activeLairs, updates province */
+  clearLair(lair: ProvinceLair, victorName?: string): void {
+    const living = this.getState();
+    this.removeLairMarker(lair.markerId, victorName);
+
+    if (living.activeLairs) {
+      if (lair.markerId !== undefined) {
+        delete living.activeLairs["lair:" + lair.markerId];
+      }
+      delete living.activeLairs["prov_lair:" + lair.provinceId];
+    }
+
+    if (lair.provinceId && living.provinces[lair.provinceId]) {
+      const pSim = living.provinces[lair.provinceId]!;
+      if (pSim.lair === lair || pSim.lair?.markerId === lair.markerId) {
+        const nextLair = living.activeLairs
+          ? Object.values(living.activeLairs).find(l => l.provinceId === lair.provinceId)
+          : null;
+        pSim.lair = nextLair ?? null;
+      }
+      pSim.order = Math.min(100, pSim.order + 15);
+      pSim.stability += 2;
+    }
   }
 
   private addRuinMarker(cell: number, name: string): number {
@@ -6424,17 +6532,32 @@ class LivingModel {
 
   /** Step seasonal raids and lair activity. */
   private stepLairs(living: LivingWorldState): void {
-    for (const province of pack.provinces ?? []) {
-      if (!province?.i || province.removed) continue;
-      const pSim = living.provinces[province.i];
-      const lair = pSim?.lair;
-      if (!lair) continue;
+    this.syncDangerMarkers(living);
+    const lairs = living.activeLairs ? Object.values(living.activeLairs) : [];
+    if (lairs.length === 0) {
+      for (const province of pack.provinces ?? []) {
+        if (!province?.i || province.removed) continue;
+        const pSim = living.provinces[province.i];
+        if (pSim?.lair) lairs.push(pSim.lair);
+      }
+    }
 
-      this.tickLairRaid(province, pSim, lair, living);
-      if (!pSim.lair) continue;
+    for (const lair of lairs) {
+      const province = lair.provinceId ? pack.provinces?.[lair.provinceId] : undefined;
+      const pSim = lair.provinceId ? living.provinces[lair.provinceId] : undefined;
+
+      this.tickLairRaid(
+        province ?? ({ i: 0, name: "Wildlands" } as Province),
+        pSim ?? ({ order: 50, stability: 0 } as ProvinceSimState),
+        lair,
+        living
+      );
+
+      const key = lair.markerId !== undefined ? "lair:" + lair.markerId : "prov_lair:" + lair.provinceId;
+      if (!living.activeLairs?.[key] && !pSim?.lair) continue;
 
       // Path B: Entrenched wilderness sovereignty
-      if (isLairStateCapable(lair.id) && lair.seasonsActive >= 8 && lair.level >= 8) {
+      if (province?.i && pSim && isLairStateCapable(lair.id) && lair.seasonsActive >= 8 && lair.level >= 8) {
         const sSim = province.state ? living.states[province.state] : undefined;
         const localBurgs = pack.burgs.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === province.i);
         const noBurgs = localBurgs.length === 0;
@@ -6454,15 +6577,28 @@ class LivingModel {
     if (!shouldRaid) return;
 
     // 1. Identify target burgs
-    const localBurgs = pack.burgs.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === province.i);
-    let targetBurgs = localBurgs;
-    if (targetBurgs.length === 0) {
+    let targetBurgs: Burg[] = [];
+    if (lair.maritime) {
       const [lx, ly] = pack.cells.p[lair.cell] ?? [0, 0];
-      const withDist = pack.burgs
-        .filter(b => b?.i && !b.removed)
+      targetBurgs = pack.burgs
+        .filter(b => b?.i && !b.removed && (b.port || (pack.cells.h && pack.cells.h[b.cell] < 20)))
         .map(b => ({ burg: b, dist: Math.hypot(b.x - lx, b.y - ly) }))
-        .sort((a, b) => a.dist - b.dist);
-      targetBurgs = withDist.slice(0, 3).map(d => d.burg);
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 4)
+        .map(d => d.burg);
+    } else {
+      const localBurgs = province?.i
+        ? pack.burgs.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === province.i)
+        : [];
+      targetBurgs = localBurgs;
+      if (targetBurgs.length === 0) {
+        const [lx, ly] = pack.cells.p[lair.cell] ?? [0, 0];
+        const withDist = pack.burgs
+          .filter(b => b?.i && !b.removed)
+          .map(b => ({ burg: b, dist: Math.hypot(b.x - lx, b.y - ly) }))
+          .sort((a, b) => a.dist - b.dist);
+        targetBurgs = withDist.slice(0, 3).map(d => d.burg);
+      }
     }
     if (targetBurgs.length === 0) return;
 

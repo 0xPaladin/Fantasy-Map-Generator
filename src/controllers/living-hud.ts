@@ -359,7 +359,7 @@ function afterTick(): void {
 }
 
 function redrawMap(): void {
-  Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "markers");
+  Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "markers", "trouble");
 }
 
 function renderControls(): void {
