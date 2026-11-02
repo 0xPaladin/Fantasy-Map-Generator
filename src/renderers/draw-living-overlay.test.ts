@@ -17,10 +17,12 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/model/physical/living-generator", () => ({ Living: mocks.living }));
 
 import {
+  clearLivingToasts,
   collectLivingBadges,
   collectLivingVectors,
   drawLivingOverlay,
-  removeLivingOverlay
+  removeLivingOverlay,
+  showMarkerToast
 } from "./draw-living-overlay";
 
 function makePack() {
@@ -98,6 +100,43 @@ describe("collectLivingBadges", () => {
     expect(badges[0].cell).toBe(2);
     expect(badges[0].text).toContain("Battle of Oakford");
   });
+
+  it("filters out trouble and lair news and cells with active bounty popups", () => {
+    mocks.state.guild.popups = [
+      {
+        id: 7,
+        kind: "bounty_trouble",
+        cell: 1,
+        title: "Trouble",
+        subtitle: "Lv 4",
+        createdTick: 3,
+        expiresAtTick: 6,
+        rewardGold: 20,
+        rewardRenown: 3
+      },
+      {
+        id: 8,
+        kind: "bounty_lair",
+        cell: 3,
+        title: "Lair Raid",
+        subtitle: "Lv 5",
+        createdTick: 3,
+        expiresAtTick: 6,
+        rewardGold: 30,
+        rewardRenown: 3
+      }
+    ];
+    mocks.state.recentNews = [
+      { tick: 3, year: 1000, season: 1, kind: "trouble", text: "Disorder arose!", cell: 1 },
+      { tick: 3, year: 1000, season: 1, kind: "lair", text: "Raiders struck!", cell: 3 },
+      { tick: 3, year: 1000, season: 1, kind: "battle", text: "Battle of Oakford!", cell: 2 }
+    ];
+
+    const badges = collectLivingBadges(mocks.state as never);
+    expect(badges).toHaveLength(1);
+    expect(badges[0].cell).toBe(2);
+    expect(badges[0].text).toContain("Battle of Oakford");
+  });
 });
 
 describe("drawLivingOverlay", () => {
@@ -154,5 +193,31 @@ describe("drawLivingOverlay", () => {
 
     expect(document.getElementById("livingOverlay")).toBeNull();
     expect(document.getElementById("livingOverlayStyle")).toBeNull();
+  });
+
+  it("shows a marker toast only for the clicked popup with zoom-independent scale", () => {
+    drawLivingOverlay();
+    const overlay = document.getElementById("livingOverlay");
+
+    showMarkerToast({
+      id: 42,
+      kind: "bounty_trouble",
+      cell: 1,
+      title: "Goblins in Aelor",
+      subtitle: "Level 4 trouble",
+      createdTick: 3,
+      expiresAtTick: 6,
+      rewardGold: 28,
+      rewardRenown: 3
+    });
+
+    const toast = overlay?.querySelector(".livingFloatBadge");
+    expect(toast).toBeTruthy();
+    expect(toast?.textContent).toContain("Goblins in Aelor");
+    expect(toast?.textContent).toContain("+28g");
+    expect(toast?.getAttribute("transform")).toContain("scale(1.0000)");
+
+    clearLivingToasts();
+    expect(overlay?.querySelector(".livingFloatBadge")).toBeNull();
   });
 });

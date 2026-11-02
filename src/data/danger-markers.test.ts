@@ -47,9 +47,10 @@ describe("danger-markers", () => {
     expect(isDangerMarkerType("caves")).toBe(true);
     expect(isDangerMarkerType("necropolises")).toBe(true);
     expect(isDangerMarkerType("rifts")).toBe(true);
-    expect(isDangerMarkerType("encounters")).toBe(true);
 
     // Non-danger markers
+    expect(isDangerMarkerType("encounters")).toBe(false);
+    expect(isDangerMarkerType("encounter")).toBe(false);
     expect(isDangerMarkerType("inns")).toBe(false);
     expect(isDangerMarkerType("bridges")).toBe(false);
     expect(isDangerMarkerType("libraries")).toBe(false);

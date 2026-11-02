@@ -31,8 +31,6 @@ export const DANGER_MARKER_TYPES: readonly string[] = [
   "necropolis",
   "rifts",
   "rift",
-  "encounters",
-  "encounter",
   "volcanoes",
   "volcano"
 ];
@@ -94,9 +92,6 @@ export function getLairArchetypeForMarker(type: string): LairArchetypeMapping {
   if (normalized.includes("rift")) {
     return { lairId: "magical_gate", defaultTheme: "ruin", isMaritime: false, baseLevel: 6 };
   }
-  if (normalized.includes("encounter")) {
-    return { lairId: "cult_shrine", defaultTheme: "burg", isMaritime: false, baseLevel: 5 };
-  }
   if (normalized.includes("volcano")) {
     return { lairId: "cursed_earth", defaultTheme: "resource", isMaritime: false, baseLevel: 5 };
   }
@@ -145,9 +140,7 @@ export function convertDangerMarkerToRuins(marker: Marker, conquerorName?: strin
   if (!marker.name.toLowerCase().startsWith("ruins")) {
     marker.name = `Ruins of ${marker.name}`;
   }
-  const resolution = conquerorName
-    ? `Site cleared and dismantled by ${conquerorName}.`
-    : "Site cleared and pacified.";
+  const resolution = conquerorName ? `Site cleared and dismantled by ${conquerorName}.` : "Site cleared and pacified.";
   marker.note = marker.note ? `${marker.note}\n\n${resolution}` : resolution;
   delete marker.threatId;
 }

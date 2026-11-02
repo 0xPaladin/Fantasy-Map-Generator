@@ -129,7 +129,9 @@ vi.mock("@/controllers", () => ({
   Controllers: {
     LegendsOverview: { open: vi.fn() },
     StatesEditor: { open: vi.fn() },
+    ProvincesEditor: { open: vi.fn() },
     BurgEditor: { open: vi.fn() },
+    BurgsOverview: { open: vi.fn() },
     RegimentsOverview: { open: vi.fn() }
   }
 }));
@@ -311,6 +313,192 @@ afterEach(() => {
 });
 
 describe("LivingHud", () => {
+  it("opens States, Provinces, Burgs, and Regiments editors filtered by state", () => {
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+
+    inspector?.querySelector<HTMLElement>('button[data-open="states"]')?.click();
+    expect(Controllers.StatesEditor.open).toHaveBeenCalled();
+
+    inspector?.querySelector<HTMLElement>('button[data-open="provinces"]')?.click();
+    expect(Controllers.ProvincesEditor.open).toHaveBeenCalled();
+
+    inspector?.querySelector<HTMLElement>('button[data-open="burgs"]')?.click();
+    expect(Controllers.BurgsOverview.open).toHaveBeenCalledWith({ stateId: 1 });
+
+    inspector?.querySelector<HTMLElement>('button[data-open="regiments"]')?.click();
+    expect(Controllers.RegimentsOverview.open).toHaveBeenCalledWith(1);
+  });
+
+  it("displays Claims & Grudges title and renders None when all topics are empty", () => {
+    const sSim = mocks.state.states[1] as { claims: unknown[]; grudges: unknown[] };
+    sSim.claims = [];
+    sSim.grudges = [];
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Claims & Grudges");
+    expect(inspector?.textContent).toContain("None");
+  });
+
+  it("renders lairs as {Province}, {what} [{level}] and zooms to location on click", () => {
+    mocks.state.provinces = {
+      1: {
+        provinceId: 1,
+        order: 50,
+        stability: 1,
+        development: 0,
+        developmentProgress: null,
+        trouble: null,
+        lair: {
+          id: "bandit_camp",
+          name: "Bandit Camp",
+          level: 6,
+          theme: "ruin",
+          cell: 2,
+          defenders: [],
+          raidUnits: [],
+          raidThreshold: 5,
+          fortified: false,
+          raidPending: false,
+          seasonsActive: 1
+        }
+      }
+    };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Lairs");
+    expect(inspector?.textContent).toContain("Northmarch, Bandit Camp [6]");
+
+    const link = inspector?.querySelector<HTMLElement>('button[data-zoom-cell="2"]');
+    expect(link).toBeTruthy();
+    link?.click();
+    expect(zoomTo).toHaveBeenCalled();
+  });
+
+  it("renders troubles as {Province}, {what} [{level}] and zooms to location on click", () => {
+    mocks.state.provinces = {
+      1: {
+        provinceId: 1,
+        order: 50,
+        stability: 1,
+        development: 0,
+        developmentProgress: null,
+        trouble: {
+          id: "monsters",
+          name: "Monsters",
+          theme: "wilderness",
+          pool: "m",
+          save: "reflex",
+          requiredRole: "guardsmen",
+          level: 5,
+          seasonsUnchecked: 1,
+          cell: 2
+        },
+        lair: null
+      }
+    };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Troubles");
+    expect(inspector?.textContent).toContain("Northmarch, Monsters [5]");
+
+    const link = inspector?.querySelector<HTMLElement>('button[data-zoom-cell="2"]');
+    expect(link).toBeTruthy();
+    link?.click();
+    expect(zoomTo).toHaveBeenCalled();
+  });
+
+  it("renders claims and restive burgs with clean characters and zooms to burg on click", () => {
+    mocks.state.burgs = {
+      1: {
+        burgId: 1,
+        baseTier: 5,
+        development: 0,
+        developmentProgress: 0,
+        buildings: [],
+        construction: null,
+        unrest: 12
+      }
+    };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Casus belli");
+    expect(inspector?.textContent).toContain("Oakford - held by no one since 999");
+    expect(inspector?.textContent).toContain("Restive burgs");
+    expect(inspector?.textContent).toContain("Aelor - unrest 12");
+
+    const burgLink = inspector?.querySelector<HTMLElement>('button[data-zoom-burg="1"]');
+    expect(burgLink).toBeTruthy();
+    burgLink?.click();
+    expect(zoomTo).toHaveBeenCalledWith(10, 10, 8, 1000);
+  });
+
+  it("closes the inspector when clicking the close button", () => {
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.style.display).not.toBe("none");
+
+    inspector?.querySelector<HTMLElement>('[data-inspector="close"]')?.click();
+    expect(inspector?.style.display).toBe("none");
+  });
+
+  it("renders Capacity with Military, Wealth, Social, Cunning and inline Stability meters", () => {
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Capacity");
+    expect(inspector?.textContent).toContain("Military");
+    expect(inspector?.textContent).toContain("Wealth");
+    expect(inspector?.textContent).toContain("Social");
+    expect(inspector?.textContent).toContain("Cunning");
+
+    const militaryRow = inspector?.querySelector<HTMLElement>(".livingCapacityRow[title*='Military']");
+    expect(militaryRow).toBeTruthy();
+    expect(militaryRow?.getAttribute("title")).toContain("10 gen / 4 load");
+
+    const unravelRow = inspector?.querySelector<HTMLElement>(".livingMeterRow[title*='Unravel']");
+    expect(unravelRow).toBeTruthy();
+    expect(unravelRow?.getAttribute("title")).toContain("Unravel: 30%");
+
+    const exhaustionRow = inspector?.querySelector<HTMLElement>(".livingMeterRow[title*='Exhaustion']");
+    expect(exhaustionRow).toBeTruthy();
+    expect(exhaustionRow?.getAttribute("title")).toContain("Exhaustion: 10%");
+  });
+
   it("opens the bar with clock controls and the current date", () => {
     LivingHud.open();
 
@@ -684,14 +872,15 @@ describe("LivingHud", () => {
     expect(document.getElementById("livingHudWallet")?.textContent).toBe("⚜ 40g · 75r");
   });
 
-  it("renders the guild bar with tier, wallet, doctrine and hero chips", () => {
+  it("renders the guild bar with tier, gold/renown, patron, heroes count and doctrine", () => {
     Object.assign(mocks.state.guild, {
       tier: 3,
       gold: 120,
       renown: 160,
       doctrine: "auto_lairs",
       roster: [1],
-      candidates: [2]
+      candidates: [2],
+      favoredStateId: 1
     });
     LivingHud.open();
 
@@ -700,10 +889,51 @@ describe("LivingHud", () => {
     expect(bar?.textContent).toContain("Grand Adventurers' Guild");
     expect(bar?.textContent).toContain("120g");
     expect(bar?.textContent).toContain("160r");
-    expect(bar?.textContent).toContain("1/6 heroes");
-    expect(bar?.textContent).toContain("Bran Quickfoot");
-    expect(bar?.textContent).toContain("Sable Vane");
+    expect(document.getElementById("livingHudPatronBtn")?.textContent).toContain("Patron: Aeloria");
+    expect(document.getElementById("livingHudHeroesBtn")?.textContent).toContain("Heroes: 1/6");
     expect((document.getElementById("livingHudDoctrine") as HTMLSelectElement | null)?.value).toBe("auto_lairs");
+  });
+
+  it("clicks patron button to zoom to favored state", () => {
+    Object.assign(mocks.state.guild, { favoredStateId: 1 });
+    LivingHud.open();
+
+    document.getElementById("livingHudPatronBtn")?.click();
+    expect(zoomTo).toHaveBeenCalled();
+  });
+
+  it("clicks heroes button to open the hero dialog showing active heroes and tavern seekers", () => {
+    mocks.living.getHeroState.mockReturnValue({
+      resolve: 10,
+      stamina: 6,
+      maxResolve: 12,
+      maxStamina: 8,
+      doctrine: "hunt_troubles",
+      temperament: { boldness: 0.5, caution: 0.5, teamplay: 0.5, greed: 0.5 },
+      injuries: [],
+      push: false
+    });
+    Object.assign(mocks.state.guild, {
+      tier: 3,
+      gold: 120,
+      roster: [1],
+      candidates: [2]
+    });
+    LivingHud.open();
+
+    document.getElementById("livingHudHeroesBtn")?.click();
+
+    const dialog = document.getElementById("livingHeroesDialog");
+    expect(dialog).toBeTruthy();
+    expect(dialog?.textContent).toContain("Active Heroes (1/6)");
+    expect(dialog?.textContent).toContain("Bran Quickfoot");
+    expect(dialog?.textContent).toContain("Res: 10/12");
+    expect(dialog?.textContent).toContain("Sta: 6/8");
+    expect(dialog?.textContent).toContain("Tavern Seekers (1)");
+    expect(dialog?.textContent).toContain("Sable Vane");
+
+    dialog?.querySelector<HTMLElement>('[data-guild="inspect"][data-figure="1"]')?.click();
+    expect(document.getElementById("livingInspector")?.textContent).toContain("Bran Quickfoot");
   });
 
   it("changes the idle doctrine from the guild bar", () => {
@@ -720,13 +950,20 @@ describe("LivingHud", () => {
   it("toggles between Guild Mode and Sandbox God Mode", () => {
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-mode="guild"]')?.click();
-    expect(Living.setSandboxGodMode).toHaveBeenCalledWith(false);
-    expect(
-      document.querySelector<HTMLElement>('#livingHudGuild [data-mode="guild"]')?.classList.contains("pressed")
-    ).toBe(true);
+    const toggle = document.querySelector<HTMLElement>('#livingHudGuild [data-mode="sandbox"]');
+    expect(toggle).toBeTruthy();
+    expect(toggle?.textContent).toContain("Sandbox");
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-mode="sandbox"]')?.click();
+    // initial sandbox is true -> clicking toggles to false (Guild Mode)
+    toggle?.click();
+    expect(Living.setSandboxGodMode).toHaveBeenCalledWith(false);
+
+    // toggling again sets sandbox to true
+    mocks.state.guild.sandboxGodMode = false;
+    LivingHud.refresh();
+    const guildToggle = document.querySelector<HTMLElement>('#livingHudGuild [data-mode="sandbox"]');
+    expect(guildToggle?.classList.contains("strikethrough")).toBe(true);
+    guildToggle?.click();
     expect(Living.setSandboxGodMode).toHaveBeenCalledWith(true);
   });
 
@@ -821,7 +1058,8 @@ describe("LivingHud", () => {
     Object.assign(mocks.state.guild, { roster: [1] });
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+    document.getElementById("livingHudHeroesBtn")?.click();
+    document.querySelector<HTMLElement>('#livingHeroesDialog [data-guild="inspect"][data-figure="1"]')?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Bran Quickfoot");
@@ -849,7 +1087,8 @@ describe("LivingHud", () => {
     Object.assign(mocks.state.guild, { roster: [1] });
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+    document.getElementById("livingHudHeroesBtn")?.click();
+    document.querySelector<HTMLElement>('#livingHeroesDialog [data-guild="inspect"][data-figure="1"]')?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Choose a path (level 3)");
@@ -874,7 +1113,8 @@ describe("LivingHud", () => {
     Object.assign(mocks.state.guild, { roster: [1] });
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+    document.getElementById("livingHudHeroesBtn")?.click();
+    document.querySelector<HTMLElement>('#livingHeroesDialog [data-guild="inspect"][data-figure="1"]')?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Resolve");
@@ -951,7 +1191,8 @@ describe("LivingHud", () => {
     });
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+    document.getElementById("livingHudHeroesBtn")?.click();
+    document.querySelector<HTMLElement>('#livingHeroesDialog [data-guild="inspect"][data-figure="1"]')?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("On expedition: Phase 2/2");
@@ -963,7 +1204,8 @@ describe("LivingHud", () => {
     Object.assign(mocks.state.guild, { candidates: [2], gold: 120 });
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="2"]')?.click();
+    document.getElementById("livingHudHeroesBtn")?.click();
+    document.querySelector<HTMLElement>('#livingHeroesDialog [data-guild="inspect"][data-figure="2"]')?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Sable Vane");
@@ -974,7 +1216,7 @@ describe("LivingHud", () => {
     expect(Living.recruitCandidate).toHaveBeenCalledWith(2);
   });
 
-  it("renders vault relics and excavation site chips in the guild bar", () => {
+  it("renders vault relics in the guild bar", () => {
     Object.assign(mocks.state.guild, {
       relics: [
         {
@@ -999,7 +1241,6 @@ describe("LivingHud", () => {
     expect(bar?.textContent).toContain("1 relics");
     expect(bar?.textContent).toContain("Crown of the Vhaelen Emperors");
     expect(bar?.textContent).toContain("vault");
-    expect(bar?.textContent).toContain("Old Vhaelen");
     expect(bar?.textContent).not.toContain("Mount Keld");
   });
 
@@ -1033,13 +1274,13 @@ describe("LivingHud", () => {
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("enshrined");
   });
 
-  it("inspects an excavation site from the guild bar and dispatches a hero", () => {
+  it("inspects an excavation site and dispatches a hero", () => {
     pack.markers = [
       { i: 4, type: "dungeons", icon: "☠️", x: 10, y: 10, cell: 1, name: "The Ashen Deep" }
     ] as unknown as typeof pack.markers;
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect-marker"]')?.click();
+    LivingHud.selectMarker(4);
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("The Ashen Deep");
@@ -1127,7 +1368,8 @@ describe("LivingHud", () => {
     });
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+    document.getElementById("livingHudHeroesBtn")?.click();
+    document.querySelector<HTMLElement>('#livingHeroesDialog [data-guild="inspect"][data-figure="1"]')?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Equip Codex of the Ashen Schism");
@@ -1170,7 +1412,7 @@ describe("LivingHud", () => {
     ] as unknown as typeof pack.markers;
     LivingHud.open();
 
-    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect-marker"]')?.click();
+    LivingHud.selectMarker(2);
     const inspector = document.getElementById("livingInspector");
 
     inspector?.querySelector<HTMLElement>('[data-god="excavate-marker"]')?.click();
@@ -1243,22 +1485,35 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Betray to the Crown");
   });
 
-  it("illuminates the Wheel of Ages only when the age is ready to turn", () => {
+  it("shows the Wheel of Ages only when the age is ready to turn at the bottom right", () => {
     mocks.living.getEschaton.mockReturnValue(30);
     Object.assign(mocks.state.guild, { tier: 1 });
     LivingHud.open();
 
-    expect(document.querySelector<HTMLButtonElement>("#livingHudGuild [data-wheel]")?.disabled).toBe(true);
+    // Wheel of ages button is removed when not ready
+    expect(document.querySelector<HTMLButtonElement>("#livingHudGuild [data-wheel]")).toBeNull();
+    // Eschaton clock is shown in top bar
+    expect(document.getElementById("livingHudEschaton")?.textContent).toContain("⏳ 30");
 
     mocks.living.getEschaton.mockReturnValue(100);
     LivingHud.refresh();
 
     const wheel = document.querySelector<HTMLButtonElement>("#livingHudGuild [data-wheel]");
-    expect(wheel?.disabled).toBe(false);
+    expect(wheel).toBeTruthy();
+    expect(wheel?.closest(".livingGuildBottomRight")).toBeTruthy();
     wheel?.click();
 
     expect(Living.turnAge).toHaveBeenCalled();
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("The Second Age of Ash");
+  });
+
+  it("renders first livingGuildRow with left, center, and right sections", () => {
+    LivingHud.open();
+    const row = document.querySelector<HTMLElement>("#livingHudGuild .livingGuildHeaderRow");
+    expect(row).toBeTruthy();
+    expect(row?.querySelector(".livingGuildLeft")?.textContent).toContain("T1");
+    expect(row?.querySelector(".livingGuildCenter")?.textContent).toContain("0g");
+    expect(row?.querySelector(".livingGuildRight")?.textContent).toContain("Doctrine");
   });
 
   it("draws on-map bounty popups and claims one when clicked", () => {
@@ -1291,5 +1546,10 @@ describe("LivingHud", () => {
     expect(Living.claimPopup).toHaveBeenCalledWith(7);
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("Bounty claimed");
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("+32g");
+
+    const toasts = overlay?.querySelectorAll(".livingFloatBadge");
+    expect(toasts?.length).toBe(1);
+    expect(toasts?.[0].textContent).toContain("Monsters in Northmarch");
+    expect(toasts?.[0].textContent).toContain("+32g");
   });
 });
