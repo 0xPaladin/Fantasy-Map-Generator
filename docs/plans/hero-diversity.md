@@ -1,6 +1,6 @@
 # Plan — Hero Diversity: Archetypes, Disciplines, Aspects & Party Play
 
-Updated: 2026-10-31. Status: **Phase 0 shipped; Phases 1-3 planned**.
+Updated: 2026-11-01. Status: **complete (Phases 0-4 shipped)**.
 
 Companions: [living-idle-guild.md](living-idle-guild.md), [unified-figures.md](unified-figures.md),
 [culture-traits.md](culture-traits.md), [living-world.md](living-world.md),
@@ -1050,7 +1050,7 @@ optional and can ship independently.
 
 ## 13. Docs & Glossary
 
-When slices ship:
+Shipped with the Phases 0-4 release:
 
 - Extend `docs/wiki/Living-World.md` with a **Heroes** subsection: archetypes, disciplines,
   aspects, growth, vitals and party expeditions.

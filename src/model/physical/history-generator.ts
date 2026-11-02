@@ -4,10 +4,10 @@ import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-trait
 import {
   COLLAPSE_TEMPLATES,
   CORONATION_TEMPLATES,
+  FALL_BATTLE_TEMPLATES,
   FALLEN_BURG_TEMPLATES,
   FALLEN_CAPITAL_TEMPLATES,
   FALLEN_SEAT_TEMPLATES,
-  FALL_BATTLE_TEMPLATES,
   FOUNDING_TEMPLATES,
   GOLDEN_AGE_TEMPLATES,
   INDEPENDENCE_TEMPLATES,
@@ -24,6 +24,12 @@ import {
   WAR_GENERAL_TEMPLATES
 } from "@/data/history-events";
 import { NECROPOLIS_TYPES } from "@/data/markers";
+import type { Burg } from "@/model/political/burgs-generator";
+import { Emblems } from "@/model/political/emblems-generator";
+import { States } from "@/model/political/states-generator";
+import { Names } from "@/model/society/names-generator";
+import { Markers } from "@/model/story/markers-generator";
+import { Notes } from "@/model/story/notes";
 import {
   type EpochPolity,
   type Era,
@@ -37,13 +43,7 @@ import {
   type RealmCause
 } from "@/types/history";
 import { last, minmax, P, ra, rand, rw } from "@/utils";
-import type { Burg } from "@/model/political/burgs-generator";
-import { Emblems } from "@/model/political/emblems-generator";
 import { Epochs } from "./epochs-generator";
-import { Markers } from "@/model/story/markers-generator";
-import { Names } from "@/model/society/names-generator";
-import { Notes } from "@/model/story/notes";
-import { States } from "@/model/political/states-generator";
 
 interface Footprint {
   core: number;
@@ -795,7 +795,9 @@ class ChronicleModel {
   private placeBurgMarker(burg: Burg, subject: FallSubject): void {
     const [x, y] = pack.cells.p[burg.cell];
     const fantasy = options.map.cultures.set.includes("Fantasy");
-    const type = rw(fantasy ? { ruins: 55, necropolises: 30, "disturbed-burials": 15 } : { ruins: 65, necropolises: 35 });
+    const type = rw(
+      fantasy ? { ruins: 55, necropolises: 30, "disturbed-burials": 15 } : { ruins: 65, necropolises: 35 }
+    );
     const name =
       type === "ruins"
         ? `Ruins of ${burg.name}`

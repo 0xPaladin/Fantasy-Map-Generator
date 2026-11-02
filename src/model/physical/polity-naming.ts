@@ -1,7 +1,8 @@
 // Group reading and word picking for polities (states) and provinces across Astral and RPG Fantasy.
-import { Names } from "@/model/society/names-generator";
+
 import { Provinces } from "@/model/political/provinces-generator";
 import { States } from "@/model/political/states-generator";
+import { Names } from "@/model/society/names-generator";
 
 /** The culture sets that speak in the star-map register */
 export const ASTRAL_SETS = ["astralTrek", "astralJammer", "grimdark"];

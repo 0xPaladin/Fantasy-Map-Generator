@@ -451,7 +451,7 @@ export const MAP_COMMANDS: MapCommand[] = [
     aliases: "reshape cells brush",
     run: () => Controllers.WrapTool.open()
   },
-{
+  {
     id: "openMinimapButton",
     name: t("Minimap"),
     link: true,

@@ -1,11 +1,11 @@
 // Default interaction on the map canvas: pan/zoom, click-to-edit, the context menu and hover tooltips
 import { drag, select } from "d3";
-import { isAstralView } from "@/renderers/view-mode";
 import { Controllers } from "@/controllers";
 import type { LabelType } from "@/model/annotations/labels-generator";
 import { dragLegendBox, legendBoxFromEvent } from "@/renderers/draw-legend";
 import { LegendBoxes } from "@/renderers/legend-boxes";
 import type { TradeBatch } from "@/renderers/trade-animation";
+import { isAstralView } from "@/renderers/view-mode";
 import { tip } from "@/ui/tooltips";
 import { debounce } from "@/utils/common-utils";
 import { sentences, t } from "@/utils/i18n";
@@ -95,7 +95,7 @@ export function openEditor(element: Element): boolean {
     const id = Number(label.dataset.id);
     const type = label.dataset.labelType as LabelType;
     if (type === "burg") {
-if (isAstralView()) {
+      if (isAstralView()) {
         const systemEditor = findEl("astralSystemEditor");
         const isSystemEditorOpen = systemEditor?.dataset.entity === `burg:${id}`;
         if (isSystemEditorOpen) Controllers.LabelsEditor.open(type, id);

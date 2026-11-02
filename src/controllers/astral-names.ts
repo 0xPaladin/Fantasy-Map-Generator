@@ -1,10 +1,10 @@
 ﻿// The Polity naming action: give the map's polities their own words and its provinces their
+import { applyNaming, groupsOf, isRpgMap } from "@/model/physical/polity-naming";
+import { Layers } from "@/renderers/layers";
 // regional titles or sectors. See docs/plans/rpg-fantasy-cultures.md and docs/astral/README.md
 import { Dialog } from "@/ui/dialog/dialog";
 import { refreshEditors } from "@/ui/dialog/dialog-helpers";
-import { Layers } from "@/renderers/layers";
 import { tip } from "@/ui/tooltips";
-import { applyNaming, groupsOf, isRpgMap } from "@/model/physical/polity-naming";
 
 function apply(): void {
   const isRpg = isRpgMap();

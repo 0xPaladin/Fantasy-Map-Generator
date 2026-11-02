@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dialogState } from "@/ui/dialog/state";
 import { emptyHistory, type History } from "@/types/history";
+import { dialogState } from "@/ui/dialog/state";
 
 vi.mock("@/model/physical/history-generator", () => ({ Chronicle: { sync: () => globalThis.pack.history } }));
 vi.mock("@/model/story/journeys/journey-places", () => ({

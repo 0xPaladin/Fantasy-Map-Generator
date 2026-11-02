@@ -28,8 +28,8 @@ vi.mock("@/renderers/draw-legend", () => mocks.legend);
 vi.mock("@/conquest/ui/layers", () => ({ twLayerIds: () => ["twArmies", "twFronts"] }));
 
 import { mapHistory } from "@/model/map-history";
-import { Layers } from "@/renderers/layers";
 import { drawLegend, hasLegend } from "@/renderers/draw-legend";
+import { Layers } from "@/renderers/layers";
 import { getViewedEpochStart } from "./historical-time";
 import { goToPresent, isInPast, scrubRange, scrubToYear, showEpoch, viewedEpoch } from "./historical-view";
 

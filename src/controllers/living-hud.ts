@@ -4,6 +4,11 @@ import { select } from "d3";
 import { currentContent } from "@/conquest/content/store";
 import { Controllers } from "@/controllers";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
+import { GUILD_OPERATIONS } from "@/data/guild-operations";
+import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel } from "@/data/hero-archetypes";
+import { activeAspects, aspectBonus } from "@/data/hero-aspects";
+import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
+import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import {
@@ -15,6 +20,13 @@ import {
   vaultRelics
 } from "@/data/living-relics";
 import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import {
+  excavationMissionTags,
+  lairMissionTags,
+  missionTagsText,
+  PACIFY_MISSION_TAGS,
+  troubleMissionTags
+} from "@/data/mission-tags";
 import { Pack } from "@/model/graph/pack-generator";
 import { figureLevel, GUILD_TIER_TITLES, Living, maxHeroesForTier } from "@/model/physical/living-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
@@ -23,9 +35,12 @@ import { Layers } from "@/renderers/layers";
 import type { HistoricalFigure } from "@/types/history";
 import {
   type GuildState,
+  type HeroDoctrine,
+  type HeroGuildState,
   type HistoricalRelic,
   type IdleDoctrine,
   type LivingNewsItem,
+  type MissionTag,
   type ProvinceSimState,
   SEASON_NAMES,
   type StatePolitySim
@@ -141,12 +156,20 @@ const TEMPLATE = /* html */ `
     #${INSPECTOR_ID} .livingBar > i { display: block; height: 100%; background: #5e4fa2; }
     #${INSPECTOR_ID} .livingBar.danger > i { background: #a33d3d; }
     #${INSPECTOR_ID} .livingPool { display: grid; grid-template-columns: 3.4em 1fr auto; gap: 0.2em 0.35em; align-items: center; }
+    #${INSPECTOR_ID} .livingPoolVitals { display: grid; gap: 0.25em; margin-bottom: 0.25em; }
+    #${INSPECTOR_ID} .livingVital { display: grid; grid-template-columns: 4.6em 3.2em 1fr; gap: 0.3em; align-items: center; }
+    #${INSPECTOR_ID} .livingVital .livingBar { grid-column: 3; }
+    #${INSPECTOR_ID} .livingDiscipline.injury { border-color: #a33d3d; color: #7b2525; }
+    #${INSPECTOR_ID} .livingDiscipline.pressed { background: #5e4fa2; color: #fff; }
+    #${INSPECTOR_ID} .dangerText { color: #a33d3d; }
     #${INSPECTOR_ID} .livingPool.over { color: #a33d3d; }
     #${INSPECTOR_ID} .livingPool .livingBar { grid-column: 2 / 4; }
     #${INSPECTOR_ID} .livingRuler { display: flex; gap: 0.4em; align-items: baseline; flex-wrap: wrap; }
     #${INSPECTOR_ID} .livingAge { color: #666; }
     #${INSPECTOR_ID} .livingBadge { border-radius: 2px; padding: 0 0.25em; color: #fff; }
     #${INSPECTOR_ID} .livingTraits { color: #444; }
+    #${INSPECTOR_ID} .livingChips { display: flex; flex-wrap: wrap; gap: 0.25em; }
+    #${INSPECTOR_ID} .livingDiscipline { border: 1px solid #5e4fa2; border-radius: 2px; padding: 0 0.3em; color: #3f3570; }
     #${INSPECTOR_ID} ul { margin: 0.15em 0 0; padding-left: 1.1em; }
     #${INSPECTOR_ID} li { margin-bottom: 0.1em; }
     #${INSPECTOR_ID} .livingButtons { display: flex; flex-wrap: wrap; gap: 0.25em; margin-top: 0.3em; }
@@ -190,9 +213,19 @@ const DOCTRINE_LABELS: Record<IdleDoctrine, string> = {
   manual: "Manual Dispatch"
 };
 
+const HERO_DOCTRINE_LABELS: Record<HeroDoctrine, string> = {
+  hunt_troubles: "Troubles",
+  hunt_lairs: "Lairs",
+  excavate: "Excavate",
+  support: "Support",
+  patrol: "Patrol",
+  manual: "Manual"
+};
+
 let playing = 0;
 let timer: number | null = null;
 let selected: Selection | null = null;
+let lastFitTarget: { label: string; tags: MissionTag[] } | null = null;
 let dragOrigin: { x: number; y: number; left: number; top: number } | null = null;
 
 function open(): void {
@@ -219,6 +252,7 @@ function open(): void {
 function close(): void {
   pause();
   selected = null;
+  lastFitTarget = null;
   findEl(HUD_ID)?.remove();
   findEl(INSPECTOR_ID)?.remove();
   removeLivingOverlay();
@@ -529,7 +563,10 @@ function renderGuildBar(): void {
 
   for (const button of bar.querySelectorAll<HTMLElement>("[data-guild='inspect-marker']")) {
     button.addEventListener("click", () => {
-      selected = { kind: "marker", id: Number(button.dataset.marker ?? 0) };
+      const markerId = Number(button.dataset.marker ?? 0);
+      const marker = (pack.markers ?? []).find(entry => entry?.i === markerId);
+      if (marker) rememberTarget(`Fit for ${marker.name ?? "the site"}`, excavationMissionTags(marker));
+      selected = { kind: "marker", id: markerId };
       renderInspector();
     });
   }
@@ -620,6 +657,7 @@ function onMapClick(this: SVGElement, event: MouseEvent): void {
 
   const marker = (pack.markers ?? []).find(entry => entry?.cell === cell);
   if (marker) {
+    rememberTarget(`Fit for ${marker.name ?? "the site"}`, excavationMissionTags(marker));
     selected = { kind: "marker", id: marker.i };
     renderInspector();
   }
@@ -658,12 +696,34 @@ function onOverlayClick(event: Event): void {
   }
 }
 
+function rememberTarget(label: string | undefined, tags: MissionTag[] | undefined): void {
+  if (!label || !tags?.length) return;
+  lastFitTarget = { label, tags };
+}
+
+function rememberProvinceTarget(provinceId: number): void {
+  const living = Living.getState();
+  const province = pack.provinces?.[provinceId];
+  const pSim = living.provinces?.[provinceId];
+  if (!province?.i || !pSim) return;
+  if (pSim.trouble) rememberTarget(`Fit for ${pSim.trouble.name}`, troubleMissionTags(pSim.trouble));
+  else if (pSim.lair) rememberTarget(`Fit for ${pSim.lair.name}`, lairMissionTags(pSim.lair));
+}
+
 function selectState(stateId: number): void {
+  const province = (pack.provinces ?? []).find(p => {
+    if (!p?.i || p.removed || p.state !== stateId) return false;
+    const sim = Living.getState().provinces?.[p.i];
+    return Boolean(sim?.trouble || sim?.lair);
+  });
+  if (province) rememberProvinceTarget(province.i);
   selected = { kind: "state", id: stateId };
   renderInspector();
 }
 
 function selectBurg(burgId: number): void {
+  const living = Living.getState();
+  if ((living.burgs?.[burgId]?.unrest ?? 0) > 0) rememberTarget("Fit for unrest", [...PACIFY_MISSION_TAGS]);
   selected = { kind: "burg", id: burgId };
   renderInspector();
 }
@@ -851,6 +911,139 @@ function renderMarkerCard(markerId: number): string {
     <div class="livingButtons">${actions}</div>`;
 }
 
+const SKILL_DICE = ["d4", "d6", "d8", "d10", "d12", "d12"] as const;
+
+function skillDice(figure: HistoricalFigure): string {
+  const skills = figure.skills ?? { m: 0, w: 0, s: 0, c: 0 };
+  const die = (rating: number) => SKILL_DICE[Math.max(0, Math.min(5, rating))]!;
+  return `M ${die(skills.m)} · W ${die(skills.w)} · S ${die(skills.s)} · C ${die(skills.c)}`;
+}
+
+function disciplineChips(figure: HistoricalFigure): string {
+  return figureDisciplines(figure)
+    .map(id => `<span class="livingDiscipline">${escapeHtml(HERO_DISCIPLINES[id]?.name ?? id)}</span>`)
+    .join("");
+}
+
+function fitSummary(figure: HistoricalFigure, tags: readonly MissionTag[] | undefined): string {
+  if (!tags?.length) return "";
+  const matched = matchingDisciplines(figureDisciplines(figure), tags);
+  const discipline = Math.min(2, matched.length);
+  const aspect = aspectBonus(figure, tags);
+  if (discipline === 0 && aspect === 0) return "Poor match: no applicable discipline.";
+
+  const parts: string[] = [];
+  if (discipline > 0) parts.push(`+${discipline} discipline`);
+  if (aspect !== 0) parts.push(`${aspect > 0 ? "+" : ""}${aspect} aspect`);
+  return `${aspect < 0 ? "Risky match" : "Good match"}: ${parts.join(", ")}.`;
+}
+
+function renderPathChoices(figure: HistoricalFigure, figureId: number, isHero: boolean): string {
+  if (!isHero || figure.death !== undefined || (figure.progression?.pendingChoices ?? 0) <= 0) return "";
+
+  const level = pendingPathLevel(figure);
+  const choice = HERO_ARCHETYPES[figureArchetype(figure).id].paths.find(entry => entry.level === level);
+  if (!choice) return "";
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Choose a path (level ${level})</div>
+    <div class="livingMuted">Ignored choices are made for you after two seasons.</div>
+    <div class="livingButtons">${choice.options
+      .map(
+        option =>
+          `<button type="button" data-guild="choose-path" data-figure="${figureId}" data-path="${option.id}">${escapeHtml(option.name)} <span class="livingMuted">${escapeHtml(option.note)}</span></button>`
+      )
+      .join("")}</div>
+  </div>`;
+}
+
+function vitalBar(label: string, value: number, max: number): string {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  return `<div class="livingVital"><span>${label}</span><span>${value}/${max}</span><div class="livingBar"><i style="width:${pct}%"></i></div></div>`;
+}
+
+function renderVitals(figureId: number, state: HeroGuildState | undefined, isHero: boolean): string {
+  if (!state) return "";
+  const temperament = heroTemperamentTags(state.temperament)
+    .map(tag => `<span class="livingDiscipline">${escapeHtml(tag)}</span>`)
+    .join("");
+  const injuries = state.injuries
+    .filter(injury => injuryIsActive(injury, Living.getState().tick))
+    .map(injury => {
+      const label = HERO_INJURY_LABELS[injury.kind];
+      return `<span class="livingDiscipline injury">${escapeHtml(label)}${
+        injury.untilTick === undefined ? " · until treated" : ""
+      }</span>`;
+    })
+    .join("");
+  const down =
+    state.downUntilTick !== undefined && state.downUntilTick > Living.getState().tick
+      ? `<div class="livingMuted dangerText">Downed until tick ${state.downUntilTick}</div>`
+      : "";
+  const doctrineButtons = isHero
+    ? `<div class="livingButtons">${(Object.keys(HERO_DOCTRINE_LABELS) as HeroDoctrine[])
+        .map(
+          doctrine =>
+            `<button type="button" class="livingDiscipline${state.doctrine === doctrine ? " pressed" : ""}" data-guild="hero-doctrine" data-figure="${figureId}" data-doctrine="${doctrine}" title="Set this hero's doctrine">${HERO_DOCTRINE_LABELS[doctrine]}</button>`
+        )
+        .join(
+          ""
+        )}<button type="button" class="livingDiscipline${state.push ? " pressed" : ""}" data-guild="toggle-push" data-figure="${figureId}" title="Spend Stamina on harder checks">Push: ${state.push ? "On" : "Off"}</button></div>`
+    : "";
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Vitals</div>
+    <div class="livingPoolVitals">
+      ${vitalBar("Resolve", state.resolve, state.maxResolve)}
+      ${vitalBar("Stamina", state.stamina, state.maxStamina)}
+    </div>
+    <div class="livingChips">${temperament}${injuries}</div>
+    ${down}
+    <div class="livingMuted">Doctrine: ${HERO_DOCTRINE_LABELS[state.doctrine]}</div>
+    ${doctrineButtons}
+  </div>`;
+}
+
+function missionPhaseChips(mission: {
+  phases?: { id: string; label: string; pool: string }[];
+  phaseResults?: { phaseId: string; heroId: number; success: boolean; untrained?: boolean }[];
+  progress: number;
+}): string {
+  const phases = mission.phases ?? [];
+  if (phases.length === 0) return "";
+  const results = mission.phaseResults ?? [];
+  return phases
+    .map((phase, index) => {
+      const result = results.find(entry => entry.phaseId === phase.id);
+      const status = result ? (result.success ? "✓" : "✗") : index === mission.progress ? "next" : "·";
+      const untrained = result?.untrained ? " ⚠" : "";
+      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()} ${status}${untrained}</span>`;
+    })
+    .join("");
+}
+
+function renderPartyPreview(provinceId: number): string {
+  const preview = Living.getPartyPreview?.(provinceId);
+  if (!preview || preview.party.length === 0) return "";
+  const names = preview.members.map(member => escapeHtml(member.name)).join(", ");
+  const phases = preview.phases
+    .map(phase => `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()}</span>`)
+    .join("");
+  const buttons = preview.members
+    .map(
+      member =>
+        `<button type="button" data-guild="dispatch-leader" data-province="${provinceId}" data-figure="${member.figureId}" title="Pin ${escapeHtml(member.name)} as leader and auto-fill companions">${escapeHtml(member.name)} +${member.score}</button>`
+    )
+    .join("");
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Expedition Party</div>
+    <div class="livingMuted">Auto-fill: ${names}</div>
+    <div class="livingChips">${phases}</div>
+    <div class="livingButtons">${buttons}</div>
+  </div>`;
+}
+
 function renderFigureCard(figureId: number): string {
   const living = Living.getState();
   const guild = Living.getGuild?.();
@@ -862,11 +1055,13 @@ function renderFigureCard(figureId: number): string {
   const level = figureLevel(figure.xp ?? 0);
   const roster = guild?.roster ?? [];
   const candidates = guild?.candidates ?? [];
-  const mission = (guild?.missions ?? []).find(entry => entry.figureId === figureId);
+  const mission = (guild?.missions ?? []).find(entry => entry.figureId === figureId || entry.party?.includes(figureId));
   const cooldownUntil = guild?.cooldowns?.[figureId];
   const onCooldown = cooldownUntil !== undefined && cooldownUntil > living.tick;
   const isCandidate = candidates.includes(figureId);
   const isHero = roster.includes(figureId);
+  const heroState = isHero || isCandidate ? Living.getHeroState?.(figureId) : undefined;
+  const isDown = heroState?.downUntilTick !== undefined && heroState.downUntilTick > living.tick;
   const culture = pack.cultures?.[figure.culture]?.name;
   const alignment = figure.alignment
     ? `<span class="livingBadge" style="background:${ALIGNMENT_COLORS[figure.alignment]}">${figure.alignment}</span>`
@@ -874,19 +1069,34 @@ function renderFigureCard(figureId: number): string {
   const virtues = (figure.virtues ?? []).map(escapeHtml).join(", ");
   const vices = (figure.vices ?? []).map(escapeHtml).join(", ");
   const traits = [virtues, vices].filter(Boolean).join(" · ");
-  const skills = figure.skills
-    ? `<div class="livingMuted">Skills: M ${figure.skills.m} · W ${figure.skills.w} · S ${figure.skills.s} · C ${figure.skills.c}</div>`
-    : `<div class="livingMuted">No skills recorded</div>`;
+  const archetype = figureArchetype(figure);
+  const archetypeBadge = `<span class="livingBadge" style="background:#5e4fa2">${archetype.icon} ${archetype.name}</span>`;
+  const aspects = activeAspects(figure);
+  const aspectNotes = [aspects.virtue?.note, aspects.vice?.note]
+    .filter((note): note is string => Boolean(note))
+    .map(note => `<div class="livingMuted">${escapeHtml(note)}</div>`)
+    .join("");
+  const skills = `<div class="livingMuted">Skills: ${skillDice(figure)}</div>`;
 
   let status = `<div class="livingMuted">Free agent</div>`;
   if (figure.death !== undefined) status = `<div class="livingMuted">Died ${figure.death}</div>`;
-  else if (mission)
-    status = `<div class="livingMuted">On a ${mission.kind} mission — ${mission.progress}/${mission.required} seasons</div>`;
+  else if (mission) {
+    const tags = missionTagsText(mission.tags);
+    const fit = fitSummary(figure, mission.tags);
+    const stamina = mission.staminaSpent ? ` · ${mission.staminaSpent} Stamina spent` : "";
+    const phase = Math.min((mission.progress ?? 0) + 1, mission.required || 1);
+    status = `<div class="livingMuted">On expedition: Phase ${phase}/${mission.required || 1}${
+      tags ? ` · ${escapeHtml(tags)}` : ""
+    }${stamina}</div><div class="livingChips">${missionPhaseChips(mission)}</div>${
+      fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""
+    }`;
+  } else if (isDown) status = `<div class="livingMuted dangerText">Downed until tick ${heroState!.downUntilTick}</div>`;
   else if (onCooldown) status = `<div class="livingMuted">Recovering until tick ${cooldownUntil}</div>`;
   else if (isHero) status = `<div class="livingMuted">At the Guild Hall</div>`;
   else if (isCandidate) status = `<div class="livingMuted">Seeking a contract</div>`;
 
-  const recruitCost = Living.recruitCost?.() ?? 40 + (guild?.tier ?? 1) * 20;
+  const recruitCost = Living.recruitCost?.(figureId) ?? 40 + (guild?.tier ?? 1) * 20;
+  const fitPreview = isCandidate && lastFitTarget ? fitSummary(figure, lastFitTarget.tags) : "";
   const carried = (guild?.relics ?? []).find(relic => relic.holder.kind === "figure" && relic.holder.id === figureId);
   let actions = "";
   if (isCandidate && figure.death === undefined) {
@@ -895,7 +1105,7 @@ function renderFigureCard(figureId: number): string {
   } else if (isHero && figure.death === undefined) {
     if (age >= 55)
       actions = `<button type="button" data-guild="retire" data-figure="${figureId}">Retire & Mentor</button>`;
-    if (!mission && !onCooldown)
+    if (!mission && !onCooldown && !isDown)
       actions += `<div class="livingMuted">Select a province, state or excavation site and dispatch a hero.</div>`;
     if (carried)
       actions += `<button type="button" data-guild="recall" data-relic="${carried.id}">Return ${escapeHtml(carried.name)} to Vault</button>`;
@@ -910,18 +1120,27 @@ function renderFigureCard(figureId: number): string {
     <div class="livingRuler">
       <span class="livingAge">age ${age}</span>
       ${alignment}
+      ${archetypeBadge}
       ${isHero ? `<span class="livingBadge" style="background:#5e4fa2">Guild Hero</span>` : ""}
       ${isCandidate ? `<span class="livingBadge" style="background:#3d6b35">Seeker</span>` : ""}
     </div>
     ${culture ? `<div class="livingMuted">${escapeHtml(culture)}</div>` : ""}
     ${traits ? `<div class="livingTraits">${traits}</div>` : ""}
     <div class="livingSection">
+      <div class="livingSectionTitle">Identity</div>
+      <div class="livingChips">${disciplineChips(figure)}</div>
+      ${aspectNotes || `<div class="livingMuted">${escapeHtml(archetype.temperament)}</div>`}
+    </div>
+    ${renderVitals(figureId, heroState, isHero)}
+    <div class="livingSection">
       <div class="livingSectionTitle">Progression</div>
       <div>Level ${level} <span class="livingMuted">· ${figure.xp ?? 0} xp</span></div>
       ${skills}
       ${carried ? `<div class="livingMuted">Carries ${RELIC_CATALOG[carried.category].icon} ${escapeHtml(carried.name)}</div>` : ""}
       ${status}
+      ${fitPreview ? `<div class="livingMuted">${escapeHtml(lastFitTarget!.label)} · ${escapeHtml(fitPreview)}</div>` : ""}
     </div>
+    ${renderPathChoices(figure, figureId, isHero)}
     ${actions ? `<div class="livingButtons">${actions}</div>` : ""}`;
 }
 
@@ -995,8 +1214,10 @@ function renderStateCard(stateId: number): string {
            </div>`
         : `<div class="livingGodTitle">Guild Operations</div>
            <div class="livingButtons">
-             ${hasTroubled || hasLairs ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Hero</button>` : ""}
+             ${hasTroubled || hasLairs ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Party</button>` : ""}
              <button type="button" data-guild="patron" data-state="${stateId}" title="Restrict auto_patron contracts to this state">${isPatron ? "Current Patron State" : "Make Patron State"}</button>
+             ${sSim.rulerId !== undefined ? `<button type="button" data-guild="op-assassinate" data-state="${stateId}" title="${escapeHtml(GUILD_OPERATIONS.assassinate_ruler.description)}">Assassinate Ruler — ${GUILD_OPERATIONS.assassinate_ruler.cost}g</button>` : ""}
+             <button type="button" data-guild="op-broker" data-state="${stateId}" title="${escapeHtml(GUILD_OPERATIONS.war_broker.description)}">War Broker — ${GUILD_OPERATIONS.war_broker.cost}g</button>
            </div>`
     }`;
 }
@@ -1285,10 +1506,16 @@ function renderBurgCard(burgId: number): string {
              }
            </div>`
         : `<div class="livingGodTitle">Guild Operations</div>
+           ${canDispatch ? renderPartyPreview(provId) : ""}
            <div class="livingButtons">
-             ${canDispatch ? `<button type="button" data-guild="dispatch" data-province="${provId}">Dispatch Hero</button>` : ""}
+             ${canDispatch ? `<button type="button" data-guild="dispatch" data-province="${provId}">Dispatch Auto-Fill</button>` : ""}
              ${stateId ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch to State</button>` : ""}
              ${stateId ? `<button type="button" data-guild="patron" data-state="${stateId}">Make Patron State</button>` : ""}
+           </div>
+           <div class="livingButtons">
+             ${bSim.unrest > 0 ? `<button type="button" data-guild="op-pacify" data-burg="${burgId}" title="${escapeHtml(GUILD_OPERATIONS.pacify_mediate.description)}">Pacify & Mediate — ${GUILD_OPERATIONS.pacify_mediate.cost}g</button>` : ""}
+             ${bSim.construction ? `<button type="button" data-guild="op-charter" data-burg="${burgId}" title="${escapeHtml(GUILD_OPERATIONS.rush_charter.description)}">Rush Charter — ${GUILD_OPERATIONS.rush_charter.cost}g</button>` : ""}
+             ${burg.state ? `<button type="button" data-guild="op-incite" data-burg="${burgId}" title="${escapeHtml(GUILD_OPERATIONS.incite_uprising.description)}">Incite Uprising — ${GUILD_OPERATIONS.incite_uprising.cost}g</button>` : ""}
            </div>`
     }`;
 }
@@ -1328,13 +1555,38 @@ function runGuildOperation(button: HTMLElement): void {
   const stateId = Number(button.dataset.state ?? 0);
   const provId = Number(button.dataset.province ?? 0);
   const figureId = Number(button.dataset.figure ?? 0);
+  const burgId = Number(button.dataset.burg ?? 0);
   let ok = false;
   let message = "";
 
   switch (button.dataset.guild) {
     case "dispatch":
       ok = Living.dispatchBestHero(provId);
-      message = ok ? "A guild hero set out on a mission." : "No idle hero or target is available.";
+      message = ok ? "A guild hero party set out on an expedition." : "No idle hero or target is available.";
+      break;
+    case "dispatch-leader":
+      ok = Living.dispatchParty(figureId, provId);
+      message = ok ? "The pinned leader and their companions set out." : "No idle hero or target is available.";
+      break;
+    case "op-pacify":
+      ok = Living.guildPacifyMediate(burgId);
+      message = ok ? "The Guild mediated the burg back to order." : "No qualified idle hero, unrest, or gold.";
+      break;
+    case "op-charter":
+      ok = Living.guildRushAssetCharter(burgId);
+      message = ok ? "The Guild charter rushed the works." : "No qualified idle hero, works, or gold.";
+      break;
+    case "op-incite":
+      ok = Living.guildInciteUprising(burgId);
+      message = ok ? "The Guild operative lit the fuse." : "No qualified idle hero, target, or gold.";
+      break;
+    case "op-assassinate":
+      ok = Living.guildAssassinateRuler(stateId);
+      message = ok ? "The ruler fell; succession follows." : "The assassination failed or no operative was available.";
+      break;
+    case "op-broker":
+      ok = Living.guildBrokerWar(stateId);
+      message = ok ? "The Guild's diplomacy succeeded." : "The brokerage failed or no envoy was available.";
       break;
     case "dispatch-state": {
       const living = Living.getState();
@@ -1356,6 +1608,29 @@ function runGuildOperation(button: HTMLElement): void {
       ok = true;
       message = `${pack.states[stateId]?.name ?? "The state"} is now the Guild's patron.`;
       break;
+    case "hero-doctrine": {
+      const doctrine = button.dataset.doctrine as HeroDoctrine | undefined;
+      if (!doctrine) {
+        message = "The doctrine could not be changed.";
+        break;
+      }
+      ok = Living.setHeroDoctrine(figureId, doctrine);
+      message = ok ? `Hero doctrine set to ${HERO_DOCTRINE_LABELS[doctrine]}.` : "The doctrine could not be changed.";
+      break;
+    }
+    case "toggle-push": {
+      const state = Living.getHeroState?.(figureId);
+      ok = Living.setHeroPush(figureId, !state?.push);
+      message = ok
+        ? `Push ${!state?.push ? "enabled" : "disabled"} for this hero.`
+        : "The push setting could not be changed.";
+      break;
+    }
+    case "choose-path": {
+      ok = Living.chooseHeroPath(figureId, button.dataset.path ?? "");
+      message = ok ? "The hero's path is chosen." : "That path choice is not available.";
+      break;
+    }
     case "recruit":
       ok = Living.recruitCandidate(figureId);
       message = ok ? "A new hero joins the Guild." : "Recruitment failed: not enough gold or the roster is full.";

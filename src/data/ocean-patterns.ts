@@ -18,7 +18,7 @@ export const OCEAN_PATTERNS = {
   "./images/pattern5.png": `${t("Pattern")} 5`,
   "./images/pattern6.png": `${t("Pattern")} 6`,
   "./images/kiwiroo.png": "Kiwiroo",
-"./images/waves.png": t("Waves"),
+  "./images/waves.png": t("Waves"),
   "./images/whitecaps.png": t("Whitecaps"),
   "./images/textures/starfield.png": t("Starfield")
 };

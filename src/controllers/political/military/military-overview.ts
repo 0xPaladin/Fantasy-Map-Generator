@@ -1,4 +1,5 @@
 import { interpolateString, select, sum } from "d3";
+import { getRosterOptions } from "@/conquest/content/store";
 import { Controllers } from "@/controllers";
 import { Icons } from "@/model/icons";
 import { Options } from "@/model/options/options-model";
@@ -9,7 +10,6 @@ import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
 import type { MilitaryUnit } from "@/types/military";
 import { Dialog } from "@/ui/dialog/dialog";
-
 import { applyLineHighlighting } from "@/ui/dialog/highlighting";
 import { type LimitationItem, limitationTip, pickLimitation } from "@/ui/dialog/limitation-picker";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
@@ -21,7 +21,6 @@ import {
   renderEditorPagination,
   type TableView
 } from "@/ui/dialog/table";
-import { getRosterOptions } from "@/conquest/content/store";
 import { tip } from "@/ui/tooltips";
 import { wiki } from "@/utils/common-utils";
 import { sentences, t } from "@/utils/i18n";
@@ -309,7 +308,7 @@ function renderMilitaryPage(view: TableView<MilitaryRow>): void {
       const unitCells = options.map.military.units
         .map(unit => {
           const value = row.forces[unit.name] || 0;
-const bd = row.breakdowns?.[unit.name] ?? {};
+          const bd = row.breakdowns?.[unit.name] ?? {};
           const bdEntries = Object.entries(bd);
           const bdTip =
             bdEntries.length > 1 || (bdEntries.length === 1 && bdEntries[0][0] !== unit.name)

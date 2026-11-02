@@ -1,4 +1,5 @@
 import { select } from "d3";
+import { readingOf } from "@/data/astral-markers";
 import { FEATURE_SUBTYPE_LABELS } from "@/data/id-labels";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
@@ -6,10 +7,9 @@ import { Production } from "@/model/economy/production-generator";
 import { Grid } from "@/model/graph/grid-generator";
 import { Pack } from "@/model/graph/pack-generator";
 import { MapEntities } from "@/model/map-entities";
+import { systemTip, toSystem } from "@/model/physical/astral-naming";
 import { Notes } from "@/model/story/notes";
 import { convertTemperature, getCellPopulation, getFriendlyHeight, getFriendlyPrecipitation } from "@/model/units";
-import { readingOf } from "@/data/astral-markers";
-import { systemTip, toSystem } from "@/model/physical/astral-naming";
 import { Layers } from "@/renderers/layers";
 import { isAstralView } from "@/renderers/view-mode";
 import type { Point } from "@/types/global";

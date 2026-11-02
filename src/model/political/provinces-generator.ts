@@ -15,10 +15,6 @@ import { requireName } from "@/utils/validation-utils";
 import { Burgs } from "./burgs-generator";
 import { States } from "./states-generator";
 
-declare global {
-  var Provinces: ProvinceModule;
-}
-
 export interface Province {
   i: number;
   removed?: boolean;
@@ -431,7 +427,7 @@ class ProvinceModule {
       Burgs.getType(center, burg ? burgs[burg].port : undefined)
     );
     coa.shield = Emblems.getShield(culture, state);
-const color = getSectorColor(states[state].color!, states[state].provinces?.length ?? 0);
+    const color = getSectorColor(states[state].color!, states[state].provinces?.length ?? 0);
     provinces.push({ i, state, center, burg, name, formName, fullName: `${name} ${formName}`, color, coa, tags: [] });
     states[state].provinces = [...(states[state].provinces ?? []), i];
 

@@ -1,10 +1,10 @@
 ﻿// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Layers } from "@/renderers/layers";
-import { tip } from "@/ui/tooltips";
 import { ALIGNMENTS, alignmentRank } from "@/data/culture-traits";
 import { Options } from "@/model/options/options-model";
 import type { Culture } from "@/model/society/cultures-generator";
+import { Layers } from "@/renderers/layers";
+import { tip } from "@/ui/tooltips";
 
 vi.mock("@/renderers/layers", () => ({ Layers: { show: vi.fn(), hide: vi.fn(), draw: vi.fn() } }));
 vi.mock("@/ui/tooltips", () => ({ tip: vi.fn(), clearMainTip: vi.fn() }));

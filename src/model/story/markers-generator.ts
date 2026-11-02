@@ -101,7 +101,7 @@ export interface Marker {
   pinned?: boolean;
   name: string;
   note?: string;
-/** placed by the chronicle: cleared and re-placed when history regenerates */
+  /** placed by the chronicle: cleared and re-placed when history regenerates */
   chronicle?: boolean;
   /** the historical year the marker belongs to: the historical view hides it before then */
   year?: number;

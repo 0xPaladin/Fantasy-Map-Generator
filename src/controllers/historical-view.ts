@@ -6,12 +6,12 @@
 
 import { twLayerIds } from "@/conquest/ui/layers";
 import { mapHistory } from "@/model/map-history";
-import { Layers } from "@/renderers/layers";
 import type { State } from "@/model/political/states-generator";
 import { clearLegend, drawLegend, getLegendData, hasLegend } from "@/renderers/draw-legend";
-import type { LegendItem } from "@/types/legend";
+import { Layers } from "@/renderers/layers";
 import type { Point } from "@/types/global";
 import type { EpochPolity, HistoryEpoch } from "@/types/history";
+import type { LegendItem } from "@/types/legend";
 import type { TypedArray } from "@/types/packed-graph";
 import { getAdjective } from "@/utils";
 import { setViewedEpochStart } from "./historical-time";

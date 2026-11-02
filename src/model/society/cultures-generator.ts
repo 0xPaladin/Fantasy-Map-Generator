@@ -1,6 +1,6 @@
 import { max, quadtree, range } from "d3";
-import { type Alignment, rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { CULTURE_SETS } from "@/data/culture-sets";
+import { type Alignment, rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { Pack } from "@/model/graph/pack-generator";
 import { Emblems } from "@/model/political/emblems-generator";
 import type { Emblem } from "@/types/emblems";
@@ -17,9 +17,6 @@ import { requireCode, requireName, requireOneOf, requireOrigins } from "@/utils/
 import { Names } from "./names-generator";
 import { Population } from "./population-generator";
 
-declare global {
-  var Cultures: CulturesGenerator;
-}
 export interface Culture {
   name: string;
   i: number;
@@ -1513,7 +1510,7 @@ class CulturesGenerator {
     if (pack.cultures.some(c => c.i && !c.removed && c.center === center))
       throw new Error(`Cell ${center} is already a culture center`);
     const defaultCultures = this.getDefault();
-let culture: number, base: string, name: string, ancestry: string | undefined;
+    let culture: number, base: string, name: string, ancestry: string | undefined;
 
     if (pack.cultures.length < defaultCultures.length) {
       // add one of the default cultures
@@ -1533,7 +1530,7 @@ let culture: number, base: string, name: string, ancestry: string | undefined;
     const i = pack.cultures.length;
     const color = getRandomColor();
 
-const newCulture: Culture = {
+    const newCulture: Culture = {
       name,
       color,
       base,
@@ -1547,7 +1544,7 @@ const newCulture: Culture = {
       urban: 0,
       origins: [pack.cells.culture[center]],
       code,
-shield: Emblems.shape === "random" ? this.getRandomShield() : "",
+      shield: Emblems.shape === "random" ? this.getRandomShield() : "",
       tags: []
     };
     if (ancestry) newCulture.ancestry = ancestry;

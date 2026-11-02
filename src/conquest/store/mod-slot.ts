@@ -158,7 +158,9 @@ function persist(): void {
       const payload: TotalWarSlot = { v: SLOT_VERSION, ...(Object.keys(ui).length ? { ui } : {}) };
       if (slot.campaign) payload.campaign = slot.campaign;
       if (slot.settings) payload.settings = slot.settings;
-      void LocalDB.set(`conquest-${id}`, JSON.stringify(payload)).catch(error => twWarn("slot persistence failed", error));
+      void LocalDB.set(`conquest-${id}`, JSON.stringify(payload)).catch(error =>
+        twWarn("slot persistence failed", error)
+      );
     } catch (error) {
       twWarn("slot serialization failed", error);
     }

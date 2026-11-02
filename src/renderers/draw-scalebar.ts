@@ -1,6 +1,6 @@
 import { range, select } from "d3";
-import { viewport } from "@/renderers/viewport/viewport";
 import { isAstralView } from "@/renderers/view-mode";
+import { viewport } from "@/renderers/viewport/viewport";
 import { log } from "@/utils/logger";
 import { ensureEl } from "@/utils/node-utils";
 import { rn } from "@/utils/number-utils";

@@ -110,7 +110,7 @@ class NamesGenerator {
     if (!data || data[""] === undefined) {
       notify(
         sentences(t("Namesbase {{base}} is incorrect", { base: base.id }), t("Please check in namesbase editor")),
-        "error",
+        "error"
       );
       log.error(`Namebase ${base.id} is incorrect!`);
       return "ERROR";

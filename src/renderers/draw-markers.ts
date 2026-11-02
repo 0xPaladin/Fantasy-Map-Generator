@@ -1,9 +1,9 @@
-import { isAstralView } from "@/renderers/view-mode";
 import { getViewedEpochStart } from "@/controllers/historical-time";
 import { readingOf } from "@/data/astral-markers";
 import { Icons } from "@/model/icons";
 import { type Marker, Markers } from "@/model/story/markers-generator";
 import { Layers } from "@/renderers/layers";
+import { isAstralView } from "@/renderers/view-mode";
 import { zoomFontSize } from "@/renderers/viewport/viewport";
 import { ViewportLayers, type ViewportRenderContext } from "@/renderers/viewport/viewport-renderer";
 import { log } from "@/utils/logger";

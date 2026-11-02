@@ -1,5 +1,6 @@
 import { type D3DragEvent, drag, easeSinIn, select, transition } from "d3";
 import { Controllers } from "@/controllers";
+import { ALIGNMENT_COLORS, alignmentRank, valuesText } from "@/data/culture-traits";
 import { CULTURE_TYPE_LABELS, SHIELD_LABELS } from "@/data/id-labels";
 import { Pack } from "@/model/graph/pack-generator";
 import { Burgs } from "@/model/political/burgs-generator";
@@ -28,7 +29,6 @@ import {
   setModeHiddenColumns,
   type TableView
 } from "@/ui/dialog/table";
-import { ALIGNMENT_COLORS, alignmentRank, valuesText } from "@/data/culture-traits";
 import type { FillBoxElement } from "@/ui/elements/fill-box";
 import { highlightElement } from "@/ui/map/highlight";
 import { applyDefaultViewboxEvents } from "@/ui/map/viewbox-events";
@@ -579,7 +579,7 @@ function getBaseOptions(base: string): string {
   Names.nameBases.forEach(n => {
     options += `<option ${base === n.id ? "selected" : ""} value="${n.id}">${n.name}</option>`;
   });
-if (!Names.getNameBase(base)) options += `<option selected value="${base}">${t("removed")}</option>`; // in case namesbase was removed
+  if (!Names.getNameBase(base)) options += `<option selected value="${base}">${t("removed")}</option>`; // in case namesbase was removed
   return options;
 }
 
@@ -698,7 +698,7 @@ function cultureChangeTags(this: HTMLInputElement): void {
 function cultureRegenerateName(this: HTMLElement): void {
   const cultureId = +(this.closest(".states") as HTMLElement).dataset.id!;
   const base = pack.cultures[cultureId].base;
-if (!Names.getNameBase(base)) {
+  if (!Names.getNameBase(base)) {
     tip(t("Namesbase is not defined, please select a valid namesbase"), false, "error", 5000);
     return;
   }
@@ -820,7 +820,7 @@ function changePopulation(this: HTMLElement): void {
 function cultureRegenerateBurgs(this: HTMLElement): void {
   const cultureId = +(this.closest(".states") as HTMLElement).dataset.id!;
   const base = pack.cultures[cultureId].base;
-if (!Names.getNameBase(base)) {
+  if (!Names.getNameBase(base)) {
     tip(t("Namesbase is not defined, please select a valid namesbase"), false, "error", 5000);
     return;
   }
@@ -1158,7 +1158,7 @@ async function uploadCulturesCsv(text: string): Promise<void> {
   );
   if (!updated) return;
 
-Layers.draw("cultures", "emblems");
+  Layers.draw("cultures", "emblems");
   refreshCulturesEditor();
 }
 

@@ -3,11 +3,11 @@ import { Names } from "@/model/society/names-generator";
 import { getFileName } from "@/services/io/file-name";
 import { savedMessage } from "@/services/platform";
 import { VERSION } from "@/services/versioning";
-import { historyForJson } from "./epochs-format";
 import { Dialog } from "@/ui/dialog/dialog";
 import { tip } from "@/ui/tooltips";
 import { t } from "@/utils/i18n";
 import { log } from "@/utils/logger";
+import { historyForJson } from "./epochs-format";
 
 type ExportJsonType = "Full" | "Minimal" | "PackCells" | "GridCells";
 

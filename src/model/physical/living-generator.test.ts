@@ -15,6 +15,7 @@ import {
   guildTierForRenown,
   Living,
   maxHeroesForTier,
+  maxPartyForTier,
   regionTierFromPop,
   settlementTierFromPop,
   syncBurgBuildingsFromFlags,
@@ -1095,6 +1096,350 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(guild.candidates).toEqual([ids[3]!]);
     });
 
+    it("mints tavern candidates with archetypes, disciplines and starting levels", () => {
+      Living.init();
+      Living.tick(4);
+      const guild = Living.getGuild();
+      const figures = pack.history.figures ?? [];
+
+      expect(guild.candidates).toHaveLength(3);
+      for (const id of guild.candidates) {
+        const figure = figures.find(entry => entry.i === id)!;
+        expect(figure.archetype).toBeDefined();
+        expect(figure.disciplines?.length).toBeGreaterThanOrEqual(3);
+        expect(figure.progression?.appliedLevel).toBe(figureLevel(figure.xp ?? 0));
+        expect(figure.skills!.m + figure.skills!.w + figure.skills!.s + figure.skills!.c).toBeGreaterThanOrEqual(3);
+      }
+    });
+
+    it("applies a chosen level 3 path once and clears the pending choice", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      pack.history.figures ??= [];
+      const figures = pack.history.figures;
+      const id = figures.length;
+      figures.push(
+        makeGuildFigure(id, {
+          archetype: "warden",
+          disciplines: ["melee", "tactics", "ride"],
+          skills: { m: 2, w: 0, s: 1, c: 0 },
+          xp: 140,
+          progression: { appliedLevel: 3, pendingChoices: 1, picks: [] }
+        })
+      );
+      guild.roster = [id];
+
+      expect(Living.chooseHeroPath(id, "warden_standard")).toBe(true);
+      const hero = figures.find(entry => entry.i === id)!;
+      expect(hero.skills).toEqual({ m: 2, w: 0, s: 2, c: 0 });
+      expect(hero.disciplines).toEqual(["melee", "tactics", "ride"]);
+      expect(hero.progression?.pendingChoices).toBe(0);
+      expect(hero.progression?.picks).toEqual(["warden_standard"]);
+      expect(Living.getHeroState(id)?.temperament.teamplay).toBeCloseTo(0.95);
+      expect(Living.chooseHeroPath(id, "warden_shieldwall")).toBe(false);
+    });
+
+    it("lazily initializes hero vitals, temperament and per-hero doctrine", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+
+      const state = Living.getHeroState(id)!;
+      expect(state.resolve).toBe(state.maxResolve);
+      expect(state.stamina).toBe(state.maxStamina);
+      expect(state.temperament.boldness).toBe(0.6);
+      expect(state.doctrine).toBe("hunt_lairs");
+      expect(state.injuries).toEqual([]);
+
+      expect(Living.setHeroDoctrine(id, "manual")).toBe(true);
+      expect(Living.getHeroState(id)?.doctrine).toBe("manual");
+      expect(Living.setHeroPush(id, true)).toBe(true);
+      expect(Living.getHeroState(id)?.push).toBe(true);
+    });
+
+    it("never dispatches a downed hero", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      Living.spawnTrouble(1, "monsters", "burg", 1);
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      const state = Living.getHeroState(id)!;
+      state.resolve = 0;
+      state.downUntilTick = 10;
+
+      expect(Living.dispatchBestHero(1)).toBe(false);
+      expect(Living.dispatchHero(id, 1)).toBe(false);
+      expect(Living.getMissions()).toHaveLength(0);
+    });
+
+    it("spends at most one Stamina per mission below level 5 and two at level 5+", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 3;
+      guild.doctrine = "manual";
+      Living.spawnLair(1, "bandit_camp", 1, 1);
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      const state = Living.getHeroState(id)!;
+      state.stamina = 7;
+      state.push = true;
+
+      expect(Living.dispatchHero(id, 1)).toBe(true);
+      Living.tick(1);
+      expect(state.stamina).toBe(6);
+
+      const veteranId = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      pack.history.figures!.find(figure => figure.i === veteranId)!.xp = 360;
+      guild.roster.push(veteranId);
+      const veteran = Living.getHeroState(veteranId)!;
+      veteran.stamina = 10;
+      veteran.push = true;
+      Living.spawnLair(2, "bandit_camp", 1, 3);
+
+      expect(Living.dispatchHero(veteranId, 2)).toBe(true);
+      Living.tick(1);
+      expect(veteran.stamina).toBe(8);
+    });
+
+    it("turns a guaranteed fumble into injury, down state, or death only at zero Resolve", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 3;
+      guild.doctrine = "manual";
+      Living.spawnLair(1, "bandit_camp", 10, 1);
+      const id = addGuildHero({ m: -100, w: 5, s: 0, c: 0 }); // a test-only impossible pool forces the fumble branch
+      guild.roster = [id];
+
+      expect(Living.dispatchHero(id, 1)).toBe(true);
+      Living.tick(2);
+      const figure = pack.history.figures!.find(entry => entry.i === id)!;
+      const state = Living.getHeroState(id)!;
+      if (figure.death !== undefined) {
+        expect(state.resolve).toBe(0);
+      } else {
+        expect(state.injuries.length > 0 || (state.downUntilTick ?? 0) > Living.getState().tick).toBe(true);
+      }
+    });
+
+    it("lets a manual hero doctrine opt out of auto-dispatch", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "auto_bounties";
+      Living.spawnTrouble(1, "monsters", "burg", 1);
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      Living.getHeroState(id)!.doctrine = "manual";
+
+      Living.tick(1);
+
+      expect(Living.getMissions()).toHaveLength(0);
+    });
+
+    it("runs paid pacify and charter operations with qualified idle heroes", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      const mediator = addGuildHero({ m: 0, w: 0, s: 5, c: 0 });
+      pack.history.figures!.find(figure => figure.i === mediator)!.archetype = "priest";
+      const factor = addGuildHero({ m: 0, w: 5, s: 0, c: 0 });
+      pack.history.figures!.find(figure => figure.i === factor)!.archetype = "factor";
+      guild.roster = [mediator, factor];
+      guild.gold = 150;
+      living.burgs[1]!.unrest = 40;
+      const orderBefore = living.provinces[1]!.order;
+
+      expect(Living.guildPacifyMediate(1)).toBe(true);
+      expect(living.burgs[1]!.unrest).toBe(0);
+      expect(living.provinces[1]!.order).toBe(orderBefore + 10);
+      expect(guild.gold).toBe(110);
+
+      expect(Living.startBuild(1, 1, "walls3")).toBe(true);
+      expect(Living.guildRushAssetCharter(1)).toBe(true);
+      expect(living.burgs[1]!.construction).toBeNull();
+      expect(living.burgs[1]!.buildings).toContain("walls3");
+      expect(guild.gold).toBe(60);
+    });
+
+    it("runs paid sedition, assassination and war brokerage", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      const shadow = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
+      pack.history.figures!.find(figure => figure.i === shadow)!.archetype = "shadow";
+      const cutthroat = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
+      pack.history.figures!.find(figure => figure.i === cutthroat)!.archetype = "shadow";
+      const envoy = addGuildHero({ m: 0, w: 0, s: 30, c: 0 });
+      pack.history.figures!.find(figure => figure.i === envoy)!.archetype = "envoy";
+      const diplomat = addGuildHero({ m: 0, w: 0, s: 30, c: 0 });
+      pack.history.figures!.find(figure => figure.i === diplomat)!.archetype = "envoy";
+      guild.roster = [shadow, cutthroat, envoy, diplomat];
+      guild.gold = 400;
+      pack.burgs[4].state = 1;
+      pack.cells.state[5] = 1;
+
+      expect(Living.guildInciteUprising(4)).toBe(true);
+      expect(pack.burgs[4].state).toBe(0);
+      expect(guild.gold).toBe(325);
+
+      const rulerId = living.states[1].rulerId!;
+      expect(Living.guildAssassinateRuler(1)).toBe(true);
+      expect(pack.history.figures!.find(figure => figure.i === rulerId)?.death).toBeDefined();
+      expect(guild.gold).toBe(225);
+
+      expect(Living.guildBrokerWar(1, 2)).toBe(true);
+      expect(pack.states[1].diplomacy?.[2]).toBe("Enemy");
+      expect(guild.gold).toBe(145);
+
+      expect(Living.guildBrokerWar(1, 2)).toBe(true);
+      expect(pack.states[1].diplomacy?.[2]).toBe("Neutral");
+      expect(pack.states[2].diplomacy?.[1]).toBe("Neutral");
+      expect(guild.gold).toBe(65);
+    });
+
+    it("refuses a paid operation without a qualified idle hero or enough gold", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.doctrine = "manual";
+      const wrongHero = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [wrongHero];
+      guild.gold = 30;
+      living.burgs[1]!.unrest = 40;
+
+      expect(Living.guildPacifyMediate(1)).toBe(false);
+      expect(living.burgs[1]!.unrest).toBe(40);
+      expect(guild.gold).toBe(30);
+    });
+
+    it("round-trips hero vitals and injuries through the map history", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      const state = Living.getHeroState(id)!;
+      state.stamina = 2;
+      state.doctrine = "manual";
+      state.push = true;
+      state.injuries = [{ kind: "wounded", untilTick: 4 }];
+
+      const { json, snapshotRecords } = serializeHistory(pack.history, pack.cells.i.length);
+      const restored = parseHistory(json, snapshotRecords, pack.cells.i.length);
+
+      expect(restored.living?.guild?.heroes?.[id]).toMatchObject({
+        stamina: 2,
+        doctrine: "manual",
+        push: true,
+        injuries: [{ kind: "wounded", untilTick: 4 }]
+      });
+    });
+
+    it("auto-fills a deterministic tier-limited party", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 1;
+      guild.doctrine = "manual";
+      guild.roster = [
+        addGuildHero({ m: 5, w: 0, s: 0, c: 0 }),
+        addGuildHero({ m: 0, w: 5, s: 0, c: 0 }),
+        addGuildHero({ m: 0, w: 0, s: 0, c: 5 })
+      ];
+      Living.spawnLair(1, "bandit_camp", 1, 1);
+
+      const first = Living.getPartyPreview(1)!;
+      const second = Living.getPartyPreview(1)!;
+
+      expect(first.party).toEqual(second.party);
+      expect(first.party.length).toBeGreaterThan(1);
+      expect(first.party.length).toBeLessThanOrEqual(maxPartyForTier(1));
+      expect(Living.dispatchBestHero(1)).toBe(true);
+      expect(Living.getMissions()[0]!.party?.length).toBeLessThanOrEqual(maxPartyForTier(1));
+      expect(maxPartyForTier(3)).toBe(3);
+    });
+
+    it("records one result per phase and lets no hero take more than two phases", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 1;
+      guild.doctrine = "manual";
+      const leader = addGuildHero({ m: 30, w: 30, s: 30, c: 30 });
+      guild.roster = [leader, addGuildHero({ m: 30, w: 30, s: 30, c: 30 })];
+      Living.spawnLair(1, "bandit_camp", 5, 1);
+
+      expect(Living.dispatchHero(leader, 1)).toBe(true);
+      const mission = Living.getMissions()[0]!;
+      expect(mission.party).toHaveLength(2);
+      expect(mission.phases).toHaveLength(3);
+
+      Living.tick(3);
+
+      const results = mission.phaseResults ?? [];
+      expect(results).toHaveLength(3);
+      expect(new Set(results.map(result => result.phaseId)).size).toBe(3);
+      const contributions = new Map<number, number>();
+      for (const result of results) {
+        contributions.set(result.heroId, (contributions.get(result.heroId) ?? 0) + 1);
+      }
+      expect(Math.max(...contributions.values())).toBeLessThanOrEqual(2);
+    });
+
+    it("marks a phase untrained when no party member has the matching pool", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 1;
+      guild.doctrine = "manual";
+      const id = addGuildHero({ m: 0, w: 0, s: 0, c: 0 });
+      guild.roster = [id];
+      Living.spawnLair(1, "bandit_camp", 1, 1);
+
+      expect(Living.dispatchHero(id, 1)).toBe(true);
+      Living.tick(1);
+
+      expect(Living.getMissions()[0]!.phaseResults?.[0]?.untrained).toBe(true);
+    });
+
+    it("pays every party member on full success and names the leader in the chronicle", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 1;
+      guild.doctrine = "manual";
+      const leader = addGuildHero({ m: 30, w: 30, s: 30, c: 30 });
+      const companion = addGuildHero({ m: 30, w: 30, s: 30, c: 30 });
+      guild.roster = [leader, companion];
+      Living.spawnLair(1, "bandit_camp", 1, 1);
+
+      expect(Living.dispatchHero(leader, 1)).toBe(true);
+      Living.tick(2);
+
+      const figures = pack.history.figures!;
+      expect(figures.find(figure => figure.i === leader)?.xp).toBe(50);
+      expect(figures.find(figure => figure.i === companion)?.xp).toBe(50);
+      const deed = pack.history.events!.filter(event => event.type === "deed").at(-1)!;
+      expect(deed.actors).toContainEqual({ kind: "figure", id: leader });
+    });
+
+    it("applies partial success to a lair and failure leaves it standing", () => {
+      Living.init();
+      const guild = Living.getGuild();
+      guild.tier = 1;
+      guild.doctrine = "manual";
+      const partialHero = addGuildHero({ m: -100, w: 0, s: 0, c: 30 });
+      guild.roster = [partialHero];
+      Living.spawnLair(1, "bandit_camp", 5, 1);
+
+      expect(Living.dispatchHero(partialHero, 1)).toBe(true);
+      Living.tick(2);
+      expect(Living.getState().provinces[1]!.lair?.level).toBe(4);
+
+      const failedHero = addGuildHero({ m: -100, w: 0, s: 0, c: -100 });
+      guild.roster = [failedHero];
+      Living.spawnLair(2, "bandit_camp", 5, 3);
+      expect(Living.dispatchHero(failedHero, 2)).toBe(true);
+      Living.tick(2);
+
+      expect(Living.getState().provinces[2]!.lair?.level).toBe(5);
+    });
+
     it("maps renown and experience onto the tier and level ladders", () => {
       expect(guildTierForRenown(0)).toBe(1);
       expect(guildTierForRenown(49)).toBe(1);
@@ -1141,18 +1486,21 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const mission = Living.getMissions().find(entry => entry.figureId === heroId);
       expect(mission?.kind).toBe("trouble");
       expect(mission?.required).toBe(2);
+      expect(mission?.tags).toEqual(expect.arrayContaining(["trouble"]));
     });
 
     it("auto-dispatches the best-fitting idle hero instead of the lowest id", () => {
       Living.init();
       const guild = Living.getGuild();
-      guild.doctrine = "auto_bounties";
+      guild.doctrine = "manual";
       const weakId = addGuildHero({ m: 0, w: 0, s: 0, c: 4 });
       const strongId = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
       guild.roster = [weakId, strongId];
+      Living.setHeroDoctrine(weakId, "hunt_troubles");
+      Living.setHeroDoctrine(strongId, "hunt_troubles");
 
       Living.spawnTrouble(1, "monsters", "burg", 1);
-      Living.tick(1);
+      expect(Living.dispatchBestHero(1)).toBe(true);
 
       const mission = Living.getMissions().find(entry => entry.provinceId === 1);
       expect(mission?.figureId).toBe(strongId);
@@ -1171,6 +1519,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const mission = Living.getMissions().find(entry => entry.kind === "pacify");
       expect(mission?.burgId).toBe(1);
       expect(mission?.figureId).toBe(heroId);
+      expect(mission?.tags).toEqual(["social", "order"]);
     });
 
     it("resolves a dispatched mission and pays its gold, renown and xp", () => {
@@ -1181,22 +1530,22 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       pack.history.figures ??= [];
       const figures = pack.history.figures;
       const heroId = figures.length;
-      figures.push(makeGuildFigure(heroId, { skills: { m: 30, w: 0, s: 0, c: 0 } }));
+      figures.push(makeGuildFigure(heroId, { skills: { m: 30, w: 0, s: 0, c: 30 } }));
       guild.roster = [heroId];
 
-      Living.spawnTrouble(1, "monsters", "burg", 1);
+      Living.spawnLair(1, "bandit_camp", 1, 1);
       expect(Living.dispatchHero(heroId, 1)).toBe(true);
       const mission = Living.getMissions().find(entry => entry.figureId === heroId)!;
-      expect(mission.required).toBe(1);
+      expect(mission.required).toBe(2);
 
       const goldBefore = guild.gold;
-      Living.tick(1);
+      Living.tick(2);
 
       expect(Living.getMissions().some(entry => entry.figureId === heroId)).toBe(false);
-      expect(living.provinces[1].trouble).toBeNull();
-      expect(guild.gold).toBe(goldBefore + mission.rewardGold + 2);
+      expect(living.provinces[1].lair).toBeNull();
+      expect(guild.gold).toBe(goldBefore + mission.rewardGold + 4);
       expect(guild.renown).toBe(mission.rewardRenown);
-      expect(figures[heroId]!.xp).toBe(25);
+      expect(figures[heroId]!.xp).toBe(50);
     });
 
     it("retires a veteran and mints a protege carrying their best skill", () => {
@@ -1288,7 +1637,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       ];
       pack.markers = [];
       addMarker({ i: 0, type: "ruins", cell: 1, name: "Old Vhaelen", chronicle: true });
-      const heroId = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
+      const heroId = addGuildHero({ m: 0, w: 30, s: 0, c: 30 });
       guild.roster = [heroId];
 
       expect(Living.dispatchHeroToMarker(heroId, 0)).toBe(true);
@@ -1296,7 +1645,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(mission.rewardRelic).toBe(true);
 
       const goldBefore = guild.gold;
-      Living.tick(1);
+      Living.tick(2);
 
       expect(guild.excavatedMarkers).toContain(0);
       expect(guild.relics).toHaveLength(1);
@@ -1305,7 +1654,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(relic.originRealmId).toBe(0);
       expect(["Vhaelen", "Old Vhaelen"].some(part => relic.name.includes(part))).toBe(true);
       expect(relic.lore.length).toBeGreaterThan(0);
-      expect(guild.gold).toBe(goldBefore + 2 + mission.rewardGold);
+      expect(guild.gold).toBe(goldBefore + 4 + mission.rewardGold);
       expect(pack.history.figures?.find(figure => figure.i === heroId)?.xp).toBe(30);
     });
 
@@ -1316,13 +1665,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       guild.doctrine = "manual";
       pack.markers = [];
       addMarker({ i: 0, type: "ruins", cell: 1, name: "Old Stones" });
-      const heroId = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
+      const heroId = addGuildHero({ m: 0, w: 30, s: 0, c: 30 });
       guild.roster = [heroId];
 
       expect(Living.dispatchBestHeroToMarker(0)).toBe(true);
       const mission = Living.getMissions()[0]!;
 
-      Living.tick(1);
+      Living.tick(2);
 
       expect(guild.excavatedMarkers).toContain(0);
       if (mission.rewardRelic) {
@@ -1331,7 +1680,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(guild.relics).toHaveLength(0);
         expect(mission.rewardGold).toBeGreaterThanOrEqual(40);
         expect(mission.rewardGold).toBeLessThanOrEqual(80);
-        expect(guild.gold).toBe(2 + mission.rewardGold);
+        expect(guild.gold).toBe(4 + mission.rewardGold);
       }
     });
 
@@ -1437,11 +1786,11 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(ruinMarker?.cell).toBe(1);
       expect(living.states[1].capacity.s.gen).toBe(baseS); // lease bonus gone
 
-      const heroId = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
+      const heroId = addGuildHero({ m: 0, w: 30, s: 0, c: 30 });
       guild.roster = [heroId];
       expect(Living.dispatchBestHeroToMarker(ruinMarkerId)).toBe(true);
 
-      Living.tick(1);
+      Living.tick(2);
 
       expect(relic.holder).toEqual({ kind: "figure", id: heroId });
       // the chronicle ruin also yields its own fresh relic
@@ -1667,10 +2016,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       Living.tick(1);
       expect(Living.getEschaton()).toBe(1);
 
-      guild.roster = [addGuildHero({ m: 30, w: 0, s: 0, c: 0 })];
+      guild.roster = [addGuildHero({ m: 30, w: 0, s: 0, c: 30 })];
       expect(Living.dispatchBestHero(1)).toBe(true);
 
-      Living.tick(1);
+      Living.tick(2);
 
       expect(living.provinces[1].lair).toBeNull();
       expect(Living.getEschaton()).toBe(0);

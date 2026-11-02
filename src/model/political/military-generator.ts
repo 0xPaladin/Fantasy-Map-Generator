@@ -125,8 +125,10 @@ export function reconcileRegimentBlocks(regiment: Regiment, unitTypes: Record<st
   syncRegimentTotals(regiment, unitTypes);
 }
 
+type RosterUnitCategory = "melee" | "ranged" | "mounted" | "machinery" | "naval" | "spellcaster" | "monster";
+
 function selectRosterUnitForCategory(
-  category: "melee" | "ranged" | "mounted" | "machinery" | "naval" | "spellcaster" | "monster",
+  category: RosterUnitCategory,
   roster: ResolvedRoster | undefined,
   isUrban: boolean,
   isCapital: boolean,
@@ -476,7 +478,13 @@ class MilitaryModule {
           n = 1;
         }
 
-        const rosterUnitName = selectRosterUnitForCategory(unit.type as any, draft.roster, false, false, 0);
+        const rosterUnitName = selectRosterUnitForCategory(
+          unit.type as RosterUnitCategory,
+          draft.roster,
+          false,
+          false,
+          0
+        );
 
         draft.platoons.push({
           cell: i,
@@ -538,7 +546,7 @@ class MilitaryModule {
         }
 
         const rosterUnitName = selectRosterUnitForCategory(
-          unit.type as any,
+          unit.type as RosterUnitCategory,
           draft.roster,
           true,
           Boolean(b.capital),

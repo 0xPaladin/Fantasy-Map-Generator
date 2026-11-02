@@ -1,7 +1,7 @@
 // The map's chronicle: dated events, fallen realms and eras. See docs/plans/history-generation.md
 import type { Alignment } from "@/data/culture-traits";
 import type { Emblem } from "@/types/emblems";
-import type { LivingWorldState } from "@/types/living";
+import type { DisciplineId, HeroArchetypeId, LivingWorldState } from "@/types/living";
 
 export type HistRefKind = "state" | "realm" | "burg" | "culture" | "religion" | "figure" | "polity";
 
@@ -88,6 +88,15 @@ export interface FigureSkills {
   c: number;
 }
 
+/** deterministic level growth and the two player-chosen paths */
+export interface HeroProgression {
+  appliedLevel?: number;
+  pendingChoices?: number;
+  picks?: string[];
+  /** tick the pending choice first appeared, for the two-season auto-pick */
+  choiceSinceTick?: number;
+}
+
 export interface HistoricalFigure {
   i: number;
   name: string;
@@ -107,6 +116,10 @@ export interface HistoricalFigure {
   xp?: number;
   /** pool ratings 0..5, raised on level-up and skill spend (unified-figures) */
   skills?: FigureSkills;
+  /** hero identity; absent on old maps and inferred lazily */
+  archetype?: HeroArchetypeId;
+  disciplines?: DisciplineId[];
+  progression?: HeroProgression;
 }
 
 /** a polity's stable identity: one lineage across epochs, even as its form and borders change */

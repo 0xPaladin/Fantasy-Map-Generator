@@ -1,15 +1,15 @@
 ﻿// Enter and leave the Astral view: swap the layer profile and, when available, the chart style
-import { Layers, type LayersState } from "@/renderers/layers";
-import { is3dView, isAstralView, setAstralView } from "@/renderers/view-mode";
-import { Options } from "@/model/options/options-model";
-import { applyPerformanceSettings, setHaloOwnedByBorders } from "@/renderers/performance";
-import { tip } from "@/ui/tooltips";
-import { invokeActiveZooming } from "@/ui/map/zoom";
 import { Controllers } from "@/controllers";
 import { ASTRAL_DEFAULT_PRESET, ASTRAL_PRESETS } from "@/data/astral-layers";
+import { Options } from "@/model/options/options-model";
 import { groupsOf } from "@/model/physical/astral-naming";
+import { Layers, type LayersState } from "@/renderers/layers";
+import { applyPerformanceSettings, setHaloOwnedByBorders } from "@/renderers/performance";
+import { is3dView, isAstralView, setAstralView } from "@/renderers/view-mode";
 import { StylePresetsService } from "@/services/style-presets";
 import type { StylesData } from "@/types/styles";
+import { invokeActiveZooming } from "@/ui/map/zoom";
+import { tip } from "@/ui/tooltips";
 import { findEl } from "@/utils";
 
 const PROFILE_KEY = "fmg-astral-previous-profile";

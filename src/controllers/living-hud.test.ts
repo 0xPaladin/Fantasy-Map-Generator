@@ -51,8 +51,31 @@ const mocks = vi.hoisted(() => {
     }),
     recruitCost: vi.fn(() => 80),
     recruitCandidate: vi.fn(() => true),
+    chooseHeroPath: vi.fn(() => true),
+    getHeroState: vi.fn((): unknown => undefined),
+    setHeroDoctrine: vi.fn(() => true),
+    setHeroPush: vi.fn(() => true),
     dispatchHero: vi.fn(() => true),
     dispatchBestHero: vi.fn(() => true),
+    dispatchParty: vi.fn(() => true),
+    getPartyPreview: vi.fn((): unknown => null),
+    guildOperationCost: vi.fn(
+      (kind: string) =>
+        (
+          ({
+            pacify_mediate: 40,
+            rush_charter: 50,
+            incite_uprising: 75,
+            assassinate_ruler: 100,
+            war_broker: 80
+          }) as Record<string, number>
+        )[kind] ?? 0
+    ),
+    guildPacifyMediate: vi.fn(() => true),
+    guildRushAssetCharter: vi.fn(() => true),
+    guildInciteUprising: vi.fn(() => true),
+    guildAssassinateRuler: vi.fn(() => true),
+    guildBrokerWar: vi.fn(() => true),
     dispatchHeroToMarker: vi.fn(() => true),
     dispatchBestHeroToMarker: vi.fn(() => true),
     equipRelic: vi.fn(() => true),
@@ -277,6 +300,8 @@ beforeEach(() => {
     popups: []
   });
   mocks.living.claimPopup.mockReturnValue(null);
+  mocks.living.getHeroState.mockReturnValue(undefined);
+  mocks.living.getPartyPreview.mockReturnValue(null);
   mocks.living.getState.mockReturnValue(mocks.state);
 });
 
@@ -766,14 +791,30 @@ describe("LivingHud", () => {
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 3, kind: "lair", text: "Forest Hideout active.", cell: 2, burgId: 2 }
     ];
+    mocks.living.getPartyPreview.mockReturnValue({
+      party: [1, 2],
+      phases: [
+        { id: "lair_approach", label: "Approach", pool: "c", tags: ["ruin"], dc: 19, required: true },
+        { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 20, required: true }
+      ],
+      members: [
+        { figureId: 1, name: "Bran Quickfoot", score: 4, bestPhaseId: "lair_breach" },
+        { figureId: 2, name: "Sable Vane", score: 2, bestPhaseId: "lair_approach" }
+      ]
+    });
     LivingHud.open();
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.querySelector<HTMLElement>("[data-god]")).toBeNull();
+    expect(inspector?.textContent).toContain("Expedition Party");
+    expect(inspector?.textContent).toContain("Bran Quickfoot");
+    expect(inspector?.textContent).toContain("Approach C");
     inspector?.querySelector<HTMLElement>('[data-guild="dispatch"]')?.click();
     expect(Living.dispatchBestHero).toHaveBeenCalledWith(1);
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("guild hero");
+    inspector?.querySelector<HTMLElement>('[data-guild="dispatch-leader"][data-figure="1"]')?.click();
+    expect(Living.dispatchParty).toHaveBeenCalledWith(1, 1);
   });
 
   it("inspects a hero and retires a veteran from the figure card", () => {
@@ -786,9 +827,136 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Bran Quickfoot");
     expect(inspector?.textContent).toContain("Level 2");
     expect(inspector?.textContent).toContain("Guild Hero");
+    expect(inspector?.textContent).toContain("Ranger");
+    expect(inspector?.textContent).toContain("Scout");
+    expect(inspector?.textContent).toContain("Survival");
+    expect(inspector?.textContent).toContain("Archery");
+    expect(inspector?.textContent).toContain("M d10 · W d6 · S d4 · C d8");
 
     inspector?.querySelector<HTMLElement>('[data-guild="retire"]')?.click();
     expect(Living.retireHero).toHaveBeenCalledWith(1);
+  });
+
+  it("offers level 3 path choices on the hero card", () => {
+    const hero = pack.history.figures!.find(figure => figure.i === 1)!;
+    Object.assign(hero, {
+      archetype: "warden",
+      disciplines: ["melee", "tactics", "ride"],
+      xp: 140,
+      skills: { m: 2, w: 0, s: 1, c: 0 },
+      progression: { appliedLevel: 3, pendingChoices: 1, picks: [] }
+    });
+    Object.assign(mocks.state.guild, { roster: [1] });
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Choose a path (level 3)");
+    expect(inspector?.textContent).toContain("Shieldwall");
+    expect(inspector?.textContent).toContain("Standard-Bearer");
+
+    inspector?.querySelector<HTMLElement>('[data-guild="choose-path"][data-path="warden_shieldwall"]')?.click();
+    expect(Living.chooseHeroPath).toHaveBeenCalledWith(1, "warden_shieldwall");
+  });
+
+  it("shows vitals, temperament, doctrine and injury status on the hero card", () => {
+    mocks.living.getHeroState.mockReturnValue({
+      resolve: 7,
+      stamina: 4,
+      maxResolve: 12,
+      maxStamina: 8,
+      doctrine: "hunt_lairs",
+      temperament: { boldness: 0.7, caution: 0.5, teamplay: 0.85, greed: 0.2 },
+      injuries: [{ kind: "wounded", untilTick: 5 }],
+      push: false
+    });
+    Object.assign(mocks.state.guild, { roster: [1] });
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Resolve");
+    expect(inspector?.textContent).toContain("7/12");
+    expect(inspector?.textContent).toContain("Stamina");
+    expect(inspector?.textContent).toContain("4/8");
+    expect(inspector?.textContent).toContain("Bold");
+    expect(inspector?.textContent).toContain("Loyal");
+    expect(inspector?.textContent).toContain("Wounded");
+    expect(inspector?.textContent).toContain("Doctrine: Lairs");
+    expect(inspector?.textContent).toContain("Push: Off");
+
+    inspector?.querySelector<HTMLElement>('[data-guild="hero-doctrine"][data-doctrine="manual"]')?.click();
+    expect(Living.setHeroDoctrine).toHaveBeenCalledWith(1, "manual");
+    inspector?.querySelector<HTMLElement>('[data-guild="toggle-push"]')?.click();
+    expect(Living.setHeroPush).toHaveBeenCalledWith(1, true);
+  });
+
+  it("offers paid guild operations on burg and state cards", () => {
+    Object.assign(mocks.state.guild, { sandboxGodMode: false });
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 1, kind: "build", text: "Oakford builds.", cell: 2, burgId: 2 },
+      { tick: 1, year: 1000, season: 1, kind: "war", text: "Aeloria stirs.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('button.livingNewsItem[data-burg="2"]')?.click();
+    let inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Pacify & Mediate");
+    expect(inspector?.textContent).toContain("Rush Charter");
+    expect(inspector?.textContent).toContain("Incite Uprising");
+
+    inspector?.querySelector<HTMLElement>('[data-guild="op-pacify"]')?.click();
+    expect(Living.guildPacifyMediate).toHaveBeenCalledWith(2);
+    inspector?.querySelector<HTMLElement>('[data-guild="op-charter"]')?.click();
+    expect(Living.guildRushAssetCharter).toHaveBeenCalledWith(2);
+    inspector?.querySelector<HTMLElement>('[data-guild="op-incite"]')?.click();
+    expect(Living.guildInciteUprising).toHaveBeenCalledWith(2);
+
+    document.querySelector<HTMLElement>('button.livingNewsItem[data-state="1"]:not([data-burg])')?.click();
+    inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("Assassinate Ruler");
+    expect(inspector?.textContent).toContain("War Broker");
+    inspector?.querySelector<HTMLElement>('[data-guild="op-assassinate"]')?.click();
+    expect(Living.guildAssassinateRuler).toHaveBeenCalledWith(1);
+    inspector?.querySelector<HTMLElement>('[data-guild="op-broker"]')?.click();
+    expect(Living.guildBrokerWar).toHaveBeenCalledWith(1);
+  });
+
+  it("shows expedition phase progress and results on the hero card", () => {
+    Object.assign(mocks.state.guild, {
+      roster: [1],
+      missions: [
+        {
+          id: 4,
+          kind: "lair",
+          figureId: 1,
+          targetCell: 1,
+          pool: "m",
+          dc: 15,
+          progress: 1,
+          required: 2,
+          rewardGold: 10,
+          rewardRenown: 2,
+          party: [1, 2],
+          tags: ["lair", "combat"],
+          phases: [
+            { id: "lair_approach", label: "Approach", pool: "c", tags: ["lair"], dc: 14, required: true },
+            { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 15, required: true }
+          ],
+          phaseResults: [{ phaseId: "lair_approach", heroId: 1, roll: 12, total: 18, success: true }]
+        }
+      ]
+    });
+    LivingHud.open();
+
+    document.querySelector<HTMLElement>('#livingHudGuild [data-guild="inspect"][data-figure="1"]')?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    expect(inspector?.textContent).toContain("On expedition: Phase 2/2");
+    expect(inspector?.textContent).toContain("Approach C");
+    expect(inspector?.textContent).toContain("Breach M");
   });
 
   it("recruits a tavern candidate from the figure card", () => {

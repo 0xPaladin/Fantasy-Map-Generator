@@ -19,9 +19,10 @@ import {
   type UnitType
 } from "../../engine/common/content";
 import { maxMinorSettlementsForCells } from "../../engine/compiler/index";
+import type { Stance } from "../../engine/game/state";
 import { regimentToUnits } from "../../engine/game/units";
 import { currentSession, editContent, flushMirror } from "../../store/session";
-import { escapeHtml, type FmgBurg, fmg } from "../fmg";
+import { escapeHtml, type FmgBurg, type FmgProvince, fmg } from "../fmg";
 import { clearErrors, openTwDialog, showErrors } from "./dialog";
 import { getActiveStates } from "./editors";
 import { closeDialog, toasts } from "./shared";
@@ -40,7 +41,7 @@ interface WorkingArmy {
   name: string;
   cell: number;
   fleet: boolean;
-  stance: string;
+  stance: Stance;
   units: WorkingUnit[];
 }
 
@@ -304,9 +305,11 @@ export function openStateForcesDialog(): void {
     }
   } else {
     const f = fmg();
-    const rawProvinces = (f?.pack?.provinces ?? []).filter((p: any) => Boolean(p) && typeof p === "object" && p.i > 0);
+    const rawProvinces = (f?.pack?.provinces ?? []).filter(
+      (p): p is FmgProvince => Boolean(p) && typeof p === "object" && p.i > 0
+    );
     const rawBurgs = (f?.pack?.burgs ?? []).filter(
-      (b: any): b is FmgBurg => Boolean(b) && typeof b === "object" && b.i > 0 && !b.removed
+      (b): b is FmgBurg => Boolean(b) && typeof b === "object" && b.i > 0 && !b.removed
     );
     for (const p of rawProvinces) {
       workingRegions.set(p.i, {
@@ -342,7 +345,7 @@ export function openStateForcesDialog(): void {
 
     const rankBurg = (a: FmgBurg, b: FmgBurg): number =>
       (b.population ?? 0) - (a.population ?? 0) ||
-      (b.walls ?? 0) + ((b as any).citadel ?? 0) - ((a.walls ?? 0) + ((a as any).citadel ?? 0)) ||
+      (b.walls ?? 0) + (b.citadel ?? 0) - ((a.walls ?? 0) + (a.citadel ?? 0)) ||
       (b.port ?? 0) - (a.port ?? 0) ||
       a.i - b.i;
 
@@ -371,7 +374,7 @@ export function openStateForcesDialog(): void {
           name: b.name || `Burg ${b.i}`,
           capital: b === capitalBurg,
           port: Boolean(b.port),
-          walls: typeof (b as any).walls === "number" ? (b as any).walls : 0,
+          walls: typeof b.walls === "number" ? b.walls : 0,
           population: typeof b.population === "number" ? b.population : 0
         });
       }
@@ -417,7 +420,7 @@ export function openStateForcesDialog(): void {
             name: a.name,
             cell: a.cell,
             fleet: a.fleet,
-            stance: a.stance as any,
+            stance: a.stance,
             movementLeft: campaign.armies[id]?.movementLeft ?? 0,
             units: a.units.map(u => ({ type: u.type, count: u.count, exp: u.exp }))
           };
@@ -458,7 +461,7 @@ export function openStateForcesDialog(): void {
           if (b?.i) {
             const ws = workingSettlements.get(b.i);
             if (ws) {
-              (b as any).walls = ws.walls;
+              b.walls = ws.walls;
               b.population = ws.population;
             }
           }
@@ -509,7 +512,7 @@ export function openStateForcesDialog(): void {
         const nameInput = dialogEl.querySelector<HTMLInputElement>("#tw-army-name-input");
         if (nameInput) army.name = nameInput.value.trim() || army.name;
         const stanceSelect = dialogEl.querySelector<HTMLSelectElement>("#tw-army-stance-select");
-        if (stanceSelect) army.stance = stanceSelect.value;
+        if (stanceSelect) army.stance = stanceSelect.value as Stance;
 
         dialogEl.querySelectorAll<HTMLInputElement>("[data-tw-unit-count]").forEach(input => {
           const idx = Number(input.dataset.twUnitCount);
@@ -1052,12 +1055,13 @@ export function openStateForcesDialog(): void {
 
         const armiesForState = [...workingArmies.values()].filter(a => a.stateId === sId);
         const capitalSett = [...workingSettlements.values()].find(s => s.stateId === sId && s.capital);
+        const capitalCell = capitalSett ? fmg()?.pack?.burgs?.[capitalSett.id]?.cell : undefined;
 
         workingArmies.set(newId, {
           id: newId,
           stateId: sId,
           name: `${stateObj.name} Army ${armiesForState.length + 1}`,
-          cell: capitalSett ? ((capitalSett as any).cell ?? 100) : 100,
+          cell: capitalCell ?? 100,
           fleet: false,
           stance: "normal",
           units: [{ type: defaultUnitId, count: initialCount, exp: 0 }]

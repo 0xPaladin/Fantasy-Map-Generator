@@ -22,6 +22,103 @@ export type TroublePool = "m" | "w" | "s";
 export type TroubleSaveKind = "disorder" | "uprising" | "poverty" | "ignorance" | "despair" | "corruption";
 export type TroubleUnitRole = "guardsmen" | "military" | "merchant" | "sage" | "prophet" | "magistrate";
 
+export type HeroPool = "m" | "w" | "s" | "c";
+export type HeroDoctrine = "hunt_lairs" | "hunt_troubles" | "excavate" | "support" | "patrol" | "manual";
+
+export interface HeroTemperament {
+  boldness: number;
+  caution: number;
+  teamplay: number;
+  greed: number;
+}
+
+export type HeroInjuryKind = "wounded" | "shaken" | "lost";
+
+export interface HeroInjury {
+  kind: HeroInjuryKind;
+  /** absent for `lost`, which lasts until a healer treats it */
+  untilTick?: number;
+}
+
+/** Per-hero guild state; kept out of the chronicle figure so old maps stay additive. */
+export interface HeroGuildState {
+  resolve: number;
+  stamina: number;
+  maxResolve: number;
+  maxStamina: number;
+  doctrine: HeroDoctrine;
+  temperament: HeroTemperament;
+  injuries: HeroInjury[];
+  downUntilTick?: number;
+  /** manual Push toggle: spend Stamina even when the auto policy stays reserved */
+  push?: boolean;
+}
+
+export type HeroArchetypeId =
+  | "warden"
+  | "ranger"
+  | "scholar"
+  | "priest"
+  | "shadow"
+  | "factor"
+  | "envoy"
+  | "alchemist"
+  | "warlock"
+  | "freeblade";
+
+export type DisciplineId =
+  | "court_etiquette"
+  | "persuasion"
+  | "planar_lore"
+  | "athletics"
+  | "barter"
+  | "tongues"
+  | "artifice"
+  | "archery"
+  | "siegecraft"
+  | "investigate"
+  | "healing"
+  | "melee"
+  | "brawling"
+  | "ride"
+  | "scout"
+  | "nature_lore"
+  | "alchemy"
+  | "perception"
+  | "stealth"
+  | "survival"
+  | "tactics"
+  | "arcana"
+  | "arcana_evocation"
+  | "arcana_nature"
+  | "arcana_holy"
+  | "arcana_abjuration"
+  | "arcana_divination"
+  | "arcana_necromancy"
+  | "arcana_illusion"
+  | "arcana_transmutation"
+  | "arcana_enchantment"
+  | "arcana_shadow";
+
+export type MissionTag =
+  | "combat"
+  | "lair"
+  | "ruin"
+  | "wild"
+  | "travel"
+  | "arcane"
+  | "curse"
+  | "plague"
+  | "undead"
+  | "social"
+  | "petition"
+  | "intrigue"
+  | "trap"
+  | "order"
+  | "trouble"
+  | `save:${TroubleSaveKind}`
+  | `role:${TroubleUnitRole}`;
+
 export interface ProvinceTrouble {
   id: string;
   name: string;
@@ -176,6 +273,26 @@ export interface LivingPopup {
 
 export type GuildMissionKind = "trouble" | "lair" | "excavate" | "pacify";
 
+export interface MissionPhase {
+  id: string;
+  label: string;
+  pool: HeroPool;
+  tags: MissionTag[];
+  dc: number;
+  required: boolean;
+}
+
+export interface MissionPhaseResult {
+  phaseId: string;
+  heroId: number;
+  roll: number;
+  total: number;
+  success: boolean;
+  untrained?: boolean;
+}
+
+export type MissionOutcome = "full" | "partial" | "failed";
+
 export interface ActiveGuildMission {
   id: number;
   kind: GuildMissionKind;
@@ -190,6 +307,17 @@ export interface ActiveGuildMission {
   required: number;
   rewardGold: number;
   rewardRenown: number;
+  /** target tags used for discipline and aspect fit */
+  tags?: MissionTag[];
+  /** leader first; two heroes below tier 3, up to three from tier 3 */
+  party?: number[];
+  phases?: MissionPhase[];
+  phaseResults?: MissionPhaseResult[];
+  /** per-hero Stamina committed when that hero first takes a phase */
+  staminaByHero?: Record<number, number>;
+  outcome?: MissionOutcome;
+  /** Stamina spent across the party */
+  staminaSpent?: number;
   /** excavate missions: a named HistoricalRelic is minted on success */
   rewardRelic?: boolean;
 }
@@ -237,6 +365,8 @@ export interface GuildState {
   candidates: number[];
   /** permanent +1 base skill per prestige age, inherited by hero scions */
   legacyTier?: number;
+  /** figureId -> vitals, temperament, injuries and per-hero doctrine */
+  heroes?: Record<number, HeroGuildState>;
   missions: ActiveGuildMission[];
   /** all discovered relics, whatever their current holder */
   relics: HistoricalRelic[];

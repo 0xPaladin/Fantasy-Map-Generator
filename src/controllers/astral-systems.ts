@@ -1,12 +1,13 @@
 // The Star Systems overview: every burg on the map read as a star system — its class, its
 // people, the installations that make it what it is. Read-only, and the place the Astral
 // mapping is meant to grow into a visual reskin. See docs/astral/README.md
-import { Dialog } from "@/ui/dialog/dialog";
-import { dialogState } from "@/ui/dialog/state";
+
 import { type StarSystem, systemsOf } from "@/model/physical/astral-naming";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
-import { ensureEl, escapeHtml } from "@/utils";
+import { Dialog } from "@/ui/dialog/dialog";
+import { dialogState } from "@/ui/dialog/state";
 import { zoomTo } from "@/ui/map/zoom";
+import { ensureEl, escapeHtml } from "@/utils";
 
 const dialogId = "astralSystems" as const;
 const position = { my: "right top", at: "right-10 top+10", of: "svg", collision: "fit" };

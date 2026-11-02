@@ -3,8 +3,8 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { setViewedEpochStart } from "@/controllers/historical-time";
 import { Icons } from "@/model/icons";
 import type { Marker } from "@/model/story/markers-generator";
-import { setViewportSize, setViewportTransform } from "@/renderers/viewport/viewport";
 import { setAstralView } from "@/renderers/view-mode";
+import { setViewportSize, setViewportTransform } from "@/renderers/viewport/viewport";
 import { ViewportLayers } from "@/renderers/viewport/viewport-renderer";
 
 const mocks = vi.hoisted(() => ({ layerOn: true }));

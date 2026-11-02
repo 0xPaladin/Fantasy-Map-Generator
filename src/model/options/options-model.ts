@@ -156,7 +156,7 @@ class OptionsModel {
   persist(): void {
     clearTimeout(this.saveTimer);
     this.saveTimer = 0;
-// a debounced save can outlive the page environment that scheduled it (tests, workers)
+    // a debounced save can outlive the page environment that scheduled it (tests, workers)
     if (typeof localStorage === "undefined") return;
     const { customIcons, viewOnly, ...map } = options.map; // view-only belongs to the loaded file, not this browser
     const { mode, ...app } = options.app; // an edit mode ends with the session

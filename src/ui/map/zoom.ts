@@ -115,7 +115,7 @@ export function invokeActiveZooming(): void {
   applyZoomFontSize();
   ViewportLayers.renderNow();
 
-if (!options.app.mode && isStateHaloVisible()) {
+  if (!options.app.mode && isStateHaloVisible()) {
     const statesHalo = select("#statesHalo");
     const desired = styles.states.groups.statesHalo.attrs["stroke-width"] ?? 0;
     const haloSize = rn(desired / viewport.scale ** 0.8, 2);
