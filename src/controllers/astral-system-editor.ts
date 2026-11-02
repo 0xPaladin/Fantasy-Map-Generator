@@ -1,6 +1,6 @@
-﻿// The System Editor: a burg read as a star system, edited in the astral vocabulary. Every write goes
+// The System Editor: a burg read as a star system, edited in the astral vocabulary. Every write goes
 // through the Burgs model, so the world stays one world; the spectral class stays a readout derived
-// from population. The generated star/planet readout is a pure calculation opened with the dialog â€”
+// from population. The generated star/planet readout is a pure calculation opened with the dialog —
 // see docs/plans/astral-system-dialog.md and docs/plans/astral-system-details.md
 import { select } from "d3";
 import { Controllers } from "@/controllers";
@@ -10,8 +10,10 @@ import { type Market, Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
 import { peopleOf, setWorldTypeFor, starClassFor, tradeGoodsFor, worldTypeFor } from "@/model/physical/astral-naming";
 import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-system";
+import { starTypeData } from "@/model/physical/astral-system/astrophysics";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
+import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { Layers } from "@/renderers/layers";
@@ -70,7 +72,7 @@ function renderDialog(): void {
             <div>
               <div class="label">Name:</div>
               <input id="systemName" data-tip="Type to rename the system" autocorrect="off" spellcheck="false" style="width: 9em" />
-              <span id="systemNameSpeak" data-tip="Speak the name. You can change voice and language in options" class="speaker">ðŸ”Š</span>
+              <span id="systemNameSpeak" data-tip="Speak the name. You can change voice and language in options" class="speaker">🔊</span>
               <span id="systemNameReRandom" data-tip="Generate random name for the system" class="icon-globe pointer"></span>
               <span id="systemNameReCulture" data-tip="Generate people-specific name for the system" class="icon-book pointer"></span>
             </div>
@@ -110,7 +112,7 @@ function renderDialog(): void {
             </div>
             <div data-tip="Set treasury balance">
               <div class="label"><label for="systemTreasury">Treasury:</label></div>
-              <input id="systemTreasury" type="number" step="0.01" style="width: 9em" /> ðŸŸ¡
+              <input id="systemTreasury" type="number" step="0.01" style="width: 9em" /> 🟡
             </div>
           </div>
         </div>
@@ -125,8 +127,8 @@ function renderDialog(): void {
             <tr style="opacity: 0.75; border-bottom: 1px solid rgba(0, 0, 0, 0.08)">
               <th style="text-align: left">Star</th>
               <th style="text-align: left">Class</th>
-              <th style="text-align: right">Mass (Mâ˜‰)</th>
-              <th style="text-align: right">Lum (Lâ˜‰)</th>
+              <th style="text-align: right">Mass (M☉)</th>
+              <th style="text-align: right">Lum (L☉)</th>
               <th style="text-align: right">Separation (AU)</th>
               <th style="text-align: right">Period (yr)</th>
             </tr>
@@ -142,13 +144,14 @@ function renderDialog(): void {
                 <th style="text-align: left">Planet</th>
                 <th style="text-align: left">Type</th>
                 <th style="text-align: right">Orbit (AU)</th>
-                <th style="text-align: right">Radius (RâŠ•)</th>
+                <th style="text-align: right">Radius (R⊕)</th>
                 <th style="text-align: right">Gravity (g)</th>
                 <th style="text-align: left">Temp</th>
                 <th style="text-align: left">Atmosphere</th>
                 <th style="text-align: right">Water</th>
                 <th style="text-align: left">Habitability</th>
                 <th style="text-align: right">Moons</th>
+                <th style="text-align: right">Map</th>
               </tr>
             </thead>
             <tbody id="systemPlanetsBody"></tbody>
@@ -166,6 +169,7 @@ function renderDialog(): void {
         <button id="systemEditEmblem" data-tip="Edit emblem" class="icon-shield-alt"></button>
         <button id="systemLocate" data-tip="Zoom map and center view in the system" class="icon-target"></button>
         <button id="systemProductionOverview" data-tip="Show production overview for this system" class="icon-chart-bar"></button>
+        <button id="systemView3d" data-tip="Open this system in the 3D orrery view" class="icon-globe"></button>
         <button id="systemRelocate" data-tip="Relocate system. Click on map to move the system" class="icon-map-pin"></button>
         ${noteButton("systemLegend", "this system")}
         <button id="systemLock" class="icon-lock-open" onmouseover="showElementLockTip(event)"></button>
@@ -193,6 +197,8 @@ function renderDialog(): void {
   ensureEl("systemEditEmblem").addEventListener("click", editEmblem);
   ensureEl("systemLocate").addEventListener("click", zoomIntoSystem);
   ensureEl("systemProductionOverview").addEventListener("click", showProductionOverview);
+  ensureEl("systemView3d").addEventListener("click", openSystemOrrery);
+  ensureEl("systemPlanetsBody").addEventListener("click", viewPlanetInFmg);
   ensureEl("systemRelocate").addEventListener("click", toggleRelocateSystem);
   ensureEl("systemLegend").addEventListener("click", editNotes);
   ensureEl("systemLock").addEventListener("click", toggleLock);
@@ -225,8 +231,7 @@ function updateSystemValues(): void {
 
   ensureEl<HTMLInputElement>("systemPopulation").value = String(peopleOf(burg));
   ensureEl<HTMLInputElement>("systemTreasury").value = String(rn(burg.treasury || 0, 2));
-  ensureEl("systemWealth").innerHTML =
-    `ðŸŸ¡ ${rn(burg.population! > 0 ? (burg.product || 0) / burg.population! : 0, 2)}`;
+  ensureEl("systemWealth").innerHTML = `🟡 ${rn(burg.population! > 0 ? (burg.product || 0) / burg.population! : 0, 2)}`;
 
   for (const feature of FEATURES) {
     ensureEl(featureId(feature)).classList.toggle("inactive", !burg[feature]);
@@ -268,7 +273,7 @@ function updateStar(): void {
 }
 
 const CELL_STYLE = "padding: 0.1em 0.9em 0.1em 0";
-const NO_VALUE = "â€”";
+const NO_VALUE = "—";
 const DOT_STYLE =
   "display: inline-block; width: 0.65em; height: 0.65em; margin-right: 0.35em; border-radius: 50%; background:";
 
@@ -294,15 +299,15 @@ function renderSystemDetails(details: SystemDetails): void {
   ensureEl("systemStarsBody").innerHTML = stars;
 
   const totals = [
-    `Total mass ${rn(details.totalMassSolar, 2)} Mâ˜‰`,
+    `Total mass ${rn(details.totalMassSolar, 2)} M☉`,
     `Snow line ${rn(details.snowLineAU, 2)} AU`,
     `${details.planetCount} planet${details.planetCount === 1 ? "" : "s"}`
   ];
   if (details.habitableCandidate) totals.push("Habitable candidate");
-  ensureEl("systemReadoutTotals").textContent = totals.join(" Â· ");
+  ensureEl("systemReadoutTotals").textContent = totals.join(" · ");
 
   const planets = details.planets
-    .map(planet => {
+    .map((planet, index) => {
       const moons = planet.moons.length ? ` data-tip="${escapeHtml(planet.moons.join(", "))}"` : "";
       return `<tr>
         <td style="${CELL_STYLE}">${escapeHtml(planet.name)}</td>
@@ -313,11 +318,18 @@ function renderSystemDetails(details: SystemDetails): void {
         )}</td>
         <td style="${CELL_STYLE}; text-align: right">${rn(planet.radiusEarth, 2)}</td>
         <td style="${CELL_STYLE}; text-align: right">${escapeHtml(planet.gravity)}</td>
-        <td style="${CELL_STYLE}" data-tip="${escapeHtml(planet.temperatureC)} Â°C">${escapeHtml(planet.temperature)}</td>
+        <td style="${CELL_STYLE}" data-tip="${escapeHtml(planet.temperatureC)} °C">${escapeHtml(planet.temperature)}</td>
         <td style="${CELL_STYLE}">${escapeHtml(planet.atmosphere)}</td>
         <td style="${CELL_STYLE}; text-align: right">${rn(planet.water)}%</td>
         <td style="${CELL_STYLE}" data-tip="HI ${planet.hi}">${escapeHtml(planet.habitability)}</td>
         <td style="${CELL_STYLE}; text-align: right"${moons}>${planet.moons.length}</td>
+        <td style="${CELL_STYLE}; text-align: right">
+          <button
+            class="systemPlanetView icon-globe pointer"
+            data-planet="${index}"
+            data-tip="Generate this planet and open its surface in FMG"
+          ></button>
+        </td>
       </tr>`;
     })
     .join("");
@@ -496,6 +508,44 @@ function editEmblem(): void {
 function zoomIntoSystem(): void {
   const burg = pack.burgs[getSelectedId()];
   zoomTo(burg.x, burg.y, 8, 2000);
+}
+
+/** Roll the registry for this burg's system: the same seed and primary the readout shows */
+function ensureSolarSystem(): void {
+  const burgId = getSelectedId();
+  const seed = `${options.map.seed}/astral/system/${burgId}`;
+  if (SolarSystem.seed === seed && SolarSystem.bodies.length) return; // keep materialized snapshots
+  const { class: spectral } = starClassFor(pack.burgs[burgId]);
+  SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false });
+}
+
+function openSystemOrrery(): void {
+  ensureSolarSystem();
+  Dialog.close("astralSystemEditor");
+  void Controllers.View3d.open("viewSystem");
+}
+
+async function viewPlanetInFmg(event: Event): Promise<void> {
+  const button = event.target as HTMLElement;
+  const index = button.dataset?.planet;
+  if (index === undefined) return;
+
+  ensureSolarSystem();
+  const body = SolarSystem.getBody(`planet-${index}`);
+  if (!body?.colonizable) {
+    tip(`${body?.name ?? "This planet"} has no mappable surface`, false, "error");
+    return;
+  }
+
+  Dialog.close("astralSystemEditor");
+  tip(`Generating ${body.name}...`, true);
+  try {
+    await SolarSystem.switchBody(body.id); // the planet's world becomes the active FMG map
+    clearMainTip();
+  } catch (error) {
+    clearMainTip();
+    tip(errorText(error), false, "error");
+  }
 }
 
 function toggleRelocateSystem(): void {

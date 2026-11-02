@@ -121,7 +121,8 @@ function enterStandard(): void {
 async function open(type: string): Promise<void> {
   enterStandard(); // tears down any current 3D view and resets the buttons
   ensureEl("viewStandard").classList.remove("pressed");
-  ensureEl(type).classList.add("pressed");
+  // the system orrery opens from the System Editor dialog and has no view-mode button
+  findEl(type)?.classList.add("pressed");
 
   const canvas = document.createElement("canvas");
   canvas.id = "canvas3d";
