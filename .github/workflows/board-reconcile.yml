@@ -28,7 +28,7 @@ jobs:
     # The board and its field ids belong to this repository's owner. A fork carrying this file
     # would read a different (or no) board and has no PROJECT_TOKEN, so it must not run here.
     if: github.repository == 'Azgaar/Fantasy-Map-Generator'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
