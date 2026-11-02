@@ -4,8 +4,11 @@
 // see docs/plans/astral-system-dialog.md and docs/plans/astral-system-details.md
 import { select } from "d3";
 import { Controllers } from "@/controllers";
+import { ASTRAL_WORLD_TYPE_KEYS, type AstralWorldType } from "@/data/astral-goods";
+import { Goods } from "@/model/economy/goods-generator";
 import { type Market, Markets } from "@/model/economy/markets-generator";
-import { peopleOf, starClassFor } from "@/model/physical/astral-naming";
+import { Production } from "@/model/economy/production-generator";
+import { peopleOf, setWorldTypeFor, starClassFor, tradeGoodsFor, worldTypeFor } from "@/model/physical/astral-naming";
 import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-system";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
@@ -82,6 +85,14 @@ function renderDialog(): void {
             <div data-tip="The star's class, from how many people live in the system">
               <div class="label">Class:</div>
               <span id="systemClass"></span>
+            </div>
+            <div data-tip="System World Type and trade specialization">
+              <div class="label">World:</div>
+              <select id="systemWorldType" style="width: 9em"></select>
+            </div>
+            <div id="systemTradeGoodsLine" data-tip="Primary commodities traded in this system">
+              <div class="label">Trade:</div>
+              <span id="systemTradeGoods"></span>
             </div>
             <div data-tip="The installations that make the system what it is. Click one to toggle">
               <div class="label">Installations:</div>
@@ -169,6 +180,7 @@ function renderDialog(): void {
   ensureEl("systemNameReCulture").addEventListener("click", generateNameCulture);
   ensureEl("systemPeople").addEventListener("change", changePeople);
   ensureEl("systemPopulation").addEventListener("change", changePopulation);
+  ensureEl("systemWorldType").addEventListener("change", changeWorldType);
   ensureEl("systemTreasury").addEventListener("change", changeTreasury);
   ensureEl("astralSystemBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
@@ -219,6 +231,20 @@ function updateSystemValues(): void {
   for (const feature of FEATURES) {
     ensureEl(featureId(feature)).classList.toggle("inactive", !burg[feature]);
   }
+
+  const worldTypeSelect = ensureEl<HTMLSelectElement>("systemWorldType");
+  worldTypeSelect.options.length = 0;
+  const currentWorldType = worldTypeFor(burg);
+  for (const wt of ASTRAL_WORLD_TYPE_KEYS) {
+    worldTypeSelect.options.add(new Option(wt, wt, false, wt === currentWorldType));
+  }
+
+  const [goodAId, goodBId] = tradeGoodsFor(burg);
+  const goodA = Goods.get(goodAId);
+  const goodB = Goods.get(goodBId);
+  const goodAName = goodA ? goodA.name : `#${goodAId}`;
+  const goodBName = goodB ? goodB.name : `#${goodBId}`;
+  ensureEl("systemTradeGoods").innerHTML = `${escapeHtml(goodAName)}, ${escapeHtml(goodBName)}`;
 
   updateStar();
   updateLockIcon();
@@ -323,6 +349,21 @@ function generateNameCulture(): void {
 
 function changePeople(this: HTMLSelectElement): void {
   if (tryEdit(() => Burgs.setCulture(getSelectedId(), +this.value))) updateSystemValues();
+}
+
+function changeWorldType(this: HTMLSelectElement): void {
+  const burgId = getSelectedId();
+  const burg = pack.burgs[burgId];
+  if (!burg) return;
+  const newType = this.value as AstralWorldType;
+  setWorldTypeFor(burg, newType);
+  if (Goods.isAstralCatalogue()) {
+    const [primaryGoodId] = tradeGoodsFor(burg);
+    pack.cells.good[burg.cell] = primaryGoodId;
+    Production.regenerateEconomy();
+    Layers.draw("goods", "markets");
+  }
+  updateSystemValues();
 }
 
 function changePopulation(): void {

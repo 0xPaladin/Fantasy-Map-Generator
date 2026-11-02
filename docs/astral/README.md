@@ -72,6 +72,16 @@ Every reading of a burg — the chart marker, the tooltip, the editor, the gener
 
 The installations become the system's own: a port is a **shipyard**, a citadel a **bastion**, a plaza a **civic core**, a shanty a **drift**, a temple a **shrine**, walls are **shielding**.
 
+### Astral Goods & Trade
+
+The economy and commodities model aligns with the *Stars Without Number: Suns of Gold* interstellar trade rules:
+
+- **System-level resources**: Interstellar commodities are situated and produced at the **star system** level (`burg.cell`), eliminating scattered rural land deposits and empty-space biome harvesting. Empty space cells produce zero goods.
+- **8 World Types**: Every system has one of 8 World Types (`Agricultural`, `Alien`, `Cosmopolitan`, `Decadent`, `Industrial`, `Primitive`, `Savage`, `Tyrannical`), deterministically derived from system traits and spectral class, and customizable in the System Editor via `world-<type>` tags.
+- **1d10 Trade Tables**: Each World Type features a 10-commodity trade table governing local export supply bonuses and import demands. Systems roll twice on their trade table to establish their primary and secondary export specialties.
+- **34 Standard Commodities**: Measured in metric tons (`ton`), spanning raw planetary resources (`Metawheat`, `Common Metal Ingots`, `Rare Alloys`, `Raw Drugs`, `Pretech Junk`) and manufactured technologies (`Fusion Plants`, `Postech Building Materials`, `Medical Supplies`, `Starship Maintenance Parts`, `Immortality Tech`).
+- **On-demand toggle**: The Goods Editor includes an on-demand button to switch between the standard fantasy catalogue and the Astral sci-fi catalogue, recalculating markets and trade lanes without breaking map serialization.
+
 ### The Star Systems overview
 
 _Options_ → _Tools_ → **Star Systems** lists every system on the map with its class, its people and its traits; clicking a row zooms to it. In the browser console, `Astral.systems()` returns the same list as data.
