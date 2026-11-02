@@ -1,9 +1,9 @@
-﻿// The Layers tab buttons shown in Astral view. Standard labels stay in layer-labels.ts
+// The Layers tab buttons shown in Astral view. Standard labels stay in layer-labels.ts
 import type { LayerId } from "@/renderers/layers";
 import type { LayerButton } from "./layer-labels";
 
 export const ASTRAL_LAYER_TOGGLES = new Map<LayerId, LayerButton>([
-  ["coreRim", { label: "Coreâ€“R<u>i</u>m" }],
+  ["coreRim", { label: "Core–R<u>i</u>m" }],
   ["texture", { label: "Sector <u>D</u>ust", shortcut: "KeyD" }],
   ["composition", { label: "<u>C</u>omposition", shortcut: "KeyC" }],
   ["nebulae", { label: "<u>N</u>ebulae", shortcut: "KeyN" }],
@@ -16,6 +16,9 @@ export const ASTRAL_LAYER_TOGGLES = new Map<LayerId, LayerButton>([
   ["borders", { label: "<u>B</u>orders", shortcut: "KeyB" }],
   ["zones", { label: "<u>Z</u>ones", shortcut: "KeyZ" }],
   ["routes", { label: "<u>H</u>yperlanes", shortcut: "KeyH" }],
+  ["goods", { label: "Cargo" }],
+  ["markets", { label: "<u>M</u>arkets", shortcut: "KeyM" }],
+  ["trade", { label: "<u>T</u>rade", shortcut: "KeyT" }],
   ["markers", { label: "<u>A</u>nomalies", shortcut: "KeyA" }],
   ["labels", { label: "<u>L</u>abels", shortcut: "KeyL" }],
   ["coordinates", { label: "Sensor <u>G</u>rid", shortcut: "KeyG" }],

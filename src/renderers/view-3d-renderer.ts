@@ -23,6 +23,10 @@ import {
   generateSatelliteTexture
 } from "./draw-satellite-texture";
 import * as ErosionBake from "./erosion-bake";
+import { SystemRenderer } from "./system-3d-renderer";
+
+const { setActions: setSystemActions } = SystemRenderer;
+
 import { getGroupStyle } from "./labels/label-groups";
 
 export { heightAt, isCached } from "./erosion-bake";
@@ -91,6 +95,15 @@ const context2d = document.createElement("canvas").getContext("2d")!;
 
 // initiate 3d scene
 const create = async (canvas: HTMLCanvasElement, type = "viewMesh") => {
+  if (type === "viewSystem") {
+    setViewMode("system");
+    return SystemRenderer.create(canvas).catch((error: unknown) => {
+      log.error("3D view failed to start:", error); // three needs WebGL 2
+      notify(t("Cannot load 3d library"), "error", 4000);
+      return false;
+    });
+  }
+
   const isGlobe = type === "viewGlobe";
   setViewMode(isGlobe ? "globe" : "mesh"); // the builders below read the mode they are building for
   active = true;
@@ -106,6 +119,7 @@ const create = async (canvas: HTMLCanvasElement, type = "viewMesh") => {
 
 // redraw 3d scene
 const redraw = () => {
+  if (SystemRenderer.isActive()) return SystemRenderer.redraw();
   if (!active) return;
   deleteLabels();
   scene.remove(mesh);
@@ -124,6 +138,12 @@ const update = () => {
 
 // try to clean the memory as much as possible
 const stop = () => {
+  if (SystemRenderer.isActive()) {
+    SystemRenderer.stop();
+    setViewMode("standard");
+    onBuild(false);
+    return;
+  }
   active = false;
   sceneBuild++;
   setViewMode("standard");
@@ -1173,6 +1193,7 @@ export {
   setScale,
   setSun,
   setSunColor,
+  setSystemActions,
   setTimeOfDay,
   stop,
   toggle3dSubdivision,

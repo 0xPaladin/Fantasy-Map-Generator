@@ -160,6 +160,52 @@ const globeWorld = `Hill 1 60-70 22-38 20-80
   Mask 2 0 0 0
   Smooth 3 0 0 0`;
 
+// planetary globe templates for colonized-solar-system bodies; probability 0 keeps them out of
+// standard fantasy rolls, they are picked explicitly by the planetary generator or the user
+const lunarWorld = `Add 32 all 0 0
+  Hill 4-6 20-35 15-85 15-85
+  Crater 2-3 50-65 20-80 20-80
+  Smooth 2 0 0 0
+  Crater 8-12 30-45 15-85 15-85
+  Smooth 3 0 0 0
+  Crater 18-25 15-28 10-90 10-90
+  Add 12 0-19 0 0`;
+
+const martianWorld = `Add 22 all 0 0
+  Hill 6-8 35-55 15-85 45-90
+  Crater 10-15 25-45 15-85 45-90
+  Pit 3-5 20-30 15-85 10-40
+  Smooth 2 0 0 0
+  Hill 2-3 80-95 25-75 35-65
+  Trough 2-3 45-65 25-75 40-60
+  Crater 8-12 15-25 15-85 15-85
+  Mask 2 0 0 0`;
+
+const icyMoon = `Add 38 all 0 0
+  Hill 5-8 15-25 15-85 15-85
+  Smooth 1 0 0 0
+  Trough 10-15 30-45 10-90 10-90
+  Strait 1-2 vertical 0 0
+  Crater 4-6 20-35 20-80 20-80
+  Smooth 3 0 0 0`;
+
+const titanWorld = `Hill 1 55-65 22-38 20-80
+  Hill 1 55-65 62-78 20-80
+  Hill 5-7 20-30 20-80 15-85
+  Range 5-7 25-40 20-80 40-60
+  Crater 5-8 35-50 20-80 10-30
+  Crater 5-8 35-50 20-80 70-90
+  Smooth 2 0 0 0
+  Mask 2 0 0 0
+  Smooth 3 0 0 0`;
+
+const volcanicWorld = `Hill 4-6 60-80 20-80 20-80
+  Range 6-9 55-80 15-85 15-85
+  Crater 8-12 45-65 20-80 20-80
+  Trough 5-8 40-60 15-85 15-85
+  Smooth 2 0 0 0
+  Mask 2 0 0 0`;
+
 type HeightmapTemplate = {
   id: number;
   name: string;
@@ -182,7 +228,12 @@ export const heightmapTemplates: Record<string, HeightmapTemplate> = {
   taklamakan: { id: 11, name: t("Taklamakan"), template: taklamakan, probability: 1 },
   oldWorld: { id: 12, name: t("Old World"), template: oldWorld, probability: 8 },
   fractious: { id: 13, name: t("Fractious"), template: fractious, probability: 3 },
-  globeWorld: { id: 14, name: t("Globe World"), template: globeWorld, probability: 5 }
+  globeWorld: { id: 14, name: t("Globe World"), template: globeWorld, probability: 5 },
+  lunarWorld: { id: 15, name: t("Lunar World"), template: lunarWorld, probability: 0 },
+  martianWorld: { id: 16, name: t("Martian World"), template: martianWorld, probability: 0 },
+  icyMoon: { id: 17, name: t("Icy Moon"), template: icyMoon, probability: 0 },
+  titanWorld: { id: 18, name: t("Hydrocarbon World"), template: titanWorld, probability: 0 },
+  volcanicWorld: { id: 19, name: t("Volcanic World"), template: volcanicWorld, probability: 0 }
 };
 
 // temp legacy compatibility

@@ -189,6 +189,23 @@ export class MarketsModule {
   }
 
   collectRuralProduction(): void {
+    if (Goods.isAstralCatalogue()) {
+      for (const burg of pack.burgs) {
+        if (!burg?.i || burg.removed) continue;
+        const market = this.marketById[burg.market || pack.cells.market[burg.cell]];
+        if (!market) continue;
+
+        const produced = Production.getCellProduction(burg.cell, {});
+        for (const [goodId, amount] of Object.entries(produced)) {
+          const good = Goods.get(+goodId);
+          if (!good) continue;
+          const marketGood = this.getMarketGood(market, good);
+          marketGood.stock = rn(marketGood.stock + amount, 2);
+        }
+      }
+      return;
+    }
+
     const biomeProduction = Goods.getBiomesProduction();
 
     for (const cellId of pack.cells.i) {
@@ -225,7 +242,8 @@ export class MarketsModule {
 
       // First pass: raw goods - price from demand/supply ratio
       for (const good of pack.goods) {
-        if (!good.distribution) continue;
+        const isRaw = Goods.isAstralCatalogue() ? !good.recipes?.length : Boolean(good.distribution);
+        if (!isRaw) continue;
         const marketGood = this.getMarketGood(market, good);
         const consumerDemand = consumerDemandFactors[good.i] || 0;
         const industrialDemand = industrialDemandFactors[good.i] || 0;
@@ -521,7 +539,7 @@ export class MarketsModule {
     }
 
     for (const good of pack.goods) {
-      if (!good.distribution && !good.recipes?.length) continue;
+      if (!Goods.isAstralCatalogue() && !good.distribution && !good.recipes?.length) continue;
 
       const safetyReserves: number[] = [];
       const exporters: { market: Market; reserve: number }[] = [];

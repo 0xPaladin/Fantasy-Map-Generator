@@ -7,6 +7,7 @@ import { LANGUAGE_CODES } from "@/data/languages";
 import { MAX_JITTER, SAMPLINGS } from "@/model/graph/lattice";
 import { Icons } from "@/model/icons";
 import type { LayerId } from "@/renderers/layers";
+import { PLANETARY_ARCHETYPES } from "@/types/planetary";
 import { log } from "@/utils/logger";
 import { count, degrees, hexColor, ids, nonNegative, percent, positive, ratio } from "@/utils/schema-utils";
 
@@ -134,6 +135,10 @@ const geography = z.strictObject({
   mapSize: percent,
   latitude: percent,
   longitude: percent,
+  /** surface archetype of colonized solar-system bodies; absent means terran (standard fantasy generation) */
+  archetype: z.enum(PLANETARY_ARCHETYPES).optional(),
+  /** water coverage in percent the archetype was resolved from; drives terraformed hybrid biomes */
+  hydrographics: z.number().min(0).max(100).optional(),
   coordinates: z.strictObject({
     latT: z.number().min(0).max(180),
     latN: z.number().min(-90).max(90),

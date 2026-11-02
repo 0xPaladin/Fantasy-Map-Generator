@@ -1,6 +1,11 @@
 # Plan — Colonized Solar System: Planetary Templates, Biomes, Multi-Body State & 3D Orrery
 
-Updated: 2026-11-01. Inputs:
+Updated: 2026-11-01. **Status: phases 1–4 shipped** on the astral branch (crater primitive and
+planetary templates, archetypes/climate/exo-biomes, the `SolarSystem` registry with
+`switchBody` and the Sol preset, the 3D orrery opened from the System Editor); phase 5
+(cross-world colonization, shared cultures/states, interplanetary routes, system overview)
+remains open. See [`docs/astral/README.md`](../astral/README.md) → *The colonized solar
+system* for the shipped overview. Inputs:
 [globe-world.md](globe-world.md),
 [astral-system-details.md](astral-system-details.md),
 [3d-view.md](../domain/3d-view.md),
@@ -374,10 +379,15 @@ When materializing or colonizing a secondary body (`bodyId !== homeworldId`):
 
 ## 8. Implementation Order & Shippable Slices
 
-| Slice | Scope | Key Files | Deliverable |
-| :---: | :--- | :--- | :--- |
-| **Phase 1** | `Crater` tool + Seam blending + 5 Planetary Heightmap Templates | `heightmap-generator.ts`, `heightmap-templates.ts`, `heightmap-editor.ts` | Generate Lunar, Martian, Icy Moon, Titan, and Volcanic globes right in the existing app & Globe view. |
-| **Phase 2** | Planetary Archetypes + Climate Sync + Exo-Biomes (`13..27`) + Atmosphere-gated rivers | `biomes-generator.ts`, `planetary-profile.ts`, `river-generator.ts` | Authentic planetary colors, biomes, habitability scoring, and 100% pure `.map` save/load compatibility. |
-| **Phase 3** | `SolarSystem` model + `switchBody(bodyId)` + Sol/Procedural system initialization | `src/model/system/solar-system.ts`, `sol-system-preset.ts` | Multi-world state management and instant body switching from `FMG.SolarSystem` and UI. |
-| **Phase 4** | 3D Solar System Orrery (`System` button in `#viewMode`) + Body Inspector | `view-mode.ts`, `view-3d.ts`, `system-3d-renderer.ts` | Interactive Three.js solar system view with live globe textures, orbit rings, and click-to-enter world. |
-| **Phase 5** | Cross-world shared `Cultures`/`States`, Spaceport colonization & Interplanetary routes | `colonization-generator.ts`, `system-overview.ts` | Multi-planet empires, colonial cultural drift, 3D transfer arcs, and System Overview table. |
+Shipped on the astral branch: phases 1–4, with one integration change — the System view is not a
+view-mode button; it opens from the System Editor dialog (footer orrery button, per-planet Map
+buttons), which rolls the registry from the readout's own seed (`${map
+seed}/astral/system/${burg id}` + forced primary) so the table and the worlds agree one to one.
+
+| Slice | Status | Scope | Key Files | Deliverable |
+| :---: | :---: | :--- | :--- | :--- |
+| **Phase 1** | ✅ Shipped | `Crater` tool + Seam blending + 5 Planetary Heightmap Templates | `heightmap-generator.ts`, `heightmap-templates.ts`, `heightmap-editor.ts` | Generate Lunar, Martian, Icy Moon, Titan, and Volcanic globes right in the existing app & Globe view. |
+| **Phase 2** | ✅ Shipped | Planetary Archetypes + Climate Sync + Exo-Biomes (`13..27`) + Atmosphere-gated rivers | `biomes-generator.ts`, `planetary-profile.ts`, `river-generator.ts` | Authentic planetary colors, biomes, habitability scoring, and 100% pure `.map` save/load compatibility. |
+| **Phase 3** | ✅ Shipped | `SolarSystem` model + `switchBody(bodyId)` + Sol/Procedural system initialization | `src/model/system/solar-system.ts`, `sol-system-preset.ts` | Multi-world state management and instant body switching from `FMG.SolarSystem` and UI. |
+| **Phase 4** | ✅ Shipped | 3D Solar System Orrery (System view) + Body Inspector | `view-mode.ts`, `view-3d.ts`, `system-3d-renderer.ts` | Interactive Three.js solar system view with live globe textures, orbit rings, and click-to-enter world. Opened from the System Editor dialog. |
+| **Phase 5** | ⬚ Open | Cross-world shared `Cultures`/`States`, Spaceport colonization & Interplanetary routes | `colonization-generator.ts`, `system-overview.ts` | Multi-planet empires, colonial cultural drift, 3D transfer arcs, and System Overview table. |

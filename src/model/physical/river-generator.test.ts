@@ -280,3 +280,41 @@ describe("locked rivers", () => {
     expect(() => Rivers.setLocked(9, true)).toThrow();
   });
 });
+
+describe("RiverModule planetary gate", () => {
+  beforeEach(async () => {
+    const { Options } = await import("@/model/options/options-model");
+    globalThis.options = Options.getDefaultOptions();
+    options.map.seed = "river-gate";
+    globalThis.pack = {
+      cells: {
+        i: [0, 1, 2, 3],
+        h: [30, 40, 40, 10],
+        c: [[1], [0, 2], [1, 3], [2]],
+        f: new Uint16Array(4),
+        g: [0, 1, 2, 3],
+        fl: new Uint16Array(4),
+        r: new Uint16Array(4),
+        conf: new Uint8Array(4)
+      },
+      features: [],
+      rivers: [{ i: 1, cells: [1, 2] }]
+    } as any;
+    await import("./river-generator");
+  });
+
+  it("drops river generation on airless, frozen and volcanic worlds", () => {
+    for (const archetype of ["lunar", "icy_moon", "volcanic"] as const) {
+      options.map.geography.archetype = archetype;
+      Rivers.generate();
+      expect(pack.rivers).toEqual([]);
+    }
+  });
+
+  it("drops river generation when precipitation is zero", () => {
+    options.map.geography.archetype = undefined;
+    options.map.climate.precipitation = 0;
+    Rivers.generate();
+    expect(pack.rivers).toEqual([]);
+  });
+});

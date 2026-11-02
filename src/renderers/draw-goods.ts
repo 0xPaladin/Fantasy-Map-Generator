@@ -86,7 +86,11 @@ export async function drawGoods(): Promise<void> {
 
 function buildScene(): void {
   const displayed = new Set(pack.goods.filter(good => good.visible).map(good => good.i));
-  buildCellProduction(displayed);
+  if (!Goods.isAstralCatalogue?.()) {
+    buildCellProduction(displayed);
+  } else {
+    cellProduction = [];
+  }
   buildResourceIcons(displayed);
   buildBurgPlates(displayed);
   sourcePack = pack;
@@ -161,13 +165,18 @@ function buildResourceIcons(displayedGoods: Set<number>): void {
   resourceIcons = [];
   if (!displayedGoods.size || !pack.cells.good) return;
 
+  const isAstral = Boolean(Goods.isAstralCatalogue?.());
+
   for (const cellId of pack.cells.i) {
     const goodId = pack.cells.good[cellId];
     if (!goodId || !displayedGoods.has(goodId)) continue;
     const good = Goods.get(goodId);
     if (!good) continue;
 
-    const [x, y] = pack.cells.p[cellId];
+    const burgId = pack.cells.burg ? pack.cells.burg[cellId] : 0;
+    const [x, y] =
+      isAstral && burgId && pack.burgs[burgId] ? [pack.burgs[burgId].x, pack.burgs[burgId].y] : pack.cells.p[cellId];
+
     resourceIcons.push({ x, y, goodId, color: good.color, stroke: Goods.getStroke(good.color), icon: good.icon });
   }
 }

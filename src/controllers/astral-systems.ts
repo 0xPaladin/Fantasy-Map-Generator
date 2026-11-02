@@ -16,12 +16,13 @@ let filterState: { search: string };
 
 const TEMPLATE = /* html */ `
   <style>
-    #${dialogId} { width: 36em; }
+    #${dialogId} { width: 44em; }
     #${dialogId} #astralBody { height: 24em; overflow-y: auto; padding: .3em .5em; }
     #${dialogId} .astralSystem { display: flex; gap: .6em; align-items: baseline; padding: .15em 0; }
     #${dialogId} .astralSystem:hover { background: rgba(0, 0, 0, 0.05); }
     #${dialogId} .astralName { flex: 1; font-weight: bold; }
     #${dialogId} .astralClass { flex: 0 0 11em; }
+    #${dialogId} .astralWorld { flex: 0 0 8em; opacity: .85; font-style: italic; }
     #${dialogId} .astralPop { flex: 0 0 7em; text-align: right; }
     #${dialogId} .astralTraits { flex: 0 0 14em; opacity: .8; }
     #${dialogId} .astralEmpty { padding: 1em; font-style: italic; opacity: .7; }
@@ -91,6 +92,7 @@ function renderBody(): void {
     lines += /* html */ `<div class="astralSystem" data-cell="${system.id}">
       <span class="astralName">${escapeHtml(system.name)}</span>
       <span class="astralClass">${system.class}-class ${escapeHtml(system.className)}</span>
+      <span class="astralWorld">${escapeHtml(system.worldType)}</span>
       <span class="astralPop">${system.population.toLocaleString("en-US")}</span>
       <span class="astralTraits">${escapeHtml(system.traits.join(", "))}</span>
     </div>`;
@@ -105,7 +107,9 @@ function renderBody(): void {
 
 function matches(system: StarSystem, search: string): boolean {
   if (!search) return true;
-  const haystack = [system.name, system.class, system.className, ...system.traits].join(" ").toLowerCase();
+  const haystack = [system.name, system.class, system.className, system.worldType, ...system.traits]
+    .join(" ")
+    .toLowerCase();
   return haystack.includes(search);
 }
 

@@ -440,6 +440,14 @@ class RiverModule {
     cells.fl = new Uint16Array(cells.i.length); // water flux array
     cells.r = new Uint16Array(cells.i.length); // rivers array
     cells.conf = new Uint8Array(cells.i.length); // confluences array
+
+    // airless and frozen worlds have no hydrological cycle: no rivers form
+    if (this.isRiverless()) {
+      pack.rivers = [];
+      Lakes.cleanupLakeData();
+      return;
+    }
+
     let riverNext = Math.max(0, ...locked.map(({ river }) => river.i)) + 1; // generated ids follow the locked ones
 
     const h = this.alterHeights();
@@ -509,6 +517,13 @@ class RiverModule {
       if (!lockedIds.has(river.parent)) river.parent = receiver || river.i;
     }
     for (const river of generated) this.updateWidth(river);
+  }
+
+  /** worlds without surface runoff: no precipitation at all, or a lunar, icy or volcanic crust */
+  private isRiverless(): boolean {
+    const archetype = options.map.geography.archetype;
+    if (archetype === "lunar" || archetype === "icy_moon" || archetype === "volcanic") return true;
+    return options.map.climate.precipitation === 0;
   }
 
   /** a lake a locked river flows out of or into lists it, generated rivers being gone from it */
