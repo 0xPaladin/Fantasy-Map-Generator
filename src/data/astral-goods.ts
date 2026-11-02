@@ -483,9 +483,9 @@ export function isAstralGoodsCatalogue(goods: readonly Good[] = pack.goods): boo
   if (!goods?.length) return false;
   return goods.some(
     good =>
-      good.tags.includes("astronautic") ||
-      good.tags.includes("postech") ||
-      good.tags.includes("pretech") ||
+      good.tags?.includes("astronautic") ||
+      good.tags?.includes("postech") ||
+      good.tags?.includes("pretech") ||
       good.name === "Metawheat"
   );
 }

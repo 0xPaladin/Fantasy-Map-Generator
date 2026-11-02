@@ -182,3 +182,16 @@ test("viewport rendering leaves a disabled layer empty", async () => {
   ViewportLayers.renderNow();
   expect(document.querySelectorAll("#goodsCells polygon")).toHaveLength(1);
 });
+
+test("astral goods mode skips cell production polygons and anchors icons to burgs", async () => {
+  pack.cells.burg = [1, 0];
+  pack.cells.good = [1, 0];
+  pack.burgs = [{}, { i: 1, x: 55, y: 65, production: {} }];
+  Object.assign(Goods, { isAstralCatalogue: () => true });
+
+  await drawGoods();
+  expect(document.querySelectorAll("#goodsCells polygon")).toHaveLength(0);
+  expect(document.querySelectorAll("#goodsIcons > g")).toHaveLength(1);
+  expect(document.querySelector("#goodsIcons circle")?.getAttribute("cx")).toBe("55");
+  expect(document.querySelector("#goodsIcons circle")?.getAttribute("cy")).toBe("65");
+});
