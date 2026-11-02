@@ -11,6 +11,7 @@ import { getNumberInRange, P, rand } from "@/utils/probability-utils";
 type Tool =
   | "Hill"
   | "Pit"
+  | "Crater"
   | "Range"
   | "Trough"
   | "Strait"
@@ -167,6 +168,61 @@ class HeightmapModule {
     const desiredPitCount = getNumberInRange(count);
     for (let i = 0; i < desiredPitCount; i++) {
       addOnePit();
+    }
+  }
+
+  /**
+   * BFS-propagates a blob of elevation change from a start cell, mirroring the Hill/Pit decay:
+   * each newly reached cell gets `parentChange ** power * (0.9..1.1)` and only cells above 1 spread further.
+   * Returns the full change buffer so several passes can be composed additively (e.g. impact craters).
+   */
+  private spreadBlob(start: number, amount: number, power: number): Float64Array {
+    const { grid } = this;
+    const change = new Float64Array(this.heights ? this.heights.length : 0);
+    if (!grid || !this.heights) return change;
+    change[start] = amount;
+    const queue = [start];
+    while (queue.length) {
+      const q = queue.shift() as number;
+      for (const c of grid.cells.c[q]) {
+        if (change[c]) continue;
+        change[c] = change[q] ** power * (Math.random() * 0.2 + 0.9);
+        if (change[c] > 1) queue.push(c);
+      }
+    }
+    return change;
+  }
+
+  addCrater(count: string, depth: string, rangeX: string, rangeY: string): void {
+    const addOneCrater = () => {
+      const { grid } = this;
+      if (!this.heights || !grid) return;
+      let limit = 0;
+      let start: number;
+      const d = lim(getNumberInRange(depth));
+
+      do {
+        const x = this.getPointInRange(rangeX, this.width);
+        const y = this.getPointInRange(rangeY, this.height);
+        if (x === undefined || y === undefined) return;
+        start = Lattice.findSlot(x, y, grid);
+        limit++;
+      } while (this.heights[start] < 20 && limit < 50);
+
+      // raised outer ejecta rim, centered on the impact cell
+      const rim = this.spreadBlob(start, lim(d * 0.55), this.blobPower);
+      // excavated bowl from the same cell: steeper decay than the rim, so the center nets out
+      // as a concave depression while the periphery stays elevated as a circular crater rim
+      const bowl = this.spreadBlob(start, d, this.blobPower * 0.985);
+      // complex basins rebound into a tight central peak
+      const peak = d >= 40 ? this.spreadBlob(start, lim(d * 0.25), this.blobPower * 0.92) : null;
+
+      this.heights = this.heights.map((h, i) => lim(h + rim[i] - bowl[i] + (peak ? peak[i] : 0)));
+    };
+
+    const desiredCraterCount = getNumberInRange(count);
+    for (let i = 0; i < desiredCraterCount; i++) {
+      addOneCrater();
     }
   }
 
@@ -496,6 +552,40 @@ class HeightmapModule {
     });
   }
 
+  /**
+   * Blends the leftmost and rightmost 3 columns row-by-row so a 360° globe stays C⁰-continuous
+   * across the antimeridian. Skipped when the map is not a full globe or when the template already
+   * submerges the whole seam with ocean (e.g. `globeWorld`'s closing `Mask 2`). The blend never
+   * pulls dry-seam land below the sea level of 20.
+   */
+  smoothSeam(): void {
+    const { grid } = this;
+    if (!this.heights || !grid) return;
+    if (options.map.geography.coordinates.lonT !== 360) return;
+
+    const { cellsX, cellsY } = grid;
+    let seamIsDry = false;
+    for (let y = 0; y < cellsY && !seamIsDry; y++) {
+      const row = y * cellsX;
+      seamIsDry = this.heights[row] >= 20 || this.heights[row + cellsX - 1] >= 20;
+    }
+    if (!seamIsDry) return;
+
+    for (let y = 0; y < cellsY; y++) {
+      const row = y * cellsX;
+      for (let k = 0; k < 3; k++) {
+        const left = row + k;
+        const right = row + cellsX - 1 - k;
+        const l = this.heights[left];
+        const r = this.heights[right];
+        const seamMean = (l + r) / 2;
+        const blended = l >= 20 && r >= 20 ? Math.max(seamMean, 20) : seamMean;
+        this.heights[left] = blended;
+        this.heights[right] = blended;
+      }
+    }
+  }
+
   invert(count: number, axes: string): void {
     if (!P(count) || !this.heights || !this.grid) return;
 
@@ -524,6 +614,10 @@ class HeightmapModule {
     }
     if (tool === "Pit") {
       this.addPit(a2, a3, a4, a5);
+      return;
+    }
+    if (tool === "Crater") {
+      this.addCrater(a2, a3, a4, a5);
       return;
     }
     if (tool === "Range") {
@@ -593,6 +687,7 @@ class HeightmapModule {
       this.addStep(...(elements as [Tool, string, string, string, string]));
     }
 
+    this.smoothSeam();
     return this.heights!;
   }
 

@@ -101,11 +101,18 @@ function renderTemplateEditor(): void {
           <option value="taklamakan">${t("Taklamakan")}</option>
           <option value="oldWorld">${t("Old World")}</option>
           <option value="fractious">${t("Fractious")}</option>
+          <option value="globeWorld">${t("Globe World")}</option>
+          <option value="lunarWorld">${t("Lunar World")}</option>
+          <option value="martianWorld">${t("Martian World")}</option>
+          <option value="icyMoon">${t("Icy Moon")}</option>
+          <option value="titanWorld">${t("Hydrocarbon World")}</option>
+          <option value="volcanicWorld">${t("Volcanic World")}</option>
         </select>
       </div>
       <div id="templateTools">
         <button data-type="Hill" data-tip="${t("Hill: small blob")}">H</button>
         <button data-type="Pit" data-tip="${t("Pit: round depression")}">P</button>
+        <button data-type="Crater" data-tip="${t("Crater: impact crater with a raised ejecta rim")}">C</button>
         <button data-type="Range" data-tip="${t("Range: elongated elevation")}">R</button>
         <button data-type="Trough" data-tip="${t("Trough: elongated depression")}">T</button>
         <button data-type="Strait" data-tip="${t("Strait: centered vertical or horizontal depression")}">S</button>
@@ -1267,6 +1274,7 @@ function addStep(type: string, count?: string, dist?: string, arg4?: string, arg
 const STEP_LABELS: Record<string, string> = {
   Hill: t("Hill"),
   Pit: t("Pit"),
+  Crater: t("Crater"),
   Range: t("Range"),
   Trough: t("Trough"),
   Strait: t("Strait"),
@@ -1307,7 +1315,7 @@ function getStepHTML(type: string, count?: string, arg3?: string, arg4?: string,
       } />
     </span>`;
 
-  if (type === "Hill" || type === "Pit" || type === "Range" || type === "Trough") {
+  if (type === "Hill" || type === "Pit" || type === "Crater" || type === "Range" || type === "Trough") {
     return /* html */ `${common}${TempY}${TempX}${Height}${Count}</div>`;
   }
 
@@ -1482,6 +1490,7 @@ function executeTemplate(): void {
 
     if (type === "Hill") HeightmapGenerator.addHill(count, height, x, y);
     else if (type === "Pit") HeightmapGenerator.addPit(count, height, x, y);
+    else if (type === "Crater") HeightmapGenerator.addCrater(count, height, x, y);
     else if (type === "Range") HeightmapGenerator.addRange(count, height, x, y);
     else if (type === "Trough") {
       HeightmapGenerator.addTrough(count, height, x, y);
