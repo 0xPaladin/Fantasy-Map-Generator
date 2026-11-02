@@ -27,6 +27,7 @@ import { MapEntities } from "@/model/map-entities";
 import { mapHistory } from "@/model/map-history";
 import { MapIntegrity } from "@/model/map-integrity";
 import { MapRestoration } from "@/model/map-restoration";
+import { SolarSystem } from "@/model/system/solar-system";
 import { Options } from "@/model/options/options-model";
 import { Pins } from "@/model/options/pins";
 import { Biomes } from "@/model/physical/biomes-generator";
@@ -173,6 +174,7 @@ const FMG = {
   Resample,
   Rivers,
   Routes,
+  SolarSystem,
   States,
   Styles,
   Tags,

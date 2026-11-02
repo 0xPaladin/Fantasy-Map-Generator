@@ -113,7 +113,9 @@ radius, surface gravity, temperature band, atmosphere, water cover, habitability
 The tooltips carry the units and the details: the orbital period in days, the temperature in °C,
 the habitability index (`HI 1` earthlike … `HI 5` inimical) and the moons' names ("Kessel I a",
 "Kessel I b", …). The table scrolls inside the dialog, and a system with no planets is a valid
-reading — one "No planets detected" row, while the star table above still renders.
+reading — one "No planets detected" row, while the star table above still renders. Every row ends
+with a globe button that materializes that world and opens its surface as the active FMG map; gas
+giants, which have no surface to map, are refused with a tip.
 
 #### How the readout is generated
 
@@ -144,6 +146,63 @@ Renaming the system relabels its planets without moving a single orbit. A popula
 the same class changes nothing; crossing a class threshold changes the primary's class and rerolls
 the system — exactly as it already recolours and resizes the marker. The full design, port map and
 test list are in [`docs/plans/astral-system-details.md`](../plans/astral-system-details.md).
+
+#### Opening worlds
+
+The readout is not just a table. The dialog footer carries an orrery button, and every planet row
+carries a smaller one beside it — both roll the generated system into a place you can map.
+
+- **The orrery button** opens the whole system in a Three.js view: the star, every planet on its
+  orbit line, the moons circling their parents, and sprite labels with archetype badges and
+  controlling-state colours. A click focuses a body and opens an inspector — classification,
+  gravity, temperature, atmosphere, hydrographics, habitability, and for a settled world its
+  population, settlements, spaceports and states; a double-click generates that world and lands
+  in globe view.
+- **A planet's own globe button** materializes just that world — the full generation pipeline runs
+  off the planet's seed with its archetype's climate — and leaves its surface as the active FMG
+  map, ready to edit, label and save like any other.
+
+Both buttons roll the registry from the same seed as the readout (`${map
+seed}/astral/system/${burg id}`, the burg's spectral class forced onto the primary), so the table
+and the worlds agree one to one. Re-rolling the same system keeps every already materialized
+world; gas giants are refused with a tip, having no surface to map.
+
+#### The colonized solar system
+
+The System Editor's readout describes the system; the colonized solar system makes it a set of
+places. Each rocky planet and moon can be materialized as a full FMG world — a pure fantasy map
+in every byte — and the whole system can be toured in the orrery. `SolarSystem` (also on the
+console as `FMG.SolarSystem`) is the registry that holds it all: one body per world with its
+designation name, surface archetype, Kepler orbit readouts and a snapshot once materialized.
+
+**Archetypes & climate.** Every rocky body resolves to a surface archetype from its
+astrophysics — `HI 1` is terran; hot or corrosive worlds are volcanic; cold, wet and toxic worlds
+are titan; cold worlds are icy moons; airless rock is lunar; everything else is martian. The
+archetype rides on `options.map.geography`, and its absence means terran, so every existing map
+and `.map` file behaves exactly as before. Materializing a body syncs the climate to it:
+full-globe coordinates, pole-to-equator temperatures that spread narrow under a thick atmosphere
+and wide under a trace one, and precipitation scaled from hydrographics. Rivers form everywhere
+except the airless, icy and volcanic worlds; enclosed lakes default to lava on volcanic worlds
+and to ice under icy moon shells.
+
+**Exo-biomes.** When the archetype is not terran, generation appends fifteen planetary biomes at
+`pack.biomes` 13..27 — Basalt Mare, Anorthosite Highlands, Crater Ejecta Ridge, Shadowed Polar
+Ice Crater, Ferric Regolith Plains, Oxide Dune Sea, Tharsis Basalt Shield, Polar CO₂/Water Ice
+Cap, Smooth Ice Shell, Chaos Ice Matrix, Thermal Lineae Rift, Hydrocarbon Dune Band,
+Cryo-Bedrock Plains, Basalt Flood Plain, Sulfur Fumarole/Caldera — classified per cell by
+height, moisture, temperature and latitude. Wet, warm martian basins fall through to the
+terrestrial matrix, so terraformed coasts grow green inside the red. Biomes 0..12 stay untouched,
+and the tables round-trip through vanilla save and load byte for byte.
+
+**Planetary heightmaps.** Five templates materialize the archetypes: `lunarWorld` (cratered
+regolith over dry maria), `martianWorld` (southern highlands, a Valles Marineris-style rift and
+Tharsis shields), `icyMoon` (lineae rifts over a smooth shell), `titanWorld` (dune bands and
+polar hydrocarbon lakes) and `volcanicWorld` (flood basalts and calderas). A new `Crater`
+template tool composes a raised ejecta rim, an excavated bowl and — for deep impacts — a central
+rebound peak, and `smoothSeam` blends the map edges so dry globes stay continuous across the
+antimeridian. All five carry probability 0: standard fantasy rolls never pick them.
+
+The full design is in [`docs/plans/solar-system-colonization.md`](../plans/solar-system-colonization.md).
 
 ### The anomalies
 
@@ -204,6 +263,12 @@ As detailed in [`docs/plans/mod-merge-plan.md`](../plans/mod-merge-plan.md):
   concerns — with anomaly icons and a conversion action that rewrites legends and icons in state,
   keeping the original text. The design is in
   [`docs/plans/astral-anomalies.md`](../plans/astral-anomalies.md).
+- **Shipped (colonized solar system)**: the Crater primitive and the five planetary heightmap
+  templates, the planetary archetypes with climate sync and the 13..27 exo-biomes, the
+  `SolarSystem` multi-body registry with `switchBody` and the Sol preset, and the 3D orrery —
+  opened from the System Editor, with per-planet FMG access and a pure-FMG compatibility
+  guarantee on every world. The design is in
+  [`docs/plans/solar-system-colonization.md`](../plans/solar-system-colonization.md).
 
 ---
 *For upstream merge tracking, see [MERGING.md](../../MERGING.md).*
