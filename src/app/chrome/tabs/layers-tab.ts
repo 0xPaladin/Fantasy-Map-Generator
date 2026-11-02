@@ -77,6 +77,12 @@ const TEMPLATE = /* html */ `
       ${t("3D scene")}
     </button>
     <button data-tip="${sentences(t("Project map on globe"), t("Cannot be used for editing"))}" id="viewGlobe">${t("Globe")}</button>
+    <button
+      data-tip="${sentences(t("Colonized solar system orrery: click a world to inspect it, double-click to open its map"), t("Cannot be used for editing"))}"
+      id="viewSystem"
+    >
+      ${t("System")}
+    </button>
     <button data-tip="${t("Living World simulation: seasonal clock, news ticker, inspector and god mode")}" id="viewLivingWorld">${t("Living World")}</button>
     <button data-tip="${t("Astral view: star chart layers, nebulae and systems")}" id="viewAstral">${t("Astral")}</button>
   </div>

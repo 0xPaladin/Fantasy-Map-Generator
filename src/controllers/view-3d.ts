@@ -1,6 +1,7 @@
 import { Controllers } from "@/controllers";
 import { DEFAULT_THREE_D, globeResolutionFor, timeOfDayPresets } from "@/data/view-3d-options";
 import { Options } from "@/model/options/options-model";
+import { SolarSystem } from "@/model/system/solar-system";
 import { is3dView } from "@/renderers/view-mode";
 import { viewport } from "@/renderers/viewport/viewport";
 import { Services } from "@/services";
@@ -26,6 +27,17 @@ const loadRenderer = (): Promise<Renderer> =>
     : import("@/renderers/view-3d-renderer").then(m => {
         m.setMapImageSource((type, options) => Services.ExportMap.getMapURL(type, options));
         m.setBuildListener(building => (building ? showLoading() : hideLoading()));
+        // the orrery hands world opening back to the controller: switchBody first, then the view
+        m.setSystemActions({
+          openWorld: async (bodyId: string) => {
+            await SolarSystem.switchBody(bodyId);
+            await open("viewGlobe");
+          },
+          openMap: async (bodyId: string) => {
+            await SolarSystem.switchBody(bodyId);
+            enterStandard();
+          }
+        });
         renderer = m;
         return m;
       });
@@ -133,12 +145,17 @@ async function open(type: string): Promise<void> {
 
   canvas.style.display = "block";
   canvas.onmouseenter = () => {
-    const help = [
-      t("Drag to pan"),
-      t("Scroll to zoom"),
-      t("Right-click drag to rotate"),
-      t("O to toggle options")
-    ].join(" • ");
+    const help =
+      type === "viewSystem"
+        ? [
+            t("Click a world to focus it"),
+            t("Double-click to open its map"),
+            t("Drag to rotate"),
+            t("Scroll to zoom")
+          ].join(" • ")
+        : [t("Drag to pan"), t("Scroll to zoom"), t("Right-click drag to rotate"), t("O to toggle options")].join(
+            " • "
+          );
     +canvas.dataset.hovered! > 2 ? tip("") : tip(help);
     canvas.dataset.hovered = String((+canvas.dataset.hovered! | 0) + 1);
   };
@@ -155,7 +172,7 @@ async function open(type: string): Promise<void> {
     });
   } else document.body.insertBefore(canvas, ensureEl("optionsContainer"));
 
-  toggleOptions();
+  if (type !== "viewSystem") toggleOptions(); // the 3d settings dialog configures mesh and globe only
 }
 
 function renderPreviewDialog(): void {
