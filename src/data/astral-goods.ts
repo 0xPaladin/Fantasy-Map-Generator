@@ -1,5 +1,4 @@
 import type { DemandCategory, Good } from "@/model/economy/goods-generator";
-import { Icons } from "@/model/icons";
 
 export type AstralWorldType =
   | "Agricultural"
@@ -472,7 +471,7 @@ export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, ind
     tags: [...spec.tags],
     value: spec.value,
     unit: "ton",
-    icon: Icons.reference(spec.icon),
+    icon: spec.icon,
     color: spec.color,
     biomeOutput: {},
     demandCoverage: spec.demandCoverage,
