@@ -1,5 +1,7 @@
 import { mean } from "d3";
+import { PLANETARY_BIOMES } from "@/data/planetary-biomes";
 import type { ReliefPool } from "@/model/physical/relief-generator";
+import type { PlanetaryArchetype } from "@/types/planetary";
 import { requireColor } from "@/utils/color-utils";
 import { rn } from "@/utils/number-utils";
 import { requireName } from "@/utils/validation-utils";
@@ -14,6 +16,8 @@ export interface Biome {
   cost: number;
   removed?: boolean;
   note?: string;
+  /** set on the planetary biomes appended at 13..27; absent on the built-in terrestrial biomes */
+  archetype?: PlanetaryArchetype;
 }
 
 function getDefaultBiomes(): Biome[] {
@@ -97,13 +101,20 @@ class BiomesGenerator {
     return getDefaultBiomes();
   }
 
+  /** the 13 terrestrial biomes plus the planetary 13..27 block when the map has a non-terran archetype */
+  private buildBiomes(): Biome[] {
+    const biomes = this.getDefault();
+    if (this.getArchetype()) biomes.push(...PLANETARY_BIOMES.map(biome => ({ ...biome })));
+    return biomes;
+  }
+
   generate(): void {
-    pack.biomes = this.getDefault();
+    pack.biomes = this.buildBiomes();
     this.define();
   }
 
   define(): void {
-    if (!pack.biomes?.length) pack.biomes = this.getDefault();
+    if (!pack.biomes?.length) pack.biomes = this.buildBiomes();
 
     const { fl: flux, r: riverIds, h: heights, c: neighbors, g: gridReference } = pack.cells;
     const { temp, prec } = grid.cells;
@@ -124,7 +135,7 @@ class BiomesGenerator {
       const height = heights[cellId];
       const moisture = height < this.MIN_LAND_HEIGHT ? 0 : calculateMoisture(cellId);
       const temperature = temp[gridReference[cellId]];
-      pack.cells.biome[cellId] = this.getId(moisture, temperature, height, Boolean(riverIds[cellId]));
+      pack.cells.biome[cellId] = this.getId(moisture, temperature, height, Boolean(riverIds[cellId]), cellId);
     }
   }
 
@@ -186,7 +197,7 @@ class BiomesGenerator {
 
   /** Restore the generated biomes: their default names, colors and habitability, and the cells they cover. Custom biomes are removed */
   restore(): void {
-    pack.biomes = this.getDefault();
+    pack.biomes = this.buildBiomes();
     this.define();
   }
 
@@ -196,15 +207,84 @@ class BiomesGenerator {
     return biome;
   }
 
-  getId(moisture: number, temperature: number, height: number, hasRiver: boolean) {
+  getId(moisture: number, temperature: number, height: number, hasRiver: boolean, cellId = -1) {
     if (height < 20) return 0; // all water cells: marine biome
+    const archetype = this.getArchetype();
+    if (archetype) return this.getPlanetaryId(archetype, cellId, moisture, temperature, height);
     if (temperature < -5) return 11; // too cold: permafrost biome
     if (temperature >= 25 && !hasRiver && moisture < 8) return 1; // too hot and dry: hot desert biome
     if (this.isWetland(moisture, temperature, height)) return 12; // too wet: wetland biome
+    return this.getMatrixId(moisture, temperature);
+  }
 
+  /** the map's surface archetype, or null on standard terran maps */
+  private getArchetype(): PlanetaryArchetype | null {
+    const archetype = options.map.geography.archetype;
+    return archetype && archetype !== "terran" ? archetype : null;
+  }
+
+  /** classify a land cell on a planetary body; falls through to the terrestrial matrix on terraformed martian basins */
+  private getPlanetaryId(
+    archetype: PlanetaryArchetype,
+    cellId: number,
+    moisture: number,
+    temperature: number,
+    height: number
+  ) {
+    const latitude = this.getCellLatitude(cellId);
+    const polar = latitude !== null && Math.abs(latitude) > 70;
+    const cap = latitude !== null && Math.abs(latitude) > 72;
+
+    switch (archetype) {
+      case "lunar":
+        if (polar && height < 38) return 16; // shadowed polar ice crater
+        if (height >= 62) return 15; // crater ejecta ridge
+        if (height >= 34) return 14; // anorthosite highlands
+        return 13; // basalt mare
+      case "martian":
+        if (temperature < -55 || cap) return 20; // polar CO2 / water ice cap
+        if (height >= 68) return 19; // tharsis basalt shield
+        // terraformed hybrid: wet and warm basins fall through to the terrestrial matrix
+        if (moisture >= 12 && temperature > -15) break;
+        if (height >= 45) return 18; // oxide dune sea
+        return 17; // ferric regolith plains
+      case "icy_moon":
+        if (height >= 55) return 22; // chaos ice matrix
+        if (height < 32) return 23; // thermal lineae rift
+        return 21; // smooth ice shell
+      case "titan":
+        if (latitude !== null && Math.abs(latitude) < 35 && height < 45) return 24; // hydrocarbon dune band
+        return 25; // cryo-bedrock plains
+      case "volcanic":
+        if (height >= 55 || this.isLavaShore(cellId)) return 27; // sulfur fumarole / caldera
+        return 26; // basalt flood plain
+    }
+
+    return this.getMatrixId(moisture, temperature);
+  }
+
+  /** the terrestrial biomesMatrix lookup: hot ↔ cold bands across dry ↕ wet bands */
+  private getMatrixId(moisture: number, temperature: number) {
     const moistureBand = Math.min((moisture / 5) | 0, 4); // [0-4]
     const temperatureBand = Math.min(Math.max(20 - temperature, 0), 25); // [0-25]
     return biomesMatrix[moistureBand][temperatureBand];
+  }
+
+  /** cell latitude in degrees, mirroring the temperature generator; null when the cell has no grid reference */
+  private getCellLatitude(cellId: number): number | null {
+    const gridCell = pack.cells.g[cellId];
+    const point = gridCell !== undefined ? grid.points[gridCell] : undefined;
+    if (!point) return null;
+    const { latN, latT } = options.map.geography.coordinates;
+    return latN - (point[1] / options.map.graph.height) * latT; // [latN; latN - latT]
+  }
+
+  /** a land cell bordering an enclosed lake or sea on a volcanic world: molten shore */
+  private isLavaShore(cellId: number): boolean {
+    const { c: neighbors, f: featureOf, h: heights } = pack.cells;
+    return neighbors[cellId].some(
+      (neighborId: number) => heights[neighborId] < 20 && pack.features[featureOf[neighborId]]?.type === "lake"
+    );
   }
 
   private isWetland(moisture: number, temperature: number, height: number) {

@@ -390,6 +390,9 @@ class FeatureModule {
     };
 
     const defineLakeSubtype = (feature: Feature) => {
+      const archetype = options.map.geography.archetype;
+      if (archetype === "volcanic") return "lava"; // molten basins on high-heat worlds
+      if (archetype === "icy_moon") return "frozen"; // cryogenic lakes under the ice shell
       if (feature.temp < -3) return "frozen";
       if (feature.height > 60 && feature.cells < 10 && feature.firstCell % 10 === 0) return "lava";
 
