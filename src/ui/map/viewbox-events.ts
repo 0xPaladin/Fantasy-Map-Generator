@@ -3,6 +3,7 @@ import { drag, select } from "d3";
 import { Controllers } from "@/controllers";
 import type { LabelType } from "@/model/annotations/labels-generator";
 import { dragLegendBox, legendBoxFromEvent } from "@/renderers/draw-legend";
+import { clearTroubleNotePin, getTroubleOrLairFromElement, hasTroubleNotePin, pinTroubleNote } from "@/renderers/draw-trouble";
 import { LegendBoxes } from "@/renderers/legend-boxes";
 import type { TradeBatch } from "@/renderers/trade-animation";
 import { isAstralView } from "@/renderers/view-mode";
@@ -116,6 +117,23 @@ export function openEditor(element: Element): boolean {
 }
 
 function onClick(event: MouseEvent): void {
+  const target = event.target as Element | null;
+  const troubleInfo = getTroubleOrLairFromElement(target);
+  if (troubleInfo) {
+    const notesEl = findEl("notes");
+    if (notesEl) notesEl.style.display = "block";
+    const header = findEl("notesHeader");
+    if (header) header.textContent = troubleInfo.name;
+    const body = findEl("notesBody");
+    if (body) body.innerHTML = troubleInfo.note;
+    pinTroubleNote(troubleInfo.id);
+    return;
+  } else if (hasTroubleNotePin()) {
+    clearTroubleNotePin();
+    const notesEl = findEl("notes");
+    if (notesEl && !options.app.notesPinned) notesEl.style.display = "none";
+  }
+
   if (event?.target && !options.map.viewOnly) openEditor(event.target as Element);
 }
 

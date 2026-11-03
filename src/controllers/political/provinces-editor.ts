@@ -22,6 +22,7 @@ import { Layers } from "@/renderers/layers";
 import { fog, unfog } from "@/renderers/overlays/fogging";
 import { Csv } from "@/services/io/csv";
 import { speak } from "@/services/speech";
+import { openProvinceDetailsDialog } from "./province-dialog";
 import { Dialog } from "@/ui/dialog/dialog";
 import { noteIcon } from "@/ui/dialog/dialog-helpers";
 import { applyLineHighlighting } from "@/ui/dialog/highlighting";
@@ -141,6 +142,7 @@ const columns: EditorColumn<Province>[] = [
     sortBy: province => Tags.format(province.tags),
     sortType: "alpha"
   },
+  { key: "dialog", width: "1.1em" },
   { key: "note", width: "1.1em" },
   { key: "independence", width: "1.1em" },
   { key: "locate", width: "1.1em" },
@@ -286,6 +288,7 @@ function renderDialog(): void {
     const stateId = pack.provinces[p].state;
 
     if (el.tagName === "FILL-BOX") changeFill(el as FillBoxElement);
+    else if (cl.contains("icon-castle") || cl.contains("icon-fort-awesome") || el.dataset.col === "dialog") openProvinceDetailsDialog(p, refreshProvincesEditor);
     else if (cl.contains("name")) editProvinceName(p);
     else if (cl.contains("coaIcon"))
       void Controllers.EmblemsEditor.open("province", `provinceCOA${p}`, pack.provinces[p]);
@@ -457,6 +460,7 @@ function renderProvincesPage(view: TableView<Province>): void {
           spellcheck="false"
         />
       </div>
+      <span data-col="dialog" data-tip="${t("Province details")}" class="icon-fort-awesome icon-castle"></span>
       ${noteIcon(t("Edit free text notes (legend)"))}
       <span data-col="independence" data-tip="${t("Declare province independence (turn non-capital province with burgs into a new state)")}" class="icon-flag-empty ${separable ? "" : "placeholder"}"></span>
       <span data-col="locate" data-tip="${t("Locate on map")}" class="icon-target"></span>
@@ -1479,4 +1483,4 @@ async function uploadProvincesCsv(text: string): Promise<void> {
   refreshProvincesEditor();
 }
 
-export const ProvincesEditor = { open, showChart };
+export const ProvincesEditor = { open, showChart, openProvinceDialog: openProvinceDetailsDialog };

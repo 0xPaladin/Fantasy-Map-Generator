@@ -106,6 +106,7 @@ export interface Marker {
   /** the historical year the marker belongs to: the historical view hides it before then */
   year?: number;
   tags?: string[];
+  threatId?: string;
 }
 
 type MarkerConfig = {

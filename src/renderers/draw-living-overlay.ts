@@ -1,11 +1,14 @@
 // Transient on-map juice for the Living HUD: army/raid vectors, floating outcome
 // badges and clickable bounty popups. See docs/plans/living-idle-guild.md (slice 1).
 import { Living, UNIT_MAX_HP } from "@/model/physical/living-generator";
+import { viewport } from "@/renderers/viewport/viewport";
 import type { LivingNewsItem, LivingPopup, LivingPopupKind, LivingWorldState } from "@/types/living";
 import { escapeHtml } from "@/utils";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const OVERLAY_ID = "livingOverlay";
+const CONTENT_ID = "livingOverlayContent";
+const TOASTS_ID = "livingToasts";
 const STYLE_ID = "livingOverlayStyle";
 const MAX_BADGES = 5;
 
@@ -47,8 +50,10 @@ const NEWS_COLORS: Partial<Record<LivingNewsItem["kind"], string>> = {
 
 const OVERLAY_CSS = /* css */ `
   @keyframes livingFloatUp {
-    from { opacity: 1; transform: translateY(0); }
-    to { opacity: 0; transform: translateY(-22px); }
+    0% { opacity: 0; transform: translateY(6px); }
+    8% { opacity: 1; transform: translateY(0); }
+    72% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-28px); }
   }
   @keyframes livingPopupPulse {
     0%, 100% { opacity: 0.18; transform: scale(0.85); }
@@ -61,7 +66,7 @@ const OVERLAY_CSS = /* css */ `
     0%, 100% { opacity: 0.45; }
     50% { opacity: 0.95; }
   }
-  .livingFloatBadgeInner { animation: livingFloatUp 1.8s ease-out forwards; }
+  .livingFloatBadgeInner { animation: livingFloatUp 4s ease-out forwards; }
   .livingPopupPulse {
     animation: livingPopupPulse 1.6s ease-in-out infinite;
     transform-box: fill-box;
@@ -184,9 +189,18 @@ function badgeIcon(item: LivingNewsItem): string {
   return NEWS_ICONS[item.kind] ?? "✦";
 }
 
-/** The outcome badges for the season that just resolved. */
+/** The outcome badges for the season that just resolved, excluding popups/bounties. */
 export function collectLivingBadges(living: LivingWorldState): LivingBadge[] {
-  const news = (living.recentNews ?? []).filter(item => item.tick === living.tick && item.cell !== undefined);
+  const popupCells = new Set((living.guild?.popups ?? []).map(popup => popup.cell));
+  const news = (living.recentNews ?? [])
+    .filter(item => item.tick === living.tick && item.cell !== undefined)
+    .filter(
+      item =>
+        item.kind !== "trouble" &&
+        item.kind !== "lair" &&
+        !popupCells.has(item.cell!) &&
+        !/bounty claimed/i.test(item.text)
+    );
 
   const badges: LivingBadge[] = news.map((item, index) => ({
     id: `${item.tick}-${index}`,
@@ -242,11 +256,13 @@ function badgeMarkup(badge: LivingBadge): string | null {
   if (!point) return null;
 
   const [x, y] = point;
-  const width = Math.min(170, badge.text.length * 2.4 + 8);
-  return `<g class="livingFloatBadge" transform="translate(${x.toFixed(1)}, ${y.toFixed(1)})" pointer-events="none">
+  const scale = Number.isFinite(viewport?.scale) && viewport.scale > 0 ? viewport.scale : 1;
+  const invScale = 1 / scale;
+  const width = Math.min(380, Math.max(120, badge.text.length * 7.5 + 24));
+  return `<g class="livingFloatBadge" id="${badge.id}" transform="translate(${x.toFixed(1)}, ${y.toFixed(1)}) scale(${invScale.toFixed(4)})" pointer-events="none">
     <g class="livingFloatBadgeInner">
-      <rect x="${(-width / 2).toFixed(1)}" y="-12" width="${width.toFixed(1)}" height="7" rx="1.6" fill="${badge.color}" opacity="0.9"/>
-      <text y="-7" text-anchor="middle" font-size="3.8" fill="#fff">${escapeHtml(badge.text)}</text>
+      <rect x="${(-width / 2).toFixed(1)}" y="-34" width="${width.toFixed(1)}" height="28" rx="5" fill="${badge.color}" opacity="0.95" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.4))"/>
+      <text y="-20" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="600" fill="#fff" font-family="sans-serif">${escapeHtml(badge.text)}</text>
     </g>
   </g>`;
 }
@@ -275,13 +291,19 @@ function ensureOverlay(): SVGGElement | null {
   const viewbox = document.getElementById("viewbox");
   if (!viewbox) return null;
 
-  const existing = document.getElementById(OVERLAY_ID);
-  if (existing) return existing as unknown as SVGGElement;
-
-  const group = document.createElementNS(SVG_NS, "g");
-  group.setAttribute("id", OVERLAY_ID);
-  viewbox.appendChild(group);
-  return group;
+  let existing = document.getElementById(OVERLAY_ID) as unknown as SVGGElement | null;
+  if (!existing) {
+    existing = document.createElementNS(SVG_NS, "g") as unknown as SVGGElement;
+    existing.setAttribute("id", OVERLAY_ID);
+    existing.innerHTML = `<g id="${CONTENT_ID}"></g><g id="${TOASTS_ID}" pointer-events="none"></g>`;
+    viewbox.appendChild(existing);
+  } else if (!document.getElementById(TOASTS_ID)) {
+    const toasts = document.createElementNS(SVG_NS, "g");
+    toasts.setAttribute("id", TOASTS_ID);
+    toasts.setAttribute("pointer-events", "none");
+    existing.appendChild(toasts);
+  }
+  return existing;
 }
 
 function ensureStyle(): void {
@@ -292,18 +314,72 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
+/** Show a transient floating toast over a specific cell (e.g. for a clicked bounty marker). */
+export function showLivingToast(badge: LivingBadge): void {
+  const overlay = ensureOverlay();
+  if (!overlay) return;
+  ensureStyle();
+
+  const toastsGroup = (document.getElementById(TOASTS_ID) as unknown as SVGGElement | null) ?? overlay;
+  const point = cellPoint(badge.cell);
+  if (!point) return;
+
+  const [x, y] = point;
+  const scale = Number.isFinite(viewport?.scale) && viewport.scale > 0 ? viewport.scale : 1;
+  const invScale = 1 / scale;
+  const width = Math.min(380, Math.max(120, badge.text.length * 7.5 + 24));
+
+  const el = document.createElementNS(SVG_NS, "g") as unknown as SVGGElement;
+  el.setAttribute("class", "livingFloatBadge");
+  el.setAttribute("id", badge.id);
+  el.setAttribute("transform", `translate(${x.toFixed(1)}, ${y.toFixed(1)}) scale(${invScale.toFixed(4)})`);
+  el.setAttribute("pointer-events", "none");
+
+  el.innerHTML = `<g class="livingFloatBadgeInner">
+    <rect x="${(-width / 2).toFixed(1)}" y="-34" width="${width.toFixed(1)}" height="28" rx="5" fill="${badge.color}" opacity="0.95" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.4))"/>
+    <text y="-20" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="600" fill="#fff" font-family="sans-serif">${escapeHtml(badge.text)}</text>
+  </g>`;
+
+  toastsGroup.appendChild(el);
+
+  const cleanup = () => el.remove();
+  el.addEventListener("animationend", cleanup, { once: true });
+  setTimeout(cleanup, 4200);
+}
+
+/** Display the toast specifically for a claimed bounty popup. */
+export function showMarkerToast(popup: LivingPopup): void {
+  const meta = POPUP_META[popup.kind] ?? { icon: "📜", color: "#b8860b" };
+  const reward =
+    popup.rewardGold || popup.rewardRenown ? ` (+${popup.rewardGold}g, +${popup.rewardRenown} renown)` : "";
+  const text = `${meta.icon} Bounty claimed: ${popup.title}${reward}`;
+  showLivingToast({
+    id: `toast-${popup.id}-${Date.now()}`,
+    cell: popup.cell,
+    text,
+    color: meta.color
+  });
+}
+
+/** Clear all active living toasts from the overlay. */
+export function clearLivingToasts(): void {
+  const toasts = document.getElementById(TOASTS_ID);
+  if (toasts) toasts.innerHTML = "";
+}
+
 /** Redraw the Living overlay from the current simulation state. Safe without a map. */
-export function drawLivingOverlay(): void {
+export function drawLivingOverlay(options: { includeBadges?: boolean } = {}): void {
   const group = ensureOverlay();
   if (!group) return;
   ensureStyle();
 
+  const content = (document.getElementById(CONTENT_ID) as unknown as SVGGElement | null) ?? group;
   const living = Living.getState();
   const vectors = collectLivingVectors(living);
-  const badges = collectLivingBadges(living);
+  const badges = options.includeBadges !== false ? collectLivingBadges(living) : [];
   const popups = living.guild?.popups ?? [];
 
-  group.innerHTML = [
+  content.innerHTML = [
     ...vectors.map(vectorMarkup),
     ...badges.map(badgeMarkup).filter((markup): markup is string => Boolean(markup)),
     ...popups
@@ -317,6 +393,7 @@ export function drawLivingOverlay(): void {
 
 /** Remove the overlay and its stylesheet when the Living HUD closes. */
 export function removeLivingOverlay(): void {
+  clearLivingToasts();
   document.getElementById(OVERLAY_ID)?.remove();
   document.getElementById(STYLE_ID)?.remove();
 }

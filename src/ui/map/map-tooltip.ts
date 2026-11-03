@@ -10,6 +10,7 @@ import { MapEntities } from "@/model/map-entities";
 import { systemTip, toSystem } from "@/model/physical/astral-naming";
 import { Notes } from "@/model/story/notes";
 import { convertTemperature, getCellPopulation, getFriendlyHeight, getFriendlyPrecipitation } from "@/model/units";
+import { getTroubleOrLairFromElement, isTroubleNotePinned } from "@/renderers/draw-trouble";
 import { Layers } from "@/renderers/layers";
 import { isAstralView } from "@/renderers/view-mode";
 import type { Point } from "@/types/global";
@@ -52,7 +53,22 @@ let currentNoteId: string | null = null; // currently displayed note, to not rer
 export function showNotes(event: Event): void {
   if (findEl("notesEditor")) return;
 
-  const ref = MapEntities.resolveTarget(event.target instanceof Element ? event.target : null);
+  const target = event.target instanceof Element ? event.target : null;
+  const troubleInfo = getTroubleOrLairFromElement(target);
+  if (troubleInfo) {
+    if (currentNoteId === troubleInfo.id) return;
+    currentNoteId = troubleInfo.id;
+
+    const notesEl = findEl("notes");
+    if (notesEl) notesEl.style.display = "block";
+    const header = findEl("notesHeader");
+    if (header) header.textContent = troubleInfo.name;
+    const body = findEl("notesBody");
+    if (body) body.innerHTML = troubleInfo.note;
+    return;
+  }
+
+  const ref = MapEntities.resolveTarget(target);
   const id = ref && MapEntities.key(ref);
   const note = ref && Notes.get(ref);
 
@@ -69,7 +85,13 @@ export function showNotes(event: Event): void {
     return;
   }
 
-  if (options.app.notesPinned || findEl("markerEditor") || (event as MouseEvent).shiftKey) return;
+  if (
+    options.app.notesPinned ||
+    findEl("markerEditor") ||
+    (event as MouseEvent).shiftKey ||
+    isTroubleNotePinned(currentNoteId)
+  )
+    return;
 
   const notesEl = findEl("notes");
   if (notesEl) notesEl.style.display = "none";
@@ -167,7 +189,10 @@ function getElementTip({ group, target, event, path, cellId }: TipContext): stri
 
   if (group === "terrain" || group === "ice") return withHint();
 
-  if (group === "markers") {
+  if (group === "markers" || target.closest("#markers")) {
+    const troubleInfo = getTroubleOrLairFromElement(target);
+    if (troubleInfo) return withHint(troubleInfo.tip, t("Click to pin info"));
+
     const hint = withHint(undefined, t("Click to edit the Marker. Hold Shift to not close the assosiated note"));
     if (!isAstralView()) return hint;
     const ref = MapEntities.resolveTarget(target);
@@ -176,6 +201,11 @@ function getElementTip({ group, target, event, path, cellId }: TipContext): stri
     const name = marker?.name ? `${marker.name}. ` : "";
     const anomaly = reading ? `${capitalize(reading.reading)}. ` : "";
     return `${name}${anomaly}${hint ?? ""}`;
+  }
+
+  if (group === "trouble" || target.closest("#trouble")) {
+    const troubleInfo = getTroubleOrLairFromElement(target);
+    if (troubleInfo) return withHint(troubleInfo.tip, t("Click to pin info"));
   }
 
   if (group === "ruler")

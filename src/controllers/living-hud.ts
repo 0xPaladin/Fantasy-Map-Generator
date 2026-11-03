@@ -17,14 +17,7 @@ import { resolveCivTechName } from "@/data/living-civ-themes";
 import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
-import {
-  describeRelicBonuses,
-  isExcavationMarker,
-  RELIC_CATALOG,
-  reserveRelics,
-  vaultHasRoom,
-  vaultRelics
-} from "@/data/living-relics";
+import { describeRelicBonuses, RELIC_CATALOG, reserveRelics, vaultHasRoom, vaultRelics } from "@/data/living-relics";
 import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import {
   excavationMissionTags,
@@ -45,10 +38,16 @@ import {
   prophetFaithCost
 } from "@/model/physical/living-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
-import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
+import {
+  clearLivingToasts,
+  drawLivingOverlay,
+  removeLivingOverlay,
+  showMarkerToast
+} from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
 import type { HistoricalFigure } from "@/types/history";
 import {
+  type BurgSimState,
   type GuildState,
   type HeroDoctrine,
   type HeroGuildState,
@@ -61,11 +60,14 @@ import {
   type StatePolitySim,
   type YieldValues
 } from "@/types/living";
+import { Dialog } from "@/ui/dialog/dialog";
+import { dialogState } from "@/ui/dialog/state";
 import { zoomTo } from "@/ui/map/zoom";
-import { escapeHtml, findEl, getPointer } from "@/utils";
+import { ensureEl, escapeHtml, findEl, getPointer } from "@/utils";
 
 const HUD_ID = "livingWorldHud";
 const INSPECTOR_ID = "livingInspector";
+const HEROES_DIALOG_ID = "livingHeroesDialog";
 const MAX_NEWS = 8;
 
 const TEMPLATE = /* html */ `
@@ -95,31 +97,156 @@ const TEMPLATE = /* html */ `
     }
     #${HUD_ID} button.pressed { background: var(--header, #5e4fa2); color: #fff; }
     #${HUD_ID} #livingHudDate { margin-left: auto; font-weight: bold; }
-    #${HUD_ID} .livingHudWallet { color: #6a4c93; font-weight: bold; }
+    #${HUD_ID} .livingHudEschaton { margin-left: auto; font-weight: bold; color: #6a4c93; cursor: default; }
     #${HUD_ID} #livingHudClose { padding: 0 0.45em; }
     #${HUD_ID} .livingHudNews {
       display: flex;
       flex-direction: column;
-      gap: 0.05em;
-      max-height: 6.4em;
+      max-height: 13.5em;
       overflow-y: auto;
-      padding: 0.25em 0.45em;
+      margin: 0.35em 0.45em 0.45em;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      border-radius: 4px;
+      background: #ffffff;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
     }
     #${HUD_ID} .livingNewsItem {
       display: block;
       width: 100%;
       text-align: left;
       border: none;
-      background: transparent;
-      padding: 0.1em 0.2em;
+      border-bottom: 1px solid #e1e4e8;
+      padding: 7px 12px;
+      min-height: 32px;
+      line-height: 1.55;
+      font-size: 13.5px;
+      font-family: var(--sans-serif);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      cursor: pointer;
+      box-sizing: border-box;
+      color: #1f2328;
     }
-    #${HUD_ID} .livingNewsItem:hover { background: rgba(94, 79, 162, 0.12); }
-    #${HUD_ID} .livingNewsDate { font-weight: bold; color: #5e4fa2; }
-    #${HUD_ID} .livingNewsEmpty,
-    #${HUD_ID} .livingHudStatus { color: #666; font-style: italic; padding: 0 0.45em 0.25em; }
+    #${HUD_ID} .livingNewsItem:nth-child(even) {
+      background: #f0f4f9;
+    }
+    #${HUD_ID} .livingNewsItem:nth-child(odd) {
+      background: #ffffff;
+    }
+    #${HUD_ID} .livingNewsItem:hover {
+      background: #e2eafc;
+      color: #000;
+    }
+    #${HUD_ID} .livingNewsDate {
+      font-family: var(--monospace);
+      font-size: 0.95em;
+      font-weight: bold;
+      color: #5e4fa2;
+      margin-right: 0.5em;
+    }
+    #${HUD_ID} .livingNewsEmpty {
+      color: #666;
+      font-style: italic;
+      padding: 0.7em 1em;
+      background: #ffffff;
+    }
+    #${HUD_ID} .livingHudStatus { display: none; }
+    #${HUD_ID} .livingGuildHeaderRow { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+    #${HUD_ID} .livingGuildLeft { display: flex; align-items: center; gap: 0.3em; }
+    #${HUD_ID} .livingGuildCenter { display: flex; align-items: center; gap: 0.4em; }
+    #${HUD_ID} .livingGuildRight { display: flex; align-items: center; gap: 0.3em; }
+    #${HUD_ID} .livingSandboxToggle.strikethrough { text-decoration: line-through; opacity: 0.75; }
+    #${HUD_ID} .livingGuildBottomRight { display: flex; justify-content: flex-end; margin-top: 0.15em; }
+    #${HUD_ID} .livingWheelButton { background: var(--header, #5e4fa2); color: #fff; font-weight: bold; }
+    #${HUD_ID} .livingGuildSubRow { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+    #${HUD_ID} .livingGuildButtonLink {
+      background: transparent;
+      border: 1px solid rgba(94, 79, 162, 0.4);
+      border-radius: 3px;
+      padding: 0.1em 0.45em;
+      color: inherit;
+      cursor: pointer;
+    }
+    #${HUD_ID} .livingGuildButtonLink:hover {
+      background: rgba(94, 79, 162, 0.12);
+      border-color: #5e4fa2;
+    }
+    #livingHeroesDialog {
+      font-family: var(--monospace);
+      font-size: 0.88em;
+      max-height: calc(100vh - 160px);
+      overflow-y: auto;
+      padding: 0.4em 0.6em;
+    }
+    #livingHeroesDialog .livingHeroesSection { margin-bottom: 0.8em; }
+    #livingHeroesDialog .livingHeroesSectionHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(94, 79, 162, 0.3);
+      padding-bottom: 0.25em;
+      margin-bottom: 0.4em;
+      font-weight: bold;
+      color: #5e4fa2;
+    }
+    #livingHeroesDialog .livingHeroSub { font-weight: normal; font-size: 0.9em; color: #666; }
+    #livingHeroesDialog .livingHeroesList { display: flex; flex-direction: column; gap: 0.45em; }
+    #livingHeroesDialog .livingHeroItem {
+      border: 1px solid rgba(94, 79, 162, 0.3);
+      border-radius: 4px;
+      padding: 0.4em 0.6em;
+      background: rgba(255, 255, 255, 0.5);
+    }
+    #livingHeroesDialog .livingHeroItem.seeker { border-color: rgba(61, 107, 53, 0.4); }
+    #livingHeroesDialog .livingHeroRowTop {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.4em;
+      flex-wrap: wrap;
+      margin-bottom: 0.2em;
+    }
+    #livingHeroesDialog .livingHeroName { font-weight: bold; font-size: 1.05em; }
+    #livingHeroesDialog .livingHeroArchetype {
+      background: #5e4fa2;
+      color: #fff;
+      border-radius: 2px;
+      padding: 0 0.3em;
+      font-size: 0.85em;
+    }
+    #livingHeroesDialog .livingHeroArchetype.seeker { background: #3d6b35; }
+    #livingHeroesDialog .livingHeroMeta { font-size: 0.88em; color: #555; }
+    #livingHeroesDialog .livingHeroStatsRow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.6em;
+      font-size: 0.9em;
+      color: #333;
+      margin-bottom: 0.2em;
+    }
+    #livingHeroesDialog .livingHeroVitals { display: flex; gap: 0.5em; }
+    #livingHeroesDialog .livingHeroBar { display: inline-flex; align-items: center; gap: 0.25em; }
+    #livingHeroesDialog .livingHeroBarMini {
+      width: 3.5em;
+      height: 0.4em;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 2px;
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    #livingHeroesDialog .livingHeroBarMini > i { display: block; height: 100%; background: #5e4fa2; }
+    #livingHeroesDialog .livingHeroActions { display: flex; align-items: center; gap: 0.3em; margin-top: 0.3em; }
+    #livingHeroesDialog .livingHeroActions button {
+      font-family: var(--monospace);
+      font-size: 0.9em;
+      padding: 0.15em 0.45em;
+      cursor: pointer;
+    }
+    #livingHeroesDialog .livingHeroActions button.pressed { background: #5e4fa2; color: #fff; }
+    #livingHeroesDialog .livingHeroEmpty { color: #666; font-style: italic; padding: 0.3em 0; }
     #${HUD_ID} .livingHudGuild {
       display: flex;
       flex-direction: column;
@@ -164,13 +291,91 @@ const TEMPLATE = /* html */ `
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
       padding: 0.4em 0.55em;
     }
-    #${INSPECTOR_ID} .livingInspectorTitle { font-weight: bold; font-size: 1.15em; margin-bottom: 0.25em; }
+    #${INSPECTOR_ID} .livingInspectorClose {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      background: transparent;
+      border: none;
+      font-size: 1.15em;
+      line-height: 1;
+      padding: 0.1em 0.35em;
+      cursor: pointer;
+      color: #666;
+      border-radius: 3px;
+    }
+    #${INSPECTOR_ID} .livingInspectorClose:hover {
+      background: rgba(163, 61, 61, 0.15);
+      color: #a33d3d;
+    }
+    #${INSPECTOR_ID} .livingInspectorTitle {
+      font-weight: bold;
+      font-size: 1.15em;
+      margin-bottom: 0.25em;
+      padding-right: 1.5em;
+    }
+    #${INSPECTOR_ID} button.livingInspectorTitle {
+      background: none;
+      border: none;
+      padding: 0 1.5em 0 0;
+      margin: 0 0 0.25em;
+      font: inherit;
+      font-weight: bold;
+      font-size: 1.15em;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+      text-decoration: underline;
+      text-decoration-color: rgba(94, 79, 162, 0.4);
+      display: block;
+      width: 100%;
+    }
+    #${INSPECTOR_ID} button.livingInspectorTitle:hover {
+      color: #5e4fa2;
+      text-decoration-color: #5e4fa2;
+    }
     #${INSPECTOR_ID} .livingSection { border-top: 1px solid rgba(0, 0, 0, 0.12); padding: 0.3em 0; }
     #${INSPECTOR_ID} .livingSectionTitle { font-weight: bold; margin-bottom: 0.15em; }
     #${INSPECTOR_ID} .livingMuted { color: #777; font-style: italic; }
     #${INSPECTOR_ID} .livingBar { height: 0.4em; background: rgba(0, 0, 0, 0.12); border-radius: 2px; overflow: hidden; }
     #${INSPECTOR_ID} .livingBar > i { display: block; height: 100%; background: #5e4fa2; }
     #${INSPECTOR_ID} .livingBar.danger > i { background: #a33d3d; }
+    #${INSPECTOR_ID} .livingCapacityRow,
+    #${INSPECTOR_ID} .livingMeterRow {
+      display: grid;
+      grid-template-columns: 7.5em 1fr;
+      gap: 0.5em;
+      align-items: center;
+      margin-bottom: 0.3em;
+      cursor: pointer;
+    }
+    #${INSPECTOR_ID} .livingCapacityLabel,
+    #${INSPECTOR_ID} .livingMeterLabel {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #${INSPECTOR_ID} .livingCapacityRow .livingBar,
+    #${INSPECTOR_ID} .livingMeterRow .livingBar {
+      height: 0.45em;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #${INSPECTOR_ID} .livingCapacityRow .livingBar > i,
+    #${INSPECTOR_ID} .livingMeterRow .livingBar > i {
+      display: block;
+      height: 100%;
+      background: #5e4fa2;
+    }
+    #${INSPECTOR_ID} .livingCapacityRow.over .livingBar > i,
+    #${INSPECTOR_ID} .livingMeterRow .livingBar.danger > i {
+      background: #a33d3d;
+    }
+    #${INSPECTOR_ID} .livingCapacityRow:hover,
+    #${INSPECTOR_ID} .livingMeterRow:hover {
+      opacity: 0.85;
+    }
     #${INSPECTOR_ID} .livingPool { display: grid; grid-template-columns: 3.4em 1fr auto; gap: 0.2em 0.35em; align-items: center; }
     #${INSPECTOR_ID} .livingPoolVitals { display: grid; gap: 0.25em; margin-bottom: 0.25em; }
     #${INSPECTOR_ID} .livingVital { display: grid; grid-template-columns: 4.6em 3.2em 1fr; gap: 0.3em; align-items: center; }
@@ -198,6 +403,23 @@ const TEMPLATE = /* html */ `
     #${INSPECTOR_ID} .livingDiscipline { border: 1px solid #5e4fa2; border-radius: 2px; padding: 0 0.3em; color: #3f3570; }
     #${INSPECTOR_ID} ul { margin: 0.15em 0 0; padding-left: 1.1em; }
     #${INSPECTOR_ID} li { margin-bottom: 0.1em; }
+    #${INSPECTOR_ID} .livingLinkBtn {
+      background: none;
+      border: none;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+      text-decoration: underline;
+      text-decoration-color: rgba(94, 79, 162, 0.4);
+      display: inline;
+    }
+    #${INSPECTOR_ID} .livingLinkBtn:hover {
+      color: #5e4fa2;
+      text-decoration-color: #5e4fa2;
+    }
     #${INSPECTOR_ID} .livingButtons { display: flex; flex-wrap: wrap; gap: 0.25em; margin-top: 0.3em; }
     #${INSPECTOR_ID} .livingButtons button { font-size: 1em; padding: 0.12em 0.4em; cursor: pointer; }
     #${INSPECTOR_ID} .livingGodTitle { color: #a33d3d; font-weight: bold; margin: 0.3em 0 0.1em; }
@@ -206,17 +428,17 @@ const TEMPLATE = /* html */ `
   </style>
   <div id="${HUD_ID}">
     <div class="livingHudTop">
-      <span class="livingHudDrag" title="Drag to move">☰</span>
+      <span class="livingHudDrag" title="Drag to move">✥</span>
       <button id="livingHudPause" type="button">Pause</button>
       <button id="livingHudStepSeason" type="button">Step +1 Season</button>
       <button id="livingHudStepYear" type="button">Step +1 Year</button>
       <button id="livingHudPlay" type="button">Play 1×</button>
       <button id="livingHudPlay4" type="button">Play 4×</button>
       <button id="livingHudDate" type="button"></button>
-      <span id="livingHudWallet" class="livingHudWallet" title="Guild gold and renown"></span>
-      <button id="livingHudClose" type="button" title="Close Living World">×</button>
+      <span id="livingHudEschaton" class="livingHudEschaton"></span>
+      <button id="livingHudClose" type="button" title="Close Living World">☓</button>
     </div>
-    <div id="livingHudStatus" class="livingHudStatus"></div>
+    <div id="livingHudStatus" class="livingHudStatus" style="display: none;"></div>
     <div id="livingHudGuild" class="livingHudGuild"></div>
     <div id="livingHudNews" class="livingHudNews"></div>
   </div>
@@ -280,6 +502,7 @@ function close(): void {
   pause();
   selected = null;
   lastFitTarget = null;
+  Dialog.destroy(HEROES_DIALOG_ID);
   findEl(HUD_ID)?.remove();
   findEl(INSPECTOR_ID)?.remove();
   removeLivingOverlay();
@@ -301,11 +524,14 @@ function refresh(): void {
   if (date) date.textContent = Living.formatSeasonDate(living);
 
   renderControls();
-  renderWallet();
+  renderEschaton();
   renderGuildBar();
   renderNews(living.recentNews ?? []);
   validateSelection();
   renderInspector();
+  if (findEl(HEROES_DIALOG_ID)) {
+    renderHeroesDialogContent();
+  }
 }
 
 function bindControls(): void {
@@ -379,6 +605,7 @@ function stopTimer(): void {
 }
 
 function afterTick(): void {
+  clearLivingToasts();
   Living.syncWorld();
   redrawMap();
   refresh();
@@ -386,7 +613,7 @@ function afterTick(): void {
 }
 
 function redrawMap(): void {
-  Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "markers");
+  Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "markers", "trouble");
 }
 
 function renderControls(): void {
@@ -395,13 +622,16 @@ function renderControls(): void {
   findEl("livingHudPlay4")?.classList.toggle("pressed", playing === 4);
 }
 
-function renderWallet(): void {
-  const wallet = findEl("livingHudWallet");
-  if (!wallet) return;
+function renderEschaton(): void {
+  const el = findEl("livingHudEschaton");
+  if (!el) return;
 
-  const guild = Living.getGuild?.();
-  wallet.textContent = guild ? `⚜ ${guild.gold}g · ${guild.renown}r` : "";
-  wallet.title = guild ? `Guild Tier ${guild.tier} — Gold ${guild.gold}, Renown ${guild.renown}` : "";
+  const eschaton = Living.getEschaton?.() ?? 0;
+  const tier = Living.getGuild?.()?.tier ?? 1;
+  const wheelReady = eschaton >= 100 || tier >= 5;
+  el.textContent = `⏳ ${eschaton}`;
+  el.title = `The eschaton clock: how close this age is to its finale (${eschaton}/100).${wheelReady ? " The Wheel of Ages may be turned!" : " Reach eschaton 100 or Guild tier 5 to turn it."
+    }`;
 }
 
 function heroStatus(guild: GuildState, figureId: number): { label: string; className: string } {
@@ -412,16 +642,6 @@ function heroStatus(guild: GuildState, figureId: number): { label: string; class
   if ((guild.candidates ?? []).includes(figureId)) return { label: "seeker", className: "" };
   if ((guild.roster ?? []).includes(figureId)) return { label: "idle", className: "" };
   return { label: "free", className: "" };
-}
-
-function renderHeroChip(guild: GuildState, figureId: number): string {
-  const figure = pack.history?.figures?.find(entry => entry.i === figureId);
-  if (!figure) return "";
-  const status = heroStatus(guild, figureId);
-  const selectedClass = selected?.kind === "figure" && selected.id === figureId ? " pressed" : "";
-  return `<button type="button" class="livingGuildChip ${status.className}${selectedClass}" data-guild="inspect" data-figure="${figureId}" title="${escapeHtml(figure.name)} — level ${figureLevel(figure.xp ?? 0)}, ${status.label}">
-    ${escapeHtml(figure.name)} <span class="livingGuildChipStatus">Lv${figureLevel(figure.xp ?? 0)} · ${status.label}</span>
-  </button>`;
 }
 
 function relicHolderLabel(relic: HistoricalRelic): string {
@@ -450,6 +670,38 @@ function renderRelicChip(relic: HistoricalRelic): string {
 
 const MAX_GUILD_CHIPS = 6;
 
+function zoomToState(stateId: number): void {
+  const state = pack.states[stateId];
+  if (!state || state.removed) return;
+  if (state.pole) {
+    zoomTo(state.pole[0], state.pole[1], 4, 1500);
+    return;
+  }
+  if (state.capital && pack.burgs[state.capital]) {
+    const burg = pack.burgs[state.capital];
+    if (Number.isFinite(burg.x) && Number.isFinite(burg.y)) {
+      zoomTo(burg.x, burg.y, 6, 1500);
+      return;
+    }
+    if (burg.cell !== undefined) {
+      const pt = getCellPoint(burg.cell);
+      if (pt) {
+        zoomTo(pt[0], pt[1], 6, 1500);
+        return;
+      }
+    }
+  }
+  if (state.center !== undefined) {
+    const pt = getCellPoint(state.center);
+    if (pt) {
+      zoomTo(pt[0], pt[1], 4, 1500);
+      return;
+    }
+    const p = pack.cells.p?.[state.center];
+    if (p) zoomTo(p[0], p[1], 4, 1500);
+  }
+}
+
 function renderGuildBar(): void {
   const bar = findEl("livingHudGuild");
   if (!bar) return;
@@ -462,28 +714,17 @@ function renderGuildBar(): void {
 
   const tier = guild.tier ?? 1;
   const roster = guild.roster ?? [];
-  const candidates = guild.candidates ?? [];
   const relics = guild.relics ?? [];
   const vaultCount = vaultRelics(relics).length;
   const reserveCount = reserveRelics(relics).length;
   const doctrine = guild.doctrine ?? "auto_bounties";
   const sandbox = Boolean(guild.sandboxGodMode);
-  const favored = guild.favoredStateId !== undefined ? pack.states[guild.favoredStateId]?.name : undefined;
+  const favoredState = guild.favoredStateId !== undefined ? pack.states[guild.favoredStateId] : undefined;
+  const patronName = favoredState && !favoredState.removed ? favoredState.name : "None";
   const eschaton = Living.getEschaton?.() ?? 0;
   const wheelReady = eschaton >= 100 || tier >= 5;
   const doctrineOptions = (Object.keys(DOCTRINE_LABELS) as IdleDoctrine[])
     .map(key => `<option value="${key}"${key === doctrine ? " selected" : ""}>${DOCTRINE_LABELS[key]}</option>`)
-    .join("");
-
-  const siteChips = (pack.markers ?? [])
-    .filter(marker => isExcavationMarker(marker) && !(guild.excavatedMarkers ?? []).includes(marker.i))
-    .slice(0, MAX_GUILD_CHIPS)
-    .map(marker => {
-      const selectedClass = selected?.kind === "marker" && selected.id === marker.i ? " pressed" : "";
-      return `<button type="button" class="livingGuildChip site${selectedClass}" data-guild="inspect-marker" data-marker="${marker.i}" title="${escapeHtml(marker.name ?? "Landmark")} — DC ${13 + tier} dig">
-        ⛏ ${escapeHtml(marker.name ?? `Landmark ${marker.i}`)}
-      </button>`;
-    })
     .join("");
 
   const petitionChips = (guild.popups ?? [])
@@ -497,61 +738,63 @@ function renderGuildBar(): void {
     .join("");
 
   bar.innerHTML = /* html */ `
-    <div class="livingGuildRow">
-      <span class="livingGuildBadge" title="Guild tier">⚜ T${tier}</span>
-      <span class="livingGuildTitle">${escapeHtml(GUILD_TIER_TITLES[tier - 1] ?? GUILD_TIER_TITLES[0]!)}</span>
-      <span class="livingGuildStat" title="Guild gold">${guild.gold ?? 0}g</span>
-      <span class="livingGuildStat" title="Guild renown">${guild.renown ?? 0}r</span>
-      <span class="livingGuildMuted">${roster.length}/${maxHeroesForTier(tier)} heroes · ${relics.length} relics</span>
-      <label class="livingGuildDoctrine">Doctrine
-        <select id="livingHudDoctrine">${doctrineOptions}</select>
-      </label>
-      <span class="livingGuildModes">
-        <button type="button" data-mode="guild" class="${sandbox ? "" : "pressed"}">Guild Mode</button>
-        <button type="button" data-mode="sandbox" class="${sandbox ? "pressed" : ""}">Sandbox God Mode</button>
-      </span>
-      <span class="livingGuildEschaton" title="The eschaton clock: how close this age is to its finale (${eschaton}/100).${
-        wheelReady ? " The Wheel of Ages may be turned!" : " Reach eschaton 100 or Guild tier 5 to turn it."
-      }">
-        ⏳ ${eschaton}
-        <button type="button" data-wheel="turn"${wheelReady ? "" : " disabled"}>Turn the Wheel of Ages</button>
-      </span>
+    <div class="livingGuildRow livingGuildHeaderRow">
+      <div class="livingGuildLeft">
+        <span class="livingGuildBadge" title="Guild tier">⚜ T${tier}</span>
+        <span class="livingGuildTitle">${escapeHtml(GUILD_TIER_TITLES[tier - 1] ?? GUILD_TIER_TITLES[0]!)}</span>
+      </div>
+      <div class="livingGuildCenter">
+        <span class="livingGuildStat" title="Guild gold">${guild.gold ?? 0}g</span>
+        <span class="livingGuildStat" title="Guild renown">${guild.renown ?? 0}r</span>
+        <span class="livingGuildMuted">· ${relics.length} ${relics.length === 1 ? "relic" : "relics"}</span>
+      </div>
+      <div class="livingGuildRight">
+        <label class="livingGuildDoctrine">Doctrine
+          <select id="livingHudDoctrine">${doctrineOptions}</select>
+        </label>
+        <button type="button" data-mode="sandbox" class="livingSandboxToggle${sandbox ? " pressed" : " strikethrough"}" title="${sandbox
+      ? "Sandbox Mode: interventions are free and instant. Click to toggle Guild Mode."
+      : "Guild Mode: operations cost gold and heroes. Click to toggle Sandbox Mode."
+    }">
+          ${sandbox ? "Sandbox" : "<s>Sandbox</s>"}
+        </button>
+      </div>
     </div>
-    <div class="livingGuildRow">
-      <span class="livingGuildMuted">Heroes:</span>
-      ${roster.length > 0 ? roster.map(id => renderHeroChip(guild, id)).join("") : `<span class="livingGuildMuted">none — recruit from the tavern</span>`}
+    <div class="livingGuildRow livingGuildSubRow">
+      <div class="livingGuildLeft">
+        <button type="button" class="livingGuildButtonLink" id="livingHudPatronBtn" data-guild="zoom-patron" title="${favoredState ? `Zoom to ${escapeHtml(patronName)}` : "No favored state set"}">
+          Patron: ${escapeHtml(patronName)}
+        </button>
+      </div>
+      <div class="livingGuildRight">
+        <button type="button" class="livingGuildButtonLink" id="livingHudHeroesBtn" data-guild="open-heroes" title="Open Guild Heroes & Tavern dialog">
+          Heroes: ${roster.length}/${maxHeroesForTier(tier)}
+        </button>
+      </div>
     </div>
-    <div class="livingGuildRow">
-      <span class="livingGuildMuted">Tavern${favored ? ` · patron: ${escapeHtml(favored)}` : ""}:</span>
-      ${candidates.length > 0 ? candidates.map(id => renderHeroChip(guild, id)).join("") : `<span class="livingGuildMuted">no seekers this year</span>`}
-    </div>
-    ${
-      relics.length > 0
-        ? `<div class="livingGuildRow">
+    ${relics.length > 0
+      ? `<div class="livingGuildRow">
             <span class="livingGuildMuted">Vault (${vaultCount}/${tier})${reserveCount > 0 ? ` · Reserve (${reserveCount})` : ""}:</span>
             ${relics
-              .slice(0, MAX_GUILD_CHIPS)
-              .map(relic => renderRelicChip(relic))
-              .join("")}
+        .slice(0, MAX_GUILD_CHIPS)
+        .map(relic => renderRelicChip(relic))
+        .join("")}
             ${relics.length > MAX_GUILD_CHIPS ? `<span class="livingGuildMuted">+${relics.length - MAX_GUILD_CHIPS} more</span>` : ""}
           </div>`
-        : ""
+      : ""
     }
-    ${
-      siteChips
-        ? `<div class="livingGuildRow">
-            <span class="livingGuildMuted">Excavation sites:</span>
-            ${siteChips}
-          </div>`
-        : ""
-    }
-    ${
-      petitionChips
-        ? `<div class="livingGuildRow">
+    ${petitionChips
+      ? `<div class="livingGuildRow">
             <span class="livingGuildMuted">Petitions:</span>
             ${petitionChips}
           </div>`
-        : ""
+      : ""
+    }
+    ${wheelReady
+      ? `<div class="livingGuildRow livingGuildBottomRight">
+             <button type="button" class="livingWheelButton" data-wheel="turn">Turn the Wheel of Ages</button>
+           </div>`
+      : ""
     }`;
 
   bar.querySelector<HTMLSelectElement>("#livingHudDoctrine")?.addEventListener("change", event => {
@@ -561,18 +804,30 @@ function renderGuildBar(): void {
     setStatus(`The Guild now follows ${DOCTRINE_LABELS[value]}.`);
   });
 
-  for (const button of bar.querySelectorAll<HTMLElement>("[data-mode]")) {
-    button.addEventListener("click", () => {
-      const sandboxMode = button.dataset.mode === "sandbox";
-      Living.setSandboxGodMode(sandboxMode);
-      refresh();
-      setStatus(
-        sandboxMode
-          ? "Sandbox God Mode: interventions are free and instant."
-          : "Guild Mode: operations cost gold and heroes."
-      );
-    });
-  }
+  const sandboxToggle = bar.querySelector<HTMLElement>("[data-mode='sandbox']");
+  sandboxToggle?.addEventListener("click", () => {
+    const newSandbox = !sandbox;
+    Living.setSandboxGodMode(newSandbox);
+    refresh();
+    setStatus(
+      newSandbox
+        ? "Sandbox God Mode: interventions are free and instant."
+        : "Guild Mode: operations cost gold and heroes."
+    );
+  });
+
+  bar.querySelector<HTMLElement>("#livingHudPatronBtn")?.addEventListener("click", () => {
+    if (guild.favoredStateId !== undefined) {
+      selectState(guild.favoredStateId);
+      zoomToState(guild.favoredStateId);
+    } else {
+      setStatus("No patron state selected. Use the States Inspector to designate a patron.");
+    }
+  });
+
+  bar.querySelector<HTMLElement>("#livingHudHeroesBtn")?.addEventListener("click", () => {
+    openHeroesDialog();
+  });
 
   for (const button of bar.querySelectorAll<HTMLElement>("[data-guild='inspect']")) {
     button.addEventListener("click", () => {
@@ -611,9 +866,8 @@ function renderGuildBar(): void {
       afterTick();
       setStatus(
         result
-          ? `${result.era} dawns — ${result.realms} ${result.realms === 1 ? "realm" : "realms"} fell, ${
-              result.successorStates
-            } provinces broke away, and the Guild enters a new age.`
+          ? `${result.era} dawns — ${result.realms} ${result.realms === 1 ? "realm" : "realms"} fell, ${result.successorStates
+          } provinces broke away, and the Guild enters a new age.`
           : "The Wheel refuses to turn."
       );
     });
@@ -626,7 +880,7 @@ function renderNews(news: LivingNewsItem[]): void {
 
   const items = news.slice(0, MAX_NEWS);
   if (items.length === 0) {
-    wrap.innerHTML = `<span class="livingNewsEmpty">No dispatches yet — step a season.</span>`;
+    wrap.innerHTML = `<span class="livingNewsEmpty">No dispatches yet - step a season.</span>`;
     return;
   }
 
@@ -640,7 +894,7 @@ function renderNews(news: LivingNewsItem[]): void {
       ]
         .filter(Boolean)
         .join(" ");
-      return `<button type="button" class="livingNewsItem" ${attrs}><span class="livingNewsDate">[${date}]</span> ${escapeHtml(item.text)}</button>`;
+      return `<button type="button" class="livingNewsItem" ${attrs} title="${escapeHtml(item.text)}"><span class="livingNewsDate">[${date}]</span> ${escapeHtml(item.text)}</button>`;
     })
     .join("");
 
@@ -684,9 +938,7 @@ function onMapClick(this: SVGElement, event: MouseEvent): void {
 
   const marker = (pack.markers ?? []).find(entry => entry?.cell === cell);
   if (marker) {
-    rememberTarget(`Fit for ${marker.name ?? "the site"}`, excavationMissionTags(marker));
-    selected = { kind: "marker", id: marker.i };
-    renderInspector();
+    selectMarker(marker.i);
   }
 }
 
@@ -711,15 +963,16 @@ function onOverlayClick(event: Event): void {
   if (popupElement.getAttribute("data-kind") === "guild_petition") {
     selected = { kind: "petition", id };
     renderInspector();
-    drawLivingOverlay();
+    drawLivingOverlay({ includeBadges: false });
     return;
   }
 
   const claimed = Living.claimPopup(id);
-  drawLivingOverlay();
+  drawLivingOverlay({ includeBadges: false });
   refresh();
   if (claimed) {
     setStatus(`Bounty claimed: ${claimed.title} (+${claimed.rewardGold}g, +${claimed.rewardRenown} renown).`);
+    showMarkerToast(claimed);
   }
 }
 
@@ -735,6 +988,13 @@ function rememberProvinceTarget(provinceId: number): void {
   if (!province?.i || !pSim) return;
   if (pSim.trouble) rememberTarget(`Fit for ${pSim.trouble.name}`, troubleMissionTags(pSim.trouble));
   else if (pSim.lair) rememberTarget(`Fit for ${pSim.lair.name}`, lairMissionTags(pSim.lair));
+}
+
+function selectMarker(markerId: number): void {
+  const marker = (pack.markers ?? []).find(entry => entry?.i === markerId);
+  if (marker) rememberTarget(`Fit for ${marker.name ?? "the site"}`, excavationMissionTags(marker));
+  selected = { kind: "marker", id: markerId };
+  renderInspector();
 }
 
 function selectState(stateId: number): void {
@@ -787,11 +1047,13 @@ function renderInspector(): void {
   if (!panel) return;
 
   if (!selected) {
-    panel.innerHTML = `<div class="livingPlaceholder">Click a state, burg, hero, landmark or relic to inspect it.</div>`;
+    panel.innerHTML = `<button type="button" class="livingInspectorClose" data-inspector="close" title="Close Inspector">✕</button><div class="livingPlaceholder">Click a state, burg, hero, landmark or relic to inspect it.</div>`;
+    bindInspectorButtons(panel);
     return;
   }
 
-  panel.innerHTML =
+  panel.style.display = "block";
+  const content =
     selected.kind === "state"
       ? renderStateCard(selected.id)
       : selected.kind === "burg"
@@ -805,6 +1067,8 @@ function renderInspector(): void {
               : selected.kind === "petition"
                 ? renderPetitionCard(selected.id)
                 : renderFigureCard(selected.id);
+
+  panel.innerHTML = `<button type="button" class="livingInspectorClose" data-inspector="close" title="Close Inspector">✕</button>${content}`;
   bindInspectorButtons(panel);
 }
 
@@ -888,8 +1152,7 @@ function renderRelicCard(relicId: number): string {
 
   return /* html */ `
     <div class="livingInspectorTitle">${def.icon} ${escapeHtml(relic.name)}</div>
-    <div class="livingMuted">${def.label} · origin year ${relic.originYear}${origin ? ` · ${origin}` : ""}${
-      relic.cursed ? " · 🩸 Cursed" : ""
+    <div class="livingMuted">${def.label} · origin year ${relic.originYear}${origin ? ` · ${origin}` : ""}${relic.cursed ? " · 🩸 Cursed" : ""
     }</div>
     <div class="livingSection">
       <div class="livingSectionTitle">Powers</div>
@@ -923,9 +1186,8 @@ function renderMarkerCard(markerId: number): string {
   if (excavated) {
     actions = `<div class="livingMuted">Already excavated by the Guild.</div>`;
   } else {
-    actions = `<button type="button" data-guild="dispatch-marker" data-marker="${markerId}"${targeted ? " disabled" : ""}>${
-      targeted ? "Excavation Underway" : "Dispatch Hero"
-    }</button>`;
+    actions = `<button type="button" data-guild="dispatch-marker" data-marker="${markerId}"${targeted ? " disabled" : ""}>${targeted ? "Excavation Underway" : "Dispatch Hero"
+      }</button>`;
     if (guild?.sandboxGodMode) {
       actions += `<button type="button" data-god="excavate-marker" data-marker="${markerId}">Excavate Now</button>`;
     }
@@ -933,16 +1195,14 @@ function renderMarkerCard(markerId: number): string {
 
   return /* html */ `
     <div class="livingInspectorTitle">${escapeHtml(marker.name ?? "Landmark")}</div>
-    <div class="livingMuted">${escapeHtml(marker.type.replaceAll("-", " "))} · cell ${marker.cell}${
-      marker.chronicle ? " · chronicle site" : ""
+    <div class="livingMuted">${escapeHtml(marker.type.replaceAll("-", " "))} · cell ${marker.cell}${marker.chronicle ? " · chronicle site" : ""
     }</div>
     <div class="livingSection">
       <div class="livingSectionTitle">Excavation</div>
-      ${
-        excavated
-          ? `<div class="livingMuted">Site dug</div>`
-          : `<div class="livingMuted">DC ${13 + (guild?.tier ?? 1)} · chronicle sites always yield a named relic</div>`
-      }
+      ${excavated
+      ? `<div class="livingMuted">Site dug</div>`
+      : `<div class="livingMuted">DC ${13 + (guild?.tier ?? 1)} · chronicle sites always yield a named relic</div>`
+    }
       ${buriedChips ? `<div class="livingMuted">Buried relics:</div><div>${buriedChips}</div>` : ""}
     </div>
     <div class="livingButtons">${actions}</div>`;
@@ -1008,9 +1268,8 @@ function renderVitals(figureId: number, state: HeroGuildState | undefined, isHer
     .filter(injury => injuryIsActive(injury, Living.getState().tick))
     .map(injury => {
       const label = HERO_INJURY_LABELS[injury.kind];
-      return `<span class="livingDiscipline injury">${escapeHtml(label)}${
-        injury.untilTick === undefined ? " · until treated" : ""
-      }</span>`;
+      return `<span class="livingDiscipline injury">${escapeHtml(label)}${injury.untilTick === undefined ? " · until treated" : ""
+        }</span>`;
     })
     .join("");
   const down =
@@ -1019,13 +1278,13 @@ function renderVitals(figureId: number, state: HeroGuildState | undefined, isHer
       : "";
   const doctrineButtons = isHero
     ? `<div class="livingButtons">${(Object.keys(HERO_DOCTRINE_LABELS) as HeroDoctrine[])
-        .map(
-          doctrine =>
-            `<button type="button" class="livingDiscipline${state.doctrine === doctrine ? " pressed" : ""}" data-guild="hero-doctrine" data-figure="${figureId}" data-doctrine="${doctrine}" title="Set this hero's doctrine">${HERO_DOCTRINE_LABELS[doctrine]}</button>`
-        )
-        .join(
-          ""
-        )}<button type="button" class="livingDiscipline${state.push ? " pressed" : ""}" data-guild="toggle-push" data-figure="${figureId}" title="Spend Stamina on harder checks">Push: ${state.push ? "On" : "Off"}</button></div>`
+      .map(
+        doctrine =>
+          `<button type="button" class="livingDiscipline${state.doctrine === doctrine ? " pressed" : ""}" data-guild="hero-doctrine" data-figure="${figureId}" data-doctrine="${doctrine}" title="Set this hero's doctrine">${HERO_DOCTRINE_LABELS[doctrine]}</button>`
+      )
+      .join(
+        ""
+      )}<button type="button" class="livingDiscipline${state.push ? " pressed" : ""}" data-guild="toggle-push" data-figure="${figureId}" title="Spend Stamina on harder checks">Push: ${state.push ? "On" : "Off"}</button></div>`
     : "";
 
   return `<div class="livingSection">
@@ -1122,11 +1381,9 @@ function renderFigureCard(figureId: number): string {
     const fit = fitSummary(figure, mission.tags);
     const stamina = mission.staminaSpent ? ` · ${mission.staminaSpent} Stamina spent` : "";
     const phase = Math.min((mission.progress ?? 0) + 1, mission.required || 1);
-    status = `<div class="livingMuted">On expedition: Phase ${phase}/${mission.required || 1}${
-      tags ? ` · ${escapeHtml(tags)}` : ""
-    }${stamina}</div><div class="livingChips">${missionPhaseChips(mission)}</div>${
-      fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""
-    }`;
+    status = `<div class="livingMuted">On expedition: Phase ${phase}/${mission.required || 1}${tags ? ` · ${escapeHtml(tags)}` : ""
+      }${stamina}</div><div class="livingChips">${missionPhaseChips(mission)}</div>${fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""
+      }`;
   } else if (isDown) status = `<div class="livingMuted dangerText">Downed until tick ${heroState!.downUntilTick}</div>`;
   else if (onCooldown) status = `<div class="livingMuted">Recovering until tick ${cooldownUntil}</div>`;
   else if (isHero) status = `<div class="livingMuted">At the Guild Hall</div>`;
@@ -1212,33 +1469,33 @@ function renderStateCard(stateId: number): string {
   const isPatron = guild?.favoredStateId === stateId;
 
   return /* html */ `
-    <div class="livingInspectorTitle">${escapeHtml(state.fullName ?? state.name ?? "State")}</div>
+    <button type="button" class="livingInspectorTitle" data-open="states" data-id="${stateId}" title="States editor">${escapeHtml(state.fullName ?? state.name ?? "State")}</button>
     ${renderRuler(ruler, age)}
     ${renderCivState(sSim, stateId)}
     ${renderStateProvinces(stateId)}
-    ${renderCapacity(sSim)}
+    ${renderCapacity(sSim, stateId)}
     ${renderAgenda(sSim)}
     <div class="livingSection">
       <div class="livingSectionTitle">Stability</div>
       ${renderMeter("Unravel", sSim.unravel, true)}
-      ${renderMeter("War exhaustion", sSim.warExhaustion, false)}
+      ${renderMeter("Exhaustion", sSim.warExhaustion, false)}
     </div>
     <div class="livingSection">
-      <div class="livingSectionTitle">Claims & grudges</div>
-      ${renderClaims(sSim)}
-      ${renderGrudges(sSim)}
-      ${renderRestiveBurgs(stateId)}
-      ${renderProvincesTroubles(stateId)}
-      ${renderProvincesLairs(stateId)}
-    </div>
-    <div class="livingButtons">
-      <button type="button" data-open="state" data-id="${stateId}">States Editor</button>
-      <button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>
+      <div class="livingSectionTitle">Claims & Grudges</div>
+      ${[
+      renderProvincesLairs(stateId),
+      renderProvincesTroubles(stateId),
+      renderRestiveBurgs(stateId),
+      renderClaims(sSim),
+      renderGrudges(sSim)
+    ]
+      .filter(Boolean)
+      .join("") || '<div class="livingMuted">None</div>'
+    }
     </div>
     ${renderStateRelics(stateId, guild)}
-    ${
-      sandbox
-        ? `<div class="livingGodTitle">Sandbox God Mode</div>
+    ${sandbox
+      ? `<div class="livingGodTitle">Sandbox God Mode</div>
            <div class="livingButtons">
              <button type="button" data-god="spark" data-state="${stateId}">Spark Rebellion</button>
              <button type="button" data-god="smite" data-state="${stateId}">Smite Ruler</button>
@@ -1251,7 +1508,7 @@ function renderStateCard(stateId: number): string {
              ${hasLairs ? `<button type="button" data-god="smite-state-lair" data-state="${stateId}">Smite Lair</button>` : ""}
              ${canSpawnStateLair ? `<button type="button" data-god="spawn-state-lair" data-state="${stateId}">Spawn Lair</button>` : ""}
            </div>`
-        : `<div class="livingGodTitle">Guild Operations</div>
+      : `<div class="livingGodTitle">Guild Operations</div>
            <div class="livingButtons">
              ${hasTroubled || hasLairs ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Party</button>` : ""}
              <button type="button" data-guild="patron" data-state="${stateId}" title="Restrict auto_patron contracts to this state">${isPatron ? "Current Patron State" : "Make Patron State"}</button>
@@ -1292,7 +1549,7 @@ function renderStateRelics(stateId: number, guild: GuildState | undefined): stri
   ${buttons ? `<div class="livingButtons">${buttons}</div>` : ""}`;
 }
 
-function renderRuler(ruler: HistoricalFigure | undefined, age: number | undefined): string {
+function renderRuler(ruler: HistoricalFigure | undefined, _age?: number): string {
   if (!ruler)
     return `<div class="livingSection"><div class="livingSectionTitle">Ruler</div><span class="livingMuted">No ruler</span></div>`;
 
@@ -1306,13 +1563,7 @@ function renderRuler(ruler: HistoricalFigure | undefined, age: number | undefine
 
   return /* html */ `
     <div class="livingSection">
-      <div class="livingSectionTitle">Ruler</div>
-      <div class="livingRuler">
-        <span>${escapeHtml(ruler.name)}</span>
-        ${age !== undefined ? `<span class="livingAge">age ${age}</span>` : ""}
-        ${alignment}
-      </div>
-      ${culture ? `<div class="livingMuted">${escapeHtml(culture)}</div>` : ""}
+      <div class="livingSectionTitle">Ruler: <span>${escapeHtml(ruler.name)}</span> (${escapeHtml(culture)}) ${alignment}</div>
       ${traits ? `<div class="livingTraits">${traits}</div>` : ""}
     </div>`;
 }
@@ -1573,7 +1824,9 @@ function renderProvinceCard(provinceId: number): string {
   <div class="livingSection">
     <div class="livingSectionTitle">Public order</div>
     ${renderMeter("Order", Math.round(pSim.order), false)}
-    <div class="livingMuted">Stability ${pSim.stability} · Development ${pSim.development}${development}</div>
+    <div class="livingMuted">Order ${Math.round(pSim.order)}% · Stability ${pSim.stability} · Development ${
+      pSim.development
+    }${development}</div>
   </div>
   <div class="livingSection">
     <div class="livingSectionTitle">Capital & faith</div>
@@ -1596,12 +1849,12 @@ function renderProvinceCard(provinceId: number): string {
   </div>`;
 }
 
-function renderCapacity(sSim: StatePolitySim): string {
+function renderCapacity(sSim: StatePolitySim, stateId?: number): string {
   const pools = [
     ["m", "Military"],
     ["w", "Wealth"],
-    ["s", "Stability"],
-    ["c", "Culture"]
+    ["s", "Social"],
+    ["c", "Cunning"]
   ] as const;
 
   const rows = pools
@@ -1609,16 +1862,23 @@ function renderCapacity(sSim: StatePolitySim): string {
       const pool = sSim.capacity[key];
       const over = pool.load > pool.gen;
       const ratio = pool.gen > 0 ? Math.min(100, Math.round((pool.load / pool.gen) * 100)) : 0;
-      return `<div class="livingPool${over ? " over" : ""}">
-        <span>${label}</span>
-        <span>${pool.gen} / ${pool.load}</span>
-        <span>${over ? "over" : ""}</span>
+      const tip = `${label}: ${pool.gen} gen / ${pool.load} load${over ? " (over capacity)" : ""}`;
+      return `<div class="livingCapacityRow${over ? " over" : ""}" title="${escapeHtml(tip)}" tabindex="0">
+        <span class="livingCapacityLabel">${label}</span>
         <div class="livingBar${over ? " danger" : ""}"><i style="width:${ratio}%"></i></div>
       </div>`;
     })
     .join("");
 
-  return `<div class="livingSection"><div class="livingSectionTitle">Capacity (gen / load)</div>${rows}</div>`;
+  const buttons = stateId
+    ? `<div class="livingButtons" style="margin-top: 0.35em;">
+        <button type="button" data-open="provinces" data-id="${stateId}">Provinces</button>
+        <button type="button" data-open="burgs" data-id="${stateId}">Burgs</button>
+        <button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>
+      </div>`
+    : "";
+
+  return `<div class="livingSection"><div class="livingSectionTitle">Capacity</div>${rows}${buttons}</div>`;
 }
 
 function renderAgenda(sSim: StatePolitySim): string {
@@ -1637,8 +1897,11 @@ function renderAgenda(sSim: StatePolitySim): string {
 
 function renderMeter(label: string, value: number, danger: boolean): string {
   const width = Math.max(0, Math.min(100, Math.round(value)));
-  return `<div class="livingPool"><span>${label}</span><span>${width}%</span><span></span>
-    <div class="livingBar${danger ? " danger" : ""}"><i style="width:${width}%"></i></div></div>`;
+  const tip = `${label}: ${width}%`;
+  return `<div class="livingMeterRow" title="${escapeHtml(tip)}" tabindex="0">
+    <span class="livingMeterLabel">${escapeHtml(label)}</span>
+    <div class="livingBar${danger ? " danger" : ""}"><i style="width:${width}%"></i></div>
+  </div>`;
 }
 
 function renderClaims(sSim: StatePolitySim): string {
@@ -1647,13 +1910,14 @@ function renderClaims(sSim: StatePolitySim): string {
       const burg = pack.burgs[claim.burgId];
       if (!burg?.i || burg.removed) return "";
       const holder = pack.states[claim.heldByStateId];
-      return `<li>${escapeHtml(burg.name ?? "Burg")} — held by ${escapeHtml(holder?.name ?? "no one")} since ${claim.lostYear}</li>`;
+      const name = burg.name ?? "Burg";
+      const holderName = holder?.name ?? "no one";
+      const text = `${name} - held by ${holderName} since ${claim.lostYear}`;
+      return `<li><button type="button" class="livingLinkBtn" data-zoom-burg="${burg.i}" title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button></li>`;
     })
     .filter(Boolean);
 
-  return claims.length > 0
-    ? `<div class="livingMuted">Casus belli</div><ul>${claims.join("")}</ul>`
-    : `<div class="livingMuted">No outstanding claims</div>`;
+  return claims.length > 0 ? `<div class="livingSectionTitle">Casus belli</div><ul>${claims.join("")}</ul>` : "";
 }
 
 function renderGrudges(sSim: StatePolitySim): string {
@@ -1663,21 +1927,57 @@ function renderGrudges(sSim: StatePolitySim): string {
     .slice(-4)
     .map(grudge => `<li>${escapeHtml(grudge.summary)} <span class="livingMuted">(${grudge.weight})</span></li>`)
     .join("");
-  return `<div class="livingMuted">Grudges</div><ul>${rows}</ul>`;
+  return `<div class="livingSectionTitle">Grudges</div><ul>${rows}</ul>`;
+}
+
+const UNREST_BINS = [
+  { label: "Red", color: "#a33d3d", min: 17 },
+  { label: "Orange", color: "#d96b27", min: 10 },
+  { label: "Yellow", color: "#c99b24", min: 5 }
+] as const;
+
+function getUnrestBin(unrest: number): (typeof UNREST_BINS)[number] | null {
+  if (unrest >= 17) return UNREST_BINS[0];
+  if (unrest >= 10) return UNREST_BINS[1];
+  if (unrest >= 5) return UNREST_BINS[2];
+  return null;
 }
 
 function renderRestiveBurgs(stateId: number): string {
   const living = Living.getState();
   const restive = Object.values(living.burgs)
-    .map(bSim => ({ bSim, burg: pack.burgs[bSim.burgId] }))
-    .filter(({ bSim, burg }) => burg?.state === stateId && !burg.removed && bSim.unrest > 0);
+    .map(bSim => {
+      const burg = pack.burgs[bSim.burgId];
+      const bin = getUnrestBin(bSim.unrest);
+      return { bSim, burg, bin };
+    })
+    .filter(
+      (entry): entry is { bSim: BurgSimState; burg: (typeof pack.burgs)[number]; bin: (typeof UNREST_BINS)[number] } =>
+        Boolean(entry.burg?.state === stateId && !entry.burg.removed && entry.bin)
+    );
 
-  if (restive.length === 0) return `<div class="livingMuted">No restive burgs</div>`;
+  if (restive.length === 0) return "";
 
-  const rows = restive
-    .map(({ bSim, burg }) => `<li>${escapeHtml(burg.name ?? "Burg")} — unrest ${Math.round(bSim.unrest)}</li>`)
+  const rows = UNREST_BINS.map(bin => {
+    const burgsInBin = restive
+      .filter(entry => entry.bin.label === bin.label)
+      .sort((a, b) => b.bSim.unrest - a.bSim.unrest);
+
+    if (burgsInBin.length === 0) return "";
+
+    const burgLinks = burgsInBin
+      .map(({ burg }) => {
+        const name = burg.name ?? "Burg";
+        return `<button type="button" class="livingLinkBtn" data-zoom-burg="${burg.i}" title="Zoom to ${escapeHtml(name)}">${escapeHtml(name)}</button>`;
+      })
+      .join(", ");
+
+    return `<li><span class="livingBadge" style="background:${bin.color}; display:inline-block; text-decoration:none; margin-right:0.35em;">${bin.label}</span> ${burgLinks}</li>`;
+  })
+    .filter(Boolean)
     .join("");
-  return `<div class="livingMuted">Restive burgs</div><ul>${rows}</ul>`;
+
+  return rows ? `<div class="livingSectionTitle">Restive burgs</div><ul>${rows}</ul>` : "";
 }
 
 function renderProvincesTroubles(stateId: number): string {
@@ -1689,19 +1989,20 @@ function renderProvincesTroubles(stateId: number): string {
       Boolean(entry.pSim?.trouble)
     );
 
-  if (troubled.length === 0) return `<div class="livingMuted">No provincial troubles</div>`;
+  if (troubled.length === 0) return "";
 
   const rows = troubled
     .map(({ province, pSim }) => {
       const t = pSim.trouble!;
       const def = getTroubleDef(t.id);
-      const badge = isTroubleStatePromotable(t.id)
-        ? ` · <span class="livingBadge" style="background:#8b2635" title="Can promote to sovereign state">${escapeHtml(def.stateForm ?? "State-Capable")}</span>`
-        : "";
-      return `<li>${escapeHtml(province.name ?? "Province")} — <strong>${escapeHtml(def.name)}</strong> (Lv ${t.level}, ${t.theme}, Save: ${SAVE_KIND_LABELS[def.save]}, Unit: ${UNIT_ROLE_LABELS[def.requiredRole]}${badge})</li>`;
+      const name = t.name || def.name;
+      const cell = t.cell || province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
+      const text = `${province.name ?? "Province"}, ${name} [${t.level}]`;
+      const burgAttr = t.burgId ? ` data-zoom-burg="${t.burgId}"` : "";
+      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}"${burgAttr} title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button></li>`;
     })
     .join("");
-  return `<div class="livingMuted">Troubles</div><ul>${rows}</ul>`;
+  return `<div class="livingSectionTitle">Troubles</div><ul>${rows}</ul>`;
 }
 
 function renderProvincesLairs(stateId: number): string {
@@ -1713,26 +2014,24 @@ function renderProvincesLairs(stateId: number): string {
       Boolean(entry.pSim?.lair)
     );
 
-  if (laired.length === 0) return `<div class="livingMuted">No provincial lairs</div>`;
+  if (laired.length === 0) return "";
 
   const rows = laired
     .map(({ province, pSim }) => {
       const lair = pSim.lair!;
       const def = getLairDef(lair.id);
-      const defenderCount = lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0);
-      const statusFlags = [
-        lair.fortified ? "🏰 Fortified" : "",
-        lair.raidPending ? "⚠️ Raid Imminent" : "",
-        isLairStateCapable(lair.id)
-          ? `<span class="livingBadge" style="background:#5e3c6e" title="Can ascend to sovereign state">${escapeHtml(def.stateForm ?? "State-Capable")}</span>`
-          : ""
-      ]
-        .filter(Boolean)
-        .join(" ");
-      return `<li>${escapeHtml(province.name ?? "Province")} — <strong>${escapeHtml(lair.name)}</strong> (Lv ${lair.level}, Raid: ${lair.raidThreshold}+, Defenders: ${defenderCount}${statusFlags ? ` · ${statusFlags}` : ""})</li>`;
+      const name = lair.name || def.name;
+      const cell = lair.cell || province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
+      const text = `${province.name ?? "Province"}, ${name} [${lair.level}]`;
+      const burgAttr = lair.burgId ? ` data-zoom-burg="${lair.burgId}"` : "";
+      const stateForm = isLairStateCapable(lair.id) ? getLairDef(lair.id)?.stateForm : undefined;
+      const badge = stateForm
+        ? ` <span class="livingBadge" style="background:#5e3c6e">${escapeHtml(stateForm)}</span>`
+        : "";
+      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}"${burgAttr} title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button>${badge}</li>`;
     })
     .join("");
-  return `<div class="livingMuted">Lairs</div><ul>${rows}</ul>`;
+  return `<div class="livingSectionTitle">Lairs</div><ul>${rows}</ul>`;
 }
 
 function renderBurgCard(burgId: number): string {
@@ -1773,58 +2072,52 @@ function renderBurgCard(burgId: number): string {
       ${bSim.construction ? `<div class="livingMuted">${bSim.construction.turnsLeft} turns left</div>` : ""}
       <div class="livingMuted">${bSim.buildings.length} standing structures</div>
     </div>
-    ${
-      province && pSim
-        ? `<div class="livingSection">
+    ${province && pSim
+      ? `<div class="livingSection">
             <div class="livingSectionTitle">Province: ${escapeHtml(province.name ?? "Province")}</div>
             <div class="livingMuted">Order ${Math.round(pSim.order)}% · Stability ${pSim.stability} · Dev ${pSim.development}</div>
-            ${
-              trouble && tDef
-                ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme}) ${troublePromotable ? `<span class="livingBadge" style="background:#8b2635">${escapeHtml(tDef.stateForm ?? "State-Capable")}</span>` : ""}</div>
+            ${trouble && tDef
+        ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme}) ${troublePromotable ? `<span class="livingBadge" style="background:#8b2635">${escapeHtml(tDef.stateForm ?? "State-Capable")}</span>` : ""}</div>
                    <div class="livingMuted">Save: ${SAVE_KIND_LABELS[tDef.save]} · Specialist: ${UNIT_ROLE_LABELS[tDef.requiredRole]}</div>`
-                : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
-            }
-            ${
-              lair
-                ? `<div style="margin-top:0.3em;color:#8b0000;"><strong>Lair:</strong> ${escapeHtml(lair.name)} (Lv ${lair.level}, ${lair.theme}) ${lairCapable ? `<span class="livingBadge" style="background:#5e3c6e">${escapeHtml(lairDef?.stateForm ?? "State-Capable")}</span>` : ""}</div>
-                   <div class="livingMuted">Raid: ${lair.raidThreshold}+ · Defenders: ${lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0)} men${lair.fortified ? "🏰 Fortified" : ""}${lair.raidPending ? "⚠️ Raid Imminent" : ""}</div>`
-                : `<div class="livingMuted" style="margin-top:0.2em;">No active lair</div>`
-            }
+        : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
+      }
+            ${lair
+        ? `<div style="margin-top:0.3em;color:#8b0000;"><strong>Lair:</strong> ${escapeHtml(lair.name)} (Lv ${lair.level}, ${lair.theme}) ${lairCapable ? `<span class="livingBadge" style="background:#5e3c6e">${escapeHtml(lairDef?.stateForm ?? "State-Capable")}</span>` : ""}</div>
+                   <div class="livingMuted">Raid: ${lair.raidThreshold}+ · Defenders: ${lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0)} men${lair.fortified ? " · Fortified" : ""}${lair.raidPending ? " · Raid Imminent" : ""}</div>`
+        : `<div class="livingMuted" style="margin-top:0.2em;">No active lair</div>`
+      }
           </div>`
-        : ""
+      : ""
     }
     <div class="livingButtons">
       <button type="button" data-open="burg" data-id="${burgId}">Burg Editor</button>
       ${stateId ? `<button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>` : ""}
     </div>
-    ${
-      sandbox
-        ? `<div class="livingGodTitle">Sandbox God Mode</div>
+    ${sandbox
+      ? `<div class="livingGodTitle">Sandbox God Mode</div>
            <div class="livingButtons">
              ${stateId ? `<button type="button" data-god="spark" data-state="${stateId}" data-burg="${burgId}">Spark Rebellion</button>` : ""}
              <button type="button" data-god="pacify" data-burg="${burgId}">Pacify Unrest</button>
              <button type="button" data-god="complete" data-burg="${burgId}">Complete Asset</button>
-             ${
-               provId && trouble
-                 ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>
+             ${provId && trouble
+        ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>
                     ${stateId ? `<button type="button" data-god="resolve-trouble" data-state="${stateId}" data-province="${provId}">Resolve Trouble</button>` : ""}
                     ${troublePromotable ? `<button type="button" data-god="promote-trouble" data-province="${provId}" data-burg="${burgId}">Promote to State</button>` : ""}`
-                 : provId && !lair
-                   ? `<button type="button" data-god="spawn-trouble" data-province="${provId}">Spawn Trouble</button>`
-                   : ""
-             }
-             ${
-               provId && lair
-                 ? `${stateId ? `<button type="button" data-god="assault-lair" data-state="${stateId}" data-province="${provId}">Assault Lair</button>` : ""}
+        : provId && !lair
+          ? `<button type="button" data-god="spawn-trouble" data-province="${provId}">Spawn Trouble</button>`
+          : ""
+      }
+             ${provId && lair
+        ? `${stateId ? `<button type="button" data-god="assault-lair" data-state="${stateId}" data-province="${provId}">Assault Lair</button>` : ""}
                     ${stateId ? `<button type="button" data-god="delve-lair" data-state="${stateId}" data-province="${provId}">Send Adventurers</button>` : ""}
                     ${lairCapable ? `<button type="button" data-god="ascend-lair" data-province="${provId}" data-burg="${burgId}">Ascend Lair</button>` : ""}
                     <button type="button" data-god="smite-lair" data-province="${provId}">Smite Lair</button>`
-                 : provId
-                   ? `<button type="button" data-god="spawn-lair" data-province="${provId}">Spawn Lair</button>`
-                   : ""
-             }
+        : provId
+          ? `<button type="button" data-god="spawn-lair" data-province="${provId}">Spawn Lair</button>`
+          : ""
+      }
            </div>`
-        : `<div class="livingGodTitle">Guild Operations</div>
+      : `<div class="livingGodTitle">Guild Operations</div>
            ${canDispatch ? renderPartyPreview(provId) : ""}
            <div class="livingButtons">
              ${canDispatch ? `<button type="button" data-guild="dispatch" data-province="${provId}">Dispatch Auto-Fill</button>` : ""}
@@ -1843,13 +2136,71 @@ function currentBuildingName(buildingId: string): string {
   return currentContent().content.buildings.find(building => building.id === buildingId)?.name ?? buildingId;
 }
 
+function zoomToLocation(cell?: number, burgId?: number): void {
+  if (burgId && pack.burgs[burgId]) {
+    const burg = pack.burgs[burgId];
+    if (Number.isFinite(burg.x) && Number.isFinite(burg.y)) {
+      zoomTo(burg.x, burg.y, 8, 1000);
+      return;
+    }
+    if (burg.cell !== undefined) {
+      const point = getCellPoint(burg.cell);
+      if (point) {
+        zoomTo(point[0], point[1], 8, 1000);
+        return;
+      }
+    }
+  }
+  if (cell !== undefined && Number.isFinite(cell)) {
+    const point = getCellPoint(cell);
+    if (point) {
+      zoomTo(point[0], point[1], 8, 1000);
+      return;
+    }
+  }
+}
+
 function bindInspectorButtons(panel: HTMLElement): void {
+  panel.querySelector<HTMLElement>("[data-inspector='close']")?.addEventListener("click", () => {
+    selected = null;
+    panel.style.display = "none";
+  });
+
+  for (const button of panel.querySelectorAll<HTMLElement>("[data-zoom-cell], [data-zoom-burg]")) {
+    button.addEventListener("click", () => {
+      const cell = Number(button.dataset.zoomCell ?? Number.NaN);
+      const burgId = Number(button.dataset.zoomBurg ?? 0);
+      zoomToLocation(Number.isFinite(cell) ? cell : undefined, burgId || undefined);
+    });
+  }
+
+  for (const row of panel.querySelectorAll<HTMLElement>(".livingCapacityRow, .livingMeterRow")) {
+    row.addEventListener("click", () => {
+      const text = row.getAttribute("title");
+      if (text) setStatus(text);
+    });
+  }
+
   for (const button of panel.querySelectorAll<HTMLElement>("[data-open]")) {
     button.addEventListener("click", () => {
       const id = Number(button.dataset.id ?? 0);
       switch (button.dataset.open) {
-        case "state":
+        case "states":
+        case "state": {
+          const state = pack.states[id];
+          if (state && !state.removed) {
+            dialogState.set("statesEditor", "filters", { search: state.name });
+          }
           void Controllers.StatesEditor.open();
+          break;
+        }
+        case "provinces": {
+          dialogState.set("provincesEditor", "filters", { stateId: id, search: "" });
+          void Controllers.ProvincesEditor.open();
+          break;
+        }
+        case "burgs":
+          void Controllers.BurgsOverview.open({ stateId: id });
           break;
         case "burg":
           void Controllers.BurgEditor.open(id);
@@ -2229,6 +2580,188 @@ function setStatus(message: string): void {
   if (status) status.textContent = message;
 }
 
+function openHeroesDialog(): void {
+  const guild = Living.getGuild?.();
+  if (!guild) return;
+
+  Dialog.destroy(HEROES_DIALOG_ID);
+  if (!findEl("dialogs")) {
+    document.body.insertAdjacentHTML("beforeend", `<div id="dialogs"></div>`);
+  }
+
+  ensureEl("dialogs").insertAdjacentHTML("beforeend", `<div id="${HEROES_DIALOG_ID}" class="dialog stable"></div>`);
+  renderHeroesDialogContent();
+
+  Dialog.open(HEROES_DIALOG_ID, {
+    title: "Guild Heroes & Tavern",
+    width: "40em",
+    position: { my: "center", at: "center", of: "svg" },
+    onClose: () => Dialog.destroy(HEROES_DIALOG_ID)
+  });
+}
+
+function renderHeroesDialogContent(): void {
+  const dialogEl = findEl(HEROES_DIALOG_ID);
+  if (!dialogEl) return;
+
+  const guild = Living.getGuild?.();
+  if (!guild) {
+    dialogEl.innerHTML = `<div class="livingHeroEmpty">The Guild has not formed.</div>`;
+    return;
+  }
+
+  const tier = guild.tier ?? 1;
+  const roster = guild.roster ?? [];
+  const candidates = guild.candidates ?? [];
+  const maxHeroes = maxHeroesForTier(tier);
+
+  const activeHeroesHtml =
+    roster.length > 0
+      ? roster.map(id => renderHeroDialogItem(guild, id, false)).join("")
+      : `<div class="livingHeroEmpty">No active heroes in the guild roster. Recruit seekers from the tavern below.</div>`;
+
+  const tavernSeekersHtml =
+    candidates.length > 0
+      ? candidates.map(id => renderHeroDialogItem(guild, id, true)).join("")
+      : `<div class="livingHeroEmpty">No seekers at the tavern this year. Step a season or wait for travelers.</div>`;
+
+  dialogEl.innerHTML = /* html */ `
+    <div class="livingHeroesSection">
+      <div class="livingHeroesSectionHeader">
+        <span>Active Heroes (${roster.length}/${maxHeroes})</span>
+        <span class="livingHeroSub">${guild.gold ?? 0}g in treasury</span>
+      </div>
+      <div class="livingHeroesList">${activeHeroesHtml}</div>
+    </div>
+    <div class="livingHeroesSection">
+      <div class="livingHeroesSectionHeader">
+        <span>Tavern Seekers (${candidates.length})</span>
+        <span class="livingHeroSub">${roster.length >= maxHeroes ? "Roster Full" : "Available for Hire"}</span>
+      </div>
+      <div class="livingHeroesList">${tavernSeekersHtml}</div>
+    </div>
+  `;
+
+  bindHeroesDialogListeners(dialogEl);
+}
+
+function renderHeroDialogItem(guild: GuildState, figureId: number, isSeeker: boolean): string {
+  const figure = pack.history?.figures?.find(entry => entry.i === figureId);
+  if (!figure) return "";
+
+  const level = figureLevel(figure.xp ?? 0);
+  const archetype = figureArchetype(figure);
+  const heroState = Living.getHeroState?.(figureId);
+  const status = heroStatus(guild, figureId);
+  const skills = skillDice(figure);
+  const disciplines = figureDisciplines(figure)
+    .map(id => `<span class="livingDiscipline">${escapeHtml(HERO_DISCIPLINES[id]?.name ?? id)}</span>`)
+    .join(" ");
+
+  const year = options.map?.lore?.calendar?.year ?? 1000;
+  const age = Math.max(0, year - figure.birth);
+  const culture = pack.cultures?.[figure.culture]?.name;
+  const carried = (guild.relics ?? []).find(r => r.holder.kind === "figure" && r.holder.id === figureId);
+
+  let actions = "";
+  if (isSeeker) {
+    const cost = Living.recruitCost?.(figureId) ?? 40 + (guild.tier ?? 1) * 20;
+    const canAfford = (guild.gold ?? 0) >= cost && (guild.roster ?? []).length < maxHeroesForTier(guild.tier ?? 1);
+    actions = `
+      <button type="button" data-hero-dialog="recruit" data-figure="${figureId}"${canAfford ? "" : " disabled"}>Recruit (${cost}g)</button>
+      <button type="button" data-guild="inspect" data-figure="${figureId}">Inspect</button>
+    `;
+  } else {
+    actions = `
+      <button type="button" data-guild="inspect" data-figure="${figureId}">Inspect</button>
+      <button type="button" data-hero-dialog="toggle-push" data-figure="${figureId}" class="${heroState?.push ? "pressed" : ""}">Push: ${heroState?.push ? "On" : "Off"}</button>
+    `;
+    if (age >= 55) {
+      actions += `<button type="button" data-hero-dialog="retire" data-figure="${figureId}">Retire</button>`;
+    }
+  }
+
+  const resolveVal = heroState?.resolve ?? 0;
+  const maxResolve = heroState?.maxResolve ?? 0;
+  const staminaVal = heroState?.stamina ?? 0;
+  const maxStamina = heroState?.maxStamina ?? 0;
+  const resolvePct = maxResolve > 0 ? Math.min(100, Math.round((resolveVal / maxResolve) * 100)) : 0;
+  const staminaPct = maxStamina > 0 ? Math.min(100, Math.round((staminaVal / maxStamina) * 100)) : 0;
+
+  return /* html */ `
+    <div class="livingHeroItem${isSeeker ? " seeker" : ""}">
+      <div class="livingHeroRowTop">
+        <span class="livingHeroName">${escapeHtml(figure.name)}</span>
+        <span class="livingHeroArchetype${isSeeker ? " seeker" : ""}">${archetype.icon} ${escapeHtml(archetype.name)}</span>
+        <span class="livingHeroMeta">Lv ${level}${isSeeker ? "" : ` (${figure.xp ?? 0} xp)`} · age ${age}${culture ? ` · ${escapeHtml(culture)}` : ""}</span>
+        <span class="livingGuildChipStatus">${isSeeker ? "Seeker" : status.label}</span>
+      </div>
+      <div class="livingHeroStatsRow">
+        <div class="livingHeroVitals">
+          <span class="livingHeroBar" title="Resolve">Res: ${resolveVal}/${maxResolve} <span class="livingHeroBarMini"><i style="width:${resolvePct}%"></i></span></span>
+          <span class="livingHeroBar" title="Stamina">Sta: ${staminaVal}/${maxStamina} <span class="livingHeroBarMini"><i style="width:${staminaPct}%"></i></span></span>
+        </div>
+        <span>${skills}</span>
+        ${disciplines ? `<div class="livingChips">${disciplines}</div>` : ""}
+        ${!isSeeker && heroState ? `<span class="livingMuted">Doc: ${HERO_DOCTRINE_LABELS[heroState.doctrine]}</span>` : ""}
+        ${carried ? `<span class="livingMuted">Carries: ${escapeHtml(carried.name)}</span>` : ""}
+      </div>
+      <div class="livingHeroActions">${actions}</div>
+    </div>
+  `;
+}
+
+function bindHeroesDialogListeners(dialogEl: HTMLElement): void {
+  for (const button of dialogEl.querySelectorAll<HTMLElement>('[data-guild="inspect"]')) {
+    button.addEventListener("click", () => {
+      const figureId = Number(button.dataset.figure ?? 0);
+      selected = { kind: "figure", id: figureId };
+      renderInspector();
+    });
+  }
+
+  for (const button of dialogEl.querySelectorAll<HTMLElement>('[data-hero-dialog="recruit"]')) {
+    button.addEventListener("click", () => {
+      const figureId = Number(button.dataset.figure ?? 0);
+      const ok = Living.recruitCandidate(figureId);
+      if (ok) {
+        refresh();
+        renderHeroesDialogContent();
+        setStatus("A new hero joins the Guild.");
+      } else {
+        setStatus("Recruitment failed: not enough gold or the roster is full.");
+      }
+    });
+  }
+
+  for (const button of dialogEl.querySelectorAll<HTMLElement>('[data-hero-dialog="toggle-push"]')) {
+    button.addEventListener("click", () => {
+      const figureId = Number(button.dataset.figure ?? 0);
+      const state = Living.getHeroState?.(figureId);
+      const ok = Living.setHeroPush(figureId, !state?.push);
+      if (ok) {
+        refresh();
+        renderHeroesDialogContent();
+      }
+    });
+  }
+
+  for (const button of dialogEl.querySelectorAll<HTMLElement>('[data-hero-dialog="retire"]')) {
+    button.addEventListener("click", () => {
+      const figureId = Number(button.dataset.figure ?? 0);
+      const protegeId = Living.retireHero(figureId);
+      if (protegeId !== null) {
+        if (selected?.kind === "figure" && selected.id === figureId) {
+          selected = { kind: "figure", id: protegeId };
+        }
+        refresh();
+        renderHeroesDialogContent();
+        setStatus("The veteran retired and passed the torch to a protege.");
+      }
+    });
+  }
+}
+
 /** Open the HUD and select an entity (used by the native editors and map commands). */
 function inspect(kind: Selection["kind"], id: number): void {
   open();
@@ -2241,4 +2774,4 @@ function inspect(kind: Selection["kind"], id: number): void {
   }
 }
 
-export const LivingHud = { open, close, toggle, refresh, inspect };
+export const LivingHud = { open, close, toggle, refresh, inspect, openHeroesDialog, selectMarker };

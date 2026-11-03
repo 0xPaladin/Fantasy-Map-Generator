@@ -15,6 +15,8 @@ The HUD is a compact bar at the bottom of the map. It can be dragged anywhere on
 
 Each tick writes to the map itself: borders, burg ownership, regiments, battle markers, the **Religions layer**, and chronicle events all change as the simulation runs. On-map badges call out wounded regiments, besieged cities, and the season's headline events.
 
+The optional **Trouble** layer draws a pin for every active provincial trouble and lair: hover a pin to read its level, theme, save and garrison (or pin the note open), and the native danger markers on the markers layer resolve to the same lair notes. Cleared lairs leave explorable **ruins** behind instead of vanishing.
+
 ### The inspector
 While the HUD is open, click a state or a burg on the map to open its diorama card.
 
@@ -37,7 +39,7 @@ A **burg** card shows its owner, tier and population, its unrest and standing as
 
 The state card also lists its **Provinces** as clickable chips, and each one opens a **province card**: public order, stability and development, the province capital and its faith, the active Trouble and Lair, and buttons to jump to the Provinces Editor or back to the state.
 
-The native editors surface the same live data. The **Burgs Editor** adds a *Living World* summary for the selected burg (citizens, city yields, City HP, majority faith and the current production item) with an **Inspect** button that opens its city card. The **Provinces Editor** adds a **Living** column — public order with ⚠️ trouble and 💀 lair markers — and clicking it opens the province card.
+The native editors surface the same live data. The **Burgs Editor** adds a *Living World* summary for the selected burg (citizens, city yields, City HP, majority faith and the current production item) with an **Inspect** button that opens its city card. The **Provinces Editor** adds a **Living** column — public order with ⚠️ trouble and 💀 lair markers — and a **Province Details** dialog (the castle button on each row) with the province's order, stability and development, its M/W/S/C domain checks, standing assets and burg feature toggles; the Living column opens the province card, which links back to that dialog.
 
 ### What the simulation does
 The Living World reads and mutates FMG's live `pack`, so the native editors stay authoritative: editing a burg's walls, a state's treasury, cell ownership, goods or regiments is adopted on the next tick.

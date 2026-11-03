@@ -866,7 +866,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     expect(Living.smiteLair(1)).toBe(true);
     expect(living.provinces[1].lair).toBeNull();
-    expect(marker.hidden).toBe(true);
+    // Danger markers are converted into explorable ruins instead of hidden
+    expect(marker.type).toBe("ruins");
+    expect(marker.name.startsWith("Ruins of")).toBe(true);
   });
 
   it("adds ceil(L/2) to load only for active lairs without reducing generation", () => {
@@ -921,7 +923,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(living.provinces[1].trouble).toBeNull();
     expect(living.provinces[1].lair).toBe(lair);
     expect(lair!.id).toBe("ancient_evil");
-    expect(lair!.level).toBe(5);
+    expect(lair!.level).toBe(3); // ceil(5 / 2) = 3, clamped to min 3
+
+    // Test higher trouble level (10 -> ceil(10 / 2) = 5)
+    Living.smiteLair(1);
+    Living.spawnTrouble(1, "angry_dead", "ruin", 10);
+    const lair10 = Living.metastasizeTroubleToLair(1);
+    expect(lair10!.level).toBe(5);
   });
 
   it("launches seasonal lair raid against a settlement", () => {
@@ -1967,7 +1975,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(outcome.summary).toContain("was broken up");
       expect(living.provinces[1].lair).toBeNull();
       expect(lair.markerId).toBeDefined();
-      expect(pack.markers![lair.markerId!]!.hidden).toBe(true);
+      expect(pack.markers![lair.markerId!]!.type).toBe("ruins");
     });
 
     it("resolves a succession dispute by selling out the ruler", () => {
@@ -3967,8 +3975,8 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     expect(newCapital.state).toBe(newStateId);
     expect(pack.cells.state[4]).toBe(newStateId);
 
-    // Dungeon marker hidden and lair cleared
-    expect(pack.markers![markerId].hidden).toBe(true);
+    // The dungeon marker becomes a ruin and the lair is cleared
+    expect(pack.markers![markerId].type).toBe("ruins");
     expect(living.provinces[3].lair).toBeNull();
     expect(living.provinces[3].order).toBe(75);
 

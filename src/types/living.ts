@@ -142,6 +142,8 @@ export interface ProvinceLair {
   cell: number;
   burgId?: number;
   markerId?: number;
+  provinceId?: number;
+  maritime?: boolean;
   raidThreshold: number;
   raidUnits: ArmyUnit[];
   defenders: ArmyUnit[];
@@ -471,6 +473,9 @@ export interface LivingWorldState {
   units?: Record<string, UnitSimState>;
   /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
   religions?: Record<number, ReligionBeliefState>;
+  /** danger-marker lairs/troubles tracked across the map (master PR #21) */
+  activeLairs?: Record<string, ProvinceLair>;
+  activeTroubles?: Record<string, ProvinceTrouble>;
 }
 
 // ---------------------------------------------------------------------------

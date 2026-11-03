@@ -97,9 +97,9 @@ describe("living-lairs (Slice 1: Lair Catalog, Unit Templates, and Trouble Mappi
     }
   });
 
-  it("creates a ProvinceLair with bounded level (4..10) and correct fields", () => {
+  it("creates a ProvinceLair with bounded level (3..10) and correct fields", () => {
     const lowLair = createProvinceLair("bandit_camp", 42, 2, "burg");
-    expect(lowLair.level).toBe(4);
+    expect(lowLair.level).toBe(3);
     expect(lowLair.cell).toBe(42);
     expect(lowLair.theme).toBe("burg");
     expect(lowLair.fortified).toBe(false);
