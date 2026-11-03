@@ -322,8 +322,25 @@ describe("LivingHud", () => {
 
     const inspector = document.getElementById("livingInspector");
 
-    inspector?.querySelector<HTMLElement>('button[data-open="states"]')?.click();
+    const titleButton = inspector?.querySelector<HTMLButtonElement>("button.livingInspectorTitle");
+    expect(titleButton).toBeTruthy();
+    expect(titleButton?.dataset.open).toBe("states");
+    expect(titleButton?.dataset.id).toBe("1");
+
+    titleButton?.click();
     expect(Controllers.StatesEditor.open).toHaveBeenCalled();
+
+    // Standalone States button is removed
+    const standaloneStatesBtn = Array.from(inspector?.querySelectorAll<HTMLButtonElement>("button") ?? []).find(
+      btn => btn.textContent?.trim() === "States"
+    );
+    expect(standaloneStatesBtn).toBeUndefined();
+
+    // Provinces is grouped with Burgs and Regiments under Capacity
+    const capacityButtons = inspector?.querySelector(".livingSection .livingButtons");
+    expect(capacityButtons?.querySelector('button[data-open="provinces"]')).toBeTruthy();
+    expect(capacityButtons?.querySelector('button[data-open="burgs"]')).toBeTruthy();
+    expect(capacityButtons?.querySelector('button[data-open="regiments"]')).toBeTruthy();
 
     inspector?.querySelector<HTMLElement>('button[data-open="provinces"]')?.click();
     expect(Controllers.ProvincesEditor.open).toHaveBeenCalled();

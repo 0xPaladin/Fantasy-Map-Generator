@@ -1443,7 +1443,9 @@ div.states .icon-flag-empty,
 div.states .icon-cw,
 div.states .icon-lock,
 div.states .icon-lock-open,
-div.states .icon-target {
+div.states .icon-target,
+div.states .icon-castle,
+div.states .icon-fort-awesome {
   cursor: pointer;
 }
 
@@ -1547,6 +1549,7 @@ div.states span.inactive:hover {
 
 #stateNameEditor div.label,
 #provinceNameEditor div.label,
+#provinceDetailsDialog div.label,
 #regimentBody div.label,
 #markerEditor div.label {
   display: inline-block;
@@ -2494,4 +2497,113 @@ body.view-only #scaleBar {
 #saveToStorageButton:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+#provinceDetailsDialog {
+  max-width: 92vw;
+  max-height: 72vh;
+  overflow-y: auto;
+  font-size: 0.9em;
+  padding: 6px 10px;
+}
+#provinceDetailsDialog::-webkit-scrollbar {
+  width: 6px;
+  background-color: transparent;
+}
+#provinceDetailsDialog::-webkit-scrollbar-thumb {
+  background-color: #aaa;
+  border-radius: 6px;
+}
+#provinceDetailsDialog::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+#provinceDetailsDialog .label {
+  display: inline-block;
+  padding: 0.2em 0;
+  font-weight: 500;
+}
+#provinceDetailsDialog .provSection {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin-top: 0.35em;
+  padding-top: 0.3em;
+}
+#provinceDetailsDialog .provSectionTitle {
+  font-weight: bold;
+  font-size: 0.95em;
+  margin-bottom: 0.2em;
+  color: #333;
+}
+#provinceDetailsDialog .provRow {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.2em;
+  gap: 0.4em;
+}
+#provinceDetailsDialog .provMuted {
+  color: #777;
+  font-style: italic;
+}
+#provinceDetailsDialog .provBadge {
+  display: inline-block;
+  font-size: 0.72em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: 600;
+}
+#provinceDetailsDialog .provCheckChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2em;
+  background: rgba(94, 79, 162, 0.1);
+  border: 1px solid rgba(94, 79, 162, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.88em;
+  color: #3f3570;
+}
+#provinceDetailsDialog table.provTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+  margin-top: 0.25em;
+  margin-bottom: 0.35em;
+}
+#provinceDetailsDialog table.provTable th {
+  background: rgba(0, 0, 0, 0.08);
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  font-weight: 600;
+}
+#provinceDetailsDialog table.provTable td {
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  vertical-align: middle;
+}
+#provinceDetailsDialog table.provTable tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.035);
+}
+#provinceDetailsDialog table.provTable tbody tr:nth-child(odd) {
+  background: transparent;
+}
+#provinceDetailsDialog table.provTable tbody tr:hover {
+  background: rgba(94, 79, 162, 0.08);
+}
+#provinceDetailsDialog .burgFeatureIcon {
+  display: inline-block;
+  cursor: pointer;
+  padding: 0 1px;
+}
+#provinceDetailsDialog .burgFeatureIcon.inactive {
+  opacity: 0.22;
+}
+#provinceDetailsDialog .burgFeatureIcon:not(.inactive):hover,
+#provinceDetailsDialog .burgFeatureIcon.inactive:hover {
+  opacity: 0.85;
+}
+#provinceDetailsDialog input[type="number"] {
+  padding: 2px 4px;
+  font-size: 0.95em;
+  box-sizing: border-box;
 }
