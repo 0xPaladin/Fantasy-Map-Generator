@@ -140,6 +140,7 @@ async function enter(): Promise<void> {
 
 async function exit(): Promise<void> {
   if (!isAstralView()) return;
+  if (is3dView()) await Controllers.View3d.enterStandard(); // closing the chart closes any open 3D view (orrery)
   const current = ++transition;
   const previous = profile ?? readProfile();
   const restoreStyle = previous?.styled ?? StylePresetsService.isSystem("astral");

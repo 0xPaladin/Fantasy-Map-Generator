@@ -17,7 +17,7 @@ import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { Layers } from "@/renderers/layers";
-import { enterAstralSystemView } from "@/renderers/view-mode";
+import { enterAstralSystemView, isAstralView } from "@/renderers/view-mode";
 import type { StylesData } from "@/types/styles";
 import { Dialog } from "@/ui/dialog/dialog";
 import { noteButton } from "@/ui/dialog/dialog-helpers";
@@ -543,8 +543,10 @@ function ensureSolarSystem(): void {
   SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false });
 }
 
-function openSystemOrrery(): void {
+async function openSystemOrrery(): Promise<void> {
   ensureSolarSystem();
+  // the orrery sits on the restored FMG profile: the star chart layers do not follow us down
+  if (isAstralView()) await Controllers.AstralMode.exit();
   enterAstralSystemView(String(getSelectedId()));
   Dialog.close("astralSystemEditor");
   void Controllers.View3d.open("viewSystem");
@@ -556,6 +558,7 @@ async function viewPlanetInFmg(event: Event): Promise<void> {
   if (index === undefined) return;
 
   ensureSolarSystem();
+  if (isAstralView()) await Controllers.AstralMode.exit(); // the planet's flat map needs the FMG profile
   const body = SolarSystem.getBody(`planet-${index}`);
   if (!body?.colonizable) {
     tip(`${body?.name ?? "This planet"} has no mappable surface`, false, "error");
