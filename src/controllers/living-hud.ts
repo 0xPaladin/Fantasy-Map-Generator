@@ -1441,11 +1441,11 @@ function renderStateCard(stateId: number): string {
       <div class="livingSectionTitle">Claims & Grudges</div>
       ${
         [
-          renderClaims(sSim),
-          renderGrudges(sSim),
-          renderRestiveBurgs(stateId),
+          renderProvincesLairs(stateId),
           renderProvincesTroubles(stateId),
-          renderProvincesLairs(stateId)
+          renderRestiveBurgs(stateId),
+          renderClaims(sSim),
+          renderGrudges(sSim)
         ]
           .filter(Boolean)
           .join("") || '<div class="livingMuted">None</div>'

@@ -459,6 +459,71 @@ describe("LivingHud", () => {
     expect(zoomTo).toHaveBeenCalledWith(10, 10, 8, 1000);
   });
 
+  it("renders Claims & Grudges in precedence order: Lairs, Troubles, Restive burgs, then Claims and Grudges", () => {
+    mocks.state.provinces = {
+      1: {
+        provinceId: 1,
+        order: 50,
+        stability: 1,
+        development: 0,
+        developmentProgress: null,
+        trouble: {
+          id: "monsters",
+          name: "Monsters",
+          theme: "wilderness",
+          pool: "m",
+          save: "reflex",
+          requiredRole: "guardsmen",
+          level: 5,
+          seasonsUnchecked: 1,
+          cell: 2
+        },
+        lair: {
+          id: "bandit_camp",
+          name: "Bandit Camp",
+          level: 6,
+          theme: "ruin",
+          cell: 2,
+          defenders: [],
+          raidUnits: [],
+          raidThreshold: 5,
+          fortified: false,
+          raidPending: false,
+          seasonsActive: 1
+        }
+      }
+    };
+    mocks.state.burgs = {
+      1: {
+        burgId: 1,
+        baseTier: 5,
+        development: 0,
+        developmentProgress: 0,
+        buildings: [],
+        construction: null,
+        unrest: 12
+      }
+    };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const text = document.getElementById("livingInspector")?.textContent ?? "";
+    const lairsIdx = text.indexOf("Lairs");
+    const troublesIdx = text.indexOf("Troubles");
+    const restiveIdx = text.indexOf("Restive burgs");
+    const casusIdx = text.indexOf("Casus belli");
+    const grudgesIdx = text.indexOf("Grudges");
+
+    expect(lairsIdx).toBeGreaterThan(-1);
+    expect(troublesIdx).toBeGreaterThan(lairsIdx);
+    expect(restiveIdx).toBeGreaterThan(troublesIdx);
+    expect(casusIdx).toBeGreaterThan(restiveIdx);
+    expect(grudgesIdx).toBeGreaterThan(casusIdx);
+  });
+
   it("groups restive burgs by Red, Orange, Yellow bins, omits Green, and omits unrest numbers", () => {
     (pack.burgs as unknown) = [
       undefined,
