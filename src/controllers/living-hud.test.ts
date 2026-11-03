@@ -543,6 +543,59 @@ describe("LivingHud", () => {
     expect(Living.smiteLair).toHaveBeenCalledWith(1);
   });
 
+  it("opens a province card from the state chips and from inspect()", () => {
+    mocks.state.provinces = {
+      1: {
+        provinceId: 1,
+        order: 82,
+        stability: 3,
+        development: 2,
+        trouble: {
+          id: "demagogue",
+          name: "Zealous Demagogue",
+          level: 4,
+          theme: "burg",
+          burgId: 1,
+          seasonsUnchecked: 2
+        },
+        lair: {
+          id: "bandit_camp",
+          name: "Forest Hideout",
+          level: 5,
+          theme: "ruin",
+          originCell: 1,
+          raidThreshold: 5,
+          defenders: [{ type: "infantry", count: 12 }],
+          fortified: true,
+          raidPending: false,
+          seasonsActive: 1
+        }
+      }
+    };
+    mocks.state.burgs[1] = { ...(mocks.state.burgs[1] as Record<string, unknown>), citizens: 4 };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "religion", text: "Northmarch converts.", cell: 1, stateId: 1 }
+    ];
+
+    LivingHud.open();
+    LivingHud.inspect("state", 1);
+
+    const inspector = document.getElementById("livingInspector");
+    const provinceChip = inspector?.querySelector<HTMLElement>('[data-inspect="province"]');
+    expect(provinceChip?.textContent).toContain("Northmarch");
+
+    provinceChip?.click();
+    expect(inspector?.textContent).toContain("Public order");
+    expect(inspector?.textContent).toContain("82%");
+    expect(inspector?.textContent).toContain("Zealous Demagogue");
+    expect(inspector?.textContent).toContain("Forest Hideout");
+    expect(inspector?.textContent).toContain("4 citizens");
+    expect(inspector?.querySelector('[data-open="province"]')).toBeTruthy();
+
+    LivingHud.inspect("province", 1);
+    expect(inspector?.textContent).toContain("Provinces Editor");
+  });
+
   it("shows provincial lair on burg card and triggers burg lair interventions", () => {
     mocks.state.provinces = {
       1: {

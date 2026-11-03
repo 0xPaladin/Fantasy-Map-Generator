@@ -35,6 +35,10 @@ A **burg** card shows its owner, tier and population, its unrest and standing as
 * **Religion** — the city's majority faith and its per-religion pressure.
 * **Province** — public order, stability, development, active **Trouble** (with its save bane and specialist role) and active **Lair** (threat level, raid threshold, defenders and fortifications).
 
+The state card also lists its **Provinces** as clickable chips, and each one opens a **province card**: public order, stability and development, the province capital and its faith, the active Trouble and Lair, and buttons to jump to the Provinces Editor or back to the state.
+
+The native editors surface the same live data. The **Burgs Editor** adds a *Living World* summary for the selected burg (citizens, city yields, City HP, majority faith and the current production item) with an **Inspect** button that opens its city card. The **Provinces Editor** adds a **Living** column — public order with ⚠️ trouble and 💀 lair markers — and clicking it opens the province card.
+
 ### What the simulation does
 The Living World reads and mutates FMG's live `pack`, so the native editors stay authoritative: editing a burg's walls, a state's treasury, cell ownership, goods or regiments is adopted on the next tick.
 

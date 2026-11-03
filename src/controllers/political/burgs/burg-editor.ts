@@ -3,10 +3,13 @@ import { Controllers } from "@/controllers";
 import { Goods } from "@/model/economy/goods-generator";
 import type { Market } from "@/model/economy/markets-generator";
 import { Markets } from "@/model/economy/markets-generator";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
 import { Production } from "@/model/economy/production-generator";
 import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Burgs } from "@/model/political/burgs-generator";
+import { majorityReligion } from "@/model/physical/living-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
 import { convertTemperature, getHeight, getTemperatureLikeness } from "@/model/units";
@@ -21,6 +24,7 @@ import { noteButton } from "@/ui/dialog/dialog-helpers";
 import { applyDefaultViewboxEvents } from "@/ui/map/viewbox-events";
 import { zoomTo } from "@/ui/map/zoom";
 import { clearMainTip, tip } from "@/ui/tooltips";
+import { escapeHtml } from "@/utils";
 import { openURL } from "@/utils/common-utils";
 import { sentences, t } from "@/utils/i18n";
 import { ensureEl, getPointer } from "@/utils/node-utils";
@@ -205,6 +209,23 @@ function renderDialog(): void {
             </div>
           </div>
         </div>
+        <div
+          id="burgLivingSection"
+          data-tip="${t("OpenCiv city state managed by the Living World simulation")}"
+          style="display: none; border-top: 1px solid #d4d4d4; margin-top: 0.35em; padding-top: 0.35em"
+        >
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 0.4em">
+            <strong>${t("Living World")}</strong>
+            <button
+              id="burgLivingOpen"
+              type="button"
+              data-tip="${t("Open this burg in the Living World inspector")}"
+            >
+              ${t("Inspect")}
+            </button>
+          </div>
+          <div id="burgLiving" style="font-size: 0.95em; line-height: 1.45em"></div>
+        </div>
         <div id="burgPreviewSection" data-tip="${t("Burg map preview: scroll to zoom, drag to pan")}" style="display: flex; flex-direction: column">
           <div style="display: flex; justify-content: space-between">
             <span>${t("Burg preview")}:</span>
@@ -260,6 +281,7 @@ function renderDialog(): void {
     </div>`;
   ensureEl("dialogs").insertAdjacentHTML("beforeend", editorHtml);
 
+  ensureEl("burgLivingOpen").addEventListener("click", () => void Controllers.LivingHud.inspect("burg", getSelectedId()));
   ensureEl("burgName").addEventListener("input", changeName);
   ensureEl("burgNameSpeak").addEventListener("click", () => speak(ensureEl<HTMLInputElement>("burgName").value));
   ensureEl("burgNameReRandom").addEventListener("click", generateNameRandom);
@@ -350,6 +372,8 @@ function updateBurgValues(): void {
   ensureEl("burgShanty").classList.toggle("inactive", !b.shanty);
   ensureEl("burgProduction").innerHTML = getProduction(Production.getBurgProduction(b));
 
+  updateBurgLiving(id);
+
   updateBurgLockIcon();
 
   // set emblem image
@@ -358,6 +382,49 @@ function updateBurgValues(): void {
   ensureEl("burgEmblem").setAttribute("href", `#${coaID}`);
 
   updateBurgPreview(b);
+}
+
+/** Summarise the OpenCiv city state (if the Living World simulates this burg). */
+function updateBurgLiving(burgId: number): void {
+  const section = ensureEl("burgLivingSection");
+  const bSim = pack.history?.living?.burgs?.[burgId];
+  if (!bSim) {
+    section.style.display = "none";
+    ensureEl("burgLiving").innerHTML = "";
+    return;
+  }
+
+  section.style.display = "block";
+  const yields = bSim.cityYields;
+  const yieldLine = yields
+    ? `🌾 ${Math.round(yields.food)} · 🔨 ${Math.round(yields.production)} · 🪙 ${Math.round(
+        yields.gold
+      )} · 🔬 ${Math.round(yields.science)} · 🎭 ${Math.round(yields.culture)} · ✨ ${Math.round(yields.faith)}`
+    : "";
+  const hpLine =
+    bSim.hp !== undefined && bSim.maxHp !== undefined
+      ? ` · HP ${Math.round(bSim.hp)}/${Math.round(bSim.maxHp)}`
+      : "";
+  const citizensLine = `${bSim.citizens ?? bSim.baseTier} citizens${yieldLine ? ` · ${yieldLine}` : ""}${hpLine}`;
+
+  const religionId = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
+  const religion = religionId ? pack.religions?.[religionId]?.name : undefined;
+  const religionLine = religion ? `<div>${t("Faith")}: ${escapeHtml(religion)}</div>` : "";
+
+  const item = bSim.productionQueue?.[0];
+  const itemDef = item
+    ? item.kind === "unit"
+      ? CIV_UNIT_BY_ID[item.id]
+      : CIV_BUILDING_BY_ID[item.id]
+    : undefined;
+  const itemProgress = item ? Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0) : 0;
+  const queueLine = item
+    ? `<div>${t("Production")}: ${escapeHtml(itemDef?.name ?? item.id)} · ${itemProgress} / ${Math.round(
+        itemDef?.cost ?? 0
+      )}</div>`
+    : "";
+
+  ensureEl("burgLiving").innerHTML = `<div>${escapeHtml(citizensLine)}</div>${religionLine}${queueLine}`;
 }
 
 function changeName(): void {

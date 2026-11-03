@@ -185,6 +185,16 @@ const TEMPLATE = /* html */ `
     #${INSPECTOR_ID} .livingBadge { border-radius: 2px; padding: 0 0.25em; color: #fff; }
     #${INSPECTOR_ID} .livingTraits { color: #444; }
     #${INSPECTOR_ID} .livingChips { display: flex; flex-wrap: wrap; gap: 0.25em; }
+    #${INSPECTOR_ID} .livingCivChips { display: flex; flex-wrap: wrap; gap: 0.25em; margin: 0.15em 0; }
+    #${INSPECTOR_ID} .livingCivChip {
+      border: 1px solid rgba(94, 79, 162, 0.45);
+      border-radius: 3px;
+      background: rgba(94, 79, 162, 0.08);
+      color: #3f3570;
+      padding: 0 0.3em;
+      white-space: nowrap;
+      font-size: 1em;
+    }
     #${INSPECTOR_ID} .livingDiscipline { border: 1px solid #5e4fa2; border-radius: 2px; padding: 0 0.3em; color: #3f3570; }
     #${INSPECTOR_ID} ul { margin: 0.15em 0 0; padding-left: 1.1em; }
     #${INSPECTOR_ID} li { margin-bottom: 0.1em; }
@@ -215,6 +225,7 @@ const TEMPLATE = /* html */ `
 type Selection =
   | { kind: "state"; id: number }
   | { kind: "burg"; id: number }
+  | { kind: "province"; id: number }
   | { kind: "figure"; id: number }
   | { kind: "marker"; id: number }
   | { kind: "relic"; id: number }
@@ -744,6 +755,12 @@ function selectBurg(burgId: number): void {
   renderInspector();
 }
 
+function selectProvince(provinceId: number): void {
+  rememberProvinceTarget(provinceId);
+  selected = { kind: "province", id: provinceId };
+  renderInspector();
+}
+
 function validateSelection(): void {
   if (!selected) return;
   const current = selected;
@@ -753,7 +770,9 @@ function validateSelection(): void {
       ? Boolean(pack.states[current.id] && !pack.states[current.id].removed)
       : current.kind === "burg"
         ? Boolean(pack.burgs[current.id] && !pack.burgs[current.id].removed)
-        : current.kind === "marker"
+        : current.kind === "province"
+          ? Boolean(pack.provinces?.[current.id] && !pack.provinces[current.id].removed)
+          : current.kind === "marker"
           ? (pack.markers ?? []).some(marker => marker?.i === current.id)
           : current.kind === "relic"
             ? (guild?.relics ?? []).some(relic => relic.id === current.id)
@@ -777,13 +796,15 @@ function renderInspector(): void {
       ? renderStateCard(selected.id)
       : selected.kind === "burg"
         ? renderBurgCard(selected.id)
-        : selected.kind === "marker"
-          ? renderMarkerCard(selected.id)
-          : selected.kind === "relic"
-            ? renderRelicCard(selected.id)
-            : selected.kind === "petition"
-              ? renderPetitionCard(selected.id)
-              : renderFigureCard(selected.id);
+        : selected.kind === "province"
+          ? renderProvinceCard(selected.id)
+          : selected.kind === "marker"
+            ? renderMarkerCard(selected.id)
+            : selected.kind === "relic"
+              ? renderRelicCard(selected.id)
+              : selected.kind === "petition"
+                ? renderPetitionCard(selected.id)
+                : renderFigureCard(selected.id);
   bindInspectorButtons(panel);
 }
 
@@ -1194,6 +1215,7 @@ function renderStateCard(stateId: number): string {
     <div class="livingInspectorTitle">${escapeHtml(state.fullName ?? state.name ?? "State")}</div>
     ${renderRuler(ruler, age)}
     ${renderCivState(sSim, stateId)}
+    ${renderStateProvinces(stateId)}
     ${renderCapacity(sSim)}
     ${renderAgenda(sSim)}
     <div class="livingSection">
@@ -1476,6 +1498,104 @@ function renderCivCity(bSim: CitySimView, burgId: number): string {
   </div>`;
 }
 
+/** Clickable chips for every province held by a state. */
+function renderStateProvinces(stateId: number): string {
+  const living = Living.getState();
+  const provinces = (pack.provinces ?? []).filter(
+    province => province?.i && !province.removed && province.state === stateId
+  );
+  if (!provinces.length) return "";
+
+  const chips = provinces
+    .map(province => {
+      const pSim = living.provinces?.[province.i];
+      const icon = pSim?.lair ? "💀" : pSim?.trouble ? "⚠️" : "🏳️";
+      const order = Math.round(pSim?.order ?? 0);
+      const name = escapeHtml(province.name ?? "Province");
+      return `<button type="button" class="livingCivChip" data-inspect="province" data-id="${province.i}" title="Public order ${order}%">${icon} ${name}</button>`;
+    })
+    .join("");
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Provinces</div>
+    <div class="livingCivChips">${chips}</div>
+  </div>`;
+}
+
+/** The Living World province card: order, capital, faith, trouble, lair and OpenCiv links. */
+function renderProvinceCard(provinceId: number): string {
+  const living = Living.getState();
+  const province = pack.provinces?.[provinceId];
+  const pSim = living.provinces?.[provinceId];
+  if (!province?.i || province.removed || !pSim) return `<div class="livingPlaceholder">This province is gone.</div>`;
+
+  const state = pack.states[province.state];
+  const owner = state && !state.removed ? (state.fullName ?? state.name) : "Unclaimed";
+  const capitalBurg = province.burg ? pack.burgs[province.burg] : undefined;
+  const capitalSim = province.burg ? living.burgs[province.burg] : undefined;
+  const trouble = pSim.trouble;
+  const troubleDef = trouble ? getTroubleDef(trouble.id) : undefined;
+  const lair = pSim.lair;
+  const lairDef = lair ? getLairDef(lair.id) : undefined;
+  const religionId = capitalBurg ? (pack.cells.religion?.[capitalBurg.cell] ?? 0) : 0;
+  const religionName = religionId ? pack.religions?.[religionId]?.name : undefined;
+  const development = pSim.developmentProgress
+    ? ` · next development in ${pSim.developmentProgress.turnsLeft} turn${
+        pSim.developmentProgress.turnsLeft === 1 ? "" : "s"
+      }`
+    : "";
+
+  const capitalRow = capitalBurg
+    ? `<button type="button" class="livingGuildChip" data-inspect="burg" data-id="${capitalBurg.i}">${escapeHtml(
+        capitalBurg.name ?? "Capital"
+      )}</button>`
+    : `<span class="livingMuted">No province capital</span>`;
+
+  const troubleRow =
+    trouble && troubleDef
+      ? `<div><strong>${escapeHtml(troubleDef.name)}</strong> (Lv ${trouble.level}, ${trouble.theme})</div>
+         <div class="livingMuted">Save: ${SAVE_KIND_LABELS[troubleDef.save]} · Specialist: ${
+           UNIT_ROLE_LABELS[troubleDef.requiredRole]
+         }</div>`
+      : `<div class="livingMuted">No active trouble</div>`;
+
+  const lairDefenders = lair?.defenders.reduce((sum, unit) => sum + (unit.count ?? 0), 0) ?? 0;
+  const lairRow =
+    lair && lairDef
+      ? `<div><strong>${escapeHtml(lair.name)}</strong> (Lv ${lair.level}, ${lair.theme})</div>
+         <div class="livingMuted">Raid ${lair.raidThreshold}+ · ${lairDefenders} defenders${
+           lair.fortified ? " · 🏰 Fortified" : ""
+         }${lair.raidPending ? " · ⚠️ Raid imminent" : ""}</div>`
+      : `<div class="livingMuted">No active lair</div>`;
+
+  return `<div class="livingInspectorTitle">🏳️ ${escapeHtml(province.name ?? "Province")}</div>
+  <div class="livingMuted">${escapeHtml(owner)}${province.formName ? ` · ${escapeHtml(province.formName)}` : ""}</div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Public order</div>
+    ${renderMeter("Order", Math.round(pSim.order), false)}
+    <div class="livingMuted">Stability ${pSim.stability} · Development ${pSim.development}${development}</div>
+  </div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Capital & faith</div>
+    <div>${capitalRow}</div>
+    <div class="livingMuted">${capitalSim?.citizens ?? 0} citizens${
+      religionName ? ` · ${escapeHtml(religionName)}` : ""
+    }</div>
+  </div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Trouble</div>
+    ${troubleRow}
+  </div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Lair</div>
+    ${lairRow}
+  </div>
+  <div class="livingButtons">
+    <button type="button" data-open="province" data-id="${provinceId}">Provinces Editor</button>
+    ${state && !state.removed ? `<button type="button" data-inspect="state" data-id="${state.i}">State</button>` : ""}
+  </div>`;
+}
+
 function renderCapacity(sSim: StatePolitySim): string {
   const pools = [
     ["m", "Military"],
@@ -1734,10 +1854,21 @@ function bindInspectorButtons(panel: HTMLElement): void {
         case "burg":
           void Controllers.BurgEditor.open(id);
           break;
+        case "province":
+          void Controllers.ProvincesEditor.open();
+          break;
         case "regiments":
           void Controllers.RegimentsOverview.open(id);
           break;
       }
+    });
+  }
+
+  for (const button of panel.querySelectorAll<HTMLElement>("[data-inspect]")) {
+    button.addEventListener("click", () => {
+      const kind = button.dataset.inspect as Selection["kind"] | undefined;
+      if (!kind) return;
+      inspect(kind, Number(button.dataset.id ?? 0));
     });
   }
 
@@ -2098,4 +2229,16 @@ function setStatus(message: string): void {
   if (status) status.textContent = message;
 }
 
-export const LivingHud = { open, close, toggle, refresh };
+/** Open the HUD and select an entity (used by the native editors and map commands). */
+function inspect(kind: Selection["kind"], id: number): void {
+  open();
+  if (kind === "state") selectState(id);
+  else if (kind === "burg") selectBurg(id);
+  else if (kind === "province") selectProvince(id);
+  else {
+    selected = { kind, id } as Selection;
+    renderInspector();
+  }
+}
+
+export const LivingHud = { open, close, toggle, refresh, inspect };
