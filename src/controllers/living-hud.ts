@@ -9,6 +9,12 @@ import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel }
 import { activeAspects, aspectBonus } from "@/data/hero-aspects";
 import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
+import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { CIV_PROMOTION_BY_ID } from "@/data/living-civ-promotions";
+import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
+import { resolveCivTechName } from "@/data/living-civ-themes";
+import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import {
@@ -28,7 +34,16 @@ import {
   troubleMissionTags
 } from "@/data/mission-tags";
 import { Pack } from "@/model/graph/pack-generator";
-import { figureLevel, GUILD_TIER_TITLES, Living, maxHeroesForTier } from "@/model/physical/living-generator";
+import {
+  activeCivThemeId,
+  figureLevel,
+  GUILD_TIER_TITLES,
+  Living,
+  majorityReligion,
+  maxHeroesForTier,
+  pantheonFaithCost,
+  prophetFaithCost
+} from "@/model/physical/living-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
 import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
@@ -43,7 +58,8 @@ import {
   type MissionTag,
   type ProvinceSimState,
   SEASON_NAMES,
-  type StatePolitySim
+  type StatePolitySim,
+  type YieldValues
 } from "@/types/living";
 import { zoomTo } from "@/ui/map/zoom";
 import { escapeHtml, findEl, getPointer } from "@/utils";
@@ -1177,6 +1193,7 @@ function renderStateCard(stateId: number): string {
   return /* html */ `
     <div class="livingInspectorTitle">${escapeHtml(state.fullName ?? state.name ?? "State")}</div>
     ${renderRuler(ruler, age)}
+    ${renderCivState(sSim, stateId)}
     ${renderCapacity(sSim)}
     ${renderAgenda(sSim)}
     <div class="livingSection">
@@ -1276,6 +1293,187 @@ function renderRuler(ruler: HistoricalFigure | undefined, age: number | undefine
       ${culture ? `<div class="livingMuted">${escapeHtml(culture)}</div>` : ""}
       ${traits ? `<div class="livingTraits">${traits}</div>` : ""}
     </div>`;
+}
+
+const CIV_YIELD_CHIPS: readonly [keyof YieldValues, string, string][] = [
+  ["food", "🌾", "Food"],
+  ["production", "🔨", "Production"],
+  ["gold", "🪙", "Gold"],
+  ["science", "🔬", "Science"],
+  ["culture", "🎭", "Culture"],
+  ["faith", "✨", "Faith"]
+];
+
+function yieldChips(yields: YieldValues | undefined): string {
+  if (!yields) return "";
+  return CIV_YIELD_CHIPS.map(
+    ([key, icon, label]) => `<span class="livingCivChip" title="${label}">${icon} ${Math.round(yields[key] ?? 0)}</span>`
+  ).join("");
+}
+
+/** The OpenCiv empire panel: yields, research, happiness, faith and 1UPT regiments. */
+function renderCivState(sSim: StatePolitySim, stateId: number): string {
+  const living = Living.getState();
+  const yields = sSim.yieldsPerTurn;
+  if (!yields && sSim.happiness === undefined && sSim.faith === undefined) return "";
+
+  const happinessIcon = (sSim.happiness ?? 0) >= 0 ? "🙂" : "☹️";
+  const happinessChip = `<span class="livingCivChip" title="Empire Happiness">${happinessIcon} ${Math.round(
+    sSim.happiness ?? 0
+  )}</span>`;
+  const treasuryChip = `<span class="livingCivChip" title="Treasury">🪙 ${Math.round(
+    pack.states[stateId]?.treasury ?? 0
+  )}</span>`;
+
+  const tech = sSim.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
+  const techName = tech ? resolveCivTechName(activeCivThemeId(), tech) : "No research";
+  const banked = tech ? Math.round(sSim.researchedProgress?.[tech.id] ?? 0) : 0;
+  const techProgress = tech
+    ? `<div class="livingBar"><i style="width:${Math.min(
+        100,
+        Math.round((banked / Math.max(1, tech.cost)) * 100)
+      )}%"></i></div>
+       <div class="livingMuted">${banked} / ${tech.cost} science · ${
+         sSim.researchedTechs?.length ?? 0
+       } technologies known</div>`
+    : `<div class="livingMuted">No technology selected</div>`;
+
+  const breakdown = sSim.happinessBreakdown;
+  const happinessDetail = breakdown
+    ? `<div class="livingMuted">+${
+        breakdown.base + breakdown.luxuries + breakdown.buildings + breakdown.religion + (breakdown.relics ?? 0)
+      } − ${breakdown.cityUnhappiness + breakdown.citizenUnhappiness + breakdown.unrestUnhappiness} · luxuries ${
+        breakdown.luxuries
+      } · buildings ${breakdown.buildings} · religion ${breakdown.religion}${
+        breakdown.relics ? ` · relics ${breakdown.relics}` : ""
+      }</div>`
+    : "";
+
+  const religionId = sSim.religionId ?? 0;
+  const religion = religionId ? pack.religions?.[religionId] : undefined;
+  const record = religionId ? living.religions?.[religionId] : undefined;
+  const pantheon = sSim.pantheonId ? CIV_BELIEF_BY_ID[sSim.pantheonId]?.name : undefined;
+  const faith = Math.round(sSim.faith ?? 0);
+  const prophetCost = prophetFaithCost(sSim.prophetsEarned ?? 0);
+  const holyCity = record?.holyCityBurgId ? pack.burgs[record.holyCityBurgId]?.name : undefined;
+  const religionLines = `<div>${religion ? escapeHtml(religion.name) : "No organized religion"}${
+    pantheon ? ` · pantheon: ${escapeHtml(pantheon)}` : ""
+  }</div>
+    <div class="livingMuted">Faith ${faith} · prophets ${sSim.prophetsEarned ?? 0} · next prophet ${prophetCost}${
+      holyCity ? ` · holy city ${escapeHtml(holyCity)}` : ""
+    }</div>`;
+
+  const regiments = (pack.states[stateId]?.military ?? [])
+    .map(regiment => {
+      const unit = living.units?.[`${stateId}-${regiment.i}`];
+      if (!unit) return "";
+      const def = CIV_UNIT_BY_ID[unit.unitTypeId];
+      const promotions = unit.promotions
+        .map(id => CIV_PROMOTION_BY_ID[id]?.name ?? id)
+        .filter(Boolean)
+        .join(", ");
+      return `<li>${escapeHtml(def?.name ?? unit.unitTypeId)} · HP ${Math.round(unit.hp)} · Lv ${unit.level}${
+        promotions ? ` · ${escapeHtml(promotions)}` : ""
+      }</li>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  const pantheonHint = sSim.pantheonId
+    ? ""
+    : `<div class="livingMuted">Next pantheon at ${pantheonFaithCost(0)} Faith</div>`;
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">OpenCiv Empire</div>
+    <div class="livingCivChips">${yieldChips(yields)}${happinessChip}${treasuryChip}</div>
+    ${happinessDetail}
+  </div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Research</div>
+    <div>${escapeHtml(techName)}</div>
+    ${techProgress}
+  </div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Faith</div>
+    ${religionLines}
+    ${pantheonHint}
+  </div>
+  ${
+    regiments
+      ? `<div class="livingSection"><div class="livingSectionTitle">Regiments (1UPT)</div><ul>${regiments}</ul></div>`
+      : ""
+  }`;
+}
+
+interface CitySimView {
+  citizens?: number;
+  cityYields?: YieldValues;
+  foodStored?: number;
+  cultureStored?: number;
+  tilesAcquired?: number;
+  productionQueue?: { kind: "unit" | "building" | "wonder"; id: string }[];
+  productionProgress?: Record<string, number>;
+  hp?: number;
+  maxHp?: number;
+  religionPressure?: Record<number, number>;
+  civBuildings?: string[];
+}
+
+/** The OpenCiv city panel: yields, growth buckets, queue, HP and religious pressure. */
+function renderCivCity(bSim: CitySimView, burgId: number): string {
+  if (bSim.cityYields === undefined && bSim.citizens === undefined) return "";
+
+  const queue = (bSim.productionQueue ?? [])
+    .slice(0, 4)
+    .map(item => {
+      const def = item.kind === "unit" ? CIV_UNIT_BY_ID[item.id] : CIV_BUILDING_BY_ID[item.id];
+      const cost = Math.max(1, Math.round(def?.cost ?? 1));
+      const progress = Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
+      return `<li>${escapeHtml(def?.name ?? item.id)} <span class="livingGuildChipStatus">${progress} / ${
+        cost
+      }</span></li>`;
+    })
+    .join("");
+
+  const pressure = Object.entries(bSim.religionPressure ?? {})
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3)
+    .map(([id, value]) => {
+      const name = pack.religions?.[Number(id)]?.name ?? `Faith ${id}`;
+      return `<span class="livingCivChip">${escapeHtml(name)} ${Math.round(Number(value))}</span>`;
+    })
+    .join(" ");
+  const majority = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
+  const majorityName = majority ? (pack.religions?.[majority]?.name ?? `Faith ${majority}`) : undefined;
+
+  const hp =
+    bSim.hp !== undefined && bSim.maxHp !== undefined
+      ? `<div class="livingMuted">City HP ${Math.round(bSim.hp)} / ${Math.round(bSim.maxHp)}</div>`
+      : "";
+
+  const burg = pack.burgs[burgId];
+  const religionNote = burg?.state
+    ? `<div class="livingMuted">Province faith updates the Religions layer when the majority flips.</div>`
+    : "";
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">OpenCiv City</div>
+    <div class="livingCivChips">${yieldChips(bSim.cityYields)}</div>
+    <div class="livingMuted">${bSim.citizens ?? 0} citizens · store ${Math.round(bSim.foodStored ?? 0)} food · ${
+      bSim.tilesAcquired ?? 0
+    } tiles</div>
+    ${hp}
+  </div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Production</div>
+    ${queue ? `<ul>${queue}</ul>` : `<div class="livingMuted">Queue empty</div>`}
+  </div>
+  <div class="livingSection">
+    <div class="livingSectionTitle">Religion</div>
+    <div>${majorityName ? escapeHtml(majorityName) : "No majority faith"}</div>
+    <div class="livingCivChips">${pressure || `<span class="livingMuted">No pressure recorded</span>`}</div>
+    ${religionNote}
+  </div>`;
 }
 
 function renderCapacity(sSim: StatePolitySim): string {
@@ -1448,6 +1646,7 @@ function renderBurgCard(burgId: number): string {
       <div class="livingSectionTitle">Unrest</div>
       ${renderMeter("Unrest", bSim.unrest, true)}
     </div>
+    ${renderCivCity(bSim, burgId)}
     <div class="livingSection">
       <div class="livingSectionTitle">Asset</div>
       <div>${escapeHtml(building)}</div>

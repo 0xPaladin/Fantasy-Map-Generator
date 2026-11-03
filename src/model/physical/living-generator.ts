@@ -43,7 +43,14 @@ import {
   recoverInjuries,
   STAMINA_RESERVE_MINIMUM
 } from "@/data/hero-vitals";
-import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
+import {
+  CIV_BELIEF_BY_ID,
+  CIV_ENHANCER_BELIEFS,
+  CIV_FOLLOWER_BELIEFS,
+  CIV_FOUNDER_BELIEFS,
+  CIV_PANTHEONS,
+  CIV_RELIGION_NAMES
+} from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
 import { CIV_PROMOTIONS, CIV_PROMOTION_BY_ID } from "@/data/living-civ-promotions";
@@ -117,6 +124,7 @@ import {
   type CellSimState,
   type CellTerrainInfo,
   type CellYieldSource,
+  type CivBeliefDef,
   type CivBuildingDef,
   type CivResourceClass,
   type CivTechDef,
@@ -144,7 +152,9 @@ import {
   type ProvinceLair,
   type ProvinceSimState,
   type ProvinceTrouble,
+  type RelicCategory,
   type ProductionItem,
+  type ReligionBeliefState,
   SEASON_NAMES,
   type SeasonId,
   type StateAgenda,
@@ -1278,6 +1288,61 @@ export function hasStackingConflict(
   return occupied.some(entry => entry.key !== selfKey && (entry.stateId !== stateId || entry.isUtility === isUtility));
 }
 
+// ---------------------------------------------------------------------------
+// Slice 6: religion pressure, belief effects, diplomacy timers & relic perks
+// ---------------------------------------------------------------------------
+
+/** A citizen represents 60 pressure for its faith. */
+export const CONVERSION_PRESSURE = 60;
+/** Faith needed for the first pantheon; each further pantheon costs 5 more. */
+export const PANTHEON_BASE_FAITH = 10;
+export const PANTHEON_FAITH_STEP = 5;
+/** Great Prophet thresholds. */
+export const PROPHET_BASE_FAITH = 200;
+export const PROPHET_FAITH_STEP = 100;
+/** Religious pressure: radius, per-city/holy-city amounts and unit spreads. */
+export const PRESSURE_RADIUS = 10;
+export const PRESSURE_RADIUS_PREACHERS = 13;
+export const PRESSURE_PER_CITY = 6;
+export const PRESSURE_HOLY_CITY = 12;
+export const PRESSURE_CAP = 6000;
+export const MISSIONARY_PRESSURE = 180;
+export const PROPHET_PRESSURE = 240;
+/** Diplomacy clocks. */
+export const MIN_WAR_TURNS = 10;
+export const PEACE_TREATY_TURNS = 10;
+/** Leased relic perks. */
+export const REGALIA_HAPPINESS = 4;
+export const IDOL_FAITH = 4;
+export const IDOL_CULTURE = 2;
+export const RELIC_YIELD_PERCENT = 15;
+export const WEAPON_RELIC_COMBAT_PERCENT = 15;
+
+/** Faith cost of the next pantheon for a state with `founded` pantheons already. */
+export function pantheonFaithCost(founded: number): number {
+  return PANTHEON_BASE_FAITH + PANTHEON_FAITH_STEP * Math.max(0, founded);
+}
+
+/** Faith cost of the next Great Prophet. */
+export function prophetFaithCost(earned: number, hasMessiah = false): number {
+  return Math.floor((PROPHET_BASE_FAITH + PROPHET_FAITH_STEP * Math.max(0, earned)) * (hasMessiah ? 0.75 : 1));
+}
+
+/** A city's majority religion, or 0 when no faith has a majority. */
+export function majorityReligion(pressure: Record<number, number> | undefined, citizens: number): number {
+  const entries = Object.entries(pressure ?? {})
+    .map(([id, value]) => [Number(id), Math.max(0, value)] as const)
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  const first = entries[0];
+  if (!first) return 0;
+
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  const [id, value] = first;
+  const needed = Math.max(CONVERSION_PRESSURE, Math.max(1, citizens) * CONVERSION_PRESSURE * 0.5);
+  return value >= total - value && value >= needed ? id : 0;
+}
+
 class LivingModel {
   /** Initialize or reconcile the Living World state on `pack.history.living` */
   init(opts?: { seed?: string; snapshotIntervalYears?: number }): LivingWorldState {
@@ -2235,11 +2300,13 @@ class LivingModel {
       this.syncWorld();
       this.stepCities(living);
       this.stepEmpire(living);
+      this.stepReligion(living);
       this.stepTactical(living);
       this.stepBurgUnrest(living);
       this.stepProvinces(living);
       this.stepLairs(living);
       this.stepStates(living);
+      this.stepDiplomacy(living);
       this.stepRebellions(living);
       this.recomputeAllCapacities(living);
       this.stepGuild(living);
@@ -2261,6 +2328,7 @@ class LivingModel {
     living.cells ??= {};
     living.recentNews ??= [];
     living.worldWonders ??= {};
+    living.religions ??= {};
     this.syncBurgs(living);
     this.syncProvinces(living);
     this.syncStates(living);
@@ -4044,6 +4112,8 @@ class LivingModel {
         existing.yieldsPerTurn ??= emptyYields();
         existing.warTurns ??= {};
         existing.peaceTreatyTurns ??= {};
+        existing.faith ??= 0;
+        existing.prophetsEarned ??= 0;
       }
     }
   }
@@ -4873,6 +4943,28 @@ class LivingModel {
       }
     }
 
+    // Belief yields (pantheon, founder, follower, enhancer).
+    for (const id of this.stateBeliefs(state, living)) {
+      const def = CIV_BELIEF_BY_ID[id];
+      if (!def?.yields) continue;
+      for (const key of CIV_YIELD_KEYS) {
+        if (key === "happiness") continue;
+        totals[key] += def.yields[key] ?? 0;
+      }
+    }
+
+    // Leased relic perks: charter boosts capital Gold, tome capital Science,
+    // idol adds Faith/Culture. Regalia (Happiness/unravel) and weapon (combat)
+    // are applied by the happiness and combat paths.
+    const capitalSim = state.capital ? living.burgs[state.capital] : undefined;
+    const charterShare = RELIC_YIELD_PERCENT / 100;
+    if (capitalSim) {
+      gold += Math.round((capitalSim.cityYields?.gold ?? 0) * charterShare * this.stateRelicCount(state.i, "charter"));
+      science += this.citySciencePerTick(capitalSim) * charterShare * this.stateRelicCount(state.i, "tome");
+    }
+    totals.faith += IDOL_FAITH * this.stateRelicCount(state.i, "idol");
+    totals.culture += IDOL_CULTURE * this.stateRelicCount(state.i, "idol");
+
     const regiments = (state.military ?? []).filter(reg => (reg.units?.length ?? 0) > 0 || reg.a > 0).length;
     const upkeep = Math.max(0, regiments - UNIT_UPKEEP_FREE);
     const leasedRelics = (living.guild?.relics ?? []).filter(
@@ -4913,6 +5005,7 @@ class LivingModel {
       luxuries: 0,
       buildings: 0,
       religion: 0,
+      relics: REGALIA_HAPPINESS * this.stateRelicCount(state.i, "regalia"),
       cityUnhappiness: 0,
       citizenUnhappiness: 0,
       unrestUnhappiness: 0
@@ -4948,7 +5041,8 @@ class LivingModel {
       breakdown.base +
       breakdown.luxuries +
       breakdown.buildings +
-      breakdown.religion -
+      breakdown.religion +
+      breakdown.relics -
       breakdown.cityUnhappiness -
       breakdown.citizenUnhappiness -
       breakdown.unrestUnhappiness;
@@ -5088,6 +5182,7 @@ class LivingModel {
     if (happiness <= VERY_UNHAPPY_HAPPINESS) delta = 6;
     else if (happiness < 0) delta = 2;
     else delta = -(2 + Math.floor(happiness / 5));
+    delta -= 2 * this.stateRelicCount(sSim.stateId, "regalia");
     sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
   }
 
@@ -5352,10 +5447,13 @@ class LivingModel {
 
         let acted = false;
         if (unit.isUtility) {
-          acted =
-            unit.unitTypeId === "settler"
-              ? this.stepSettler(state, regiment, unit, living, occupancy)
-              : this.stepBuilder(state, regiment, unit, living, occupancy);
+          if (unit.unitTypeId === "settler") {
+            acted = this.stepSettler(state, regiment, unit, living, occupancy);
+          } else if (unit.unitTypeId === "missionary" || unit.unitTypeId === "inquisitor") {
+            acted = this.stepMissionary(state, regiment, unit, living, occupancy);
+          } else {
+            acted = this.stepBuilder(state, regiment, unit, living, occupancy);
+          }
         } else {
           acted = this.stepUnitOrders(state, regiment, unit, living, occupancy);
         }
@@ -5400,6 +5498,7 @@ class LivingModel {
 
     const happiness = pack.history?.living?.states?.[stateId]?.happiness;
     if (happiness !== undefined) strength *= happinessCombatMultiplier(happiness);
+    if (this.stateRelicCount(stateId, "weapon") > 0) strength *= 1 + WEAPON_RELIC_COMBAT_PERCENT / 100;
 
     for (const id of unit.promotions) {
       const effects = CIV_PROMOTION_BY_ID[id]?.effects;
@@ -5467,6 +5566,7 @@ class LivingModel {
         const distance = distances.get(neighbor);
         if (distance === undefined || distance >= currentDistance) continue;
         if (hasStackingConflict(occupancy.get(neighbor) ?? [], stateId, unit.isUtility, key)) continue;
+        if (!this.canEnterForeignCell(stateId, neighbor, unit)) continue;
         const cost = unitMovementCost(current, neighbor, unit);
         if (!Number.isFinite(cost) || cost > unit.movement) continue;
         if (
@@ -6224,6 +6324,486 @@ class LivingModel {
       if (!target) continue;
       if (this.upgradeRegiment(state.i, regiment.i)) return;
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Slice 6: dynamic religion pressure, beliefs, diplomacy timers and relic
+  // perks.
+  // -------------------------------------------------------------------------
+
+  /** One seasonal religion tick: faith, pantheons, Great Prophets and pressure. */
+  private stepReligion(living: LivingWorldState): void {
+    if (!this.hasCityTerrain()) return;
+    living.religions ??= {};
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+      this.stepFaithAndPantheon(state, sSim, living);
+      this.stepProphet(state, sSim, living);
+    }
+
+    this.stepReligiousPressure(living);
+  }
+
+  private usedBeliefs(living: LivingWorldState): Set<string> {
+    const used = new Set<string>();
+    for (const record of Object.values(living.religions ?? {})) {
+      if (record.pantheonId) used.add(record.pantheonId);
+      if (record.founderBeliefId) used.add(record.founderBeliefId);
+      if (record.enhancerBeliefId) used.add(record.enhancerBeliefId);
+      for (const id of record.followerBeliefIds ?? []) used.add(id);
+    }
+    for (const record of Object.values(living.states)) {
+      if (record.pantheonId) used.add(record.pantheonId);
+    }
+    return used;
+  }
+
+  private chooseBelief(catalog: readonly CivBeliefDef[], used: Set<string>, salt: number): string | null {
+    const available = catalog.filter(def => !used.has(def.id));
+    if (!available.length) return null;
+    return available[Math.abs(salt) % available.length]!.id;
+  }
+
+  /** Bank Faith and found a Pantheon once the state can afford one. */
+  private stepFaithAndPantheon(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const gain = Math.max(0, sSim.yieldsPerTurn?.faith ?? 0);
+    sSim.faith = Math.round(((sSim.faith ?? 0) + gain) * 100) / 100;
+    if (sSim.pantheonId) return;
+
+    const used = this.usedBeliefs(living);
+    const founded = new Set<string>();
+    for (const record of Object.values(living.religions ?? {})) if (record.pantheonId) founded.add(record.pantheonId);
+    for (const record of Object.values(living.states)) if (record.pantheonId) founded.add(record.pantheonId);
+    const cost = pantheonFaithCost(founded.size);
+    if ((sSim.faith ?? 0) < cost) return;
+
+    const id = this.chooseBelief(CIV_PANTHEONS, used, state.i);
+    if (!id) return;
+    sSim.faith = Math.round(((sSim.faith ?? 0) - cost) * 100) / 100;
+    sSim.pantheonId = id;
+    if (sSim.religionId && living.religions?.[sSim.religionId]) {
+      living.religions[sSim.religionId].pantheonId = id;
+    }
+
+    const name = CIV_BELIEF_BY_ID[id]?.name ?? id;
+    this.pushNews(living, {
+      kind: "religion",
+      text: `${state.name} adopted the ${name} pantheon.`,
+      cell: state.center,
+      stateId: state.i
+    });
+  }
+
+  /** Birth a Great Prophet once Faith reaches the threshold, then expend it. */
+  private stepProphet(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const capital = state.capital ? pack.burgs[state.capital] : undefined;
+    if (!capital?.i || capital.removed || capital.state !== state.i) return;
+
+    const beliefs = this.stateBeliefs(state, living);
+    const cost = prophetFaithCost(sSim.prophetsEarned ?? 0, beliefs.has("messiah"));
+    if ((sSim.faith ?? 0) < cost) return;
+
+    const chance = Math.min(1, 0.05 + ((sSim.faith ?? 0) - cost) / 100);
+    if (!this.rng("prophet", state.i, living.tick).chance(chance)) return;
+
+    sSim.faith = Math.round(((sSim.faith ?? 0) - cost) * 100) / 100;
+    sSim.prophetsEarned = (sSim.prophetsEarned ?? 0) + 1;
+
+    const record = sSim.religionId ? living.religions?.[sSim.religionId] : undefined;
+    if (!record) this.foundReligion(state, sSim, capital, living);
+    else if (!record.enhanced) this.enhanceReligion(state, record, capital, living);
+    else this.spreadProphetPressure(sSim, capital, living);
+  }
+
+  /** The first Great Prophet links or founds a faith and picks Founder + Follower beliefs. */
+  private foundReligion(
+    state: State,
+    sSim: StatePolitySim,
+    capital: Burg,
+    living: LivingWorldState
+  ): void {
+    living.religions ??= {};
+    const used = this.usedBeliefs(living);
+
+    let religionId = sSim.religionId ?? 0;
+    if (!religionId) {
+      const native = pack.cells.religion?.[capital.cell] ?? 0;
+      if (native > 0 && pack.religions?.[native] && !pack.religions[native].removed) religionId = native;
+    }
+    if (!religionId) {
+      religionId = pack.religions?.length ?? 0;
+      const name = CIV_RELIGION_NAMES[religionId % CIV_RELIGION_NAMES.length] ?? "New Faith";
+      const culture = pack.cultures?.[capital.culture ?? state.culture ?? 0]?.name;
+      pack.religions ??= [];
+      pack.religions.push({
+        i: religionId,
+        name: culture ? `${name} of ${culture}` : name,
+        type: "Organized",
+        form: "Faith",
+        deity: null,
+        expansion: "state",
+        expansionism: 1,
+        color: state.color ?? "#8a7f5c",
+        culture: capital.culture ?? state.culture ?? 0,
+        center: capital.cell,
+        tags: []
+      });
+    }
+
+    const record: ReligionBeliefState = {
+      religionId,
+      founderStateId: state.i,
+      holyCityBurgId: capital.i,
+      followerBeliefIds: [],
+      enhanced: false
+    };
+    if (sSim.pantheonId) record.pantheonId = sSim.pantheonId;
+    const founder = this.chooseBelief(CIV_FOUNDER_BELIEFS, used, religionId);
+    if (founder) record.founderBeliefId = founder;
+    const follower = this.chooseBelief(CIV_FOLLOWER_BELIEFS, used, religionId + 1);
+    if (follower) record.followerBeliefIds.push(follower);
+
+    living.religions[religionId] = record;
+    sSim.religionId = religionId;
+
+    const city = living.burgs[capital.i];
+    if (city) {
+      city.religionPressure = { [religionId]: Math.max(1, city.citizens ?? 1) * CONVERSION_PRESSURE };
+    }
+    this.syncReligionCells(capital, religionId, living);
+
+    this.pushNews(living, {
+      kind: "religion",
+      text: `${state.name} founded ${pack.religions[religionId]?.name ?? "a new faith"} in ${
+        capital.name ?? "its capital"
+      }.`,
+      cell: capital.cell,
+      stateId: state.i,
+      burgId: capital.i
+    });
+  }
+
+  /** The second Great Prophet adds a Follower and an Enhancer belief. */
+  private enhanceReligion(state: State, record: ReligionBeliefState, capital: Burg, living: LivingWorldState): void {
+    const used = this.usedBeliefs(living);
+    const follower = this.chooseBelief(CIV_FOLLOWER_BELIEFS, used, record.religionId + record.followerBeliefIds.length + 1);
+    if (follower) record.followerBeliefIds.push(follower);
+    const enhancer = this.chooseBelief(CIV_ENHANCER_BELIEFS, used, record.religionId);
+    if (enhancer) record.enhancerBeliefId = enhancer;
+    record.enhanced = true;
+
+    this.pushNews(living, {
+      kind: "religion",
+      text: `${state.name} enhanced ${pack.religions[record.religionId]?.name ?? "its faith"}.`,
+      cell: capital.cell,
+      stateId: state.i,
+      burgId: capital.i
+    });
+  }
+
+  /** Further Great Prophets add conversion pressure to the Holy City. */
+  private spreadProphetPressure(sSim: StatePolitySim, capital: Burg, living: LivingWorldState): void {
+    const religionId = sSim.religionId ?? 0;
+    const city = living.burgs[capital.i];
+    if (!religionId || !city) return;
+    city.religionPressure ??= {};
+    city.religionPressure[religionId] = Math.min(
+      PRESSURE_CAP,
+      (city.religionPressure[religionId] ?? 0) + PROPHET_PRESSURE
+    );
+    this.syncReligionCells(capital, religionId, living);
+  }
+
+  /** Passive pressure: 60/citizen, 6 (12 holy) per city within 10 (13) hops. */
+  private stepReligiousPressure(living: LivingWorldState): void {
+    const cities = pack.burgs.filter(
+      burg => burg?.i && !burg.removed && burg.state && isMajorBurg(burg) && Boolean(living.burgs[burg.i])
+    );
+
+    // Seed pressure from the native religion layer for cities that have none yet.
+    for (const burg of cities) {
+      const bSim = living.burgs[burg.i]!;
+      bSim.religionPressure ??= {};
+      if (Object.keys(bSim.religionPressure).length > 0) continue;
+      const native = pack.cells.religion?.[burg.cell] ?? 0;
+      if (native > 0) bSim.religionPressure[native] = Math.max(1, bSim.citizens ?? 1) * CONVERSION_PRESSURE;
+    }
+
+    const sources = cities.map(burg => {
+      const bSim = living.burgs[burg.i]!;
+      const state = pack.states[burg.state!];
+      const beliefs = state ? this.stateBeliefs(state, living) : new Set<string>();
+      const religionId = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
+      return { burg, bSim, beliefs, religionId };
+    });
+
+    for (const source of sources) {
+      if (!source.religionId) continue;
+      const record = living.religions?.[source.religionId];
+      let amount = record?.holyCityBurgId === source.burg.i ? PRESSURE_HOLY_CITY : PRESSURE_PER_CITY;
+      if (source.beliefs.has("religious_texts")) amount *= record?.enhanced ? 1.5 : 1.25;
+      if ((source.bSim.civBuildings ?? []).includes("grand_temple")) amount *= 1.25;
+
+      const radius = source.beliefs.has("itinerant_preachers") ? PRESSURE_RADIUS_PREACHERS : PRESSURE_RADIUS;
+      const distances = this.cellHopDistances(source.burg.cell, radius);
+      for (const target of cities) {
+        if (target.i === source.burg.i || !distances.has(target.cell)) continue;
+        const targetSim = living.burgs[target.i]!;
+        targetSim.religionPressure ??= {};
+        targetSim.religionPressure[source.religionId] = Math.min(
+          PRESSURE_CAP,
+          (targetSim.religionPressure[source.religionId] ?? 0) + amount
+        );
+      }
+    }
+
+    // Majority flips repaint the native religion layer across the province.
+    for (const burg of cities) {
+      const bSim = living.burgs[burg.i]!;
+      const majority = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
+      if (!majority) continue;
+      if ((pack.cells.religion?.[burg.cell] ?? 0) === majority) continue;
+      this.syncReligionCells(burg, majority, living);
+    }
+  }
+
+  /** Repaint `pack.cells.religion` across a burg's province when its faith flips. */
+  private syncReligionCells(burg: Burg, religionId: number, living: LivingWorldState): void {
+    if (!pack.cells.religion) return;
+    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+    const cells = pack.cells.i?.length ?? 0;
+    const hinterland = provinceId ? null : new Set(this.burgHinterland(burg));
+
+    for (let cell = 0; cell < cells; cell++) {
+      if (provinceId) {
+        if (pack.cells.province?.[cell] !== provinceId) continue;
+      } else if (!hinterland?.has(cell)) {
+        continue;
+      }
+      if (pack.cells.state && pack.cells.state[cell] !== burg.state) continue;
+      pack.cells.religion[cell] = religionId;
+    }
+
+    this.pushNews(living, {
+      kind: "religion",
+      text: `${burg.name ?? "A city"} now follows ${pack.religions?.[religionId]?.name ?? "a new faith"}.`,
+      cell: burg.cell,
+      stateId: burg.state,
+      burgId: burg.i
+    });
+  }
+
+  /** Missionaries spread faith; Inquisitors purge rival pressure in their own cities. */
+  private stepMissionary(
+    state: State,
+    regiment: Regiment,
+    unit: UnitSimState,
+    living: LivingWorldState,
+    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
+  ): boolean {
+    const sSim = living.states[state.i];
+    const religionId = sSim?.religionId ?? 0;
+    if (!religionId) return false;
+
+    const inquisitor = unit.unitTypeId === "inquisitor";
+    if (unit.spreadCharges === undefined) {
+      unit.spreadCharges = CIV_UNIT_BY_ID[unit.unitTypeId]?.spreadCharges ?? 2;
+    }
+
+    const target = this.nearestCity(state.i, regiment.cell, 6, inquisitor);
+    if (!target) return false;
+
+    if (target.cell !== regiment.cell) {
+      const moved = this.moveUnitToward(regiment, unit, target.cell, state.i, this.unitKey(state.i, regiment.i), occupancy);
+      if (moved) return true;
+    }
+
+    const bSim = living.burgs[target.i];
+    if (!bSim) return false;
+    bSim.religionPressure ??= {};
+
+    if (inquisitor) {
+      for (const key of Object.keys(bSim.religionPressure)) {
+        const id = Number(key);
+        if (id === religionId) continue;
+        bSim.religionPressure[id] = Math.floor((bSim.religionPressure[id] ?? 0) / 2);
+      }
+    } else {
+      bSim.religionPressure[religionId] = Math.min(
+        PRESSURE_CAP,
+        (bSim.religionPressure[religionId] ?? 0) + MISSIONARY_PRESSURE
+      );
+    }
+
+    const majority = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
+    if (majority) this.syncReligionCells(target, majority, living);
+
+    unit.spreadCharges = (unit.spreadCharges ?? 2) - 1;
+    if (unit.spreadCharges <= 0) this.removeRegiment(state, regiment, living);
+    return true;
+  }
+
+  /** Nearest Major Burg; Inquisitors stay in friendly lands, Missionaries go anywhere. */
+  private nearestCity(stateId: number, fromCell: number, maxHops: number, ownOnly: boolean): Burg | null {
+    const distances = this.cellHopDistances(fromCell, maxHops);
+    let best: { burg: Burg; distance: number } | null = null;
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || !burg.state) continue;
+      if (!isMajorBurg(burg)) continue;
+      if (ownOnly && burg.state !== stateId) continue;
+      const distance = distances.get(burg.cell);
+      if (distance === undefined) continue;
+      if (!best || distance < best.distance || (distance === best.distance && burg.cell < best.burg.cell)) {
+        best = { burg, distance };
+      }
+    }
+    return best?.burg ?? null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Diplomacy: closed borders, war length and peace treaties.
+  // -------------------------------------------------------------------------
+
+  /** Tick war/peace clocks and let exhausted states sue for peace. */
+  private stepDiplomacy(living: LivingWorldState): void {
+    if (!this.hasCityTerrain()) return;
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+      sSim.warTurns ??= {};
+      sSim.peaceTreatyTurns ??= {};
+
+      for (const key of Object.keys(sSim.peaceTreatyTurns)) {
+        const other = Number(key);
+        sSim.peaceTreatyTurns[other] = Math.max(0, (sSim.peaceTreatyTurns[other] ?? 0) - 1);
+      }
+      for (const other of pack.states) {
+        if (!other?.i || other.removed || other.i === state.i) continue;
+        if (this.isAtWar(state.i, other.i)) sSim.warTurns[other.i] = (sSim.warTurns[other.i] ?? 0) + 1;
+        else sSim.warTurns[other.i] = 0;
+      }
+    }
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+      const rivals = Object.entries(sSim.warTurns ?? {})
+        .filter(([other, turns]) => this.isAtWar(state.i, Number(other)) && turns >= MIN_WAR_TURNS)
+        .map(([other]) => Number(other));
+      for (const otherId of rivals) {
+        const sue = sSim.warExhaustion >= 50 || this.rng("peace", state.i * 1000 + otherId, living.tick).chance(0.15);
+        if (!sue) continue;
+        if (this.signPeace(state.i, otherId)) break;
+      }
+    }
+  }
+
+  /** Sign a peace treaty once the war has lasted the minimum number of seasons. */
+  signPeace(stateId: number, otherId: number): boolean {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    const other = pack.states[otherId];
+    const sSim = living.states[stateId];
+    const oSim = living.states[otherId];
+    if (!state?.i || state.removed || !other?.i || other.removed || !sSim || !oSim) return false;
+    if (!this.isAtWar(stateId, otherId)) return false;
+    if ((sSim.warTurns?.[otherId] ?? 0) < MIN_WAR_TURNS) return false;
+
+    state.diplomacy ??= [];
+    other.diplomacy ??= [];
+    state.diplomacy[otherId] = "Neutral";
+    other.diplomacy[stateId] = "Neutral";
+
+    sSim.warTurns ??= {};
+    oSim.warTurns ??= {};
+    sSim.peaceTreatyTurns ??= {};
+    oSim.peaceTreatyTurns ??= {};
+    sSim.warTurns[otherId] = 0;
+    oSim.warTurns[stateId] = 0;
+    sSim.peaceTreatyTurns[otherId] = PEACE_TREATY_TURNS;
+    oSim.peaceTreatyTurns[stateId] = PEACE_TREATY_TURNS;
+
+    this.pushNews(living, {
+      kind: "war",
+      text: `${state.name} and ${other.name} signed a peace treaty.`,
+      cell: other.center,
+      stateId,
+      burgId: other.capital
+    });
+    this.pushHistory(
+      "war",
+      [
+        { kind: "state", id: stateId },
+        { kind: "state", id: otherId }
+      ],
+      other.center,
+      `${state.name} and ${other.name} made peace.`
+    );
+
+    this.expelTrespassers(stateId);
+    this.expelTrespassers(otherId);
+    return true;
+  }
+
+  /** Move every regiment standing in foreign land at peace back to friendly ground. */
+  private expelTrespassers(stateId: number): void {
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed) return;
+    const living = this.getState();
+
+    for (const regiment of state.military ?? []) {
+      const owner = pack.cells.state?.[regiment.cell] ?? 0;
+      if (!owner || owner === stateId) continue;
+      if (this.isAtWar(stateId, owner)) continue;
+
+      const destination = this.nearestFriendlyCell(regiment.cell, stateId);
+      if (destination === null) continue;
+      this.moveRegimentTo(
+        regiment,
+        destination,
+        stateId,
+        this.unitKey(stateId, regiment.i),
+        this.unitOccupancy(living)
+      );
+    }
+  }
+
+  /** Nearest passable own or unowned cell within 12 hops. */
+  private nearestFriendlyCell(fromCell: number, stateId: number): number | null {
+    const distances = this.cellHopDistances(fromCell, 12);
+    let best: { cell: number; distance: number } | null = null;
+    for (const [cell, distance] of distances) {
+      if (distance === 0) continue;
+      const owner = pack.cells.state?.[cell] ?? 0;
+      if (owner && owner !== stateId) continue;
+      if (!getCellTerrainInfo(cell).isWorkable && !getCellTerrainInfo(cell).isWater) continue;
+      if (!best || distance < best.distance || (distance === best.distance && cell < best.cell)) {
+        best = { cell, distance };
+      }
+    }
+    return best?.cell ?? null;
+  }
+
+  /** Closed borders: a unit may only enter foreign land at war or when it ignores borders. */
+  private canEnterForeignCell(stateId: number, cell: number, unit: UnitSimState): boolean {
+    const owner = pack.cells.state?.[cell] ?? 0;
+    if (!owner || owner === stateId) return true;
+    const def = CIV_UNIT_BY_ID[unit.unitTypeId];
+    if (def?.entersForeignLands) return true;
+    return this.isAtWar(stateId, owner);
+  }
+
+  /** How many relics of a category are leased to this state. */
+  private stateRelicCount(stateId: number, category: RelicCategory): number {
+    const relics = pack.history?.living?.guild?.relics ?? [];
+    return relics.filter(relic => relic.holder.kind === "state" && relic.holder.id === stateId && relic.category === category)
+      .length;
   }
 
   /** Step post-conquest occupation unrest on burgs and apply unravel pressure to owning states */
@@ -8254,6 +8834,7 @@ class LivingModel {
     const subject = pack.states[stateId];
     const object = pack.states[otherId];
     if (!subject?.i || subject.removed || !object?.i || object.removed) return;
+    if ((pack.history?.living?.states?.[stateId]?.peaceTreatyTurns?.[otherId] ?? 0) > 0) return;
 
     subject.diplomacy ??= [];
     object.diplomacy ??= [];

@@ -3317,6 +3317,164 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.units).toBeDefined();
     });
   });
+
+  describe("OpenCiv slice 6: religion, diplomacy & relic perks", () => {
+    const makeRegiment = (i: number, cell: number, state = 1) => ({
+      i,
+      name: `Regiment ${i}`,
+      a: 100,
+      cell,
+      x: 0,
+      y: 0,
+      bx: 0,
+      by: 0,
+      u: { spear: 100 },
+      units: [{ type: "spear", count: 100, exp: 0 }],
+      n: 0,
+      icon: "⚔️",
+      state
+    });
+
+    const makeRelic = (
+      id: number,
+      category: HistoricalRelic["category"],
+      stateId = 1
+    ): HistoricalRelic => ({
+      id,
+      name: `${category} relic`,
+      category,
+      lore: "A relic.",
+      originYear: 900,
+      bonuses: {},
+      holder: { kind: "state", id: stateId }
+    });
+
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    it("banks Faith and founds a pantheon", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+      sSim.faith = 10;
+
+      Living.tick(1);
+
+      expect(sSim.pantheonId).toBeTruthy();
+      expect(sSim.faith).toBeLessThan(10);
+      expect(living.recentNews.some(item => item.kind === "religion")).toBe(true);
+    });
+
+    it("births a Great Prophet that founds and then enhances a religion", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+      sSim.faith = 1000;
+
+      Living.tick(1);
+
+      expect(sSim.prophetsEarned).toBe(1);
+      expect(sSim.religionId).toBeTruthy();
+      const record = living.religions?.[sSim.religionId!];
+      expect(record).toBeDefined();
+      expect(record?.holyCityBurgId).toBe(1);
+      expect(record?.founderBeliefId).toBeTruthy();
+      expect(record?.followerBeliefIds).toHaveLength(1);
+      expect(pack.cells.religion[5]).toBe(sSim.religionId);
+
+      Living.tick(1);
+
+      expect(sSim.prophetsEarned).toBe(2);
+      expect(record?.enhanced).toBe(true);
+      expect(record?.followerBeliefIds.length).toBe(2);
+      expect(record?.enhancerBeliefId).toBeTruthy();
+    });
+
+    it("radiates pressure that flips a neighbour city and repaints the religion layer", () => {
+      const living = Living.init();
+      living.states[1].faith = 1000;
+
+      Living.tick(1);
+      const religionId = living.states[1].religionId!;
+      pack.cells.religion[11] = 0;
+      living.burgs[2].religionPressure = {};
+
+      Living.tick(8);
+
+      expect(living.burgs[2].religionPressure?.[religionId]).toBeGreaterThan(0);
+      expect(pack.cells.religion[11]).toBe(religionId);
+    });
+
+    it("spreads faith with a Missionary and consumes its charges", () => {
+      const living = Living.init();
+      living.states[1].faith = 1000;
+      Living.tick(1);
+      const religionId = living.states[1].religionId!;
+
+      const regiment = Living.recruitUnit(1, 1, "missionary")!;
+      regiment.cell = 11;
+      const missionary = living.units?.[`1-${regiment.i}`]!;
+
+      Living.tick(1);
+
+      expect(living.burgs[2].religionPressure?.[religionId]).toBeGreaterThanOrEqual(180);
+      expect(missionary.spreadCharges).toBe(1);
+    });
+
+    it("locks war and peace behind the diplomacy timers", () => {
+      const living = Living.init();
+      Living.forceWar(1, 2);
+
+      living.states[1].warTurns = { 2: 9 };
+      expect(Living.signPeace(1, 2)).toBe(false);
+
+      living.states[1].warTurns = { 2: 10 };
+      expect(Living.signPeace(1, 2)).toBe(true);
+      expect(pack.states[1].diplomacy?.[2]).toBe("Neutral");
+      expect(pack.states[2].diplomacy?.[1]).toBe("Neutral");
+      expect(living.states[1].peaceTreatyTurns?.[2]).toBe(10);
+
+      Living.forceWar(1, 2);
+      expect(pack.states[1].diplomacy?.[2]).not.toBe("Enemy");
+
+      Living.tick(1);
+      expect(living.states[1].peaceTreatyTurns?.[2]).toBeLessThan(10);
+    });
+
+    it("expels trespassers when peace is signed", () => {
+      const living = Living.init();
+      const regiment = makeRegiment(0, 7);
+      pack.states[1].military = [regiment];
+      Living.forceWar(1, 2);
+      Living.tick(1);
+      living.states[1].warTurns = { 2: 10 };
+
+      expect(Living.signPeace(1, 2)).toBe(true);
+
+      expect(pack.cells.state[regiment.cell]).not.toBe(2);
+      expect(living.units?.["1-0"]).toBeDefined();
+    });
+
+    it("applies leased relic perks to yields and happiness", () => {
+      const living = Living.init();
+      const guild = Living.getGuild();
+      guild.relics = [makeRelic(0, "regalia"), makeRelic(1, "charter"), makeRelic(2, "idol")];
+
+      Living.tick(1);
+
+      const sSim = living.states[1];
+      expect(sSim.happinessBreakdown?.relics).toBe(4);
+      expect(sSim.yieldsPerTurn?.faith).toBeGreaterThanOrEqual(4);
+      expect(sSim.yieldsPerTurn?.culture).toBeGreaterThanOrEqual(2);
+      expect(sSim.yieldsPerTurn?.gold).toBeGreaterThan(5);
+    });
+
+    it("keeps religion state lazy on old saves", () => {
+      delete pack.history.living;
+
+      const living = Living.init();
+      expect(living.religions).toBeDefined();
+    });
+  });
 });
 
 describe("Unified Figures slice 1: specialist commanders", () => {

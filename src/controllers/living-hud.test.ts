@@ -117,7 +117,14 @@ vi.mock("@/model/physical/living-generator", () => ({
     "Sovereign Order",
     "Immortal Conclave"
   ],
-  maxHeroesForTier: (tier: number) => [3, 4, 6, 8, 10][Math.min(4, Math.max(0, tier - 1))] ?? 3
+  maxHeroesForTier: (tier: number) => [3, 4, 6, 8, 10][Math.min(4, Math.max(0, tier - 1))] ?? 3,
+  activeCivThemeId: () => "fantasy",
+  pantheonFaithCost: (founded: number) => 10 + 5 * founded,
+  prophetFaithCost: (earned: number) => 200 + 100 * earned,
+  majorityReligion: (pressure: Record<number, number> | undefined) => {
+    const entries = Object.entries(pressure ?? {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+    return entries.length ? Number(entries[0]![0]) : 0;
+  }
 }));
 vi.mock("@/renderers/layers", () => ({ Layers: { draw: vi.fn() } }));
 vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
@@ -409,6 +416,65 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>('#livingInspector [data-god="war"]')?.click();
     expect(Living.forceWar).toHaveBeenCalledWith(1);
     expect(document.getElementById("livingHudStatus")?.textContent).toBe("War has been declared.");
+  });
+
+  it("shows the OpenCiv empire, research, faith and city queue panels", () => {
+    mocks.state.states[1] = {
+      ...(mocks.state.states[1] as Record<string, unknown>),
+      yieldsPerTurn: { food: 12, production: 5, gold: 6, science: 4, culture: 2, faith: 3, happiness: 0 },
+      happiness: 2,
+      happinessBreakdown: {
+        base: 9,
+        luxuries: 4,
+        buildings: 2,
+        religion: 1,
+        relics: 0,
+        cityUnhappiness: 3,
+        citizenUnhappiness: 6,
+        unrestUnhappiness: 0
+      },
+      currentTechId: "pottery",
+      researchedProgress: { pottery: 20 },
+      researchedTechs: [],
+      faith: 42,
+      prophetsEarned: 0,
+      religionId: 1,
+      pantheonId: "fertility_rites"
+    };
+    mocks.state.burgs[1] = {
+      ...(mocks.state.burgs[1] as Record<string, unknown>),
+      citizens: 3,
+      cityYields: { food: 8, production: 4, gold: 5, science: 2, culture: 1, faith: 1, happiness: 0 },
+      foodStored: 12,
+      tilesAcquired: 2,
+      productionQueue: [{ kind: "building", id: "monument" }],
+      productionProgress: { "building:monument": 20 },
+      religionPressure: { 1: 180 }
+    };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 1, kind: "religion", text: "Aeloria adopted a faith.", cell: 1, stateId: 1 },
+      { tick: 1, year: 1000, season: 1, kind: "build", text: "Aelor builds.", cell: 1, burgId: 1 }
+    ];
+
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const statePanel = document.getElementById("livingInspector");
+    expect(statePanel?.textContent).toContain("OpenCiv Empire");
+    expect(statePanel?.textContent).toContain("Research");
+    expect(statePanel?.textContent).toContain("Pottery");
+    expect(statePanel?.textContent).toContain("20 / 35 science");
+    expect(statePanel?.textContent).toContain("Faith 42");
+    expect(statePanel?.textContent).toContain("Fertility Rites");
+
+    document.querySelectorAll<HTMLElement>("button.livingNewsItem")[1]?.click();
+
+    const burgPanel = document.getElementById("livingInspector");
+    expect(burgPanel?.textContent).toContain("OpenCiv City");
+    expect(burgPanel?.textContent).toContain("3 citizens");
+    expect(burgPanel?.textContent).toContain("Production");
+    expect(burgPanel?.textContent).toContain("Monument");
+    expect(burgPanel?.textContent).toContain("Religion");
   });
 
   it("shows the burg diorama and completes its asset", () => {

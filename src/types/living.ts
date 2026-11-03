@@ -432,7 +432,8 @@ export type LivingNewsKind =
   | "pacify"
   | "trouble"
   | "lair"
-  | "tech";
+  | "tech"
+  | "religion";
 
 export interface LivingNewsItem {
   tick: number;
@@ -831,6 +832,7 @@ export interface HappinessBreakdown {
   luxuries: number;
   buildings: number;
   religion: number;
+  relics: number;
   cityUnhappiness: number;
   citizenUnhappiness: number;
   unrestUnhappiness: number;
