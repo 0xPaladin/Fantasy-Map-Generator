@@ -431,7 +431,8 @@ export type LivingNewsKind =
   | "colonize"
   | "pacify"
   | "trouble"
-  | "lair";
+  | "lair"
+  | "tech";
 
 export interface LivingNewsItem {
   tick: number;
@@ -780,7 +781,7 @@ export interface CellSimState {
   progress?: Record<string, number>;
 }
 
-export type CellYieldSourceKind = "terrain" | "resource" | "improvement" | "minor_burg";
+export type CellYieldSourceKind = "terrain" | "resource" | "improvement" | "minor_burg" | "tech";
 
 /** One additive contribution to a cell's OpenCiv yields, shown in the Living inspector. */
 export interface CellYieldSource {

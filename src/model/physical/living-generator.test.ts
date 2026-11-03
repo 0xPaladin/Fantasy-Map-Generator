@@ -4,6 +4,7 @@ import { valueModifier } from "@/conquest/engine/game/saves";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
+import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
@@ -36,7 +37,14 @@ import {
   syncBurgBuildingsFromFlags,
   syncBurgFlagsFromBuildings,
   syncCivBuildingsFromFlags,
-  syncCivFlagsFromBuildings
+  syncCivFlagsFromBuildings,
+  activeCivThemeId,
+  happinessCombatMultiplier,
+  hurryGoldCost,
+  isTechSelectable,
+  BASE_EMPIRE_HAPPINESS,
+  LUXURY_HAPPINESS,
+  UNIT_UPKEEP_FREE
 } from "./living-generator";
 
 function makeGuildFigure(i: number, overrides: Partial<HistoricalFigure> = {}): HistoricalFigure {
@@ -2329,218 +2337,218 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     });
   });
 
-  describe("OpenCiv slice 3: autonomous major burg city loop", () => {
-    const GRID = 4;
+  const GRID = 4;
 
-    const makeGood = (i: number, name: string, tags: string[], demandCoverage: Good["demandCoverage"]): Good => ({
-      i,
-      name,
-      tags,
-      demandCoverage,
-      value: 1,
-      unit: "unit",
-      icon: "",
-      color: "#000000"
+  const makeGood = (i: number, name: string, tags: string[], demandCoverage: Good["demandCoverage"]): Good => ({
+    i,
+    name,
+    tags,
+    demandCoverage,
+    value: 1,
+    unit: "unit",
+    icon: "",
+    color: "#000000"
+  });
+
+  /** A 4x4 Voronoi grid: state 1 holds six cells around its capital, state 2 two cells. */
+  function setupCityWorld(): void {
+    const count = GRID * GRID;
+    const indices = Array.from({ length: count }, (_, index) => index);
+    const neighbors = indices.map(index => {
+      const x = index % GRID;
+      const y = Math.floor(index / GRID);
+      const out: number[] = [];
+      if (x > 0) out.push(index - 1);
+      if (x < GRID - 1) out.push(index + 1);
+      if (y > 0) out.push(index - GRID);
+      if (y < GRID - 1) out.push(index + GRID);
+      return out;
     });
 
-    /** A 4x4 Voronoi grid: state 1 holds six cells around its capital, state 2 two cells. */
-    function setupCityWorld(): void {
-      const count = GRID * GRID;
-      const indices = Array.from({ length: count }, (_, index) => index);
-      const neighbors = indices.map(index => {
-        const x = index % GRID;
-        const y = Math.floor(index / GRID);
-        const out: number[] = [];
-        if (x > 0) out.push(index - 1);
-        if (x < GRID - 1) out.push(index + 1);
-        if (y > 0) out.push(index - GRID);
-        if (y < GRID - 1) out.push(index + GRID);
-        return out;
-      });
-
-      const state = new Uint16Array(count);
-      const province = new Uint16Array(count);
-      for (const cell of [1, 4, 5, 6, 9, 10]) {
-        state[cell] = 1;
-        province[cell] = 1;
-      }
-      for (const cell of [7, 11]) {
-        state[cell] = 2;
-        province[cell] = 2;
-      }
-
-      const burgCells = new Uint16Array(count);
-      burgCells[5] = 1;
-      burgCells[11] = 2;
-      burgCells[2] = 3;
-      burgCells[8] = 4;
-      burgCells[4] = 5;
-
-      const culture = new Uint16Array(count);
-      culture[2] = 1;
-      culture[8] = 3;
-      for (const cell of [1, 4, 5, 6, 9, 10]) culture[cell] = 1;
-      for (const cell of [7, 11]) culture[cell] = 2;
-
-      const religion = new Uint16Array(count);
-      for (const cell of [1, 4, 5, 6, 9, 10]) religion[cell] = 1;
-      for (const cell of [7, 11]) religion[cell] = 2;
-      religion[2] = 1;
-      religion[8] = 3;
-
-      const pop = new Array<number>(count).fill(0);
-      pop[2] = 20;
-      pop[8] = 15;
-
-      globalThis.pack = {
-        cells: {
-          i: indices,
-          state,
-          province,
-          h: new Uint8Array(count).fill(25),
-          biome: new Uint8Array(count).fill(4),
-          harbor: new Uint8Array(count),
-          f: new Uint16Array(count),
-          r: new Uint16Array(count),
-          good: new Uint16Array(count),
-          burg: burgCells,
-          culture,
-          religion,
-          pop,
-          area: new Array<number>(count).fill(1),
-          c: neighbors,
-          p: indices.map(index => [index * 10, index * 10]),
-          routes: new Uint16Array(count)
-        },
-        features: [],
-        goods: [makeGood(0, "None", [], {}), makeGood(1, "Wine", ["luxury"], { luxury: 1 })],
-        cultures: [
-          { i: 0, name: "Wildlands", base: 0, center: 0 },
-          { i: 1, name: "Aeloran", base: 0, center: 5, alignment: "good" },
-          { i: 2, name: "Kazad", base: 0, center: 11, alignment: "lawful" },
-          { i: 3, name: "Steppe", base: 0, center: 15, alignment: "chaotic" }
-        ],
-        religions: [
-          { i: 0, name: "No religion" },
-          { i: 1, name: "Solar Church" },
-          { i: 2, name: "Stone Ancestors" },
-          { i: 3, name: "Sky Spirits" }
-        ],
-        burgs: [
-          { i: 0 },
-          {
-            i: 1,
-            name: "Aelor",
-            cell: 5,
-            x: 50,
-            y: 50,
-            state: 1,
-            culture: 1,
-            population: 18,
-            capital: 1,
-            walls: 0,
-            plaza: 0,
-            temple: 0,
-            citadel: 0
-          },
-          {
-            i: 2,
-            name: "Khazad",
-            cell: 11,
-            x: 110,
-            y: 110,
-            state: 2,
-            culture: 2,
-            population: 6,
-            capital: 1,
-            walls: 0,
-            plaza: 0,
-            temple: 0,
-            citadel: 0
-          },
-          {
-            i: 3,
-            name: "Kinborough",
-            cell: 2,
-            x: 20,
-            y: 20,
-            state: 0,
-            culture: 1,
-            population: 2.5,
-            capital: 0,
-            walls: 0,
-            plaza: 0,
-            temple: 0,
-            citadel: 0
-          },
-          {
-            i: 4,
-            name: "Outcast Hold",
-            cell: 8,
-            x: 80,
-            y: 80,
-            state: 0,
-            culture: 3,
-            population: 3,
-            capital: 0,
-            walls: 0,
-            plaza: 0,
-            temple: 0,
-            citadel: 0
-          },
-          {
-            i: 5,
-            name: "Millbrook",
-            cell: 4,
-            x: 40,
-            y: 40,
-            state: 1,
-            culture: 1,
-            population: 1.5,
-            capital: 0,
-            walls: 0,
-            plaza: 0,
-            temple: 0,
-            citadel: 0
-          }
-        ],
-        states: [
-          { i: 0, name: "Neutrals", treasury: 0, diplomacy: [] },
-          {
-            i: 1,
-            name: "Aeloria",
-            culture: 1,
-            capital: 1,
-            center: 5,
-            treasury: 0,
-            diplomacy: [],
-            military: []
-          },
-          {
-            i: 2,
-            name: "Khazadia",
-            culture: 2,
-            capital: 2,
-            center: 11,
-            treasury: 0,
-            diplomacy: [],
-            military: []
-          }
-        ],
-        provinces: [
-          { i: 0 },
-          { i: 1, state: 1, burg: 1, center: 5 },
-          { i: 2, state: 2, burg: 2, center: 11 }
-        ],
-        history: {
-          events: [],
-          realms: [],
-          eras: [{ name: "Age of Dawn", from: 500, to: 1000 }],
-          figures: []
-        }
-      } as unknown as typeof pack;
+    const state = new Uint16Array(count);
+    const province = new Uint16Array(count);
+    for (const cell of [1, 4, 5, 6, 9, 10]) {
+      state[cell] = 1;
+      province[cell] = 1;
+    }
+    for (const cell of [7, 11]) {
+      state[cell] = 2;
+      province[cell] = 2;
     }
 
+    const burgCells = new Uint16Array(count);
+    burgCells[5] = 1;
+    burgCells[11] = 2;
+    burgCells[2] = 3;
+    burgCells[8] = 4;
+    burgCells[4] = 5;
+
+    const culture = new Uint16Array(count);
+    culture[2] = 1;
+    culture[8] = 3;
+    for (const cell of [1, 4, 5, 6, 9, 10]) culture[cell] = 1;
+    for (const cell of [7, 11]) culture[cell] = 2;
+
+    const religion = new Uint16Array(count);
+    for (const cell of [1, 4, 5, 6, 9, 10]) religion[cell] = 1;
+    for (const cell of [7, 11]) religion[cell] = 2;
+    religion[2] = 1;
+    religion[8] = 3;
+
+    const pop = new Array<number>(count).fill(0);
+    pop[2] = 20;
+    pop[8] = 15;
+
+    globalThis.pack = {
+      cells: {
+        i: indices,
+        state,
+        province,
+        h: new Uint8Array(count).fill(25),
+        biome: new Uint8Array(count).fill(4),
+        harbor: new Uint8Array(count),
+        f: new Uint16Array(count),
+        r: new Uint16Array(count),
+        good: new Uint16Array(count),
+        burg: burgCells,
+        culture,
+        religion,
+        pop,
+        area: new Array<number>(count).fill(1),
+        c: neighbors,
+        p: indices.map(index => [index * 10, index * 10]),
+        routes: new Uint16Array(count)
+      },
+      features: [],
+      goods: [makeGood(0, "None", [], {}), makeGood(1, "Wine", ["luxury"], { luxury: 1 })],
+      cultures: [
+        { i: 0, name: "Wildlands", base: 0, center: 0 },
+        { i: 1, name: "Aeloran", base: 0, center: 5, alignment: "good" },
+        { i: 2, name: "Kazad", base: 0, center: 11, alignment: "lawful" },
+        { i: 3, name: "Steppe", base: 0, center: 15, alignment: "chaotic" }
+      ],
+      religions: [
+        { i: 0, name: "No religion" },
+        { i: 1, name: "Solar Church" },
+        { i: 2, name: "Stone Ancestors" },
+        { i: 3, name: "Sky Spirits" }
+      ],
+      burgs: [
+        { i: 0 },
+        {
+          i: 1,
+          name: "Aelor",
+          cell: 5,
+          x: 50,
+          y: 50,
+          state: 1,
+          culture: 1,
+          population: 18,
+          capital: 1,
+          walls: 0,
+          plaza: 0,
+          temple: 0,
+          citadel: 0
+        },
+        {
+          i: 2,
+          name: "Khazad",
+          cell: 11,
+          x: 110,
+          y: 110,
+          state: 2,
+          culture: 2,
+          population: 6,
+          capital: 1,
+          walls: 0,
+          plaza: 0,
+          temple: 0,
+          citadel: 0
+        },
+        {
+          i: 3,
+          name: "Kinborough",
+          cell: 2,
+          x: 20,
+          y: 20,
+          state: 0,
+          culture: 1,
+          population: 2.5,
+          capital: 0,
+          walls: 0,
+          plaza: 0,
+          temple: 0,
+          citadel: 0
+        },
+        {
+          i: 4,
+          name: "Outcast Hold",
+          cell: 8,
+          x: 80,
+          y: 80,
+          state: 0,
+          culture: 3,
+          population: 3,
+          capital: 0,
+          walls: 0,
+          plaza: 0,
+          temple: 0,
+          citadel: 0
+        },
+        {
+          i: 5,
+          name: "Millbrook",
+          cell: 4,
+          x: 40,
+          y: 40,
+          state: 1,
+          culture: 1,
+          population: 1.5,
+          capital: 0,
+          walls: 0,
+          plaza: 0,
+          temple: 0,
+          citadel: 0
+        }
+      ],
+      states: [
+        { i: 0, name: "Neutrals", treasury: 0, diplomacy: [] },
+        {
+          i: 1,
+          name: "Aeloria",
+          culture: 1,
+          capital: 1,
+          center: 5,
+          treasury: 0,
+          diplomacy: [],
+          military: []
+        },
+        {
+          i: 2,
+          name: "Khazadia",
+          culture: 2,
+          capital: 2,
+          center: 11,
+          treasury: 0,
+          diplomacy: [],
+          military: []
+        }
+      ],
+      provinces: [
+        { i: 0 },
+        { i: 1, state: 1, burg: 1, center: 5 },
+        { i: 2, state: 2, burg: 2, center: 11 }
+      ],
+      history: {
+        events: [],
+        realms: [],
+        eras: [{ name: "Age of Dawn", from: 500, to: 1000 }],
+        figures: []
+      }
+    } as unknown as typeof pack;
+  }
+
+  describe("OpenCiv slice 3: autonomous major burg city loop", () => {
     beforeEach(() => {
       setupCityWorld();
     });
@@ -2706,7 +2714,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(b1.civBuildings).toContain("great_library");
       expect(b2.productionQueue?.some(item => item.id === "great_library")).toBe(false);
       expect(b2.productionProgress?.["wonder:great_library"]).toBeUndefined();
-      expect(pack.states[2].treasury).toBe(40);
+      // 40 Gold refund plus the same tick's Empire gold income (Palace +3).
+      expect(pack.states[2].treasury).toBe(40 + (living.states[2].yieldsPerTurn?.gold ?? 0));
     });
 
     it("feeds surplus food into Production while a Settler is queued", () => {
@@ -2780,6 +2789,238 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.worldWonders).toEqual({});
       expect(living.burgs[1].civBuildings).toEqual(expect.arrayContaining(["palace"]));
       expect(living.burgs[1].isMajor).toBe(true);
+    });
+  });
+
+  describe("OpenCiv slice 4: science, treasury & happiness", () => {
+    const makeRegiment = (i: number) => ({
+      i,
+      name: `Regiment ${i}`,
+      a: 100,
+      cell: 5,
+      x: 50,
+      y: 50,
+      bx: 50,
+      by: 50,
+      u: { spear: 100 },
+      units: [{ type: "spear", count: 100, exp: 0 }],
+      n: 0,
+      icon: "⚔️",
+      state: 1
+    });
+
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    it("selects the OpenCiv theme and era cap from the live map", () => {
+      expect(activeCivThemeId()).toBe("fantasy");
+
+      options.map.lore.calendar.year = 1900;
+      expect(activeCivThemeId()).toBe("historical");
+
+      options.map.lore.calendar.year = 1000;
+      options.map.lore.calendar.era = "Age of Steam";
+      expect(activeCivThemeId()).toBe("historical");
+      options.map.lore.calendar.era = "Age of Dawn";
+    });
+
+    it("computes hurry Gold cost and the very-unhappy combat penalty", () => {
+      expect(hurryGoldCost(0, false)).toBe(0);
+      expect(hurryGoldCost(75, false)).toBe(320);
+      expect(hurryGoldCost(75, true)).toBe(390);
+      expect(hurryGoldCost(75, false, true)).toBe(270);
+
+      expect(happinessCombatMultiplier(0)).toBe(1);
+      expect(happinessCombatMultiplier(-9)).toBe(1);
+      expect(happinessCombatMultiplier(-10)).toBe(0.67);
+      expect(happinessCombatMultiplier(undefined)).toBe(1);
+    });
+
+    it("sets research through the public API and rejects unavailable techs", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+
+      expect(Living.setResearch(1, "pottery")).toBe(true);
+      expect(sSim.currentTechId).toBe("pottery");
+      expect(Living.setResearch(1, "metallurgy")).toBe(false);
+
+      expect(Living.grantTech(1, "pottery")).toBe(true);
+      expect(sSim.researchedTechs).toContain("pottery");
+      expect(Living.grantTech(1, "pottery")).toBe(false);
+      expect(isTechSelectable(CIV_TECH_BY_ID.pottery!, new Set(), "fantasy")).toBe(true);
+      expect(isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(), "fantasy")).toBe(false);
+      expect(
+        isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(["gunpowder", "printing_press"]), "fantasy")
+      ).toBe(true);
+      expect(isTechSelectable(CIV_TECH_BY_ID.refrigeration!, new Set(), "fantasy")).toBe(false);
+    });
+
+    it("banks Science each tick and completes the current technology", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+      sSim.currentTechId = "pottery";
+      sSim.researchedProgress = { pottery: 32 };
+
+      Living.tick(1);
+
+      // Palace Science 3 pushes 32 over Pottery's 35 cost.
+      expect(sSim.researchedTechs).toContain("pottery");
+      expect(sSim.currentTechId).not.toBe("pottery");
+      expect(sSim.currentTechId).toBeTruthy();
+      expect(living.recentNews.some(item => item.kind === "tech")).toBe(true);
+    });
+
+    it("grants a free technology when a Great Library completes", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+      sSim.researchedTechs = ["writing"];
+      (living.cells ??= {})[1] = { improvement: "mine" };
+      const b1 = living.burgs[1];
+      b1.productionQueue = [{ kind: "wonder", id: "great_library" }];
+      b1.productionProgress = { "wonder:great_library": 184 };
+
+      Living.tick(1);
+
+      expect(living.worldWonders?.great_library).toMatchObject({ burgId: 1, stateId: 1 });
+      // The free tech is consumed by the same tick's research step.
+      expect(sSim.freeTechs).toBe(0);
+      expect(sSim.researchedTechs.length).toBeGreaterThan(1);
+    });
+
+    it("unlocks buildings through discovered technologies", () => {
+      const living = Living.init();
+      (living.cells ??= {})[1] = { improvement: "mine" };
+      const b1 = living.burgs[1];
+      b1.civBuildings = ["palace", "monument"];
+      b1.productionQueue = [];
+
+      Living.tick(1);
+      expect(b1.productionQueue ?? []).toHaveLength(0);
+
+      living.states[1].researchedTechs = ["pottery"];
+      b1.productionQueue = [];
+      Living.tick(1);
+      expect(b1.productionQueue?.[0]).toEqual({ kind: "building", id: "granary" });
+    });
+
+    it("adds tech tile bonuses next to the base improvement yields", () => {
+      const living = Living.init();
+      (living.cells ??= {})[1] = { improvement: "farm" };
+      expect(getCellYields(1, 1, living).food).toBe(3);
+
+      living.states[1].researchedTechs = ["civil_service"];
+      expect(getCellYields(1, 1, living).food).toBe(3);
+
+      pack.cells.r[1] = 1;
+      expect(getCellYields(1, 1, living).food).toBe(4);
+      expect(getCellYieldSources(1, 1, living).some(source => source.kind === "tech")).toBe(true);
+
+      (living.cells ??= {})[3] = { improvement: "mine" };
+      expect(getCellYields(3, 1, living).production).toBe(1);
+      living.states[1].researchedTechs = ["chemistry"];
+      expect(getCellYields(3, 1, living).production).toBe(2);
+    });
+
+    it("rolls city Gold into the treasury net of maintenance and unit upkeep", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+
+      Living.tick(1);
+      // Palace +3 Gold, worked minor burg (Millbrook) +2 Gold.
+      expect(sSim.yieldsPerTurn?.gold).toBe(5);
+      expect(pack.states[1].treasury).toBe(5);
+
+      // Monument maintenance 1 plus 4 regiments (1 above the free allowance).
+      living.burgs[1].civBuildings = ["palace", "monument"];
+      pack.states[1].military = Array.from({ length: UNIT_UPKEEP_FREE + 1 }, (_, index) => makeRegiment(index));
+      Living.tick(1);
+      expect(sSim.yieldsPerTurn?.gold).toBe(3);
+    });
+
+    it("disbands the newest regiment when the treasury goes negative", () => {
+      const living = Living.init();
+      pack.states[1].military = [makeRegiment(0), makeRegiment(1)];
+      pack.states[1].treasury = -10;
+
+      Living.tick(1);
+
+      expect(pack.states[1].treasury).toBe(0);
+      expect(pack.states[1].military).toHaveLength(1);
+      expect(living.recentNews.some(item => item.text.includes("disbanded"))).toBe(true);
+    });
+
+    it("derives Empire Happiness from luxuries, buildings and city costs", () => {
+      const living = Living.init();
+      Living.tick(1);
+
+      const sSim = living.states[1];
+      expect(sSim.happiness).toBe(BASE_EMPIRE_HAPPINESS - 3 - 6);
+      expect(sSim.happinessBreakdown).toMatchObject({
+        base: BASE_EMPIRE_HAPPINESS,
+        luxuries: 0,
+        cityUnhappiness: 3,
+        citizenUnhappiness: 6
+      });
+
+      pack.cells.good[1] = 1;
+      (living.cells ??= {})[1] = { improvement: "plantation" };
+      Living.tick(1);
+      expect(sSim.happinessBreakdown?.luxuries).toBe(LUXURY_HAPPINESS);
+      expect(sSim.happiness).toBe(LUXURY_HAPPINESS);
+
+      // Colosseum local happiness is capped by the city's citizens.
+      living.burgs[1].civBuildings = ["palace", "colosseum"];
+      living.burgs[1].citizens = 2;
+      pack.burgs[1].population = 2;
+      Living.tick(1);
+      expect(sSim.happinessBreakdown?.buildings).toBe(2);
+      expect(sSim.happiness).toBe(BASE_EMPIRE_HAPPINESS - 3 - 2 + 2 + LUXURY_HAPPINESS);
+    });
+
+    it("decays unravel while content and inflates it while very unhappy", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+
+      sSim.unravel = 50;
+      Living.tick(1);
+      expect(sSim.happiness).toBe(0);
+      expect(sSim.unravel).toBe(48);
+
+      const b1 = living.burgs[1];
+      b1.conqueredBy = 1;
+      b1.unrest = 100;
+      sSim.unravel = 0;
+      Living.tick(1);
+      expect(sSim.happiness).toBeLessThanOrEqual(-10);
+      expect(sSim.unravel).toBeGreaterThanOrEqual(6);
+    });
+
+    it("hurries the top production item for Gold with a reserve", () => {
+      const living = Living.init();
+      const b1 = living.burgs[1];
+      b1.productionQueue = [{ kind: "building", id: "monument" }];
+      b1.productionProgress = { "building:monument": 0 };
+
+      pack.states[1].treasury = 50;
+      expect(Living.hurryProduction(1)).toBe(false);
+
+      pack.states[1].treasury = 1000;
+      expect(Living.hurryProduction(1)).toBe(true);
+      expect(b1.civBuildings).toContain("monument");
+      expect(pack.states[1].treasury).toBeLessThan(1000);
+    });
+
+    it("lazily initializes the OpenCiv empire record on old saves", () => {
+      delete pack.history.living;
+
+      const living = Living.init();
+      const sSim = living.states[1];
+      expect(sSim.researchedTechs).toEqual([]);
+      expect(sSim.researchQueue).toEqual([]);
+      expect(sSim.researchedProgress).toEqual({});
+      expect(sSim.freeTechs).toBe(0);
+      expect(sSim.yieldsPerTurn).toBeDefined();
     });
   });
 });

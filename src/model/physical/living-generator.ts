@@ -43,8 +43,11 @@ import {
   recoverInjuries,
   STAMINA_RESERVE_MINIMUM
 } from "@/data/hero-vitals";
+import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
+import { CIV_TECHS, CIV_TECH_BY_ID } from "@/data/living-civ-techs";
+import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
 import {
   createProvinceLair,
@@ -100,6 +103,7 @@ import type { Province } from "@/model/political/provinces-generator";
 import { type State, States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import type { Marker } from "@/model/story/markers-generator";
+import { isAstralView } from "@/renderers/view-mode";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import {
   type ActiveGuildMission,
@@ -111,10 +115,13 @@ import {
   type CellYieldSource,
   type CivBuildingDef,
   type CivResourceClass,
+  type CivTechDef,
+  type CivThemeId,
   type DisciplineId,
   type GrudgeReason,
   type GuildMissionKind,
   type GuildState,
+  type HappinessBreakdown,
   type HeroArchetypeId,
   type HeroDoctrine,
   type HeroGuildState,
@@ -853,41 +860,66 @@ function resourceYieldDelta(resource: CellResourceInfo, good: Good, improved: bo
   return { food: amount };
 }
 
-function improvementYieldDelta(
-  cell: number,
-  improvementId: string,
-  stateTechs: Set<string>,
-  resource: CellResourceInfo | null
-): YieldDelta {
-  const hasTech = (tech: string) => stateTechs.has(tech);
-
+/**
+ * Base improvement yields. Tech upgrades are added separately from the
+ * OpenCiv `tileBonuses` catalog so Science visibly unlocks them.
+ */
+function improvementYieldDelta(improvementId: string, resource: CellResourceInfo | null): YieldDelta {
   switch (improvementId) {
-    case "farm": {
-      const yields: YieldDelta = { food: 1 };
-      if (hasFreshWater(cell) ? hasTech("civil_service") : hasTech("fertilizer")) yields.food = 2;
-      return yields;
-    }
+    case "farm":
+      return { food: 1 };
     case "mine":
     case "quarry":
-      return { production: hasTech("chemistry") ? 2 : 1 };
+      return { production: 1 };
     case "pasture": {
       const food = resource?.resourceId === "cattle" || resource?.resourceId === "sheep";
-      const amount = hasTech("fertilizer") ? 2 : 1;
-      return food ? { food: amount } : { production: amount };
+      return food ? { food: 1 } : { production: 1 };
     }
     case "plantation":
-      return { gold: hasTech("economics") ? 3 : 2 };
+      return { gold: 2 };
     case "camp":
-      return hasTech("economics") ? { production: 1, gold: 1 } : { production: 1 };
+      return { production: 1 };
     case "lumber_mill":
-      return { production: hasTech("scientific_theory") ? 2 : 1 };
+      return { production: 1 };
     case "trading_post":
-      return { gold: hasTech("economics") ? 2 : 1 };
+      return { gold: 1 };
     case "fishing_boats":
       return { food: 1, gold: 1 };
     default:
       return {};
   }
+}
+
+/** OpenCiv tile ids a generic FMG improvement can match, e.g. `mine` -> `iron_mine`. */
+function improvementTileTypes(improvementId: string, resource: CellResourceInfo | null): string[] {
+  const types = [improvementId];
+  const resourceId = resource?.resourceId;
+  if (!resourceId) return types;
+  types.push(`${resourceId}_${improvementId}`, `improved_${resourceId}`);
+  return types;
+}
+
+/** Tech tile bonuses for an active improvement, e.g. Chemistry +1 Production from Mines. */
+function techTileBonusDelta(
+  improvementId: string,
+  cell: number,
+  resource: CellResourceInfo | null,
+  researchedTechs: readonly string[]
+): YieldDelta {
+  if (researchedTechs.length === 0) return {};
+  const tileTypes = new Set(improvementTileTypes(improvementId, resource));
+  const freshWater = hasFreshWater(cell);
+  const total: YieldDelta = {};
+
+  for (const techId of researchedTechs) {
+    const tech = CIV_TECH_BY_ID[techId];
+    for (const bonus of tech?.tileBonuses ?? []) {
+      if (!tileTypes.has(bonus.tileType)) continue;
+      if (bonus.freshWater !== undefined && bonus.freshWater !== freshWater) continue;
+      for (const key of CIV_YIELD_KEYS) total[key] = (total[key] ?? 0) + (bonus.stats[key] ?? 0);
+    }
+  }
+  return total;
 }
 
 function minorBurgYieldDelta(burg: Burg, pillaged: boolean): YieldDelta {
@@ -944,11 +976,16 @@ export function getCellYieldSources(
   }
 
   if (improvementId && improvementActive) {
-    const techs = new Set(living?.states?.[playerStateId]?.researchedTechs ?? []);
-    const yields = improvementYieldDelta(cell, improvementId, techs, resource);
+    const yields = improvementYieldDelta(improvementId, resource);
     if (hasYield(yields)) {
       const def = CIV_IMPROVEMENT_BY_ID[improvementId];
       sources.push({ kind: "improvement", id: improvementId, label: def?.name ?? humanizeId(improvementId), yields });
+    }
+
+    const techs = living?.states?.[playerStateId]?.researchedTechs ?? [];
+    const techYields = techTileBonusDelta(improvementId, cell, resource, techs);
+    if (hasYield(techYields)) {
+      sources.push({ kind: "tech", id: improvementId, label: "Technology upgrades", yields: techYields });
     }
   }
 
@@ -1074,6 +1111,54 @@ const CITY_ECONOMY_BUILDINGS: readonly string[] = [
   "public_school",
   "factory"
 ];
+
+// ---------------------------------------------------------------------------
+// Slice 4: empire rollup helpers (Science, Gold, Happiness)
+// ---------------------------------------------------------------------------
+
+/** Regiments beyond this count cost 1 Gold per tick of upkeep. */
+export const UNIT_UPKEEP_FREE = 3;
+/** At or below this net happiness growth stops and combat suffers. */
+export const VERY_UNHAPPY_HAPPINESS = -10;
+/** Very unhappy empires fight at two thirds strength. */
+export const UNHAPPY_COMBAT_MULTIPLIER = 0.67;
+/** States only hurry production while keeping this Gold reserve. */
+export const GOLD_PURCHASE_RESERVE = 100;
+export const BASE_EMPIRE_HAPPINESS = 9;
+export const LUXURY_HAPPINESS = 4;
+
+/** OpenCiv theme profile for the live map: Astral, Historical/Modern or Fantasy. */
+export function activeCivThemeId(): CivThemeId {
+  const astral = isAstralView();
+  const year = options?.map?.lore?.calendar?.year ?? 1000;
+  const era = String(options?.map?.lore?.calendar?.era ?? "");
+  const historical = year >= 1800 || /industrial|modern|atomic|information|steam/i.test(era);
+  return selectCivTheme({ astral, historical });
+}
+
+/** Combat strength multiplier from Empire Happiness (a flat -33% when very unhappy). */
+export function happinessCombatMultiplier(happiness: number | undefined): number {
+  return (happiness ?? 0) <= VERY_UNHAPPY_HAPPINESS ? UNHAPPY_COMBAT_MULTIPLIER : 1;
+}
+
+/** Gold cost to hurry `remainingProduction` in a Major Burg. */
+export function hurryGoldCost(remainingProduction: number, isUnit: boolean, hasBigBen = false): number {
+  const remaining = Math.max(0, remainingProduction);
+  if (remaining <= 0) return 0;
+  const raw = (30 * remaining) ** 0.75 * (isUnit ? 1.2 : 1) * (hasBigBen ? 0.85 : 1);
+  return Math.max(10, Math.floor(raw / 10) * 10);
+}
+
+/** A tech is selectable when its era is unlocked and every prerequisite is known. */
+export function isTechSelectable(
+  tech: CivTechDef,
+  researched: ReadonlySet<string>,
+  theme: CivThemeId
+): boolean {
+  if (researched.has(tech.id)) return false;
+  if (!isCivEraAvailable(theme, tech.era)) return false;
+  return tech.prerequisites.every(id => researched.has(id));
+}
 
 class LivingModel {
   /** Initialize or reconcile the Living World state on `pack.history.living` */
@@ -2031,6 +2116,7 @@ class LivingModel {
 
       this.syncWorld();
       this.stepCities(living);
+      this.stepEmpire(living);
       this.stepBurgUnrest(living);
       this.stepProvinces(living);
       this.stepLairs(living);
@@ -3820,10 +3906,24 @@ class LivingModel {
           warExhaustion: 0,
           capacity: emptyCapacityLedger(),
           claims: [],
-          grudges: []
+          grudges: [],
+          currentTechId: null,
+          researchQueue: [],
+          researchedTechs: [],
+          researchedProgress: {},
+          freeTechs: 0,
+          yieldsPerTurn: emptyYields()
         };
       } else {
         existing.rulerId = rulerId;
+        existing.currentTechId ??= null;
+        existing.researchQueue ??= [];
+        existing.researchedTechs ??= [];
+        existing.researchedProgress ??= {};
+        existing.freeTechs ??= 0;
+        existing.yieldsPerTurn ??= emptyYields();
+        existing.warTurns ??= {};
+        existing.peaceTreatyTurns ??= {};
       }
     }
   }
@@ -4504,6 +4604,12 @@ class LivingModel {
       syncCivFlagsFromBuildings(burg, bSim.civBuildings);
     }
 
+    if (item.kind === "building" || item.kind === "wonder") {
+      const sSim = living.states[state.i];
+      const freeTechs = CIV_BUILDING_BY_ID[item.id]?.effects?.freeTechs ?? 0;
+      if (sSim && freeTechs > 0) sSim.freeTechs = (sSim.freeTechs ?? 0) + freeTechs;
+    }
+
     if (item.kind === "wonder") {
       living.worldWonders ??= {};
       living.worldWonders[item.id] = { burgId: burg.i, stateId: state.i, year };
@@ -4593,6 +4699,322 @@ class LivingModel {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Slice 4: OpenCiv empire rollup — Science, Gold, Happiness & Unravel.
+  // -------------------------------------------------------------------------
+
+  /** Empire-wide yields for every state: city totals, science multipliers, upkeep and maintenance. */
+  private recomputeStateYields(state: State, living: LivingWorldState): YieldValues {
+    const totals = emptyYields();
+    let science = 0;
+    let gold = 0;
+    let maintenance = 0;
+
+    for (const burg of this.majorBurgsOfState(state.i, living)) {
+      const bSim = living.burgs[burg.i];
+      if (!bSim) continue;
+      const yields = bSim.cityYields ?? emptyYields();
+      totals.food += yields.food;
+      totals.production += yields.production;
+      totals.culture += yields.culture;
+      totals.faith += yields.faith;
+      gold += yields.gold;
+      science += this.citySciencePerTick(bSim);
+
+      for (const id of bSim.civBuildings ?? []) {
+        maintenance += CIV_BUILDING_BY_ID[id]?.maintenance ?? 0;
+      }
+    }
+
+    const regiments = (state.military ?? []).filter(reg => (reg.units?.length ?? 0) > 0 || reg.a > 0).length;
+    const upkeep = Math.max(0, regiments - UNIT_UPKEEP_FREE);
+    const leasedRelics = (living.guild?.relics ?? []).filter(
+      relic => relic.holder.kind === "state" && relic.holder.id === state.i
+    ).length;
+    const relicTribute = leasedRelics * RELIC_LEASE_TRIBUTE;
+
+    totals.science = Math.round(science * 100) / 100;
+    totals.gold = Math.round((gold - maintenance - upkeep + relicTribute) * 100) / 100;
+    // Empire Happiness is stored on `sSim.happiness` with its full breakdown.
+    totals.happiness = 0;
+    return totals;
+  }
+
+  /** §6.1 Science per city: flat yields plus the Library / School / University / Observatory multipliers. */
+  private citySciencePerTick(bSim: BurgSimState): number {
+    const held = new Set(bSim.civBuildings ?? []);
+    const citizens = bSim.citizens ?? 1;
+    let science = bSim.cityYields?.science ?? 0;
+
+    if (held.has("library")) science += citizens * 0.5;
+    if (held.has("public_school")) science += citizens * 0.5 + 3;
+    if (held.has("university")) {
+      science *= 1.33;
+      const jungle = (bSim.workedCells ?? []).filter(cell => Number(pack.cells.biome?.[cell] ?? 0) === 7).length;
+      science += 2 * jungle;
+    }
+    if (held.has("observatory")) science *= 1.5;
+    if (held.has("national_college")) science = science * 1.5 + 3;
+
+    return Math.round(science * 100) / 100;
+  }
+
+  /** §7.2 Empire Happiness: base + luxuries + buildings/religion − cities − citizens − unrest. */
+  private recomputeEmpireHappiness(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const breakdown: HappinessBreakdown = {
+      base: BASE_EMPIRE_HAPPINESS,
+      luxuries: 0,
+      buildings: 0,
+      religion: 0,
+      cityUnhappiness: 0,
+      citizenUnhappiness: 0,
+      unrestUnhappiness: 0
+    };
+    breakdown.luxuries = LUXURY_HAPPINESS * this.uniqueLuxuries(state, living).size;
+
+    let localHappiness = 0;
+    for (const burg of this.majorBurgsOfState(state.i, living)) {
+      const bSim = living.burgs[burg.i];
+      if (!bSim) continue;
+      const citizens = bSim.citizens ?? 1;
+
+      let local = 0;
+      for (const id of bSim.civBuildings ?? []) {
+        const def = CIV_BUILDING_BY_ID[id];
+        const happiness = def?.stats.happiness ?? 0;
+        if (happiness === 0) continue;
+        if (def?.isWonder) breakdown.buildings += happiness;
+        else local += happiness;
+      }
+
+      // Local city happiness is capped by the city's citizens, exactly as in OpenCiv.
+      localHappiness += Math.min(local, citizens);
+      breakdown.cityUnhappiness += 3;
+      breakdown.citizenUnhappiness += citizens;
+      if (bSim.conqueredBy !== undefined) breakdown.unrestUnhappiness += Math.ceil((bSim.unrest ?? 0) / 2);
+    }
+    breakdown.buildings += localHappiness;
+    breakdown.religion = this.beliefHappiness(state, living);
+
+    sSim.happinessBreakdown = breakdown;
+    sSim.happiness =
+      breakdown.base +
+      breakdown.luxuries +
+      breakdown.buildings +
+      breakdown.religion -
+      breakdown.cityUnhappiness -
+      breakdown.citizenUnhappiness -
+      breakdown.unrestUnhappiness;
+  }
+
+  /** Unique improved Luxury goods inside a state's borders, one +4 Happiness each. */
+  private uniqueLuxuries(state: State, living: LivingWorldState): Set<string> {
+    const luxuries = new Set<string>();
+    const cells = pack.cells.state?.length ?? 0;
+    for (let cell = 0; cell < cells; cell++) {
+      if (pack.cells.state?.[cell] !== state.i) continue;
+      const resource = getCellResource(cell, state.i, living);
+      if (!resource || resource.class !== "luxury") continue;
+
+      const cellSim = living.cells?.[cell];
+      const improved = Boolean(cellSim?.improvement && !cellSim.pillaged);
+      const burgId = Number(pack.cells.burg?.[cell] ?? 0);
+      const burg = burgId ? pack.burgs?.[burgId] : undefined;
+      const village = Boolean(burg?.i && !burg.removed && !isBurgPillaged(burg, living));
+      if (!improved && !village) continue;
+
+      luxuries.add(resource.resourceId ?? resource.goodName);
+    }
+    return luxuries;
+  }
+
+  /** Happiness from pantheon / founder / follower beliefs (Slice 6 fills religion records). */
+  private beliefHappiness(state: State, living: LivingWorldState): number {
+    let happiness = 0;
+    for (const id of this.stateBeliefs(state, living)) {
+      happiness += CIV_BELIEF_BY_ID[id]?.yields?.happiness ?? 0;
+    }
+    return happiness;
+  }
+
+  /** §6.1 Research: bank Science into the current tech, then pick the next project. */
+  private applyResearch(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const theme = activeCivThemeId();
+    sSim.researchedTechs ??= [];
+    sSim.researchedProgress ??= {};
+    sSim.researchQueue ??= [];
+    const researched = new Set(sSim.researchedTechs);
+
+    let freeTechs = sSim.freeTechs ?? 0;
+    while (freeTechs > 0) {
+      const free = this.nextTech(researched, theme);
+      if (!free) break;
+      this.completeTech(state, sSim, free, living, true);
+      researched.add(free.id);
+      freeTechs -= 1;
+    }
+    sSim.freeTechs = freeTechs;
+
+    let current: CivTechDef | undefined = sSim.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
+    if (!current || !isTechSelectable(current, researched, theme)) {
+      const queued = sSim.researchQueue
+        .map(id => CIV_TECH_BY_ID[id])
+        .find(tech => tech !== undefined && isTechSelectable(tech, researched, theme));
+      current = queued ?? this.nextTech(researched, theme) ?? undefined;
+      sSim.currentTechId = current?.id ?? null;
+    }
+    if (!current) return;
+
+    const science = Math.max(0, sSim.yieldsPerTurn?.science ?? 0);
+    const cost = Math.max(1, current.cost);
+    const banked = (sSim.researchedProgress[current.id] ?? 0) + science;
+    if (banked < cost) {
+      sSim.researchedProgress[current.id] = Math.round(banked * 100) / 100;
+      return;
+    }
+    this.completeTech(state, sSim, current, living, false);
+
+    // Keep the research queue moving: pick the next project immediately.
+    const advanced = new Set(sSim.researchedTechs ?? []);
+    const queued = sSim.researchQueue
+      .map(id => CIV_TECH_BY_ID[id])
+      .find(tech => tech !== undefined && isTechSelectable(tech, advanced, theme));
+    sSim.currentTechId = (queued ?? this.nextTech(advanced, theme))?.id ?? null;
+  }
+
+  /** Cheapest selectable technology, deterministic on ties. */
+  private nextTech(researched: ReadonlySet<string>, theme: CivThemeId): CivTechDef | null {
+    const available = CIV_TECHS.filter(tech => isTechSelectable(tech, researched, theme)).sort(
+      (a, b) => a.cost - b.cost || a.row - b.row || a.slot - b.slot || a.id.localeCompare(b.id)
+    );
+    return available[0] ?? null;
+  }
+
+  private completeTech(
+    state: State,
+    sSim: StatePolitySim,
+    tech: CivTechDef,
+    living: LivingWorldState,
+    free: boolean
+  ): void {
+    sSim.researchedTechs ??= [];
+    if (!sSim.researchedTechs.includes(tech.id)) sSim.researchedTechs.push(tech.id);
+    if (sSim.researchedProgress) delete sSim.researchedProgress[tech.id];
+    if (sSim.researchQueue) sSim.researchQueue = sSim.researchQueue.filter(id => id !== tech.id);
+    sSim.currentTechId = null;
+
+    const name = resolveCivTechName(activeCivThemeId(), tech);
+    this.pushNews(living, {
+      kind: "tech",
+      text: `${state.name} discovered ${name}${free ? " through foreign scholars" : ""}.`,
+      cell: state.center,
+      stateId: state.i
+    });
+  }
+
+  /** §7.1 Bank net Gold into the treasury; a negative balance disbands a regiment. */
+  private applyTreasury(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const goldPerTurn = sSim.yieldsPerTurn?.gold ?? 0;
+    state.treasury = Math.round((Number(state.treasury ?? 0) + goldPerTurn) * 100) / 100;
+    if (state.treasury < 0) this.settleDebt(state, living);
+  }
+
+  /** §7.1 Bankruptcy: reset the treasury and disband the newest regiment. */
+  private settleDebt(state: State, living: LivingWorldState): void {
+    state.treasury = 0;
+    const military = state.military ?? [];
+    const newest = military[military.length - 1];
+    if (!newest) return;
+    military.pop();
+    this.pushNews(living, {
+      kind: "muster",
+      text: `${state.name} could not pay its army; its newest regiment disbanded.`,
+      cell: newest.cell,
+      stateId: state.i
+    });
+  }
+
+  /** §7.2 Content empires pacify, unhappy ones breed unravel, very unhappy ones spiral. */
+  private applyHappinessPressure(sSim: StatePolitySim): void {
+    const happiness = sSim.happiness ?? 0;
+    let delta: number;
+    if (happiness <= VERY_UNHAPPY_HAPPINESS) delta = 6;
+    else if (happiness < 0) delta = 2;
+    else delta = -(2 + Math.floor(happiness / 5));
+    sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
+  }
+
+  /** One seasonal empire tick: yields, happiness, research, treasury and unravel. */
+  private stepEmpire(living: LivingWorldState): void {
+    if (!this.hasCityTerrain()) return;
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+
+      sSim.yieldsPerTurn = this.recomputeStateYields(state, living);
+      this.recomputeEmpireHappiness(state, sSim, living);
+      this.applyResearch(state, sSim, living);
+      this.applyTreasury(state, sSim, living);
+      this.applyHappinessPressure(sSim);
+    }
+  }
+
+  /** Choose the technology a state researches next (public for HUD and Sandbox controls). */
+  setResearch(stateId: number, techId: string): boolean {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    const sSim = living.states[stateId];
+    const tech = CIV_TECH_BY_ID[techId];
+    if (!state?.i || state.removed || !sSim || !tech) return false;
+
+    const researched = new Set(sSim.researchedTechs ?? []);
+    if (!isTechSelectable(tech, researched, activeCivThemeId())) return false;
+
+    sSim.researchQueue = [techId, ...(sSim.researchQueue ?? []).filter(id => id !== techId)];
+    sSim.currentTechId = techId;
+    return true;
+  }
+
+  /** Grant a technology outright (wonders, Guild scrolls, Sandbox God Mode). */
+  grantTech(stateId: number, techId: string): boolean {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    const sSim = living.states[stateId];
+    const tech = CIV_TECH_BY_ID[techId];
+    if (!state?.i || state.removed || !sSim || !tech) return false;
+    if ((sSim.researchedTechs ?? []).includes(techId)) return false;
+
+    this.completeTech(state, sSim, tech, living, true);
+    return true;
+  }
+
+  /** Gold-hurry the top production item in a Major Burg (GoldPurchase). */
+  hurryProduction(burgId: number): boolean {
+    const living = this.getState();
+    const burg = pack.burgs[burgId];
+    const bSim = living.burgs[burgId];
+    if (!burg?.i || burg.removed || !burg.state || !bSim?.productionQueue?.length) return false;
+
+    const state = pack.states[burg.state];
+    if (!state?.i || state.removed) return false;
+
+    const item = bSim.productionQueue[0]!;
+    const key = `${item.kind}:${item.id}`;
+    const remaining = Math.max(0, this.productionCost(item) - (bSim.productionProgress?.[key] ?? 0));
+    if (remaining <= 0) return false;
+
+    const price = hurryGoldCost(remaining, item.kind === "unit", (bSim.civBuildings ?? []).includes("big_ben"));
+    if (Number(state.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
+
+    state.treasury = Math.round((Number(state.treasury ?? 0) - price) * 100) / 100;
+    if (bSim.productionProgress) delete bSim.productionProgress[key];
+    bSim.productionQueue.shift();
+    this.completeProductionItem(state, burg, bSim, item, living);
+    return true;
+  }
+
   /** Step post-conquest occupation unrest on burgs and apply unravel pressure to owning states */
   private stepBurgUnrest(living: LivingWorldState): void {
     const restiveCountByState = new Map<number, number>();
@@ -4655,7 +5077,9 @@ class LivingModel {
       if (restiveCount > 0) delta += restiveCount * 4;
       if (sDeficit) delta += 4;
       if (sSim.warExhaustion >= 50) delta += 2;
-      if (restiveCount === 0 && !sDeficit && sSim.unravel > 0) delta -= 2;
+      // On terrain packs the OpenCiv happiness rollup owns the peace decay.
+      const empireManaged = sSim.happiness !== undefined;
+      if (restiveCount === 0 && !sDeficit && !empireManaged && sSim.unravel > 0) delta -= 2;
 
       sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
       sSim.warExhaustion = minmax(sSim.warExhaustion - 1, 0, 100);
@@ -6227,7 +6651,7 @@ class LivingModel {
       cell: burg.cell,
       regionId: pack.cells.province?.[burg.cell] ?? 0,
       assault: Number(burg.walls ?? 0) > 0,
-      modifiers: this.assaultModifiers(burg)
+      modifiers: this.assaultModifiers(burg, stateId)
     });
     const rng = this.rng("battle", stateId * 10000 + burg.i);
     while (session.status === "active" && session.round < config.battle.maxRounds) {
@@ -6236,13 +6660,21 @@ class LivingModel {
     return finalizeBattle(session, rng.next);
   }
 
-  private assaultModifiers(burg: Burg): BattleModifiers {
+  private assaultModifiers(burg: Burg, attackerStateId?: number): BattleModifiers {
+    const living = pack.history?.living;
+    const attackerMult = attackerStateId
+      ? happinessCombatMultiplier(living?.states?.[attackerStateId]?.happiness)
+      : 1;
+    const defenderMult = happinessCombatMultiplier(living?.states?.[burg.state ?? 0]?.happiness);
+
     return {
       walls: Number(burg.walls ?? 0),
       defenderEncamped: false,
       defenderAmbushed: false,
       attackerCrossedRiver: Boolean(pack.cells.r?.[burg.cell]),
-      labels: [`${burg.name ?? "settlement"} (walls ${burg.walls ?? 0})`]
+      labels: [`${burg.name ?? "settlement"} (walls ${burg.walls ?? 0})`],
+      ...(attackerMult < 1 ? { attackerLordMult: attackerMult } : {}),
+      ...(defenderMult < 1 ? { defenderLordMult: defenderMult } : {})
     };
   }
 
@@ -6254,7 +6686,7 @@ class LivingModel {
       currentContent().config,
       { factionId: stateId, armyId: null, units: army.units ?? [] },
       { factionId: burg.state ?? 0, armyId: null, units: defenders },
-      this.assaultModifiers(burg),
+      this.assaultModifiers(burg, stateId),
       Military.getUnitTypes()
     ).attackerWinPct;
   }
