@@ -56,6 +56,28 @@ function open(id: number | string): void {
 function renderDialog(): void {
   Dialog.destroy("astralSystemEditor");
   const editorHtml = /* html */ `<div id="astralSystemEditor" class="dialog">
+      <style>
+        #astralSystemEditor {
+          width: 46em;
+        }
+        #astralSystemEditor table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        #astralSystemEditor tbody tr:nth-child(even) td {
+          background: rgba(0, 0, 0, 0.045);
+        }
+        #astralSystemEditor .systemPlanetView {
+          background: none;
+          border: 0;
+          cursor: pointer;
+          padding: 0 0.25em;
+          color: #333;
+        }
+        #astralSystemEditor .systemPlanetView:hover {
+          color: #000;
+        }
+      </style>
       <div id="astralSystemBody" style="padding-bottom: 0.3em">
         <div style="display: flex; align-items: center">
           <svg
@@ -127,8 +149,8 @@ function renderDialog(): void {
             <tr style="opacity: 0.75; border-bottom: 1px solid rgba(0, 0, 0, 0.08)">
               <th style="text-align: left">Star</th>
               <th style="text-align: left">Class</th>
-              <th style="text-align: right">Mass (M☉)</th>
-              <th style="text-align: right">Lum (L☉)</th>
+              <th style="text-align: right">Mass (solar)</th>
+              <th style="text-align: right">Lum (solar)</th>
               <th style="text-align: right">Separation (AU)</th>
               <th style="text-align: right">Period (yr)</th>
             </tr>
@@ -142,9 +164,10 @@ function renderDialog(): void {
             <thead>
               <tr style="opacity: 0.75; border-bottom: 1px solid rgba(0, 0, 0, 0.08)">
                 <th style="text-align: left">Planet</th>
+                <th style="text-align: right">Map</th>
                 <th style="text-align: left">Type</th>
                 <th style="text-align: right">Orbit (AU)</th>
-                <th style="text-align: right">Radius (R⊕)</th>
+                <th style="text-align: right">Radius (Earth=1)</th>
                 <th style="text-align: right">Gravity (g)</th>
                 <th style="text-align: left">Temp</th>
                 <th style="text-align: left">Atmosphere</th>
@@ -169,7 +192,7 @@ function renderDialog(): void {
         <button id="systemEditEmblem" data-tip="Edit emblem" class="icon-shield-alt"></button>
         <button id="systemLocate" data-tip="Zoom map and center view in the system" class="icon-target"></button>
         <button id="systemProductionOverview" data-tip="Show production overview for this system" class="icon-chart-bar"></button>
-        <button id="systemView3d" data-tip="Open this system in the 3D orrery view" class="icon-globe"></button>
+        <button id="systemView3d" data-tip="Open this system in the 3D orrery view">3D System</button>
         <button id="systemRelocate" data-tip="Relocate system. Click on map to move the system" class="icon-map-pin"></button>
         ${noteButton("systemLegend", "this system")}
         <button id="systemLock" class="icon-lock-open" onmouseover="showElementLockTip(event)"></button>
@@ -299,7 +322,7 @@ function renderSystemDetails(details: SystemDetails): void {
   ensureEl("systemStarsBody").innerHTML = stars;
 
   const totals = [
-    `Total mass ${rn(details.totalMassSolar, 2)} M☉`,
+    `Total mass ${rn(details.totalMassSolar, 2)} solar`,
     `Snow line ${rn(details.snowLineAU, 2)} AU`,
     `${details.planetCount} planet${details.planetCount === 1 ? "" : "s"}`
   ];
@@ -311,6 +334,13 @@ function renderSystemDetails(details: SystemDetails): void {
       const moons = planet.moons.length ? ` data-tip="${escapeHtml(planet.moons.join(", "))}"` : "";
       return `<tr>
         <td style="${CELL_STYLE}">${escapeHtml(planet.name)}</td>
+        <td style="${CELL_STYLE}; text-align: right">
+          <button
+            class="systemPlanetView icon-globe pointer"
+            data-planet="${index}"
+            data-tip="Generate this planet and open its surface in FMG"
+          ></button>
+        </td>
         <td style="${CELL_STYLE}">${escapeHtml(planet.type)}</td>
         <td style="${CELL_STYLE}; text-align: right" data-tip="Period ${rn(planet.periodDays, 1)} days">${rn(
           planet.orbitAU,
@@ -323,13 +353,6 @@ function renderSystemDetails(details: SystemDetails): void {
         <td style="${CELL_STYLE}; text-align: right">${rn(planet.water)}%</td>
         <td style="${CELL_STYLE}" data-tip="HI ${planet.hi}">${escapeHtml(planet.habitability)}</td>
         <td style="${CELL_STYLE}; text-align: right"${moons}>${planet.moons.length}</td>
-        <td style="${CELL_STYLE}; text-align: right">
-          <button
-            class="systemPlanetView icon-globe pointer"
-            data-planet="${index}"
-            data-tip="Generate this planet and open its surface in FMG"
-          ></button>
-        </td>
       </tr>`;
     })
     .join("");

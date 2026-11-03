@@ -1,4 +1,4 @@
-﻿// Coreâ€“Rim: one full-extent wash on the axis the grid's temperature dictates â€” O(1), no isolines
+// Core–Rim: one full-extent wash on the axis the grid's temperature dictates — O(1), no isolines
 import type { Layer } from "@/renderers/layers";
 import { rn } from "@/utils/number-utils";
 import { coreRimAxis } from "./core-rim";
