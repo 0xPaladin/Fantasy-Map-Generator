@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -141,7 +141,7 @@ describe("showEpoch", () => {
     showEpoch(0);
 
     expect(vi.mocked(drawLegend).mock.calls[0]).toEqual([
-      "States Â· Age of Ruins",
+      "States · Age of Ruins",
       [
         [9, "#00aa00", "Bren"],
         [17, "#aa0000", "Aleth"]
@@ -155,13 +155,13 @@ describe("showEpoch", () => {
 
     showEpoch(0);
     expect(mocks.legend.clearLegend).toHaveBeenCalledWith("States");
-    expect(drawLegend).toHaveBeenCalledWith("States Â· Age of Ruins", [
+    expect(drawLegend).toHaveBeenCalledWith("States · Age of Ruins", [
       [9, "#00aa00", "Bren"],
       [17, "#aa0000", "Aleth"]
     ]);
 
     goToPresent();
-    expect(mocks.legend.clearLegend).toHaveBeenCalledWith("States Â· Age of Ruins");
+    expect(mocks.legend.clearLegend).toHaveBeenCalledWith("States · Age of Ruins");
     expect(drawLegend).toHaveBeenLastCalledWith("States", [["1", "#111111", "The old landmark"]]);
   });
 

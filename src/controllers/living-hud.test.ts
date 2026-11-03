@@ -320,8 +320,8 @@ describe("LivingHud", () => {
     expect(document.getElementById("livingHudPause")?.textContent).toBe("Pause");
     expect(document.getElementById("livingHudStepSeason")?.textContent).toBe("Step +1 Season");
     expect(document.getElementById("livingHudStepYear")?.textContent).toBe("Step +1 Year");
-    expect(document.getElementById("livingHudPlay")?.textContent).toBe("Play 1Ã—");
-    expect(document.getElementById("livingHudPlay4")?.textContent).toBe("Play 4Ã—");
+    expect(document.getElementById("livingHudPlay")?.textContent).toBe("Play 1×");
+    expect(document.getElementById("livingHudPlay4")?.textContent).toBe("Play 4×");
     expect(Living.getState).toHaveBeenCalled();
   });
 
@@ -463,8 +463,8 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Lv 6");
     expect(inspector?.textContent).toContain("Raid: 5+");
     expect(inspector?.textContent).toContain("Defenders: 25");
-    expect(inspector?.textContent).toContain("ðŸ° Fortified");
-    expect(inspector?.textContent).toContain("âš ï¸ Raid Imminent");
+    expect(inspector?.textContent).toContain("🏰 Fortified");
+    expect(inspector?.textContent).toContain("⚠️ Raid Imminent");
 
     inspector?.querySelector<HTMLElement>('[data-god="assault-state-lair"]')?.click();
     expect(Living.assaultLair).toHaveBeenCalledWith(1, 1);

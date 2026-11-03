@@ -1,4 +1,4 @@
-﻿import { select, sum } from "d3";
+import { select, sum } from "d3";
 import { currentContent } from "@/conquest/content/store";
 import type { UnitType } from "@/conquest/engine/common/content";
 import {
@@ -276,24 +276,24 @@ function renderDialog(): void {
         <div style="display: flex; align-items: center; gap: 6px;">
           <span style="font-weight: 500; font-size: 0.9em;">Attacker Order:</span>
           <select id="battleOrderAttackers" style="padding: 2px 4px; font-size: 0.85em;">
-            <option value="balanced" ${b.attackerOrder === "balanced" ? "selected" : ""}>âš”ï¸ Balanced (Standard)</option>
-            <option value="skirmish" ${b.attackerOrder === "skirmish" ? "selected" : ""}>ðŸ¹ Skirmish (Screen & Missile)</option>
-            <option value="press" ${b.attackerOrder === "press" ? "selected" : ""}>ðŸ›¡ï¸ Melee Press (Infantry Push)</option>
-            <option value="charge" ${b.attackerOrder === "charge" ? "selected" : ""}>ðŸ´ Shock Charge (Cavalry Assault)</option>
-            <option value="brace" ${b.attackerOrder === "brace" ? "selected" : ""}>ðŸ›¡ï¸ Brace / Hold (Anti-Charge)</option>
-            <option value="withdraw" ${b.attackerOrder === "withdraw" ? "selected" : ""}>ðŸ³ï¸ Withdraw (Ordered Retreat)</option>
+            <option value="balanced" ${b.attackerOrder === "balanced" ? "selected" : ""}>⚔️ Balanced (Standard)</option>
+            <option value="skirmish" ${b.attackerOrder === "skirmish" ? "selected" : ""}>🏹 Skirmish (Screen & Missile)</option>
+            <option value="press" ${b.attackerOrder === "press" ? "selected" : ""}>🛡️ Melee Press (Infantry Push)</option>
+            <option value="charge" ${b.attackerOrder === "charge" ? "selected" : ""}>🐄 Shock Charge (Cavalry Assault)</option>
+            <option value="brace" ${b.attackerOrder === "brace" ? "selected" : ""}>🛡️ Brace / Hold (Anti-Charge)</option>
+            <option value="withdraw" ${b.attackerOrder === "withdraw" ? "selected" : ""}>🏳️ Withdraw (Ordered Retreat)</option>
           </select>
         </div>
         <button id="battleAiPickBtn" data-tip="AI evaluates compositions and chooses stances" style="padding: 2px 8px; font-size: 0.85em;" class="icon-retweet">AI Stance</button>
         <div style="display: flex; align-items: center; gap: 6px;">
           <span style="font-weight: 500; font-size: 0.9em;">Defender Order:</span>
           <select id="battleOrderDefenders" style="padding: 2px 4px; font-size: 0.85em;">
-            <option value="balanced" ${b.defenderOrder === "balanced" ? "selected" : ""}>âš”ï¸ Balanced (Standard)</option>
-            <option value="skirmish" ${b.defenderOrder === "skirmish" ? "selected" : ""}>ðŸ¹ Skirmish (Screen & Missile)</option>
-            <option value="press" ${b.defenderOrder === "press" ? "selected" : ""}>ðŸ›¡ï¸ Melee Press (Infantry Push)</option>
-            <option value="charge" ${b.defenderOrder === "charge" ? "selected" : ""}>ðŸ´ Shock Charge (Cavalry Assault)</option>
-            <option value="brace" ${b.defenderOrder === "brace" ? "selected" : ""}>ðŸ›¡ï¸ Brace / Hold (Anti-Charge)</option>
-            <option value="withdraw" ${b.defenderOrder === "withdraw" ? "selected" : ""}>ðŸ³ï¸ Withdraw (Ordered Retreat)</option>
+            <option value="balanced" ${b.defenderOrder === "balanced" ? "selected" : ""}>⚔️ Balanced (Standard)</option>
+            <option value="skirmish" ${b.defenderOrder === "skirmish" ? "selected" : ""}>🏹 Skirmish (Screen & Missile)</option>
+            <option value="press" ${b.defenderOrder === "press" ? "selected" : ""}>🛡️ Melee Press (Infantry Push)</option>
+            <option value="charge" ${b.defenderOrder === "charge" ? "selected" : ""}>🐄 Shock Charge (Cavalry Assault)</option>
+            <option value="brace" ${b.defenderOrder === "brace" ? "selected" : ""}>🛡️ Brace / Hold (Anti-Charge)</option>
+            <option value="withdraw" ${b.defenderOrder === "withdraw" ? "selected" : ""}>🏳️ Withdraw (Ordered Retreat)</option>
           </select>
         </div>
       </div>
@@ -351,16 +351,16 @@ function renderDialog(): void {
       </div>
       <div style="display: flex; gap: 8px;">
         <button id="battleStepRound" data-tip="Fight next turn-by-turn round" class="btn" style="padding: 4px 12px; font-weight: bold;">
-          âš”ï¸ Next Round
+          ⚔️ Next Round
         </button>
         <button id="battleAutoResolve" data-tip="Auto-resolve remaining rounds to completion" class="btn" style="padding: 4px 12px;">
-          â© Auto-Resolve
+          ⏩ Auto-Resolve
         </button>
         <button id="battleApply" data-tip="Apply battle casualties to regiments and record battlefield" class="btn" style="padding: 4px 14px; background: #27ae60; color: white;">
-          âœ“ Apply Results
+          ✓ Apply Results
         </button>
         <button id="battleCancel" data-tip="Cancel battle and restore regiment positions" class="btn" style="padding: 4px 10px;">
-          âœ• Cancel
+          ✕ Cancel
         </button>
       </div>
     </div>
@@ -519,7 +519,7 @@ function renderSideTable(containerId: string, side: RegimentEntry[], unitTypes: 
           <span>${escapeHtml(reg.name)}</span>
           <span style="font-size:0.85em; opacity:0.8; font-weight:normal;">(${escapeHtml(entry.state.fullName || entry.state.name)})</span>
         </div>
-        <div style="font-size:0.8em; opacity:0.8;">${entryCurrent}/${entryStart} men ${entryLoss > 0 ? `(-${entryLoss})` : ""} Â· Base: ${entry.distance} ${options.map.units.distance.unit}</div>
+        <div style="font-size:0.8em; opacity:0.8;">${entryCurrent}/${entryStart} men ${entryLoss > 0 ? `(-${entryLoss})` : ""} · Base: ${entry.distance} ${options.map.units.distance.unit}</div>
       </div>
       <table style="width:100%; border-collapse:collapse; font-size:0.82em;">
         <thead>
@@ -551,7 +551,7 @@ function renderSideTable(containerId: string, side: RegimentEntry[], unitTypes: 
       };
       const badgeBg = catColor[cat] ?? "#444";
       const name = ut?.name ?? capitalize(u.type);
-      const expStars = u.exp > 0 ? "â˜…".repeat(Math.min(3, u.exp)) : "â€”";
+      const expStars = u.exp > 0 ? "★".repeat(Math.min(3, u.exp)) : "—";
       const pct = start > 0 ? Math.round((u.count / start) * 100) : 0;
 
       html += `<tr style="border-bottom:1px solid rgba(0,0,0,0.03);">
@@ -672,12 +672,12 @@ function handleBattleEnded(): void {
     banner.style.background = "rgba(46, 204, 113, 0.25)";
     banner.style.border = "1px solid #2ecc71";
     banner.style.color = "#27ae60";
-    banner.innerHTML = `âš”ï¸ Decisive Victory for the Attackers! ${b.session.withdrawnSide === "defender" ? "(Defenders Withdrew)" : "(Defenders Routed)"}`;
+    banner.innerHTML = `⚔️ Decisive Victory for the Attackers! ${b.session.withdrawnSide === "defender" ? "(Defenders Withdrew)" : "(Defenders Routed)"}`;
   } else {
     banner.style.background = "rgba(231, 76, 60, 0.25)";
     banner.style.border = "1px solid #e74c3c";
     banner.style.color = "#c0392b";
-    banner.innerHTML = `ðŸ›¡ï¸ Stalwart Victory for the Defenders! ${b.session.withdrawnSide === "attacker" ? "(Attackers Withdrew)" : "(Attackers Routed)"}`;
+    banner.innerHTML = `🛡️ Stalwart Victory for the Defenders! ${b.session.withdrawnSide === "attacker" ? "(Attackers Withdrew)" : "(Attackers Routed)"}`;
   }
 }
 
@@ -772,7 +772,7 @@ function applyResults(): void {
     x: b.x,
     y: b.y,
     cell: b.cell,
-    icon: Icons.glyph("âš”ï¸"),
+    icon: Icons.glyph("⚔️"),
     type: "battlefields",
     dy: 52,
     name: b.name

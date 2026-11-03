@@ -180,15 +180,15 @@ const TEMPLATE = /* html */ `
   </style>
   <div id="${HUD_ID}">
     <div class="livingHudTop">
-      <span class="livingHudDrag" title="Drag to move">â˜°</span>
+      <span class="livingHudDrag" title="Drag to move">☰</span>
       <button id="livingHudPause" type="button">Pause</button>
       <button id="livingHudStepSeason" type="button">Step +1 Season</button>
       <button id="livingHudStepYear" type="button">Step +1 Year</button>
-      <button id="livingHudPlay" type="button">Play 1Ã—</button>
-      <button id="livingHudPlay4" type="button">Play 4Ã—</button>
+      <button id="livingHudPlay" type="button">Play 1×</button>
+      <button id="livingHudPlay4" type="button">Play 4×</button>
       <button id="livingHudDate" type="button"></button>
       <span id="livingHudWallet" class="livingHudWallet" title="Guild gold and renown"></span>
-      <button id="livingHudClose" type="button" title="Close Living World">Ã—</button>
+      <button id="livingHudClose" type="button" title="Close Living World">×</button>
     </div>
     <div id="livingHudStatus" class="livingHudStatus"></div>
     <div id="livingHudGuild" class="livingHudGuild"></div>
@@ -599,7 +599,7 @@ function renderNews(news: LivingNewsItem[]): void {
 
   const items = news.slice(0, MAX_NEWS);
   if (items.length === 0) {
-    wrap.innerHTML = `<span class="livingNewsEmpty">No dispatches yet â€” step a season.</span>`;
+    wrap.innerHTML = `<span class="livingNewsEmpty">No dispatches yet — step a season.</span>`;
     return;
   }
 
@@ -1263,7 +1263,7 @@ function renderRuler(ruler: HistoricalFigure | undefined, age: number | undefine
     : "";
   const virtues = (ruler.virtues ?? []).map(escapeHtml).join(", ");
   const vices = (ruler.vices ?? []).map(escapeHtml).join(", ");
-  const traits = [virtues, vices].filter(Boolean).join(" Â· ");
+  const traits = [virtues, vices].filter(Boolean).join(" · ");
 
   return /* html */ `
     <div class="livingSection">
@@ -1329,7 +1329,7 @@ function renderClaims(sSim: StatePolitySim): string {
       const burg = pack.burgs[claim.burgId];
       if (!burg?.i || burg.removed) return "";
       const holder = pack.states[claim.heldByStateId];
-      return `<li>${escapeHtml(burg.name ?? "Burg")} â€” held by ${escapeHtml(holder?.name ?? "no one")} since ${claim.lostYear}</li>`;
+      return `<li>${escapeHtml(burg.name ?? "Burg")} — held by ${escapeHtml(holder?.name ?? "no one")} since ${claim.lostYear}</li>`;
     })
     .filter(Boolean);
 
@@ -1357,7 +1357,7 @@ function renderRestiveBurgs(stateId: number): string {
   if (restive.length === 0) return `<div class="livingMuted">No restive burgs</div>`;
 
   const rows = restive
-    .map(({ bSim, burg }) => `<li>${escapeHtml(burg.name ?? "Burg")} â€” unrest ${Math.round(bSim.unrest)}</li>`)
+    .map(({ bSim, burg }) => `<li>${escapeHtml(burg.name ?? "Burg")} — unrest ${Math.round(bSim.unrest)}</li>`)
     .join("");
   return `<div class="livingMuted">Restive burgs</div><ul>${rows}</ul>`;
 }
@@ -1378,9 +1378,9 @@ function renderProvincesTroubles(stateId: number): string {
       const t = pSim.trouble!;
       const def = getTroubleDef(t.id);
       const badge = isTroubleStatePromotable(t.id)
-        ? ` Â· <span class="livingBadge" style="background:#8b2635" title="Can promote to sovereign state">${escapeHtml(def.stateForm ?? "State-Capable")}</span>`
+        ? ` · <span class="livingBadge" style="background:#8b2635" title="Can promote to sovereign state">${escapeHtml(def.stateForm ?? "State-Capable")}</span>`
         : "";
-      return `<li>${escapeHtml(province.name ?? "Province")} â€” <strong>${escapeHtml(def.name)}</strong> (Lv ${t.level}, ${t.theme}, Save: ${SAVE_KIND_LABELS[def.save]}, Unit: ${UNIT_ROLE_LABELS[def.requiredRole]}${badge})</li>`;
+      return `<li>${escapeHtml(province.name ?? "Province")} — <strong>${escapeHtml(def.name)}</strong> (Lv ${t.level}, ${t.theme}, Save: ${SAVE_KIND_LABELS[def.save]}, Unit: ${UNIT_ROLE_LABELS[def.requiredRole]}${badge})</li>`;
     })
     .join("");
   return `<div class="livingMuted">Troubles</div><ul>${rows}</ul>`;
@@ -1403,15 +1403,15 @@ function renderProvincesLairs(stateId: number): string {
       const def = getLairDef(lair.id);
       const defenderCount = lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0);
       const statusFlags = [
-        lair.fortified ? "ðŸ° Fortified" : "",
-        lair.raidPending ? "âš ï¸ Raid Imminent" : "",
+        lair.fortified ? "🏰 Fortified" : "",
+        lair.raidPending ? "⚠️ Raid Imminent" : "",
         isLairStateCapable(lair.id)
           ? `<span class="livingBadge" style="background:#5e3c6e" title="Can ascend to sovereign state">${escapeHtml(def.stateForm ?? "State-Capable")}</span>`
           : ""
       ]
         .filter(Boolean)
         .join(" ");
-      return `<li>${escapeHtml(province.name ?? "Province")} â€” <strong>${escapeHtml(lair.name)}</strong> (Lv ${lair.level}, Raid: ${lair.raidThreshold}+, Defenders: ${defenderCount}${statusFlags ? ` Â· ${statusFlags}` : ""})</li>`;
+      return `<li>${escapeHtml(province.name ?? "Province")} — <strong>${escapeHtml(lair.name)}</strong> (Lv ${lair.level}, Raid: ${lair.raidThreshold}+, Defenders: ${defenderCount}${statusFlags ? ` · ${statusFlags}` : ""})</li>`;
     })
     .join("");
   return `<div class="livingMuted">Lairs</div><ul>${rows}</ul>`;
@@ -1443,7 +1443,7 @@ function renderBurgCard(burgId: number): string {
 
   return /* html */ `
     <div class="livingInspectorTitle">${escapeHtml(burg.name ?? "Burg")}</div>
-    <div class="livingMuted">${escapeHtml(owner ?? "")} Â· tier ${bSim.baseTier} Â· pop ${burg.population ?? 0}</div>
+    <div class="livingMuted">${escapeHtml(owner ?? "")} · tier ${bSim.baseTier} · pop ${burg.population ?? 0}</div>
     <div class="livingSection">
       <div class="livingSectionTitle">Unrest</div>
       ${renderMeter("Unrest", bSim.unrest, true)}
@@ -1458,17 +1458,17 @@ function renderBurgCard(burgId: number): string {
       province && pSim
         ? `<div class="livingSection">
             <div class="livingSectionTitle">Province: ${escapeHtml(province.name ?? "Province")}</div>
-            <div class="livingMuted">Order ${Math.round(pSim.order)}% Â· Stability ${pSim.stability} Â· Dev ${pSim.development}</div>
+            <div class="livingMuted">Order ${Math.round(pSim.order)}% · Stability ${pSim.stability} · Dev ${pSim.development}</div>
             ${
               trouble && tDef
                 ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme}) ${troublePromotable ? `<span class="livingBadge" style="background:#8b2635">${escapeHtml(tDef.stateForm ?? "State-Capable")}</span>` : ""}</div>
-                   <div class="livingMuted">Save: ${SAVE_KIND_LABELS[tDef.save]} Â· Specialist: ${UNIT_ROLE_LABELS[tDef.requiredRole]}</div>`
+                   <div class="livingMuted">Save: ${SAVE_KIND_LABELS[tDef.save]} · Specialist: ${UNIT_ROLE_LABELS[tDef.requiredRole]}</div>`
                 : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
             }
             ${
               lair
                 ? `<div style="margin-top:0.3em;color:#8b0000;"><strong>Lair:</strong> ${escapeHtml(lair.name)} (Lv ${lair.level}, ${lair.theme}) ${lairCapable ? `<span class="livingBadge" style="background:#5e3c6e">${escapeHtml(lairDef?.stateForm ?? "State-Capable")}</span>` : ""}</div>
-                   <div class="livingMuted">Raid: ${lair.raidThreshold}+ Â· Defenders: ${lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0)} men${lair.fortified ? "ðŸ° Fortified" : ""}${lair.raidPending ? "âš ï¸ Raid Imminent" : ""}</div>`
+                   <div class="livingMuted">Raid: ${lair.raidThreshold}+ · Defenders: ${lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0)} men${lair.fortified ? "🏰 Fortified" : ""}${lair.raidPending ? "⚠️ Raid Imminent" : ""}</div>`
                 : `<div class="livingMuted" style="margin-top:0.2em;">No active lair</div>`
             }
           </div>`

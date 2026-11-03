@@ -1,4 +1,4 @@
-﻿// The historical view: the map scrubbed to a past epoch. The states renderer reads
+// The historical view: the map scrubbed to a past epoch. The states renderer reads
 // pack.cells.state and pack.states, so a past is shown by swapping those two for the epoch's
 // snapshot (lineage ids, remapped to compact state ids) and polity records, redrawing the
 // political layers, and restoring the live pack exactly on the way back. The swap is wrapped:
@@ -215,7 +215,7 @@ function drawPastLegend(epoch: HistoryEpoch): void {
     .map(polity => [polity.id, polity.color, polity.name]);
   if (!items.length) return;
 
-  const name = `${PRESENT_LEGEND} Â· ${epoch.era}`;
+  const name = `${PRESENT_LEGEND} · ${epoch.era}`;
   drawLegend(name, items);
   installation!.pastLegend = name;
 }
