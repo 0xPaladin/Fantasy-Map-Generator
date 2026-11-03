@@ -86,11 +86,20 @@ describe("danger-markers", () => {
     expect(dungeonArch.isMaritime).toBe(false);
   });
 
-  it("computes threat level within bounded ranges", () => {
+  it("computes threat level within bounded ranges (3 to 6)", () => {
     const marker = { i: 5, cell: 120, type: "brigands", icon: "💰", x: 0, y: 0, name: "Outlaws" };
     const level = computeMarkerThreatLevel(marker);
     expect(level).toBeGreaterThanOrEqual(3);
-    expect(level).toBeLessThanOrEqual(10);
+    expect(level).toBeLessThanOrEqual(6);
+
+    // Verify all danger marker archetypes stay within [3, 6]
+    for (const type of DANGER_MARKER_TYPES) {
+      for (let i = 0; i < 10; i++) {
+        const testLevel = computeMarkerThreatLevel({ i, cell: i * 37, type, icon: "⚔️", x: 0, y: 0, name: type });
+        expect(testLevel).toBeGreaterThanOrEqual(3);
+        expect(testLevel).toBeLessThanOrEqual(6);
+      }
+    }
   });
 
   it("creates active ProvinceLair directly from marker", () => {

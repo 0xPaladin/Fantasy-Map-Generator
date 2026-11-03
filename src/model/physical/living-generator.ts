@@ -22,6 +22,7 @@ import { assetCheckDifficulties, valueModifier } from "@/conquest/engine/game/sa
 import { garrisonUnits, minorGarrisonUnits } from "@/conquest/engine/game/units";
 import type { Alignment } from "@/data/culture-traits";
 import { aggressiveTraits, drawVice, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
+import { convertDangerMarkerToRuins, createLairFromMarker, isDangerMarker } from "@/data/danger-markers";
 import { GUILD_OPERATIONS, type GuildOperationKind } from "@/data/guild-operations";
 import {
   defaultPathForDoctrine,
@@ -43,11 +44,6 @@ import {
   recoverInjuries,
   STAMINA_RESERVE_MINIMUM
 } from "@/data/hero-vitals";
-import {
-  convertDangerMarkerToRuins,
-  createLairFromMarker,
-  isDangerMarker
-} from "@/data/danger-markers";
 import {
   createProvinceLair,
   getLairDef,
@@ -1553,7 +1549,7 @@ class LivingModel {
       }
 
       activeMarkerIds.add(marker.i);
-      const key = "lair:" + marker.i;
+      const key = `lair:${marker.i}`;
       marker.threatId = key;
 
       let lair = living.activeLairs[key];
@@ -2681,7 +2677,7 @@ class LivingModel {
         return Boolean(pSim?.trouble);
       case "lair":
         if (mission.markerId !== undefined) {
-          return Boolean(living.activeLairs?.["lair:" + mission.markerId]);
+          return Boolean(living.activeLairs?.[`lair:${mission.markerId}`]);
         }
         return Boolean(pSim?.lair);
       case "excavate":
@@ -2940,7 +2936,9 @@ class LivingModel {
     let doom = 0;
     const lairs = living.activeLairs
       ? Object.values(living.activeLairs)
-      : Object.values(living.provinces).map(p => p.lair).filter(Boolean);
+      : Object.values(living.provinces)
+          .map(p => p.lair)
+          .filter(Boolean);
     for (const lair of lairs) {
       if (lair && lair.level >= 8) doom += 1;
     }
@@ -3210,7 +3208,7 @@ class LivingModel {
       }
       case "lair": {
         const lair =
-          (mission.markerId !== undefined && living.activeLairs?.["lair:" + mission.markerId]) ??
+          (mission.markerId !== undefined && living.activeLairs?.[`lair:${mission.markerId}`]) ??
           pSim?.lair ??
           (living.activeLairs && Object.values(living.activeLairs).find(l => l.provinceId === mission.provinceId));
         if (!lair) return "Nothing was left to resolve.";
@@ -4441,7 +4439,7 @@ class LivingModel {
     const rng = this.rng("lair:metastasize", provinceId, living.tick);
     const chosenLairId = lairId ?? (trouble ? pickLairForTrouble(trouble.id, rng) : LAIR_NATURE_IDS[0]!);
     const originCell = trouble?.cell ?? province.center ?? pack.states[province.state]?.center ?? 0;
-    const level = Math.max(4, trouble?.level ?? 4);
+    const level = Math.max(3, Math.ceil((trouble?.level ?? 3) / 2));
     const theme = trouble?.theme ?? "ruin";
 
     const lair = createProvinceLair(chosenLairId, originCell, level, theme, trouble?.burgId, Military.getUnitTypes());
@@ -5017,9 +5015,9 @@ class LivingModel {
 
     if (living.activeLairs) {
       if (lair.markerId !== undefined) {
-        delete living.activeLairs["lair:" + lair.markerId];
+        delete living.activeLairs[`lair:${lair.markerId}`];
       }
-      delete living.activeLairs["prov_lair:" + lair.provinceId];
+      delete living.activeLairs[`prov_lair:${lair.provinceId}`];
     }
 
     if (lair.provinceId && living.provinces[lair.provinceId]) {
@@ -6553,7 +6551,7 @@ class LivingModel {
         living
       );
 
-      const key = lair.markerId !== undefined ? "lair:" + lair.markerId : "prov_lair:" + lair.provinceId;
+      const key = lair.markerId !== undefined ? `lair:${lair.markerId}` : `prov_lair:${lair.provinceId}`;
       if (!living.activeLairs?.[key] && !pSim?.lair) continue;
 
       // Path B: Entrenched wilderness sovereignty

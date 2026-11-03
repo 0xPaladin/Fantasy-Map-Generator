@@ -1613,22 +1613,54 @@ function renderGrudges(sSim: StatePolitySim): string {
   return `<div class="livingMuted">Grudges</div><ul>${rows}</ul>`;
 }
 
+const UNREST_BINS = [
+  { label: "Red", color: "#a33d3d", min: 17 },
+  { label: "Orange", color: "#d96b27", min: 10 },
+  { label: "Yellow", color: "#c99b24", min: 5 }
+] as const;
+
+function getUnrestBin(unrest: number): (typeof UNREST_BINS)[number] | null {
+  if (unrest >= 17) return UNREST_BINS[0];
+  if (unrest >= 10) return UNREST_BINS[1];
+  if (unrest >= 5) return UNREST_BINS[2];
+  return null;
+}
+
 function renderRestiveBurgs(stateId: number): string {
   const living = Living.getState();
   const restive = Object.values(living.burgs)
-    .map(bSim => ({ bSim, burg: pack.burgs[bSim.burgId] }))
-    .filter(({ bSim, burg }) => burg?.state === stateId && !burg.removed && bSim.unrest > 0);
+    .map(bSim => {
+      const burg = pack.burgs[bSim.burgId];
+      const bin = getUnrestBin(bSim.unrest);
+      return { bSim, burg, bin };
+    })
+    .filter(
+      (entry): entry is { bSim: BurgSimState; burg: (typeof pack.burgs)[number]; bin: (typeof UNREST_BINS)[number] } =>
+        Boolean(entry.burg?.state === stateId && !entry.burg.removed && entry.bin)
+    );
 
   if (restive.length === 0) return "";
 
-  const rows = restive
-    .map(({ bSim, burg }) => {
-      const name = burg.name ?? "Burg";
-      const text = `${name} - unrest ${Math.round(bSim.unrest)}`;
-      return `<li><button type="button" class="livingLinkBtn" data-zoom-burg="${burg.i}" title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button></li>`;
-    })
+  const rows = UNREST_BINS.map(bin => {
+    const burgsInBin = restive
+      .filter(entry => entry.bin.label === bin.label)
+      .sort((a, b) => b.bSim.unrest - a.bSim.unrest);
+
+    if (burgsInBin.length === 0) return "";
+
+    const burgLinks = burgsInBin
+      .map(({ burg }) => {
+        const name = burg.name ?? "Burg";
+        return `<button type="button" class="livingLinkBtn" data-zoom-burg="${burg.i}" title="Zoom to ${escapeHtml(name)}">${escapeHtml(name)}</button>`;
+      })
+      .join(", ");
+
+    return `<li><span class="livingBadge" style="background:${bin.color}; display:inline-block; text-decoration:none; margin-right:0.35em;">${bin.label}</span> ${burgLinks}</li>`;
+  })
+    .filter(Boolean)
     .join("");
-  return `<div class="livingMuted">Restive burgs</div><ul>${rows}</ul>`;
+
+  return rows ? `<div class="livingMuted">Restive burgs</div><ul>${rows}</ul>` : "";
 }
 
 function renderProvincesTroubles(stateId: number): string {

@@ -450,12 +450,110 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Casus belli");
     expect(inspector?.textContent).toContain("Oakford - held by no one since 999");
     expect(inspector?.textContent).toContain("Restive burgs");
-    expect(inspector?.textContent).toContain("Aelor - unrest 12");
+    expect(inspector?.textContent).toContain("Orange Aelor");
+    expect(inspector?.textContent).not.toContain("unrest 12");
 
     const burgLink = inspector?.querySelector<HTMLElement>('button[data-zoom-burg="1"]');
     expect(burgLink).toBeTruthy();
     burgLink?.click();
     expect(zoomTo).toHaveBeenCalledWith(10, 10, 8, 1000);
+  });
+
+  it("groups restive burgs by Red, Orange, Yellow bins, omits Green, and omits unrest numbers", () => {
+    (pack.burgs as unknown) = [
+      undefined,
+      { i: 1, name: "RedHold", state: 1, cell: 1, x: 10, y: 10 },
+      { i: 2, name: "OrangePort", state: 1, cell: 2, x: 20, y: 20 },
+      { i: 3, name: "YellowCrest", state: 1, cell: 3, x: 30, y: 30 },
+      { i: 4, name: "GreenVillage", state: 1, cell: 4, x: 40, y: 40 },
+      { i: 5, name: "BloodFort", state: 1, cell: 5, x: 50, y: 50 }
+    ];
+    mocks.state.burgs = {
+      1: {
+        burgId: 1,
+        baseTier: 1,
+        development: 0,
+        developmentProgress: 0,
+        buildings: [],
+        construction: null,
+        unrest: 20
+      },
+      2: {
+        burgId: 2,
+        baseTier: 1,
+        development: 0,
+        developmentProgress: 0,
+        buildings: [],
+        construction: null,
+        unrest: 14
+      },
+      3: {
+        burgId: 3,
+        baseTier: 1,
+        development: 0,
+        developmentProgress: 0,
+        buildings: [],
+        construction: null,
+        unrest: 7
+      },
+      4: {
+        burgId: 4,
+        baseTier: 1,
+        development: 0,
+        developmentProgress: 0,
+        buildings: [],
+        construction: null,
+        unrest: 3
+      },
+      5: {
+        burgId: 5,
+        baseTier: 1,
+        development: 0,
+        developmentProgress: 0,
+        buildings: [],
+        construction: null,
+        unrest: 18
+      }
+    };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
+    ];
+
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const inspector = document.getElementById("livingInspector");
+    const text = inspector?.textContent ?? "";
+
+    expect(text).toContain("Restive burgs");
+    expect(text).toContain("Red RedHold, BloodFort");
+    expect(text).toContain("Orange OrangePort");
+    expect(text).toContain("Yellow YellowCrest");
+    expect(text).not.toContain("GreenVillage");
+    expect(text).not.toContain("20");
+    expect(text).not.toContain("18");
+    expect(text).not.toContain("14");
+    expect(text).not.toContain("unrest");
+
+    // Order check: Red appears before Orange, which appears before Yellow
+    const redIndex = text.indexOf("Red RedHold, BloodFort");
+    const orangeIndex = text.indexOf("Orange OrangePort");
+    const yellowIndex = text.indexOf("Yellow YellowCrest");
+    expect(redIndex).toBeLessThan(orangeIndex);
+    expect(orangeIndex).toBeLessThan(yellowIndex);
+
+    // Zoom on click test
+    const redBtn = inspector?.querySelector<HTMLElement>('button[data-zoom-burg="1"]');
+    redBtn?.click();
+    expect(zoomTo).toHaveBeenCalledWith(10, 10, 8, 1000);
+
+    const bloodBtn = inspector?.querySelector<HTMLElement>('button[data-zoom-burg="5"]');
+    bloodBtn?.click();
+    expect(zoomTo).toHaveBeenCalledWith(50, 50, 8, 1000);
+
+    const yellowBtn = inspector?.querySelector<HTMLElement>('button[data-zoom-burg="3"]');
+    yellowBtn?.click();
+    expect(zoomTo).toHaveBeenCalledWith(30, 30, 8, 1000);
   });
 
   it("closes the inspector when clicking the close button", () => {

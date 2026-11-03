@@ -58,16 +58,16 @@ export function getLairArchetypeForMarker(type: string): LairArchetypeMapping {
   const normalized = type.toLowerCase().trim();
 
   if (normalized.includes("pirate")) {
-    return { lairId: "thieves_stronghold", defaultTheme: "burg", isMaritime: true, baseLevel: 5 };
+    return { lairId: "thieves_stronghold", defaultTheme: "burg", isMaritime: true, baseLevel: 4 };
   }
   if (normalized.includes("sea-monster")) {
-    return { lairId: "monster_nest", defaultTheme: "resource", isMaritime: true, baseLevel: 6 };
-  }
-  if (normalized.includes("lake-monster")) {
     return { lairId: "monster_nest", defaultTheme: "resource", isMaritime: true, baseLevel: 5 };
   }
+  if (normalized.includes("lake-monster")) {
+    return { lairId: "monster_nest", defaultTheme: "resource", isMaritime: true, baseLevel: 4 };
+  }
   if (normalized.includes("hill-monster") || normalized.includes("monster")) {
-    return { lairId: "monster_nest", defaultTheme: "resource", isMaritime: false, baseLevel: 5 };
+    return { lairId: "monster_nest", defaultTheme: "resource", isMaritime: false, baseLevel: 4 };
   }
   if (
     normalized.includes("brigand") ||
@@ -75,25 +75,25 @@ export function getLairArchetypeForMarker(type: string): LairArchetypeMapping {
     normalized.includes("highway") ||
     normalized.includes("robber")
   ) {
-    return { lairId: "bandit_camp", defaultTheme: "burg", isMaritime: false, baseLevel: 4 };
+    return { lairId: "bandit_camp", defaultTheme: "burg", isMaritime: false, baseLevel: 3 };
   }
   if (normalized.includes("dungeon")) {
-    return { lairId: "ancient_evil", defaultTheme: "ruin", isMaritime: false, baseLevel: 6 };
-  }
-  if (normalized.includes("cave")) {
-    return { lairId: "blight_infestation", defaultTheme: "resource", isMaritime: false, baseLevel: 4 };
-  }
-  if (normalized.includes("burial")) {
     return { lairId: "ancient_evil", defaultTheme: "ruin", isMaritime: false, baseLevel: 5 };
   }
+  if (normalized.includes("cave")) {
+    return { lairId: "blight_infestation", defaultTheme: "resource", isMaritime: false, baseLevel: 3 };
+  }
+  if (normalized.includes("burial")) {
+    return { lairId: "ancient_evil", defaultTheme: "ruin", isMaritime: false, baseLevel: 4 };
+  }
   if (normalized.includes("necropolis")) {
-    return { lairId: "ancient_evil", defaultTheme: "ruin", isMaritime: false, baseLevel: 7 };
+    return { lairId: "ancient_evil", defaultTheme: "ruin", isMaritime: false, baseLevel: 5 };
   }
   if (normalized.includes("rift")) {
-    return { lairId: "magical_gate", defaultTheme: "ruin", isMaritime: false, baseLevel: 6 };
+    return { lairId: "magical_gate", defaultTheme: "ruin", isMaritime: false, baseLevel: 5 };
   }
   if (normalized.includes("volcano")) {
-    return { lairId: "cursed_earth", defaultTheme: "resource", isMaritime: false, baseLevel: 5 };
+    return { lairId: "cursed_earth", defaultTheme: "resource", isMaritime: false, baseLevel: 4 };
   }
 
   return { lairId: "monster_nest", defaultTheme: "resource", isMaritime: false, baseLevel: 4 };
@@ -103,7 +103,7 @@ export function computeMarkerThreatLevel(marker: Marker, seed = 0): number {
   const archetype = getLairArchetypeForMarker(marker.type);
   const hash = Math.abs((marker.i * 31 + marker.cell * 17 + seed * 13) % 4);
   const level = archetype.baseLevel + hash - 1;
-  return Math.max(3, Math.min(10, level));
+  return Math.max(3, Math.min(6, level));
 }
 
 /** Construct an active ProvinceLair object directly from a danger marker */
