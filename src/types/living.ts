@@ -448,6 +448,8 @@ export interface LivingWorldState {
   states: Record<number, StatePolitySim>;
   provinces: Record<number, ProvinceSimState>;
   burgs: Record<number, BurgSimState>;
+  /** Voronoi cell improvements and pillage state; lazily initialized by later slices */
+  cells?: Record<number, CellSimState>;
   recentNews: LivingNewsItem[];
   /** 0..100 Age Finale meter; absent on old saves (treated as 0) */
   eschaton?: number;
@@ -766,6 +768,38 @@ export interface CellSimState {
   improvement?: string | null;
   pillaged?: boolean;
   progress?: Record<string, number>;
+}
+
+export type CellYieldSourceKind = "terrain" | "resource" | "improvement" | "minor_burg";
+
+/** One additive contribution to a cell's OpenCiv yields, shown in the Living inspector. */
+export interface CellYieldSource {
+  kind: CellYieldSourceKind;
+  id: string;
+  label: string;
+  yields: YieldDelta;
+}
+
+/** A `pack.goods` entry classified into OpenCiv's resource taxonomy. */
+export interface CellResourceInfo {
+  goodId: number;
+  goodName: string;
+  /** matching OpenCiv resource id, when the FMG good name maps cleanly */
+  resourceId: string | null;
+  class: CivResourceClass;
+  /** strategic resources stay hidden until their reveal tech is known */
+  revealed: boolean;
+}
+
+export interface CellTerrainInfo {
+  terrain: string;
+  isWater: boolean;
+  isMountain: boolean;
+  isHill: boolean;
+  isWorkable: boolean;
+  elevation: 0 | 1 | 2;
+  movementCost: number;
+  hasFreshWater: boolean;
 }
 
 export interface ReligionBeliefState {

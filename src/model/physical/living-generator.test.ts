@@ -3,16 +3,24 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { valueModifier } from "@/conquest/engine/game/saves";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
+import type { Good } from "@/model/economy/goods-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { HistoricalFigure } from "@/types/history";
 import type { HistoricalRelic } from "@/types/living";
 import { createRng } from "@/utils/rng";
 import {
+  classifyGood,
   figureBias,
   figureCheckRoll,
   figureLevel,
+  getCellResource,
+  getCellTerrainInfo,
+  getCellYieldSources,
+  getCellYields,
   guildTierForRenown,
+  isMajorBurg,
+  isMinorBurg,
   Living,
   maxHeroesForTier,
   maxPartyForTier,
@@ -2125,6 +2133,190 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(scion.skills?.m).toBe(5); // ancestor 3 + 1 + 1 legacyTier, capped at 5
       expect(scion.virtues).toContain("bold");
       expect(scion.roles[0]!.type).toBe("adventurer");
+    });
+  });
+
+  describe("OpenCiv slice 2: cell yields, resources, improvements & minor burgs", () => {
+    const makeGood = (i: number, name: string, tags: string[], demandCoverage: Good["demandCoverage"]): Good => ({
+      i,
+      name,
+      tags,
+      demandCoverage,
+      value: 1,
+      unit: "unit",
+      icon: "",
+      color: "#000000"
+    });
+
+    function setupTerrain(): void {
+      pack.cells.h = Uint8Array.from([20, 25, 25, 55, 10, 75]);
+      pack.cells.biome = Uint8Array.from([4, 4, 1, 3, 1, 4]);
+      pack.cells.harbor = Uint8Array.from([0, 0, 0, 0, 1, 0]);
+      pack.cells.f = new Uint16Array(6);
+      pack.cells.good = new Uint16Array(6);
+      pack.cells.burg = new Uint16Array(6);
+      pack.cells.r = new Uint16Array(6);
+      pack.features = [];
+      pack.goods = [];
+    }
+
+    it("derives flat, hill, forest, coast and mountain terrain yields", () => {
+      setupTerrain();
+
+      expect(getCellYields(1)).toMatchObject({ food: 2, production: 0 });
+      expect(getCellYields(3).production).toBe(2);
+      expect(getCellYields(4)).toMatchObject({ food: 1, gold: 1 });
+      expect(getCellTerrainInfo(5)).toMatchObject({
+        isMountain: true,
+        isWorkable: false,
+        elevation: 2,
+        movementCost: 9999
+      });
+      expect(getCellTerrainInfo(3)).toMatchObject({ isHill: true, elevation: 1, movementCost: 2 });
+
+      pack.cells.biome[1] = 6;
+      expect(getCellTerrainInfo(1).movementCost).toBe(2);
+      expect(getCellYields(1)).toMatchObject({ food: 1, production: 1 });
+    });
+
+    it("treats rivers as fresh water and freshwater lakes as 2 Food", () => {
+      setupTerrain();
+
+      pack.cells.r[2] = 1;
+      expect(getCellYields(2).food).toBe(2);
+
+      pack.cells.f[4] = 0;
+      pack.features = [
+        {
+          i: 0,
+          type: "lake",
+          land: false,
+          border: false,
+          cells: 1,
+          firstCell: 4,
+          vertices: [],
+          area: 0,
+          shoreline: [],
+          height: 0,
+          subtype: "freshwater",
+          group: "",
+          temp: 0,
+          flux: 0,
+          evaporation: 0,
+          name: "Lake"
+        }
+      ];
+      expect(getCellTerrainInfo(4).terrain).toBe("freshwater");
+      expect(getCellYields(4).food).toBe(2);
+    });
+
+    it("classifies goods and reveals strategic resources by tech", () => {
+      setupTerrain();
+      const wheat = makeGood(1, "Wheat", ["food"], { food: 1 });
+      const horses = makeGood(2, "Horses", ["supply", "military"], { utilities: 0.6, military: 0.4 });
+      const wine = makeGood(3, "Wine", ["food", "luxury"], { food: 0.5, luxury: 0.5 });
+      const iron = makeGood(4, "Iron", ["ore", "military"], { food: 1 });
+      const stone = makeGood(5, "Stone", ["construction"], { construction: 1 });
+      pack.goods = [makeGood(0, "None", [], {}), wheat, horses, wine, iron, stone];
+
+      expect(classifyGood(wheat)).toBe("bonus");
+      expect(classifyGood(horses)).toBe("strategic");
+      expect(classifyGood(wine)).toBe("luxury");
+      expect(classifyGood(iron)).toBe("strategic");
+      expect(classifyGood(stone)).toBe("bonus");
+
+      pack.cells.good = Uint16Array.from([0, 1, 2, 3, 4, 5]);
+      expect(getCellYields(1).food).toBe(3);
+      expect(getCellResource(2, 1)).toMatchObject({ class: "strategic", revealed: false });
+      expect(getCellYields(2).production).toBe(0);
+      expect(getCellYields(3).food).toBe(1);
+
+      const living = Living.init();
+      living.states[1].researchedTechs = ["animal_husbandry"];
+      expect(getCellResource(2, 1, living)?.revealed).toBe(true);
+      expect(getCellYields(2, 1, living).production).toBe(1);
+    });
+
+    it("adds improvement yields and disables them when pillaged", () => {
+      setupTerrain();
+      const living = Living.init();
+      living.cells = {};
+
+      living.cells[1] = { improvement: "farm" };
+      expect(getCellYields(1, 0, living).food).toBe(3);
+
+      pack.cells.r[1] = 1;
+      living.states[1].researchedTechs = ["civil_service"];
+      expect(getCellYields(1, 1, living).food).toBe(4);
+
+      living.cells[1].pillaged = true;
+      expect(getCellYields(1, 1, living).food).toBe(2);
+
+      living.cells[3] = { improvement: "mine" };
+      expect(getCellYields(3, 0, living).production).toBe(3);
+      living.states[1].researchedTechs = ["chemistry"];
+      expect(getCellYields(3, 1, living).production).toBe(4);
+    });
+
+    it("separates major and minor burgs and yields village bonuses", () => {
+      setupTerrain();
+      pack.cells.h[4] = 25;
+      pack.cells.biome[4] = 4;
+      pack.cells.harbor[4] = 0;
+      const living = Living.init();
+      const capital = pack.burgs[1];
+      const freeVillage = pack.burgs[3];
+      const freeCity = pack.burgs[4];
+      expect(isMajorBurg(capital)).toBe(true);
+      expect(isMajorBurg(freeVillage)).toBe(false);
+      expect(isMinorBurg(freeVillage)).toBe(false);
+
+      pack.cells.province[4] = 1;
+      pack.cells.burg[4] = 3;
+      expect(isMinorBurg(freeVillage)).toBe(true);
+
+      expect(getCellYields(4, 0, living)).toMatchObject({ food: 3, gold: 3 });
+      const baseVillage = getCellYieldSources(4, 0, living).find(source => source.kind === "minor_burg");
+      expect(baseVillage?.yields).toMatchObject({ food: 1, gold: 3 });
+
+      freeVillage.temple = 1;
+      freeVillage.walls = 1;
+      freeVillage.port = 1;
+      const fullVillage = getCellYieldSources(4, 0, living).find(source => source.kind === "minor_burg");
+      expect(fullVillage?.yields).toMatchObject({ food: 2, gold: 4, faith: 1, culture: 1, production: 1 });
+
+      living.burgs[3].pillaged = true;
+      expect(getCellYieldSources(4, 0, living).some(source => source.kind === "minor_burg")).toBe(false);
+
+      freeCity.population = 8;
+      expect(isMajorBurg(freeCity)).toBe(true);
+    });
+
+    it("auto-connects a minor burg's underlying good as an improved resource", () => {
+      setupTerrain();
+      pack.cells.h[4] = 25;
+      pack.cells.biome[4] = 4;
+      pack.cells.harbor[4] = 0;
+      pack.goods = [makeGood(0, "None", [], {}), makeGood(1, "Wheat", ["food"], { food: 1 })];
+      pack.cells.good[4] = 1;
+      pack.cells.burg[4] = 3;
+      pack.cells.province[4] = 1;
+      const living = Living.init();
+
+      const connected = getCellYieldSources(4, 0, living).find(source => source.kind === "resource");
+      expect(connected?.yields).toMatchObject({ food: 2 });
+
+      living.burgs[3].pillaged = true;
+      const disconnected = getCellYieldSources(4, 0, living).find(source => source.kind === "resource");
+      expect(disconnected?.yields).toMatchObject({ food: 1 });
+    });
+
+    it("lazily initializes living.cells for old saves", () => {
+      setupTerrain();
+      delete pack.history.living;
+
+      const living = Living.init();
+      expect(living.cells).toBeDefined();
     });
   });
 });

@@ -43,6 +43,7 @@ import {
   recoverInjuries,
   STAMINA_RESERVE_MINIMUM
 } from "@/data/hero-vitals";
+import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
 import {
   createProvinceLair,
   getLairDef,
@@ -85,6 +86,7 @@ import {
 } from "@/data/living-troubles";
 import { buildMissionPhases, type MissionPhaseInput, phasesForParty } from "@/data/mission-phases";
 import { excavationMissionTags, lairMissionTags, PACIFY_MISSION_TAGS, troubleMissionTags } from "@/data/mission-tags";
+import type { Good } from "@/model/economy/goods-generator";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import {
   Military,
@@ -101,6 +103,11 @@ import {
   type ActiveGuildMission,
   type BurgSimState,
   type CapacityLedger,
+  type CellResourceInfo,
+  type CellSimState,
+  type CellTerrainInfo,
+  type CellYieldSource,
+  type CivResourceClass,
   type DisciplineId,
   type GrudgeReason,
   type GuildMissionKind,
@@ -127,9 +134,12 @@ import {
   type StateAgenda,
   type StatePolitySim,
   type TroubleTheme,
-  type TroubleUnitRole
+  type TroubleUnitRole,
+  type YieldDelta,
+  type YieldValues
 } from "@/types/living";
 import { minmax } from "@/utils";
+import { SEA_LEVEL } from "@/utils/height-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
 
@@ -545,6 +555,368 @@ export function syncBurgFlagsFromBuildings(burg: Burg, buildings: string[]): voi
   if (buildings.includes("barracks2") || buildings.includes("barracks3")) burg.citadel = 1;
 }
 
+const CIV_YIELD_KEYS = ["food", "production", "gold", "science", "culture", "faith", "happiness"] as const;
+
+const RESOURCE_ID_ALIASES: Record<string, string> = {
+  gemstones: "gems",
+  game: "deer"
+};
+
+/** Fresh zeroed OpenCiv yield record. */
+export function emptyYields(): YieldValues {
+  return { food: 0, production: 0, gold: 0, science: 0, culture: 0, faith: 0, happiness: 0 };
+}
+
+function humanizeId(id: string): string {
+  return id.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function hasYield(delta: YieldDelta): boolean {
+  return CIV_YIELD_KEYS.some(key => (delta[key] ?? 0) !== 0);
+}
+
+/** A cell has fresh water if it carries a river or borders a freshwater lake. */
+export function hasFreshWater(cell: number): boolean {
+  const cells = pack.cells;
+  if (Number(cells.r?.[cell] ?? 0) > 0) return true;
+
+  const feature = pack.features?.[Number(cells.f?.[cell] ?? 0)];
+  if (feature?.type === "lake" && feature.subtype === "freshwater") return true;
+
+  for (const neighbor of cells.c?.[cell] ?? []) {
+    const neighborFeature = pack.features?.[Number(cells.f?.[neighbor] ?? 0)];
+    if (neighborFeature?.type === "lake" && neighborFeature.subtype === "freshwater") return true;
+  }
+  return false;
+}
+
+function cellTerrainId(cell: number, height: number, biome: number): string {
+  if (height < SEA_LEVEL) {
+    const feature = pack.features?.[Number(pack.cells.f?.[cell] ?? 0)];
+    if (feature?.type === "lake" && feature.subtype === "freshwater") return "freshwater";
+    return Number(pack.cells.harbor?.[cell] ?? 0) > 0 ? "shallow_ocean" : "ocean";
+  }
+  if (height >= 70) return "mountain";
+  if (height >= 50) return "hill";
+
+  switch (biome) {
+    case 1:
+    case 2:
+      return "desert";
+    case 3:
+    case 5:
+      return "plains";
+    case 4:
+      return "grass";
+    case 6:
+    case 8:
+      return "forest";
+    case 7:
+      return "jungle";
+    case 9:
+      return "taiga";
+    case 10:
+      return "tundra";
+    case 11:
+      return "snow";
+    case 12:
+      return "marsh";
+    default:
+      return "grass";
+  }
+}
+
+/** Terrain, elevation and movement metadata for a Voronoi cell. */
+export function getCellTerrainInfo(cell: number): CellTerrainInfo {
+  const height = Number(pack.cells.h?.[cell] ?? 0);
+  const biome = Number(pack.cells.biome?.[cell] ?? 0);
+  const isWaterCell = height < SEA_LEVEL;
+  const isMountain = height >= 70;
+  const isHill = !isWaterCell && !isMountain && height >= 50;
+
+  let movementCost = 1;
+  if (isMountain) movementCost = 9999;
+  else if (isHill) movementCost = 2;
+  else if (!isWaterCell && (biome === 6 || biome === 7 || biome === 8 || biome === 9 || biome === 12)) {
+    movementCost = 2;
+  }
+
+  return {
+    terrain: cellTerrainId(cell, height, biome),
+    isWater: isWaterCell,
+    isMountain,
+    isHill,
+    isWorkable: !isMountain,
+    elevation: isMountain ? 2 : isHill ? 1 : 0,
+    movementCost,
+    hasFreshWater: hasFreshWater(cell)
+  };
+}
+
+function baseTerrainYields(cell: number, info: CellTerrainInfo): YieldDelta {
+  const height = Number(pack.cells.h?.[cell] ?? 0);
+  const biome = Number(pack.cells.biome?.[cell] ?? 0);
+
+  if (info.isMountain) return {};
+
+  if (info.isWater) {
+    if (info.terrain === "freshwater") return { food: 2 };
+    if (info.terrain === "shallow_ocean") return { food: 1, gold: 1 };
+    return { food: 1 };
+  }
+
+  // Forest canopy replaces the underlying flat/hill yield.
+  if (biome === 7) return { food: 2 };
+  if (biome === 6 || biome === 8 || biome === 9) return { food: 1, production: 1 };
+
+  if (height >= 50) return { production: 2 };
+
+  switch (biome) {
+    case 1:
+    case 2:
+      return info.hasFreshWater ? { food: 2 } : {};
+    case 3:
+    case 5:
+      return { food: 1, production: 1 };
+    case 4:
+      return { food: 2 };
+    case 10:
+      return { food: 1 };
+    case 12:
+      return { food: 1 };
+    default:
+      return {};
+  }
+}
+
+/** Classify an FMG trade good into OpenCiv's Bonus / Strategic / Luxury taxonomy. */
+export function classifyGood(good: Good | undefined): CivResourceClass | null {
+  if (!good) return null;
+
+  const tags = new Set(good.tags ?? []);
+  const coverage = good.demandCoverage ?? {};
+
+  if ((coverage.luxury ?? 0) > 0 || tags.has("luxury")) return "luxury";
+  if ((coverage.military ?? 0) > 0 || tags.has("military") || tags.has("ore")) return "strategic";
+  if (
+    (coverage.food ?? 0) > 0 ||
+    (coverage.construction ?? 0) > 0 ||
+    (coverage.utilities ?? 0) > 0 ||
+    tags.has("food") ||
+    tags.has("construction")
+  ) {
+    return "bonus";
+  }
+  return null;
+}
+
+function civResourceIdForGood(good: Good): string | null {
+  const normalized = good.name.toLowerCase().trim().replace(/\s+/g, "_");
+  for (const candidate of [normalized, RESOURCE_ID_ALIASES[normalized]]) {
+    if (candidate && CIV_RESOURCE_BY_ID[candidate]) return candidate;
+  }
+  return null;
+}
+
+/** The good on a cell plus its OpenCiv resource class and reveal status. */
+export function getCellResource(
+  cell: number,
+  playerStateId = 0,
+  living: LivingWorldState | undefined = pack.history?.living
+): CellResourceInfo | null {
+  const goodId = Number(pack.cells.good?.[cell] ?? 0);
+  if (!goodId) return null;
+
+  const good = pack.goods?.[goodId];
+  const resourceClass = classifyGood(good);
+  if (!good || !resourceClass) return null;
+
+  const resourceId = civResourceIdForGood(good);
+  const revealTech = resourceId ? CIV_RESOURCE_BY_ID[resourceId]?.revealTech : undefined;
+  const stateSim = playerStateId > 0 ? living?.states?.[playerStateId] : undefined;
+  const revealed = !revealTech || Boolean(stateSim?.researchedTechs?.includes(revealTech));
+
+  return { goodId, goodName: good.name, resourceId, class: resourceClass, revealed };
+}
+
+/** A non-removed burg that runs the full OpenCiv city loop. */
+export function isMajorBurg(burg: Burg | undefined | null): boolean {
+  if (!burg?.i || burg.removed) return false;
+  if (burg.capital === 1) return true;
+  if (burg.state && pack.states?.[burg.state]?.capital === burg.i) return true;
+  if (pack.provinces?.some(province => province?.i && !province.removed && province.burg === burg.i)) return true;
+  return !burg.state && settlementTierFromPop(burg.population ?? 0) >= 3;
+}
+
+/** A non-capital settlement inside a province: a village tile improvement. */
+export function isMinorBurg(burg: Burg | undefined | null): boolean {
+  if (!burg?.i || burg.removed || isMajorBurg(burg)) return false;
+  const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+  if (!provinceId) return false;
+  const province = pack.provinces?.[provinceId];
+  return Boolean(province?.i && !province.removed && province.burg !== burg.i);
+}
+
+function burgAtCell(cell: number): Burg | undefined {
+  const burgId = Number(pack.cells.burg?.[cell] ?? 0);
+  return burgId ? pack.burgs?.[burgId] : undefined;
+}
+
+function isBurgPillaged(burg: Burg, living: LivingWorldState | undefined): boolean {
+  return Boolean(burg.shanty) || Boolean(living?.burgs?.[burg.i]?.pillaged);
+}
+
+function isMinorBurgTroubled(burg: Burg, living: LivingWorldState | undefined): boolean {
+  const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+  const trouble = provinceId ? living?.provinces?.[provinceId]?.trouble : null;
+  return Boolean(trouble && trouble.burgId === burg.i);
+}
+
+function resourceYieldDelta(resource: CellResourceInfo, good: Good, improved: boolean): YieldDelta {
+  if (resource.class === "strategic" && !resource.revealed) return {};
+
+  const amount = improved ? 2 : 1;
+  const tags = new Set(good.tags ?? []);
+
+  if (resource.class === "luxury") {
+    if (tags.has("food")) return { food: amount };
+    if (tags.has("construction") || tags.has("ore")) return { production: amount };
+    return { gold: amount };
+  }
+
+  if (resource.class === "strategic") return { production: amount };
+
+  if (tags.has("construction") || tags.has("ore") || tags.has("fuel")) return { production: amount };
+  return { food: amount };
+}
+
+function improvementYieldDelta(
+  cell: number,
+  improvementId: string,
+  stateTechs: Set<string>,
+  resource: CellResourceInfo | null
+): YieldDelta {
+  const hasTech = (tech: string) => stateTechs.has(tech);
+
+  switch (improvementId) {
+    case "farm": {
+      const yields: YieldDelta = { food: 1 };
+      if (hasFreshWater(cell) ? hasTech("civil_service") : hasTech("fertilizer")) yields.food = 2;
+      return yields;
+    }
+    case "mine":
+    case "quarry":
+      return { production: hasTech("chemistry") ? 2 : 1 };
+    case "pasture": {
+      const food = resource?.resourceId === "cattle" || resource?.resourceId === "sheep";
+      const amount = hasTech("fertilizer") ? 2 : 1;
+      return food ? { food: amount } : { production: amount };
+    }
+    case "plantation":
+      return { gold: hasTech("economics") ? 3 : 2 };
+    case "camp":
+      return hasTech("economics") ? { production: 1, gold: 1 } : { production: 1 };
+    case "lumber_mill":
+      return { production: hasTech("scientific_theory") ? 2 : 1 };
+    case "trading_post":
+      return { gold: hasTech("economics") ? 2 : 1 };
+    case "fishing_boats":
+      return { food: 1, gold: 1 };
+    default:
+      return {};
+  }
+}
+
+function minorBurgYieldDelta(burg: Burg, pillaged: boolean): YieldDelta {
+  if (pillaged) return {};
+
+  const yields: YieldDelta = { food: 1, gold: 2 };
+  if (burg.plaza) yields.gold = (yields.gold ?? 0) + 1;
+  if (burg.temple) {
+    yields.faith = 1;
+    yields.culture = 1;
+  }
+  if (burg.walls) yields.production = 1;
+  if (burg.port) {
+    yields.food = (yields.food ?? 0) + 1;
+    yields.gold = (yields.gold ?? 0) + 1;
+  }
+  return yields;
+}
+
+/** Every additive yield contribution on a cell: terrain, resource, improvement, minor burg. */
+export function getCellYieldSources(
+  cell: number,
+  playerStateId = 0,
+  living: LivingWorldState | undefined = pack.history?.living
+): CellYieldSource[] {
+  const info = getCellTerrainInfo(cell);
+  if (!info.isWorkable) return [];
+
+  const sources: CellYieldSource[] = [];
+  const terrainYields = baseTerrainYields(cell, info);
+  if (hasYield(terrainYields)) {
+    sources.push({ kind: "terrain", id: info.terrain, label: humanizeId(info.terrain), yields: terrainYields });
+  }
+
+  const resource = getCellResource(cell, playerStateId, living);
+  const burg = burgAtCell(cell);
+  const minorBurg = burg && isMinorBurg(burg) && !isMinorBurgTroubled(burg, living) ? burg : undefined;
+  const minorPillaged = minorBurg ? isBurgPillaged(minorBurg, living) : false;
+  const cellSim: CellSimState | undefined = living?.cells?.[cell];
+  const improvementId = cellSim?.improvement ?? null;
+  const improvementActive = Boolean(improvementId && !cellSim?.pillaged);
+  const connected = improvementActive || Boolean(minorBurg && !minorPillaged);
+
+  if (resource && pack.goods?.[resource.goodId]) {
+    const yields = resourceYieldDelta(resource, pack.goods[resource.goodId], connected);
+    if (hasYield(yields)) {
+      sources.push({
+        kind: "resource",
+        id: resource.resourceId ?? resource.goodName,
+        label: resource.goodName,
+        yields
+      });
+    }
+  }
+
+  if (improvementId && improvementActive) {
+    const techs = new Set(living?.states?.[playerStateId]?.researchedTechs ?? []);
+    const yields = improvementYieldDelta(cell, improvementId, techs, resource);
+    if (hasYield(yields)) {
+      const def = CIV_IMPROVEMENT_BY_ID[improvementId];
+      sources.push({ kind: "improvement", id: improvementId, label: def?.name ?? humanizeId(improvementId), yields });
+    }
+  }
+
+  if (minorBurg) {
+    const yields = minorBurgYieldDelta(minorBurg, minorPillaged);
+    if (hasYield(yields)) {
+      sources.push({
+        kind: "minor_burg",
+        id: String(minorBurg.i),
+        label: `${minorBurg.name ?? "Village"} (village)`,
+        yields
+      });
+    }
+  }
+
+  return sources;
+}
+
+/** Sum all Slice 2 cell yields into one OpenCiv yield record. */
+export function getCellYields(
+  cell: number,
+  playerStateId = 0,
+  living: LivingWorldState | undefined = pack.history?.living
+): YieldValues {
+  const total = emptyYields();
+  for (const source of getCellYieldSources(cell, playerStateId, living)) {
+    for (const key of CIV_YIELD_KEYS) total[key] += source.yields[key] ?? 0;
+  }
+  return total;
+}
+
 class LivingModel {
   /** Initialize or reconcile the Living World state on `pack.history.living` */
   init(opts?: { seed?: string; snapshotIntervalYears?: number }): LivingWorldState {
@@ -561,10 +933,12 @@ class LivingModel {
       states: {},
       provinces: {},
       burgs: {},
+      cells: {},
       recentNews: []
     };
 
     history.living.provinces ??= {};
+    history.living.cells ??= {};
     history.living.recentNews ??= [];
 
     if (opts?.seed !== undefined) history.living.seed = String(opts.seed);
@@ -1520,6 +1894,7 @@ class LivingModel {
     if (!living) return;
 
     living.provinces ??= {};
+    living.cells ??= {};
     living.recentNews ??= [];
     this.syncBurgs(living);
     this.syncProvinces(living);

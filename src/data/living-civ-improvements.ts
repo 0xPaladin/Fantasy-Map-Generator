@@ -382,6 +382,10 @@ export const CIV_RESOURCES: readonly CivResourceDef[] = [
   }
 ];
 
+export const CIV_RESOURCE_BY_ID: Record<string, CivResourceDef> = Object.fromEntries(
+  CIV_RESOURCES.map(resource => [resource.id, resource] as const)
+);
+
 export const CIV_TILES: readonly CivTileDef[] = [
   {
     id: "grass",
