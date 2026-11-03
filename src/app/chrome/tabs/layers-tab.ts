@@ -5,6 +5,7 @@ import { isConquestEnabled, subscribeConquestView } from "@/controllers/conquest
 import { ASTRAL_LAYER_TOGGLES } from "@/data/astral-layer-labels";
 import { ASTRAL_DEFAULT_PRESET, ASTRAL_PRESETS } from "@/data/astral-layers";
 import { LAYER_TOGGLES, type LayerButton, underlineHotkey } from "@/data/layer-labels";
+import { SolarSystem } from "@/model/system/solar-system";
 import type { LayerId } from "@/renderers/layers";
 import { Layers } from "@/renderers/layers";
 import {
@@ -110,9 +111,9 @@ ensureEl("viewMode").addEventListener("click", event => {
   const button = event.target as HTMLElement;
   if (button.id === "viewAstralBackSector") {
     event.stopPropagation();
-    // the Sector View is the Astral chart: entering Astral mode tears down 3D, applies the chart
-    // and resets the navigation level to sector (astralnav:change refreshes the buttons)
-    void Controllers.AstralMode.enter();
+    // the Sector View draws over the origin map: undo every body switch, then bring the chart back
+    SolarSystem.returnToOrigin();
+    void Controllers.AstralMode.enter(); // enters Astral, tears down 3D, resets nav to sector
     return;
   }
   if (button.id === "viewAstralBackSystem") {
@@ -126,6 +127,17 @@ ensureEl("viewMode").addEventListener("click", event => {
 
 window.addEventListener("astralnav:change", refreshAstralNavButtons);
 refreshAstralNavButtons();
+
+// the Astral button is the chart's entry point: once the chart is on it leaves the UI,
+// and the Standard button is the exit back to the flat map (which brings the button back)
+function refreshAstralModeButton(): void {
+  const astralButton = findEl<HTMLButtonElement>("viewAstral");
+  if (!astralButton) return;
+  astralButton.style.display = isAstralView() ? "none" : "";
+}
+
+subscribeAstralView(refreshAstralModeButton);
+refreshAstralModeButton();
 
 function renderPresetOptions(): void {
   const select = ensureEl<HTMLSelectElement>("layersPreset");
