@@ -43,7 +43,9 @@ import {
   recoverInjuries,
   STAMINA_RESERVE_MINIMUM
 } from "@/data/hero-vitals";
+import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
+import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
 import {
   createProvinceLair,
   getLairDef,
@@ -107,6 +109,7 @@ import {
   type CellSimState,
   type CellTerrainInfo,
   type CellYieldSource,
+  type CivBuildingDef,
   type CivResourceClass,
   type DisciplineId,
   type GrudgeReason,
@@ -129,6 +132,7 @@ import {
   type ProvinceLair,
   type ProvinceSimState,
   type ProvinceTrouble,
+  type ProductionItem,
   SEASON_NAMES,
   type SeasonId,
   type StateAgenda,
@@ -555,6 +559,65 @@ export function syncBurgFlagsFromBuildings(burg: Burg, buildings: string[]): voi
   if (buildings.includes("barracks2") || buildings.includes("barracks3")) burg.citadel = 1;
 }
 
+/**
+ * OpenCiv building families that mirror the native FMG Burg flags.
+ * Slice 3 keeps these ids in `bSim.civBuildings`, next to the legacy AER list.
+ */
+const CIV_WALL_BUILDINGS: readonly (readonly [string, number])[] = [
+  ["walls", 1],
+  ["castle", 2],
+  ["arsenal", 3],
+  ["military_base", 3]
+];
+const CIV_PLAZA_BUILDINGS = ["market", "bank", "stock_exchange", "bazaar"] as const;
+const CIV_TEMPLE_BUILDINGS = ["shrine", "temple", "cathedral", "monastery", "mosque", "pagoda"] as const;
+const CIV_PORT_BUILDINGS = ["harbor", "lighthouse", "seaport"] as const;
+
+/**
+ * Reconcile native FMG Burg flags into OpenCiv building ids (flags win).
+ * Flag families are added and removed as a unit, so lowering `burg.walls` in
+ * BurgsEditor demolishes the OpenCiv wall line on the next sync.
+ */
+export function syncCivBuildingsFromFlags(burg: Burg, existing: readonly string[]): string[] {
+  const set = new Set(existing);
+
+  if (burg.capital) set.add("palace");
+  else set.delete("palace");
+
+  const walls = Number(burg.walls ?? 0);
+  const wallBuilding = CIV_WALL_BUILDINGS.find(([, tier]) => walls >= tier)?.[0];
+  const wallFamily = new Set(CIV_WALL_BUILDINGS.map(([id]) => id));
+  for (const id of wallFamily) set.delete(id);
+  if (wallBuilding) set.add(wallBuilding);
+  // A citadel without a wall tier still reads as a castle.
+  if (!wallBuilding && burg.citadel) set.add("castle");
+
+  const syncFamily = (enabled: boolean, family: readonly string[], canonical: string) => {
+    for (const id of family) set.delete(id);
+    if (enabled) set.add(canonical);
+  };
+  syncFamily(Boolean(burg.plaza), CIV_PLAZA_BUILDINGS, "market");
+  syncFamily(Boolean(burg.temple), CIV_TEMPLE_BUILDINGS, "temple");
+  syncFamily(Boolean(burg.port), CIV_PORT_BUILDINGS, "harbor");
+
+  return Array.from(set);
+}
+
+/** Push completed OpenCiv buildings back onto native FMG Burg flags (buildings raise flags). */
+export function syncCivFlagsFromBuildings(burg: Burg, civBuildings: readonly string[]): void {
+  const held = new Set(civBuildings);
+
+  let walls = 0;
+  for (const [id, tier] of CIV_WALL_BUILDINGS) if (held.has(id)) walls = Math.max(walls, tier);
+  if (walls > 0) burg.walls = Math.max(Number(burg.walls ?? 0), walls);
+  if (held.has("castle") || held.has("arsenal") || held.has("military_base")) burg.citadel = 1;
+
+  if (CIV_PLAZA_BUILDINGS.some(id => held.has(id))) burg.plaza = 1;
+  if (CIV_TEMPLE_BUILDINGS.some(id => held.has(id))) burg.temple = 1;
+  if (CIV_PORT_BUILDINGS.some(id => held.has(id))) burg.port = 1;
+  if (held.has("palace")) burg.capital = 1;
+}
+
 const CIV_YIELD_KEYS = ["food", "production", "gold", "science", "culture", "faith", "happiness"] as const;
 
 const RESOURCE_ID_ALIASES: Record<string, string> = {
@@ -916,6 +979,101 @@ export function getCellYields(
   }
   return total;
 }
+
+// ---------------------------------------------------------------------------
+// Slice 3: autonomous Major Burg city loop (OpenCiv `City`)
+// ---------------------------------------------------------------------------
+
+/** A Major Burg works its centre for free plus citizen cells within this many Voronoi hops. */
+export const MAX_WORK_DISTANCE = 3;
+/** Culture border growth looks for unowned cells within this many hops. */
+export const MAX_ACQUIRE_DISTANCE = 5;
+/** Each OpenCiv citizen eats 2 Food per tick. */
+export const FOOD_PER_CITIZEN = 2;
+/** Citizens are assigned until the net Food surplus reaches this floor. */
+export const DEFAULT_FOCUS_GROWTH_TARGET = 1;
+/** While a Settler is queued, every surplus Food becomes Production. */
+export const SETTLER_FOOD_TO_PRODUCTION_FACTOR = 1;
+export const SETTLER_UNIT_ID = "settler";
+/** OpenCiv city population ceiling. */
+export const MAX_CITIZENS = 30;
+
+/** OpenCiv citizen count for an FMG burg population (`floor(sqrt(pop * 2))`). */
+export function citizensFromPopulation(population: number): number {
+  return Math.max(1, Math.floor(Math.sqrt(Math.max(0, population) * 2)));
+}
+
+/** FMG burg population for an OpenCiv citizen count (`citizens² / 2`). */
+export function populationFromCitizens(citizens: number): number {
+  const safe = Math.max(1, Math.floor(citizens));
+  return Math.max(0.5, Math.round(((safe * safe) / 2) * 10) / 10);
+}
+
+/** Food bucket size that grows a city by one citizen: `15 + 8 × citizens`. */
+export function foodNeededForGrowth(citizens: number): number {
+  return 15 + 8 * Math.max(1, Math.floor(citizens));
+}
+
+/** Border culture bucket: `max(1, floor(floor(20 + (10N)^1.1) × cost / speed))`. */
+export function borderCultureNeeded(tilesAcquired: number, costFactor = 1, speedFactor = 1): number {
+  const base = Math.floor(20 + (10 * Math.max(0, tilesAcquired)) ** 1.1);
+  const speed = speedFactor > 0 ? speedFactor : 1;
+  return Math.max(1, Math.floor((base * costFactor) / speed));
+}
+
+/**
+ * Influence score for a candidate border cell: lower is better.
+ * `100 × hops` plus feature bonuses from §4.3 of the plan.
+ */
+export function borderInfluenceScore(
+  cell: number,
+  hops: number,
+  playerStateId: number,
+  living: LivingWorldState | undefined = pack.history?.living
+): number {
+  let score = 100 * Math.max(1, hops);
+  const info = getCellTerrainInfo(cell);
+  if (info.isMountain) score += 100;
+  if (info.hasFreshWater) score -= 50;
+
+  const resource = getCellResource(cell, playerStateId, living);
+  if (resource) {
+    if (!resource.revealed) score -= 75;
+    else if (resource.class === "luxury") score -= 250;
+    else if (resource.class === "strategic") score -= 200;
+    else score -= 150;
+  } else if ((pack.cells.c?.[cell] ?? []).some(neighbor => Number(pack.cells.good?.[neighbor] ?? 0) > 0)) {
+    score -= 75;
+  }
+
+  const burgId = Number(pack.cells.burg?.[cell] ?? 0);
+  const burg = burgId ? pack.burgs?.[burgId] : undefined;
+  if (burg?.i && !burg.removed && !burg.state) score -= 200;
+
+  return score;
+}
+
+/** Growth multiplier from Empire Happiness: full, quarter or none. */
+export function happinessGrowthFactor(happiness: number): number {
+  if (happiness <= -10) return 0;
+  if (happiness < 0) return 0.25;
+  return 1;
+}
+
+/** The economy buildings the autonomous governor prioritises before wonders. */
+const CITY_ECONOMY_BUILDINGS: readonly string[] = [
+  "monument",
+  "granary",
+  "library",
+  "market",
+  "shrine",
+  "workshop",
+  "aqueduct",
+  "university",
+  "bank",
+  "public_school",
+  "factory"
+];
 
 class LivingModel {
   /** Initialize or reconcile the Living World state on `pack.history.living` */
@@ -1872,6 +2030,7 @@ class LivingModel {
       }
 
       this.syncWorld();
+      this.stepCities(living);
       this.stepBurgUnrest(living);
       this.stepProvinces(living);
       this.stepLairs(living);
@@ -1896,6 +2055,7 @@ class LivingModel {
     living.provinces ??= {};
     living.cells ??= {};
     living.recentNews ??= [];
+    living.worldWonders ??= {};
     this.syncBurgs(living);
     this.syncProvinces(living);
     this.syncStates(living);
@@ -3615,16 +3775,22 @@ class LivingModel {
           development: 0,
           developmentProgress: 0,
           buildings: syncBurgBuildingsFromFlags(burg, []),
+          civBuildings: syncCivBuildingsFromFlags(burg, []),
           construction: null,
           unrest: 0,
           originalOwner: burg.state ?? 0,
           originalCulture: burg.culture,
           originalReligion: pack.cells.religion?.[burg.cell] ?? 0
         };
+        syncCivFlagsFromBuildings(burg, living.burgs[burg.i].civBuildings ?? []);
+        living.burgs[burg.i].isMajor = isMajorBurg(burg);
       } else {
         existing.baseTier = baseTier;
         existing.buildings = syncBurgBuildingsFromFlags(burg, existing.buildings);
+        existing.civBuildings = syncCivBuildingsFromFlags(burg, existing.civBuildings ?? []);
+        syncCivFlagsFromBuildings(burg, existing.civBuildings);
         syncBurgFlagsFromBuildings(burg, existing.buildings);
+        existing.isMajor = isMajorBurg(burg);
       }
     }
   }
@@ -3862,6 +4028,567 @@ class LivingModel {
       const sSim = living.states[stateId];
       if (sSim) {
         sSim.capacity = this.recomputeStateCapacity(stateId);
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Slice 3: autonomous Major Burg city loop (worked cells, food, culture
+  // borders, production queues and World Wonders).
+  // -------------------------------------------------------------------------
+
+  /** The OpenCiv city loop needs a terrain-bearing pack (real maps), not a stripped fixture. */
+  private hasCityTerrain(): boolean {
+    return Boolean(pack.cells.h?.length) && Boolean(pack.cells.biome?.length) && Boolean(pack.cells.c?.length);
+  }
+
+  /** BFS hop distances from a cell, capped at `maxHops`. */
+  private cellHopDistances(start: number, maxHops: number): Map<number, number> {
+    const distances = new Map<number, number>([[start, 0]]);
+    const queue = [start];
+    for (let head = 0; head < queue.length; head++) {
+      const cell = queue[head]!;
+      const hops = distances.get(cell)!;
+      if (hops >= maxHops) continue;
+      for (const neighbor of pack.cells.c?.[cell] ?? []) {
+        if (distances.has(neighbor)) continue;
+        distances.set(neighbor, hops + 1);
+        queue.push(neighbor);
+      }
+    }
+    return distances;
+  }
+
+  /** Every Major Burg of a state that has a live simulation record. */
+  private majorBurgsOfState(stateId: number, living: LivingWorldState): Burg[] {
+    return pack.burgs.filter(
+      burg => burg?.i && !burg.removed && burg.state === stateId && isMajorBurg(burg) && Boolean(living.burgs[burg.i])
+    );
+  }
+
+  /** Is this state engaged in any war this tick? */
+  private stateAtWar(state: State): boolean {
+    if (!state.diplomacy) return false;
+    return pack.states.some(
+      other => other?.i && other.i !== state.i && !other.removed && state.diplomacy?.[other.i] === "Enemy"
+    );
+  }
+
+  /** Pantheon + religion belief ids held by a state (Slice 6 fills the religion record). */
+  private stateBeliefs(state: State, living: LivingWorldState): Set<string> {
+    const ids = new Set<string>();
+    const sSim = living.states[state.i];
+    if (sSim?.pantheonId) ids.add(sSim.pantheonId);
+    const religionId = sSim?.religionId;
+    const religion = religionId ? living.religions?.[religionId] : undefined;
+    if (religion) {
+      if (religion.pantheonId) ids.add(religion.pantheonId);
+      if (religion.founderBeliefId) ids.add(religion.founderBeliefId);
+      if (religion.enhancerBeliefId) ids.add(religion.enhancerBeliefId);
+      for (const id of religion.followerBeliefIds ?? []) ids.add(id);
+    }
+    return ids;
+  }
+
+  /** A ruler's temperament weights which cells a city works (martial/civic/pious). */
+  private cityWorkWeight(yields: YieldValues, state: State, living: LivingWorldState): number {
+    const sSim = living.states[state.i];
+    const bias = sSim ? this.traitBias(state, sSim) : { martial: 0.1, civic: 0.1, pious: 0.1, cruel: 0 };
+    return (
+      yields.food +
+      yields.production * (1 + bias.martial) +
+      (yields.gold + yields.science) * (1 + bias.civic) +
+      (yields.faith + yields.culture) * (1 + bias.pious) +
+      yields.happiness * 0.5
+    );
+  }
+
+  /** A cell that can host a Major Burg's centre or a citizen worker. */
+  private isCityWorkable(cell: number): boolean {
+    if (getCellTerrainInfo(cell).isWorkable) return true;
+    return Number(pack.cells.harbor?.[cell] ?? 0) > 0;
+  }
+
+  /**
+   * §4.1: assign citizens to worked cells (centre free, then Food floor, then
+   * ruler-weighted total yield) and sum the OpenCiv city yields.
+   */
+  private updateWorkedCells(
+    burg: Burg,
+    bSim: BurgSimState,
+    state: State,
+    living: LivingWorldState
+  ): YieldValues {
+    const citizens = Math.max(1, Math.floor(bSim.citizens ?? citizensFromPopulation(burg.population ?? 0)));
+    bSim.citizens = citizens;
+
+    const centerYields = getCellYields(burg.cell, state.i, living);
+    if (centerYields.food < 2) centerYields.food = 2;
+
+    const taken = new Set<number>();
+    for (const other of this.majorBurgsOfState(state.i, living)) {
+      if (other.i === burg.i) continue;
+      for (const cell of living.burgs[other.i]?.workedCells ?? []) taken.add(cell);
+    }
+
+    const distances = this.cellHopDistances(burg.cell, MAX_WORK_DISTANCE);
+    const candidates: { cell: number; hops: number; yields: YieldValues; weight: number }[] = [];
+    for (const [cell, hops] of distances) {
+      if (cell === burg.cell || taken.has(cell)) continue;
+      if (pack.cells.state?.[cell] !== state.i) continue;
+      if (!this.isCityWorkable(cell)) continue;
+      const yields = getCellYields(cell, state.i, living);
+      candidates.push({ cell, hops, yields, weight: this.cityWorkWeight(yields, state, living) });
+    }
+
+    const worked: number[] = [];
+    const assigned = new Set<number>();
+    let food = centerYields.food;
+    const consumption = FOOD_PER_CITIZEN * citizens;
+    const foodFloorReached = () => food - consumption >= DEFAULT_FOCUS_GROWTH_TARGET;
+
+    // Ruler-pinned cells are worked first, exactly as the player left them.
+    for (const cell of bSim.lockedCells ?? []) {
+      if (worked.length >= citizens) break;
+      if (assigned.has(cell) || !candidates.some(candidate => candidate.cell === cell)) continue;
+      worked.push(cell);
+      assigned.add(cell);
+      food += getCellYields(cell, state.i, living).food;
+    }
+
+    // Phase 1: Food floor, highest Food first, then nearest, then lowest id.
+    const byFood = [...candidates].sort(
+      (a, b) => b.yields.food - a.yields.food || a.hops - b.hops || a.cell - b.cell
+    );
+    for (const candidate of byFood) {
+      if (worked.length >= citizens || foodFloorReached()) break;
+      if (assigned.has(candidate.cell) || candidate.yields.food <= 0) continue;
+      worked.push(candidate.cell);
+      assigned.add(candidate.cell);
+      food += candidate.yields.food;
+    }
+
+    // Phase 2: ruler-weighted total yield for the remaining citizens.
+    const byWeight = [...candidates].sort((a, b) => b.weight - a.weight || a.hops - b.hops || a.cell - b.cell);
+    for (const candidate of byWeight) {
+      if (worked.length >= citizens) break;
+      if (assigned.has(candidate.cell)) continue;
+      if (candidate.weight <= 0) break;
+      worked.push(candidate.cell);
+      assigned.add(candidate.cell);
+    }
+
+    const total = { ...centerYields };
+    for (const cell of worked) {
+      const yields = getCellYields(cell, state.i, living);
+      for (const key of CIV_YIELD_KEYS) total[key] += yields[key];
+    }
+    for (const id of bSim.civBuildings ?? []) {
+      const def = CIV_BUILDING_BY_ID[id];
+      if (!def) continue;
+      for (const key of CIV_YIELD_KEYS) total[key] += def.stats[key] ?? 0;
+    }
+
+    bSim.workedCells = worked;
+    bSim.isMajor = true;
+    return total;
+  }
+
+  /** Food as a percentage of the bucket kept on growth (Aqueduct / Hospital). */
+  private cityFoodCarryover(bSim: BurgSimState): number {
+    const held = new Set(bSim.civBuildings ?? []);
+    let percent = 0;
+    if (held.has("aqueduct")) percent += 40;
+    if (held.has("hospital")) percent += 25;
+    return percent / 100;
+  }
+
+  /** Mutate a city's citizen count and mirror it onto `burg.population`. */
+  private changeCitizens(
+    state: State,
+    burg: Burg,
+    bSim: BurgSimState,
+    living: LivingWorldState,
+    nextCitizens: number
+  ): void {
+    const previous = bSim.citizens ?? 1;
+    const next = minmax(Math.floor(nextCitizens), 1, MAX_CITIZENS);
+    bSim.citizens = next;
+
+    const target = populationFromCitizens(next);
+    const current = Number(burg.population ?? 0);
+    // Growth never shrinks an existing population; starvation sets it back.
+    burg.population = next >= previous ? Math.max(current, target) : target;
+    if (next > previous) this.growMinorBurgs(state, burg, living);
+  }
+
+  /** A growing Major Burg pulls its satellite villages up by 6%. */
+  private growMinorBurgs(state: State, parent: Burg, _living: LivingWorldState): void {
+    const provinceId = Number(pack.cells.province?.[parent.cell] ?? 0);
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || burg.i === parent.i || burg.state !== state.i) continue;
+      if (!isMinorBurg(burg)) continue;
+      if (provinceId && Number(pack.cells.province?.[burg.cell] ?? 0) !== provinceId) continue;
+      burg.population = Math.round(Number(burg.population ?? 0) * 1.06 * 10) / 10;
+    }
+  }
+
+  /**
+   * §4.2: Food consumption, growth multipliers, bucket carryover and
+   * starvation. Returns Production converted from surplus Food by a queued
+   * Settler.
+   */
+  private applyFoodGrowth(
+    burg: Burg,
+    bSim: BurgSimState,
+    state: State,
+    living: LivingWorldState,
+    cityYields: YieldValues
+  ): number {
+    const sSim = living.states[state.i];
+    const citizens = Math.max(1, bSim.citizens ?? 1);
+    const surplus = cityYields.food - FOOD_PER_CITIZEN * citizens;
+
+    const top = bSim.productionQueue?.[0];
+    if (top?.kind === "unit" && top.id === SETTLER_UNIT_ID) {
+      return surplus > 0 ? surplus * SETTLER_FOOD_TO_PRODUCTION_FACTOR : 0;
+    }
+
+    if (surplus > 0) {
+      let multiplier = happinessGrowthFactor(sSim?.happiness ?? 0);
+      if (multiplier > 0) {
+        const beliefs = this.stateBeliefs(state, living);
+        if (beliefs.has("fertility_rites")) multiplier *= 1.1;
+        if (beliefs.has("swords_into_plowshares") && !this.stateAtWar(state)) multiplier *= 1.15;
+        if ((bSim.civBuildings ?? []).includes("temple_of_artemis")) multiplier *= 1.1;
+      }
+      bSim.foodStored = (bSim.foodStored ?? 0) + surplus * multiplier;
+    }
+
+    const needed = foodNeededForGrowth(citizens);
+    const stored = bSim.foodStored ?? 0;
+    if (stored >= needed) {
+      const carryover = this.cityFoodCarryover(bSim);
+      bSim.foodStored = stored - needed + needed * carryover;
+      this.changeCitizens(state, burg, bSim, living, citizens + 1);
+    } else if (stored < 0) {
+      bSim.foodStored = 0;
+      this.changeCitizens(state, burg, bSim, living, Math.max(1, citizens - 1));
+    }
+    return 0;
+  }
+
+  /** Best unowned, workable cell to claim next: lowest influence score wins. */
+  private pickBorderClaimCell(burg: Burg, state: State, living: LivingWorldState): number | null {
+    let best: { cell: number; score: number } | null = null;
+    const distances = this.cellHopDistances(burg.cell, MAX_ACQUIRE_DISTANCE);
+    for (const [cell, hops] of distances) {
+      if (cell === burg.cell) continue;
+      if (pack.cells.state?.[cell] !== 0) continue;
+      if (!this.isCityWorkable(cell)) continue;
+      const bordersState = (pack.cells.c?.[cell] ?? []).some(neighbor => pack.cells.state?.[neighbor] === state.i);
+      if (!bordersState) continue;
+      const score = borderInfluenceScore(cell, hops, state.i, living);
+      if (!best || score < best.score || (score === best.score && cell < best.cell)) best = { cell, score };
+    }
+    return best?.cell ?? null;
+  }
+
+  /**
+   * §4.3: accumulate Culture and claim the best unowned cell. Claims go
+   * through `States.setCells` where the pack is complete, and fall back to a
+   * direct assignment on stripped saves.
+   */
+  private applyBorderGrowth(
+    burg: Burg,
+    bSim: BurgSimState,
+    state: State,
+    living: LivingWorldState,
+    cityYields: YieldValues
+  ): boolean {
+    const tiles = bSim.tilesAcquired ?? 0;
+    const held = new Set(bSim.civBuildings ?? []);
+    const costFactor = held.has("angkor_wat") ? 0.75 : 1;
+    const speedFactor = this.stateBeliefs(state, living).has("religious_settlements") ? 1.15 : 1;
+    const needed = borderCultureNeeded(tiles, costFactor, speedFactor);
+
+    bSim.cultureStored = (bSim.cultureStored ?? 0) + Math.max(0, cityYields.culture);
+    if (bSim.cultureStored < needed) return false;
+
+    const target = this.pickBorderClaimCell(burg, state, living);
+    if (target === null) {
+      // Keep the bucket full but clamped until there is land worth claiming.
+      bSim.cultureStored = needed;
+      bSim.nextBorderCell = null;
+      return false;
+    }
+
+    const burgId = Number(pack.cells.burg?.[target] ?? 0);
+    const encountered = burgId ? pack.burgs?.[burgId] : undefined;
+    const previousOwner = encountered?.state ?? 0;
+    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+
+    // Claim directly: `States.setCells()` recomputes poles and statistics on
+    // every call, which is far too heavy inside a per-city seasonal loop.
+    // `stepCities` refreshes the aggregate state statistics once per tick.
+    pack.cells.state[target] = state.i;
+    if (provinceId && pack.cells.province) pack.cells.province[target] = provinceId;
+    if (encountered?.i) encountered.state = state.i;
+
+    bSim.cultureStored -= needed;
+    bSim.tilesAcquired = tiles + 1;
+    bSim.nextBorderCell = null;
+
+    if (encountered?.i && !encountered.removed) {
+      this.handleFreeBurgEncounter(state, encountered, previousOwner, living);
+    }
+    return true;
+  }
+
+  /** Border growth reaching a Free Burg triggers the kinship/faith check. */
+  private handleFreeBurgEncounter(
+    state: State,
+    burg: Burg,
+    previousOwner: number,
+    living: LivingWorldState
+  ): void {
+    if (previousOwner) return;
+    const bSim = living.burgs[burg.i];
+    const kin = this.sharesKinshipOrFaith(state.i, burg.i);
+
+    if (kin) {
+      if (bSim) {
+        bSim.unrest = 0;
+        bSim.conqueredBy = undefined;
+        bSim.originalOwner = state.i;
+        bSim.originalCulture ??= burg.culture;
+        bSim.originalReligion ??= pack.cells.religion?.[burg.cell] ?? 0;
+      }
+      this.logConquest(state, burg, false);
+      return;
+    }
+
+    if (bSim) {
+      bSim.conqueredBy = state.i;
+      bSim.unrest = Math.max(bSim.unrest ?? 0, 6 + (bSim.citizens ?? citizensFromPopulation(burg.population ?? 0)));
+    }
+    this.logConquest(state, burg, true);
+  }
+
+  /** Can this Major Burg start this OpenCiv building or wonder? */
+  private cityCanBuild(
+    burg: Burg,
+    state: State,
+    def: CivBuildingDef,
+    techs: Set<string>,
+    held: Set<string>,
+    living: LivingWorldState
+  ): boolean {
+    if (def.uniqueTo) return false;
+    if (held.has(def.id)) return false;
+    if (def.requiredTech && !techs.has(def.requiredTech)) return false;
+    if (def.requiresBuilding && !held.has(def.requiresBuilding)) return false;
+    if (def.requiresRiver && !hasFreshWater(burg.cell)) return false;
+    if (def.requiresMountain) {
+      const nearMountain = (pack.cells.c?.[burg.cell] ?? []).some(cell => getCellTerrainInfo(cell).isMountain);
+      if (!nearMountain) return false;
+    }
+    if (def.coastal) {
+      const coastal = (pack.cells.c?.[burg.cell] ?? []).some(cell => Number(pack.cells.h?.[cell] ?? 0) < SEA_LEVEL);
+      if (!coastal) return false;
+    }
+    if (def.isWonder) {
+      const owner = living.worldWonders?.[def.id];
+      if (owner && owner.burgId !== burg.i) return false;
+    }
+    if (def.nationalWonder) {
+      const alreadyBuilt = this.majorBurgsOfState(state.i, living).some(other =>
+        (living.burgs[other.i]?.civBuildings ?? []).includes(def.id)
+      );
+      if (alreadyBuilt) return false;
+    }
+    return true;
+  }
+
+  /**
+   * §4.4: the autonomous governor picks the next project. Units are deferred
+   * to Slice 5 (1UPT tacticals), so this queue holds buildings and wonders.
+   */
+  private chooseCityProduction(
+    burg: Burg,
+    bSim: BurgSimState,
+    state: State,
+    living: LivingWorldState
+  ): ProductionItem | null {
+    const sSim = living.states[state.i];
+    const techs = new Set(sSim?.researchedTechs ?? []);
+    const held = new Set(bSim.civBuildings ?? []);
+    const canBuild = (def: CivBuildingDef | undefined): def is CivBuildingDef =>
+      def !== undefined && this.cityCanBuild(burg, state, def, techs, held, living);
+
+    // 1. Emergency defence: a war or restive city without walls raises them first.
+    if ((this.stateAtWar(state) || (bSim.unrest ?? 0) > 0) && !held.has("walls")) {
+      const walls = CIV_BUILDING_BY_ID["walls"];
+      if (canBuild(walls)) return { kind: "building", id: "walls" };
+    }
+
+    // 2. Economic and science core.
+    for (const id of CITY_ECONOMY_BUILDINGS) {
+      const def = CIV_BUILDING_BY_ID[id];
+      if (canBuild(def)) return { kind: "building", id };
+    }
+
+    // 3. National and World Wonders, cheapest first, deterministic on ties.
+    const wonders = CIV_BUILDINGS.filter(def => (def.isWonder || def.nationalWonder) && canBuild(def)).sort(
+      (a, b) => (a.cost ?? 0) - (b.cost ?? 0) || a.id.localeCompare(b.id)
+    );
+    if (wonders.length) return { kind: "wonder", id: wonders[0]!.id };
+    return null;
+  }
+
+  private productionCost(item: ProductionItem): number {
+    const cost = item.kind === "unit" ? CIV_UNIT_BY_ID[item.id]?.cost : CIV_BUILDING_BY_ID[item.id]?.cost;
+    return Math.max(1, Math.floor(cost ?? 1));
+  }
+
+  /** §4.4: advance the top queue item by this tick's Production. */
+  private applyProduction(
+    burg: Burg,
+    bSim: BurgSimState,
+    state: State,
+    living: LivingWorldState,
+    cityYields: YieldValues,
+    bonusProduction: number
+  ): void {
+    bSim.productionQueue ??= [];
+    bSim.productionProgress ??= {};
+
+    let production = Math.max(0, cityYields.production) + Math.max(0, bonusProduction);
+    let guard = 0;
+    while (production > 0 && guard++ < 8) {
+      if (bSim.productionQueue.length === 0) {
+        const next = this.chooseCityProduction(burg, bSim, state, living);
+        if (!next) return;
+        bSim.productionQueue.push(next);
+      }
+
+      const item = bSim.productionQueue[0]!;
+      const key = `${item.kind}:${item.id}`;
+      const cost = this.productionCost(item);
+      const total = (bSim.productionProgress[key] ?? 0) + production;
+      if (total < cost) {
+        bSim.productionProgress[key] = total;
+        return;
+      }
+
+      production = total - cost;
+      delete bSim.productionProgress[key];
+      bSim.productionQueue.shift();
+      this.completeProductionItem(state, burg, bSim, item, living);
+    }
+  }
+
+  /** Finish a queued unit, building or wonder and reconcile every mirror. */
+  private completeProductionItem(
+    state: State,
+    burg: Burg,
+    bSim: BurgSimState,
+    item: ProductionItem,
+    living: LivingWorldState
+  ): void {
+    const year = options.map?.lore?.calendar?.year ?? 1000;
+    bSim.civBuildings ??= [];
+
+    if (item.kind === "building" || item.kind === "wonder") {
+      if (!bSim.civBuildings.includes(item.id)) bSim.civBuildings.push(item.id);
+      syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+    }
+
+    if (item.kind === "wonder") {
+      living.worldWonders ??= {};
+      living.worldWonders[item.id] = { burgId: burg.i, stateId: state.i, year };
+      this.refundRivalWonders(item.id, burg.i, living);
+      const name = CIV_BUILDING_BY_ID[item.id]?.name ?? item.id;
+      this.pushNews(living, {
+        kind: "build",
+        text: `${burg.name ?? state.name} raised the ${name}.`,
+        cell: burg.cell,
+        stateId: state.i,
+        burgId: burg.i
+      });
+      return;
+    }
+
+    if (item.kind === "building") {
+      const name = CIV_BUILDING_BY_ID[item.id]?.name ?? item.id;
+      this.pushNews(living, {
+        kind: "build",
+        text: `${burg.name ?? state.name} completed the ${name}.`,
+        cell: burg.cell,
+        stateId: state.i,
+        burgId: burg.i
+      });
+      return;
+    }
+
+    // Units join a native FMG regiment through the legacy muster until Slice 5.
+    this.muster(state.i);
+  }
+
+  /** A wonder winner refunds 1 Gold per 1 Production invested by every rival. */
+  private refundRivalWonders(wonderId: string, winnerBurgId: number, living: LivingWorldState): void {
+    const key = `wonder:${wonderId}`;
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || burg.i === winnerBurgId) continue;
+      const bSim = living.burgs[burg.i];
+      if (!bSim?.productionQueue?.length) continue;
+
+      const index = bSim.productionQueue.findIndex(item => item.kind === "wonder" && item.id === wonderId);
+      if (index === -1) continue;
+
+      const invested = Math.floor(bSim.productionProgress?.[key] ?? 0);
+      bSim.productionQueue.splice(index, 1);
+      if (bSim.productionProgress) delete bSim.productionProgress[key];
+
+      const owner = pack.states[burg.state ?? 0];
+      if (invested > 0 && owner?.i && !owner.removed) {
+        owner.treasury = Number(owner.treasury ?? 0) + invested;
+      }
+    }
+  }
+
+  /** One seasonal OpenCiv tick for every owned Major Burg. */
+  private stepCities(living: LivingWorldState): void {
+    if (!this.hasCityTerrain()) return;
+    living.worldWonders ??= {};
+    let bordersChanged = false;
+
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || !burg.state) continue;
+      const state = pack.states[burg.state];
+      if (!state?.i || state.removed) continue;
+      if (!isMajorBurg(burg)) continue;
+
+      const bSim = living.burgs[burg.i];
+      if (!bSim) continue;
+
+      // AER development can outgrow the stored citizen count; adopt the higher.
+      const derived = citizensFromPopulation(burg.population ?? 0);
+      bSim.citizens = Math.max(1, bSim.citizens ?? derived, derived);
+
+      const yields = this.updateWorkedCells(burg, bSim, state, living);
+      bSim.cityYields = yields;
+
+      const bonusProduction = this.applyFoodGrowth(burg, bSim, state, living, yields);
+      if (this.applyBorderGrowth(burg, bSim, state, living, yields)) bordersChanged = true;
+      this.applyProduction(burg, bSim, state, living, yields, bonusProduction);
+    }
+
+    if (bordersChanged && pack.cells.area) {
+      try {
+        States.collectStatistics();
+      } catch {
+        // Stripped test packs have no full statistics grid; borders still moved.
       }
     }
   }

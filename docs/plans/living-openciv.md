@@ -1,6 +1,6 @@
 # Plan — Living World 2.0: OpenCiv 4X Simulation Engine Under the Hood
 
-Updated: 2026-11-03. Status: **in progress — Slices 1–2 delivered, Slice 3 next** (replaces AER capacity/check mechanics in Living World).
+Updated: 2026-11-03. Status: **in progress — Slices 1–3 delivered, Slice 4 next** (replaces AER capacity/check mechanics in Living World).
 
 Companions: [living-world.md](living-world.md), [living-idle-guild.md](living-idle-guild.md),
 [lair-ascension.md](lair-ascension.md), [history-epochs.md](history-epochs.md),
@@ -173,6 +173,22 @@ flowchart LR
   - `Shrine` / `Temple` / `Cathedral` / `Monastery` / `Mosque` / `Pagoda` $\leftrightarrow$ `burg.temple = 1`.
   - `Lighthouse` / `Harbor` / `Seaport` $\leftrightarrow$ `burg.port` (requires `isCoastal(burg.cell)`).
   - Manual user edits to `burg.walls`, `burg.plaza`, `burg.temple`, or `burg.citadel` in `BurgsEditor` reconcile immediately into `bSim.buildings` on the next `syncWorld()`.
+
+### 4.5. Slice 3 Delivery Notes (Autonomous Major Burg Loop)
+- **Runtime**: `LivingModel.stepCities()` runs right after `syncWorld()` on every seasonal tick. It only touches owned Major Burgs (`isMajorBurg()`) and only runs when the pack carries a real terrain grid (`cells.h`, `cells.biome`, `cells.c`) — stripped fixtures and pre-terrain saves keep the legacy AER loop.
+- **Per-city state** (`living.burgs[burgId]`): `citizens`, `foodStored`, `cultureStored`, `tilesAcquired`, `workedCells`, `lockedCells`, `productionQueue`, `productionProgress`, `civBuildings`, `cityYields`, `hp`/`maxHp` placeholders.
+- **Worked cells**: centre is free (minimum 2 Food), `lockedCells` are honoured first, Phase 1 fills the Food floor (`surplus >= 1`), Phase 2 spends the rest on a ruler-weighted total yield (`cityWorkWeight`). Cells worked by another Major Burg of the same state are never stolen, and candidates are limited to `MAX_WORK_DISTANCE = 3` hops of owned, workable land/coast.
+- **Food**: `15 + 8 × citizens` bucket, 2 Food per citizen, Aqueduct (+40%) and Hospital (+25%) carryover, `Fertility Rites` / `Swords into Plowshares` / `Temple of Artemis` multipliers, Empire Happiness gating (`1.0` / `0.25` / `0`), starvation at a negative bucket, and Settler food→Production conversion.
+- **Borders**: `borderCultureNeeded()` plus `borderInfluenceScore()` claim the lowest-score unowned cell within `MAX_ACQUIRE_DISTANCE = 5` hops, tagging it into the burg's province. Claims are written directly (`cells.state`/`cells.province`) and `States.collectStatistics()` runs once per tick after any border move, instead of the heavy per-cell `States.setCells()`.
+- **Free Burg encounter**: a claimed cell holding a Free Burg checks `sharesKinshipOrFaith()`; kin are annexed peacefully (`unrest = 0`), foreigners are taken by force with occupation unrest.
+- **Production**: governor priority is (1) `Walls` when at war or restive, (2) the economy/science core (`monument → granary → library → market → shrine → workshop → aqueduct → university → bank → public_school → factory`), (3) the cheapest available National/World Wonder. `applyProduction()` banks production per item and spills overflow into the next project.
+- **World Wonders**: `living.worldWonders[wonderId]` records `{ burgId, stateId, year }`; every rival with the wonder queued drops it and receives a `1 Gold per 1 invested Production` refund into `state.treasury`.
+- **Flag sync**: `syncCivBuildingsFromFlags()` (flags win, families added/removed as a unit) and `syncCivFlagsFromBuildings()` (completed buildings raise flags) keep `palace`, `walls`→`castle`→`arsenal`/`military_base`, `market`/`bank`/`stock_exchange`/`bazaar`, `shrine`→`temple`→`cathedral`/`monastery`/`mosque`/`pagoda`, and `harbor`/`lighthouse`/`seaport` mirrored on `burg.capital`/`walls`/`citadel`/`plaza`/`temple`/`port`.
+- **Transitional seams (resolved in later slices)**:
+  - OpenCiv buildings live in `bSim.civBuildings` while the legacy AER `bSim.buildings` list keeps feeding the seasonal capacity ledger. Slice 4 retires the AER ledger.
+  - The governor queues buildings and wonders only; `kind: "unit"` items are recognised and completed through the legacy `muster()` until Slice 5 introduces `UnitSimState`.
+  - Major Free City-States (`burg.state === 0`, tier 3+) are still skipped because production needs an owning state.
+- **Tests**: `living-generator.test.ts` adds the *OpenCiv slice 3* block covering population↔citizen mapping, growth thresholds, influence scoring, worked-cell assignment, growth/starvation/carryover, happiness gating, border claim + kinship/forced Free Burg annexation, building completion + flag sync, governor project selection, the World Wonder race/refund, Settler food→Production, bidirectional flag sync, determinism and lazy initialization on old saves.
 
 ---
 
@@ -393,7 +409,9 @@ Rather than spawning generic nameless barbarian huts, OpenCiv's barbarian system
 
 ## 9. Updated Data Model (`src/types/living.ts`)
 
-All state remains inside `pack.history.living` (Record 53 of `.map` files) with lazy initialization on old saves:
+All state remains inside `pack.history.living` (Record 53 of `.map` files) with lazy initialization on old saves.
+`LivingWorldState` also carries `worldWonders: Record<string, { burgId; stateId; year }>` (Slice 3) and
+`religions?: Record<number, ReligionBeliefState>` (Slice 6):
 
 ```ts
 export interface YieldValues {
@@ -427,7 +445,9 @@ export interface BurgSimState {
   nextBorderCell?: number | null;
   workedCells: number[];
   lockedCells?: number[];
-  buildings: string[];               // constructed OpenCiv building & wonder IDs
+  buildings: string[];               // legacy AER (Conquest) building ids, retired in Slice 4
+  civBuildings?: string[];           // constructed OpenCiv building & wonder IDs (Slice 3)
+  cityYields?: YieldValues;          // cached OpenCiv yields for the Living inspector
   productionQueue: ProductionItem[];
   productionProgress: Record<string, number>;
   hp: number;                        // 1..325 City HP
@@ -500,7 +520,7 @@ Each slice is independently shippable, keeps `npm run test` green, and preserves
 | :---: | :--- | :--- | :--- |
 | **Slice 1** ✅ | **OpenCiv Data Catalogs & Adaptive Theme Profiles** | `src/data/living-civ-techs.ts`<br>`src/data/living-civ-buildings.ts`<br>`src/data/living-civ-units.ts`<br>`src/data/living-civ-promotions.ts`<br>`src/data/living-civ-beliefs.ts`<br>`src/data/living-civ-improvements.ts`<br>`src/data/living-civ-themes.ts`<br>`src/types/living.ts` | **Delivered** (commit `9f2d2a71`). Generated typed catalogs from OpenCiv YAML: 80 techs / 8 eras, 94 buildings, 52 base + 12 cultural units, 78 promotions, 60 beliefs, 13 religions, 14 improvements, 27 resources, 83 tiles. Fantasy caps at `renaissance`, Historical/Astral at `information`. `living-civ-catalogs.test.ts` verifies integrity and prerequisite DAGs. |
 | **Slice 2** ✅ | **Voronoi Cell Yields, Resources, Improvements & Minor Burgs** | `src/model/physical/living-generator.ts`<br>`src/types/living.ts` | **Delivered.** `getCellYields()`, `getCellYieldSources()`, `getCellTerrainInfo()`, `getCellResource()` and `classifyGood()` cover terrain/elevation/water/river yields and Bonus/Strategic/Luxury goods with tech-gated strategic reveals. `living.cells` drives improvement yields and pillage state; `isMajorBurg()`/`isMinorBurg()` split capitals from villages. Minor Burgs add flag-based village yields, auto-connect their underlying good, and shut down when pillaged or troubled. Seven focused tests added. |
-| **Slice 3** | **Autonomous Major Burg Loop (Worked Cells, Food, Culture Borders, Production & Wonders)** | `src/model/physical/living-generator.ts` | Implement `updateWorkedCells()`, `applyFoodGrowth()` ($15 + 8P$, Aqueduct/Hospital carryover, Settler food-to-prod), `applyBorderGrowth()` ($\lfloor 20 + (10N)^{1.1} \rfloor$ + `getInfluenceCost` claiming `cells.state === 0` and triggering Free Burg kinship checks), `applyProduction()` queue, World Wonder 1:1 Gold refunds, and bidirectional `burg.walls`/`plaza`/`temple`/`citadel`/`port` sync. |
+| **Slice 3** ✅ | **Autonomous Major Burg Loop (Worked Cells, Food, Culture Borders, Production & Wonders)** | `src/model/physical/living-generator.ts`<br>`src/types/living.ts` | **Delivered.** `stepCities()` runs `updateWorkedCells()`, `applyFoodGrowth()` ($15 + 8P$ bucket, Aqueduct/Hospital carryover, Settler food to Production), `applyBorderGrowth()` ($\lfloor 20 + (10N)^{1.1} \rfloor$ with `borderInfluenceScore()` claiming `cells.state === 0` and Free Burg kinship checks), `applyProduction()` with governor queue selection, World Wonder 1:1 Gold refunds via `living.worldWonders`, and bidirectional `burg.capital`/`walls`/`citadel`/`plaza`/`temple`/`port` ↔ `civBuildings` sync. See §4.5 for delivery notes and transitional seams. |
 | **Slice 4** | **Science, Tech Tree, Treasury, Gold Hurry & Empire Happiness** | `src/model/physical/living-generator.ts` | Replace AER `recomputeStateCapacity()` with OpenCiv empire rollup: Science $\rightarrow$ `ResearchPath` tech progression (unlocking units, buildings, tile bonuses, `Engineering` bridges, strategic goods); Gold $\rightarrow$ `state.treasury` (upkeep for $>3$ units, building maintenance, `GoldPurchase` hurry, `settleDebt` disband); Happiness $\rightarrow$ `9 + 4×Luxuries + Buildings - (3×Cities + Citizens + Unrest)` driving `0.25×`/`0×` growth, `-33%` combat penalty, and `unravel` rebellions. |
 | **Slice 5** | **1UPT Tactical Regiments, Builders, Settlers, Combat & City Sieges** | `src/model/physical/living-generator.ts`<br>`src/model/political/military-generator.ts` | Implement `1 Regiment = 1 OpenCiv Unit` (`100 HP`, 1UPT military/utility stacking, road `1/3` movement, fortification-only healing `+10/+20/+25 HP`, `Combat.getDamage()` exponential formula, ranged bombardment with elevation/forest LoS, `CityCombat` `200+ HP` & range-2 City Strikes, XP/Promotions, Gold Upgrades, autonomous `Builder` tile/road construction, and `Settler` new-burg founding). |
 | **Slice 6** | **Dynamic Religion Pressure, Diplomacy Timers, HUD Inspector & Grand Guild Wiring** | `src/model/physical/living-generator.ts`<br>`src/controllers/living-hud.ts`<br>`src/renderers/draw-living-overlay.ts` | Implement Pantheons ($10 + 5N$ Faith), Great Prophet spawns, Founder/Follower/Enhancer beliefs, 10-hop passive religious pressure (`6`/`12` pressure, `60`/citizen) dynamically updating `pack.cells.religion`, Missionaries/Inquisitors, closed borders with `expelTrespassers()`, 10-turn war/peace locks, Relic OpenCiv stat bonuses, and the updated **Living Inspector** showing yields, tech progress, happiness breakdown, city queues, and unit promotions. |

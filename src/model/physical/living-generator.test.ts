@@ -4,30 +4,39 @@ import { valueModifier } from "@/conquest/engine/game/saves";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
+import type { Burg } from "@/model/political/burgs-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { HistoricalFigure } from "@/types/history";
 import type { HistoricalRelic } from "@/types/living";
 import { createRng } from "@/utils/rng";
 import {
+  borderCultureNeeded,
+  borderInfluenceScore,
+  citizensFromPopulation,
   classifyGood,
   figureBias,
   figureCheckRoll,
   figureLevel,
+  foodNeededForGrowth,
   getCellResource,
   getCellTerrainInfo,
   getCellYieldSources,
   getCellYields,
   guildTierForRenown,
+  happinessGrowthFactor,
   isMajorBurg,
   isMinorBurg,
   Living,
   maxHeroesForTier,
   maxPartyForTier,
+  populationFromCitizens,
   regionTierFromPop,
   settlementTierFromPop,
   syncBurgBuildingsFromFlags,
-  syncBurgFlagsFromBuildings
+  syncBurgFlagsFromBuildings,
+  syncCivBuildingsFromFlags,
+  syncCivFlagsFromBuildings
 } from "./living-generator";
 
 function makeGuildFigure(i: number, overrides: Partial<HistoricalFigure> = {}): HistoricalFigure {
@@ -2242,7 +2251,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const living = Living.init();
       living.cells = {};
 
-      living.cells[1] = { improvement: "farm" };
+      (living.cells ??= {})[1] = { improvement: "farm" };
       expect(getCellYields(1, 0, living).food).toBe(3);
 
       pack.cells.r[1] = 1;
@@ -2317,6 +2326,460 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       const living = Living.init();
       expect(living.cells).toBeDefined();
+    });
+  });
+
+  describe("OpenCiv slice 3: autonomous major burg city loop", () => {
+    const GRID = 4;
+
+    const makeGood = (i: number, name: string, tags: string[], demandCoverage: Good["demandCoverage"]): Good => ({
+      i,
+      name,
+      tags,
+      demandCoverage,
+      value: 1,
+      unit: "unit",
+      icon: "",
+      color: "#000000"
+    });
+
+    /** A 4x4 Voronoi grid: state 1 holds six cells around its capital, state 2 two cells. */
+    function setupCityWorld(): void {
+      const count = GRID * GRID;
+      const indices = Array.from({ length: count }, (_, index) => index);
+      const neighbors = indices.map(index => {
+        const x = index % GRID;
+        const y = Math.floor(index / GRID);
+        const out: number[] = [];
+        if (x > 0) out.push(index - 1);
+        if (x < GRID - 1) out.push(index + 1);
+        if (y > 0) out.push(index - GRID);
+        if (y < GRID - 1) out.push(index + GRID);
+        return out;
+      });
+
+      const state = new Uint16Array(count);
+      const province = new Uint16Array(count);
+      for (const cell of [1, 4, 5, 6, 9, 10]) {
+        state[cell] = 1;
+        province[cell] = 1;
+      }
+      for (const cell of [7, 11]) {
+        state[cell] = 2;
+        province[cell] = 2;
+      }
+
+      const burgCells = new Uint16Array(count);
+      burgCells[5] = 1;
+      burgCells[11] = 2;
+      burgCells[2] = 3;
+      burgCells[8] = 4;
+      burgCells[4] = 5;
+
+      const culture = new Uint16Array(count);
+      culture[2] = 1;
+      culture[8] = 3;
+      for (const cell of [1, 4, 5, 6, 9, 10]) culture[cell] = 1;
+      for (const cell of [7, 11]) culture[cell] = 2;
+
+      const religion = new Uint16Array(count);
+      for (const cell of [1, 4, 5, 6, 9, 10]) religion[cell] = 1;
+      for (const cell of [7, 11]) religion[cell] = 2;
+      religion[2] = 1;
+      religion[8] = 3;
+
+      const pop = new Array<number>(count).fill(0);
+      pop[2] = 20;
+      pop[8] = 15;
+
+      globalThis.pack = {
+        cells: {
+          i: indices,
+          state,
+          province,
+          h: new Uint8Array(count).fill(25),
+          biome: new Uint8Array(count).fill(4),
+          harbor: new Uint8Array(count),
+          f: new Uint16Array(count),
+          r: new Uint16Array(count),
+          good: new Uint16Array(count),
+          burg: burgCells,
+          culture,
+          religion,
+          pop,
+          area: new Array<number>(count).fill(1),
+          c: neighbors,
+          p: indices.map(index => [index * 10, index * 10]),
+          routes: new Uint16Array(count)
+        },
+        features: [],
+        goods: [makeGood(0, "None", [], {}), makeGood(1, "Wine", ["luxury"], { luxury: 1 })],
+        cultures: [
+          { i: 0, name: "Wildlands", base: 0, center: 0 },
+          { i: 1, name: "Aeloran", base: 0, center: 5, alignment: "good" },
+          { i: 2, name: "Kazad", base: 0, center: 11, alignment: "lawful" },
+          { i: 3, name: "Steppe", base: 0, center: 15, alignment: "chaotic" }
+        ],
+        religions: [
+          { i: 0, name: "No religion" },
+          { i: 1, name: "Solar Church" },
+          { i: 2, name: "Stone Ancestors" },
+          { i: 3, name: "Sky Spirits" }
+        ],
+        burgs: [
+          { i: 0 },
+          {
+            i: 1,
+            name: "Aelor",
+            cell: 5,
+            x: 50,
+            y: 50,
+            state: 1,
+            culture: 1,
+            population: 18,
+            capital: 1,
+            walls: 0,
+            plaza: 0,
+            temple: 0,
+            citadel: 0
+          },
+          {
+            i: 2,
+            name: "Khazad",
+            cell: 11,
+            x: 110,
+            y: 110,
+            state: 2,
+            culture: 2,
+            population: 6,
+            capital: 1,
+            walls: 0,
+            plaza: 0,
+            temple: 0,
+            citadel: 0
+          },
+          {
+            i: 3,
+            name: "Kinborough",
+            cell: 2,
+            x: 20,
+            y: 20,
+            state: 0,
+            culture: 1,
+            population: 2.5,
+            capital: 0,
+            walls: 0,
+            plaza: 0,
+            temple: 0,
+            citadel: 0
+          },
+          {
+            i: 4,
+            name: "Outcast Hold",
+            cell: 8,
+            x: 80,
+            y: 80,
+            state: 0,
+            culture: 3,
+            population: 3,
+            capital: 0,
+            walls: 0,
+            plaza: 0,
+            temple: 0,
+            citadel: 0
+          },
+          {
+            i: 5,
+            name: "Millbrook",
+            cell: 4,
+            x: 40,
+            y: 40,
+            state: 1,
+            culture: 1,
+            population: 1.5,
+            capital: 0,
+            walls: 0,
+            plaza: 0,
+            temple: 0,
+            citadel: 0
+          }
+        ],
+        states: [
+          { i: 0, name: "Neutrals", treasury: 0, diplomacy: [] },
+          {
+            i: 1,
+            name: "Aeloria",
+            culture: 1,
+            capital: 1,
+            center: 5,
+            treasury: 0,
+            diplomacy: [],
+            military: []
+          },
+          {
+            i: 2,
+            name: "Khazadia",
+            culture: 2,
+            capital: 2,
+            center: 11,
+            treasury: 0,
+            diplomacy: [],
+            military: []
+          }
+        ],
+        provinces: [
+          { i: 0 },
+          { i: 1, state: 1, burg: 1, center: 5 },
+          { i: 2, state: 2, burg: 2, center: 11 }
+        ],
+        history: {
+          events: [],
+          realms: [],
+          eras: [{ name: "Age of Dawn", from: 500, to: 1000 }],
+          figures: []
+        }
+      } as unknown as typeof pack;
+    }
+
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    it("maps population to citizens and back with OpenCiv thresholds", () => {
+      expect(citizensFromPopulation(18)).toBe(6);
+      expect(citizensFromPopulation(0)).toBe(1);
+      expect(populationFromCitizens(6)).toBe(18);
+      expect(populationFromCitizens(1)).toBe(0.5);
+      expect(foodNeededForGrowth(6)).toBe(63);
+      expect(borderCultureNeeded(0)).toBe(20);
+      expect(borderCultureNeeded(1)).toBe(32);
+      expect(borderCultureNeeded(1, 0.75)).toBe(24);
+      expect(borderCultureNeeded(0, 0.75, 1.15)).toBe(13);
+      expect(happinessGrowthFactor(0)).toBe(1);
+      expect(happinessGrowthFactor(-5)).toBe(0.25);
+      expect(happinessGrowthFactor(-10)).toBe(0);
+
+      // Influence: closer cells win, a visible luxury good outweighs two extra hops.
+      setupCityWorld();
+      pack.cells.good[2] = 1;
+      expect(borderInfluenceScore(1, 1, 1)).toBeLessThan(borderInfluenceScore(3, 3, 1));
+      expect(borderInfluenceScore(2, 3, 1)).toBeLessThan(borderInfluenceScore(1, 1, 1));
+    });
+
+    it("works the centre for free plus citizen cells, never stealing another city's cells", () => {
+      const living = Living.init();
+      Living.tick(1);
+
+      const b1 = living.burgs[1];
+      expect(b1.citizens).toBe(6);
+      expect(b1.workedCells?.length).toBe(5);
+      expect(b1.workedCells).not.toContain(5);
+      for (const cell of b1.workedCells ?? []) expect(pack.cells.state[cell]).toBe(1);
+      // Millbrook (a minor burg) is the best food cell and is worked first.
+      expect(b1.workedCells).toContain(4);
+      // Palace adds +3 Production and +1 Culture to the capital.
+      expect(b1.cityYields).toMatchObject({ food: 13, production: 3, culture: 1 });
+
+      const b2 = living.burgs[2];
+      expect(b2.citizens).toBe(3);
+      expect(b2.workedCells?.sort()).toEqual([7]);
+      for (const cell of b2.workedCells ?? []) expect(b1.workedCells ?? []).not.toContain(cell);
+    });
+
+    it("grows a citizen when the food bucket fills and grows satellite villages", () => {
+      const living = Living.init();
+      const b1 = living.burgs[1];
+      b1.citizens = 6;
+      b1.foodStored = 62;
+
+      Living.tick(1);
+
+      expect(b1.citizens).toBe(7);
+      expect(pack.burgs[1].population).toBe(24.5);
+      expect(pack.burgs[5].population).toBe(1.6);
+    });
+
+    it("keeps 40% of the bucket with an Aqueduct and starves without food", () => {
+      const living = Living.init();
+      const b1 = living.burgs[1];
+      b1.citizens = 6;
+      b1.civBuildings = ["palace", "aqueduct"];
+      b1.foodStored = 63;
+
+      Living.tick(1);
+
+      expect(b1.citizens).toBe(7);
+      expect(b1.foodStored).toBeCloseTo(26.2, 5);
+
+      b1.foodStored = -1;
+      Living.tick(1);
+
+      expect(b1.citizens).toBe(6);
+      expect(b1.foodStored).toBe(0);
+    });
+
+    it("stops growth entirely while the empire is very unhappy", () => {
+      const living = Living.init();
+      living.states[1].happiness = -10;
+      const b1 = living.burgs[1];
+      b1.foodStored = 62;
+
+      Living.tick(1);
+
+      expect(b1.citizens).toBe(6);
+      expect(b1.foodStored).toBe(62);
+    });
+
+    it("claims the best unowned border cell and peacefully annexes a kin free burg", () => {
+      const living = Living.init();
+      pack.cells.good[2] = 1;
+      const b1 = living.burgs[1];
+      b1.cultureStored = 20;
+
+      Living.tick(1);
+
+      expect(pack.cells.state[2]).toBe(1);
+      expect(pack.cells.province[2]).toBe(1);
+      expect(pack.burgs[3].state).toBe(1);
+      expect(living.burgs[3].unrest).toBe(0);
+      expect(b1.tilesAcquired).toBe(1);
+      // 20 banked + 1 Palace Culture − 20 needed, clamped at 1.
+      expect(b1.cultureStored).toBeCloseTo(1, 5);
+    });
+
+    it("takes a foreign free burg by force and raises occupation unrest", () => {
+      const living = Living.init();
+      pack.cells.good[8] = 1;
+      const b1 = living.burgs[1];
+      b1.cultureStored = 20;
+
+      Living.tick(1);
+
+      expect(pack.cells.state[8]).toBe(1);
+      expect(pack.burgs[4].state).toBe(1);
+      expect(living.burgs[4].unrest).toBeGreaterThan(0);
+      expect(living.burgs[4].conqueredBy).toBe(1);
+      expect(living.recentNews.some(item => item.kind === "conquest" && item.burgId === 4)).toBe(true);
+    });
+
+    it("completes a queued building and raises the matching burg flag", () => {
+      const living = Living.init();
+      const b1 = living.burgs[1];
+      (living.cells ??= {})[1] = { improvement: "mine" };
+      b1.productionQueue = [{ kind: "building", id: "walls" }];
+      b1.productionProgress = { "building:walls": 74 };
+
+      Living.tick(1);
+
+      expect(b1.civBuildings).toContain("walls");
+      expect(b1.productionQueue).not.toContainEqual({ kind: "building", id: "walls" });
+      expect(pack.burgs[1].walls).toBe(1);
+      expect(living.recentNews.some(item => item.kind === "build" && item.burgId === 1)).toBe(true);
+    });
+
+    it("lets the governor pick the next project when the queue is empty", () => {
+      const living = Living.init();
+      (living.cells ??= {})[1] = { improvement: "mine" };
+
+      Living.tick(1);
+
+      expect(living.burgs[1].productionQueue?.[0]).toEqual({ kind: "building", id: "monument" });
+    });
+
+    it("races a World Wonder and refunds every rival's invested Production", () => {
+      const living = Living.init();
+      living.states[1].researchedTechs = ["writing"];
+      living.states[2].researchedTechs = ["writing"];
+      (living.cells ??= {})[1] = { improvement: "mine" };
+
+      const b1 = living.burgs[1];
+      b1.productionQueue = [{ kind: "wonder", id: "great_library" }];
+      b1.productionProgress = { "wonder:great_library": 184 };
+
+      const b2 = living.burgs[2];
+      b2.productionQueue = [{ kind: "wonder", id: "great_library" }];
+      b2.productionProgress = { "wonder:great_library": 40 };
+
+      Living.tick(1);
+
+      expect(living.worldWonders?.great_library).toMatchObject({ burgId: 1, stateId: 1 });
+      expect(b1.civBuildings).toContain("great_library");
+      expect(b2.productionQueue?.some(item => item.id === "great_library")).toBe(false);
+      expect(b2.productionProgress?.["wonder:great_library"]).toBeUndefined();
+      expect(pack.states[2].treasury).toBe(40);
+    });
+
+    it("feeds surplus food into Production while a Settler is queued", () => {
+      const living = Living.init();
+      const b1 = living.burgs[1];
+      b1.foodStored = 0;
+      b1.productionQueue = [{ kind: "unit", id: "settler" }];
+      b1.productionProgress = { "unit:settler": 0 };
+
+      Living.tick(1);
+
+      expect(b1.civBuildings).not.toContain("settler");
+      // Growth is locked: the surplus Food becomes Production, not food storage.
+      expect(b1.foodStored).toBe(0);
+      // 3 Palace Production + 1 Food-to-Production.
+      expect(b1.productionProgress?.["unit:settler"]).toBe(4);
+    });
+
+    it("keeps OpenCiv building ids and native burg flags in sync both ways", () => {
+      const burg = {
+        i: 9,
+        cell: 0,
+        x: 0,
+        y: 0,
+        walls: 1,
+        plaza: 1,
+        temple: 0,
+        citadel: 0,
+        capital: 0
+      } as unknown as Burg;
+
+      const ids = syncCivBuildingsFromFlags(burg, []);
+      expect(ids).toEqual(expect.arrayContaining(["walls", "market"]));
+      expect(ids).not.toContain("castle");
+      expect(ids).not.toContain("palace");
+
+      syncCivFlagsFromBuildings(burg, ["castle", "arsenal", "temple", "harbor", "palace"]);
+      expect(burg.walls).toBe(3);
+      expect(burg.citadel).toBe(1);
+      expect(burg.temple).toBe(1);
+      expect(burg.port).toBe(1);
+      expect(burg.capital).toBe(1);
+
+      const demolished = syncCivBuildingsFromFlags({ ...burg, walls: 0, citadel: 0 }, ["walls", "castle", "arsenal"]);
+      expect(demolished).not.toContain("walls");
+      expect(demolished).not.toContain("castle");
+      expect(demolished).not.toContain("arsenal");
+    });
+
+    it("is deterministic across identical seeds and starting packs", () => {
+      const run = () => {
+        setupCityWorld();
+        const living = Living.init({ seed: "slice-3-seed" });
+        (living.cells ??= {})[1] = { improvement: "farm" };
+        living.states[1].researchedTechs = ["writing"];
+        Living.tick(2);
+        return {
+          worked: [...(living.burgs[1].workedCells ?? [])],
+          yields: living.burgs[1].cityYields,
+          queue: living.burgs[1].productionQueue
+        };
+      };
+
+      expect(run()).toEqual(run());
+    });
+
+    it("lazily initializes worldWonders and OpenCiv city fields on old saves", () => {
+      delete pack.history.living;
+
+      const living = Living.init();
+      expect(living.worldWonders).toEqual({});
+      expect(living.burgs[1].civBuildings).toEqual(expect.arrayContaining(["palace"]));
+      expect(living.burgs[1].isMajor).toBe(true);
     });
   });
 });

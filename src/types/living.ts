@@ -224,6 +224,14 @@ export interface BurgSimState {
   lockedCells?: number[];
   productionQueue?: ProductionItem[];
   productionProgress?: Record<string, number>;
+  /**
+   * OpenCiv building & wonder ids produced by the autonomous city loop.
+   * Kept apart from the legacy AER `buildings` list so the seasonal AER
+   * capacity math keeps working until Slice 4 retires it.
+   */
+  civBuildings?: string[];
+  /** last computed OpenCiv city yields, cached for the Living inspector */
+  cityYields?: YieldValues;
   hp?: number;
   maxHp?: number;
   hasStruckThisTurn?: boolean;
@@ -457,6 +465,8 @@ export interface LivingWorldState {
   guild?: GuildState;
   /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
   worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
+  /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
+  religions?: Record<number, ReligionBeliefState>;
 }
 
 // ---------------------------------------------------------------------------
