@@ -195,7 +195,8 @@
 .icon-map-signs:before {content:'\f277';} /* '' */
 .icon-map-o:before {content:'\f278';} /* '' */
 .icon-map:before {content:'\f279';} /* '' */
-.icon-fort-awesome:before {content:'\f286';} /* '' */
+.icon-fort-awesome:before,
+.icon-castle:before {content:'\f286';} /* '' */
 .icon-percent:before {content:'\f295';} /* '' */
 .icon-shield-alt:before {content:'\f3ed';} /* '' */
 .icon-chess-bishop:before {content:'\f43a';} /* '' */

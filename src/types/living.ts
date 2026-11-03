@@ -142,6 +142,8 @@ export interface ProvinceLair {
   cell: number;
   burgId?: number;
   markerId?: number;
+  provinceId?: number;
+  maritime?: boolean;
   raidThreshold: number;
   raidUnits: ArmyUnit[];
   defenders: ArmyUnit[];
@@ -420,4 +422,6 @@ export interface LivingWorldState {
   eschaton?: number;
   /** lazily initialized guild wallet, mission list and on-map popups */
   guild?: GuildState;
+  activeLairs?: Record<string, ProvinceLair>;
+  activeTroubles?: Record<string, ProvinceTrouble>;
 }

@@ -530,7 +530,7 @@ export function createProvinceLair(
   return {
     id: def.id,
     name: def.name,
-    level: Math.max(4, Math.min(10, Math.round(level))),
+    level: Math.max(3, Math.min(10, Math.round(level))),
     theme: theme ?? def.defaultTheme,
     cell,
     burgId,

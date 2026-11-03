@@ -887,7 +887,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(living.provinces[1].trouble).toBeNull();
     expect(living.provinces[1].lair).toBe(lair);
     expect(lair!.id).toBe("ancient_evil");
-    expect(lair!.level).toBe(5);
+    expect(lair!.level).toBe(3); // ceil(5 / 2) = 3, clamped to min 3
+
+    // Test higher trouble level (10 -> ceil(10 / 2) = 5)
+    Living.smiteLair(1);
+    Living.spawnTrouble(1, "angry_dead", "ruin", 10);
+    const lair10 = Living.metastasizeTroubleToLair(1);
+    expect(lair10!.level).toBe(5);
   });
 
   it("launches seasonal lair raid against a settlement", () => {
