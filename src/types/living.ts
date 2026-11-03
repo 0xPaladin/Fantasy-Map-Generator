@@ -466,6 +466,8 @@ export interface LivingWorldState {
   guild?: GuildState;
   /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
   worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
+  /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5 */
+  units?: Record<string, UnitSimState>;
   /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
   religions?: Record<number, ReligionBeliefState>;
 }

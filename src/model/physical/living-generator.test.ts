@@ -39,11 +39,20 @@ import {
   syncCivBuildingsFromFlags,
   syncCivFlagsFromBuildings,
   activeCivThemeId,
+  bestUnitForCategory,
+  combatDamage,
   happinessCombatMultiplier,
+  hasStackingConflict,
   hurryGoldCost,
   isTechSelectable,
+  terrainDefenseMultiplier,
+  rangedLineOfSightBlocked,
+  unitIsRanged,
+  unitMovementCost,
+  xpForLevel,
   BASE_EMPIRE_HAPPINESS,
   LUXURY_HAPPINESS,
+  UNIT_MAX_HP,
   UNIT_UPKEEP_FREE
 } from "./living-generator";
 
@@ -2890,7 +2899,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     it("unlocks buildings through discovered technologies", () => {
       const living = Living.init();
-      (living.cells ??= {})[1] = { improvement: "mine" };
+      // Every owned cell is already improved, so no Builder is queued either.
+      living.cells = {};
+      for (const cell of [1, 4, 5, 6, 9, 10]) living.cells[cell] = { improvement: "farm" };
       const b1 = living.burgs[1];
       b1.civBuildings = ["palace", "monument"];
       b1.productionQueue = [];
@@ -3021,6 +3032,289 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(sSim.researchedProgress).toEqual({});
       expect(sSim.freeTechs).toBe(0);
       expect(sSim.yieldsPerTurn).toBeDefined();
+    });
+  });
+
+  describe("OpenCiv slice 5: 1UPT tactical units", () => {
+    const makeRegiment = (i: number, cell: number, state = 1) => ({
+      i,
+      name: `Regiment ${i}`,
+      a: 100,
+      cell,
+      x: 0,
+      y: 0,
+      bx: 0,
+      by: 0,
+      u: { spear: 100 },
+      units: [{ type: "spear", count: 100, exp: 0 }],
+      n: 0,
+      icon: "⚔️",
+      state
+    });
+
+    const unitKey = (stateId: number, regimentId: number) => `${stateId}-${regimentId}`;
+
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    it("computes OpenCiv combat damage and XP thresholds", () => {
+      expect(combatDamage(10, 10, UNIT_MAX_HP, 0.5)).toBe(30);
+      expect(combatDamage(20, 10, UNIT_MAX_HP, 0)).toBe(41);
+      expect(combatDamage(10, 20, UNIT_MAX_HP, 0)).toBe(13);
+      expect(combatDamage(10, 10, 50, 0)).toBe(18);
+      expect(combatDamage(1, 1, UNIT_MAX_HP, 0)).toBe(24);
+
+      expect(xpForLevel(1)).toBe(10);
+      expect(xpForLevel(2)).toBe(30);
+      expect(xpForLevel(3)).toBe(60);
+    });
+
+    it("applies terrain defense and movement costs", () => {
+      expect(terrainDefenseMultiplier(1)).toBe(1);
+      pack.cells.h[3] = 55;
+      expect(terrainDefenseMultiplier(3)).toBe(1.25);
+      pack.cells.biome[2] = 6;
+      expect(terrainDefenseMultiplier(2)).toBe(1.25);
+      pack.cells.biome[2] = 4;
+
+      const unit = {
+        unitTypeId: "warrior",
+        domain: "land" as const,
+        combatClass: "melee" as const,
+        isUtility: false,
+        hp: 100,
+        movement: 2,
+        maxMovement: 2,
+        combatStrength: 8,
+        rangedStrength: 0,
+        range: 0,
+        xp: 0,
+        level: 1,
+        promotions: [],
+        fortified: false,
+        hasAttacked: false
+      };
+
+      expect(unitMovementCost(1, 2, unit)).toBe(1);
+      pack.cells.h[1] = 55;
+      pack.cells.h[2] = 55;
+      expect(unitMovementCost(1, 2, unit)).toBe(2);
+      pack.cells.h[1] = 25;
+      pack.cells.h[2] = 25;
+
+      (pack.cells as unknown as { routes: Record<number, Record<number, number>> }).routes = { 1: { 2: 7 } };
+      expect(unitMovementCost(1, 2, unit)).toBeCloseTo(1 / 3, 5);
+
+      (pack.cells as unknown as { routes: Uint16Array }).routes = new Uint16Array(16);
+      pack.cells.r[2] = 1;
+      expect(unitMovementCost(1, 2, unit)).toBe(2); // drains all remaining movement
+
+      pack.cells.h[2] = 75;
+      expect(unitMovementCost(1, 2, unit)).toBe(Number.POSITIVE_INFINITY);
+      pack.cells.h[2] = 25;
+
+      const fleet = { ...unit, domain: "sea" as const };
+      expect(unitMovementCost(1, 2, fleet)).toBe(Number.POSITIVE_INFINITY);
+    });
+
+    it("enforces 1UPT military/utility stacking", () => {
+      const occupied = [{ stateId: 1, isUtility: false, key: "1-0" }];
+      expect(hasStackingConflict(occupied, 1, false, "1-1")).toBe(true);
+      expect(hasStackingConflict(occupied, 1, true, "1-1")).toBe(false);
+      expect(hasStackingConflict(occupied, 2, true, "2-1")).toBe(true);
+      expect(hasStackingConflict(occupied, 1, false, "1-0")).toBe(false);
+    });
+
+    it("maps native categories onto the strongest unlocked OpenCiv unit", () => {
+      expect(bestUnitForCategory("melee", new Set())).toMatchObject({ id: "warrior", combatStrength: 8 });
+      expect(bestUnitForCategory("melee", new Set(["bronze_working"]))).toMatchObject({ id: "spearman" });
+      expect(bestUnitForCategory("melee", new Set(["bronze_working", "iron_working"]))).toMatchObject({
+        id: "swordsman"
+      });
+      expect(bestUnitForCategory("ranged", new Set(["archery"]))).toMatchObject({ id: "archer", range: 2 });
+      expect(bestUnitForCategory("cavalry", new Set(["horseback_riding"]))).toMatchObject({ id: "horseman" });
+      expect(unitIsRanged({ range: 2, rangedStrength: 7 } as never)).toBe(true);
+    });
+
+    it("creates a 100 HP unit sim for every native regiment and mirrors reg.a", () => {
+      pack.states[1].military = [makeRegiment(0, 5)];
+      const living = Living.init();
+
+      const unit = living.units?.[unitKey(1, 0)];
+      expect(unit).toMatchObject({ unitTypeId: "warrior", hp: UNIT_MAX_HP, domain: "land", isUtility: false });
+      expect(pack.states[1].military?.[0].a).toBe(UNIT_MAX_HP);
+      expect(pack.states[1].military?.[0].u).toEqual({ warrior: UNIT_MAX_HP });
+    });
+
+    it("fights adjacent enemy regiments, awards XP and removes the dead", () => {
+      Living.forceWar(1, 2);
+      const living = Living.init();
+      const attackerReg = Living.recruitUnit(1, 1, "swordsman")!;
+      const defenderReg = Living.recruitUnit(2, 2, "warrior")!;
+
+      defenderReg.cell = 6;
+      const attacker = living.units?.[unitKey(1, attackerReg.i)]!;
+      const defender = living.units?.[unitKey(2, defenderReg.i)]!;
+      const startHp = defender.hp;
+
+      Living.tick(1);
+
+      expect(defender.hp).toBeLessThan(startHp);
+      expect(attacker.xp).toBeGreaterThan(0);
+
+      Living.tick(4);
+
+      // The melee winner survives and the defeated regiment leaves the field.
+      expect(living.units?.[unitKey(2, defenderReg.i)]).toBeUndefined();
+      expect(living.units?.[unitKey(1, attackerReg.i)]?.hp).toBeGreaterThan(0);
+    });
+
+    it("heals only while fortified, faster inside friendly cities", () => {
+      pack.states[1].military = [makeRegiment(0, 5)];
+      const living = Living.init();
+      const unit = living.units?.[unitKey(1, 0)]!;
+      unit.hp = 50;
+
+      Living.tick(1);
+      expect(unit.fortified).toBe(true);
+      expect(unit.hp).toBe(50); // heals at the start of the next season
+
+      Living.tick(1);
+      expect(unit.hp).toBe(75); // +25 in a friendly city
+
+      unit.fortified = false;
+      Living.tick(1);
+      expect(unit.hp).toBe(75); // an active unit does not heal
+    });
+
+    it("trains a 1UPT unit through the city production queue", () => {
+      const living = Living.init();
+      const b1 = living.burgs[1];
+      b1.productionQueue = [{ kind: "unit", id: "warrior" }];
+      b1.productionProgress = { "unit:warrior": 0 };
+
+      expect(Living.hurryProduction(1)).toBe(false); // treasury too thin
+
+      pack.states[1].treasury = 1000;
+      expect(Living.hurryProduction(1)).toBe(true);
+      expect(pack.states[1].military?.some(regiment => living.units?.[unitKey(1, regiment.i)])).toBe(true);
+    });
+
+    it("recruits utility units and lets a Builder improve a tile", () => {
+      const living = Living.init();
+      const regiment = Living.recruitUnit(1, 1, "builder");
+      expect(regiment).not.toBeNull();
+      const builder = living.units?.[unitKey(1, regiment!.i)]!;
+      expect(builder).toMatchObject({ isUtility: true, unitTypeId: "builder" });
+
+      Living.tick(10);
+
+      const improved = Object.values(living.cells ?? {}).filter(cell => cell.improvement);
+      expect(improved.length).toBeGreaterThan(0);
+    });
+
+    it("moves a Settler onto free land and founds a new burg", () => {
+      const living = Living.init();
+      pack.burgs[2].removed = true;
+      pack.burgs[3].removed = true;
+      pack.burgs[4].removed = true;
+      pack.burgs[5].removed = true;
+      pack.cells.state[15] = 1;
+      pack.cells.province[15] = 1;
+
+      expect(Living.recruitUnit(1, 1, "settler")).not.toBeNull();
+      Living.tick(6);
+
+      const founded = pack.burgs.find(burg => burg.cell === 15 && burg.state === 1);
+      expect(founded).toBeDefined();
+      expect(living.recentNews.some(item => item.kind === "colonize" && item.cell === 15)).toBe(true);
+    });
+
+    it("besieges a city, fires ranged strikes and captures it at 0 HP", () => {
+      const living = Living.init();
+      pack.burgs[2].capital = 0;
+      Living.forceWar(1, 2);
+      const regiment = makeRegiment(0, 7);
+      pack.states[1].military = [regiment];
+
+      Living.tick(1); // seeds the unit sim
+      const attacker = living.units?.[unitKey(1, 0)]!;
+      const b2 = living.burgs[2];
+      expect(b2.maxHp).toBe(200);
+      expect(b2.hp).toBeGreaterThan(0);
+
+      attacker.combatStrength = 90; // one decisive storm for a deterministic capture
+      expect(Living.conquerBurg(1, 2)).toBe(true);
+
+      expect(pack.burgs[2].state).toBe(1);
+      expect(b2.hp).toBe(100);
+      expect(b2.citizens).toBe(1);
+      expect(pack.burgs[2].population).toBe(0.5);
+      expect(b2.productionQueue).toEqual([]);
+      expect(b2.unrest).toBeGreaterThanOrEqual(7);
+    });
+
+    it("lets a city strike enemy regiments within range two", () => {
+      const living = Living.init();
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 7)];
+
+      Living.tick(1);
+
+      const unit = living.units?.[unitKey(1, 0)]!;
+      expect(unit.hp).toBeLessThan(UNIT_MAX_HP);
+    });
+
+    it("upgrades a regiment for Gold once its technology is known", () => {
+      const living = Living.init();
+      const regiment = makeRegiment(0, 5);
+      pack.states[1].military = [regiment];
+      Living.tick(1);
+
+      const unit = living.units?.[unitKey(1, 0)]!;
+      unit.hp = 40;
+
+      pack.states[1].treasury = 1000;
+      expect(Living.upgradeRegiment(1, 0)).toBe(false); // iron_working not researched
+
+      living.states[1].researchedTechs = ["iron_working"];
+      expect(Living.upgradeRegiment(1, 0)).toBe(true);
+
+      expect(unit.unitTypeId).toBe("swordsman");
+      expect(unit.hp).toBe(40);
+      expect(pack.states[1].treasury).toBeLessThan(1000);
+      expect(pack.states[1].military?.[0].u).toEqual({ swordsman: 40 });
+    });
+
+    it("blocks bombardment over hills and canopy until Indirect Fire", () => {
+      Living.init();
+      const regiment = Living.recruitUnit(1, 1, "archer")!;
+      const archer = pack.history.living?.units?.[unitKey(1, regiment.i)]!;
+      const warrior = { ...archer, rangedStrength: 0, range: 0 };
+
+      pack.cells.biome[12] = 6; // forest canopy
+      expect(unitIsRanged(archer)).toBe(true);
+      expect(rangedLineOfSightBlocked(12, archer)).toBe(true);
+      expect(rangedLineOfSightBlocked(1, archer)).toBe(false);
+      expect(rangedLineOfSightBlocked(12, { ...archer, promotions: ["indirect_fire"] })).toBe(false);
+      expect(rangedLineOfSightBlocked(12, warrior)).toBe(false);
+    });
+
+    it("grants training experience from military buildings", () => {
+      const living = Living.init();
+      living.burgs[1].civBuildings = ["palace", "barracks"];
+
+      const regiment = Living.recruitUnit(1, 1, "warrior")!;
+      const unit = living.units?.[unitKey(1, regiment.i)]!;
+      expect(unit.xp).toBe(15);
+    });
+
+    it("lazily initializes the tactical unit record on old saves", () => {
+      delete pack.history.living;
+
+      const living = Living.init();
+      expect(living.units).toBeDefined();
     });
   });
 });
