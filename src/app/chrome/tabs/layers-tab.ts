@@ -11,7 +11,6 @@ import {
   getAstralNavLevel,
   is3dView,
   isAstralView,
-  returnToAstralSector,
   returnToAstralSystem,
   subscribeAstralView
 } from "@/renderers/view-mode";
@@ -111,18 +110,16 @@ ensureEl("viewMode").addEventListener("click", event => {
   const button = event.target as HTMLElement;
   if (button.id === "viewAstralBackSector") {
     event.stopPropagation();
-    if (is3dView()) void Controllers.View3d.enterStandard();
-    if (isAstralView()) void Controllers.AstralMode.exit();
-    returnToAstralSector();
-    refreshAstralNavButtons();
+    // the Sector View is the Astral chart: entering Astral mode tears down 3D, applies the chart
+    // and resets the navigation level to sector (astralnav:change refreshes the buttons)
+    void Controllers.AstralMode.enter();
     return;
   }
   if (button.id === "viewAstralBackSystem") {
     event.stopPropagation();
     if (is3dView()) void Controllers.View3d.enterStandard();
     void Controllers.View3d.open("viewSystem");
-    returnToAstralSystem();
-    refreshAstralNavButtons();
+    returnToAstralSystem(); // dispatches astralnav:change, refreshing the back buttons
     return;
   }
 });

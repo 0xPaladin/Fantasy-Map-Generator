@@ -32,7 +32,7 @@ const loadRenderer = (): Promise<Renderer> =>
           openWorld: async (bodyId: string) => {
             await SolarSystem.switchBody(bodyId);
             enterAstralPlanetView(SolarSystem.getBody(bodyId)?.parentId ?? bodyId);
-            await open("viewGlobe");
+            enterStandard(); // a planet's surface is viewed as its standard editable flat map
           },
           openMap: async (bodyId: string) => {
             await SolarSystem.switchBody(bodyId);

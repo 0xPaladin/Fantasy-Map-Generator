@@ -51,7 +51,8 @@ export const getAstralNavSystemId = (): string | null => astralNavSystemId;
 
 /** Enter a system view from the Sector View. */
 function dispatchNavChange(): void {
-  if (typeof window !== "undefined") {
+  // the app dispatches so the layers-tab back buttons refresh; headless stubs may lack the API
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
     window.dispatchEvent(new CustomEvent("astralnav:change"));
   }
 }

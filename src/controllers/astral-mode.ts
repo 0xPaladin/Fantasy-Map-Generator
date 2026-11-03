@@ -5,7 +5,7 @@ import { Options } from "@/model/options/options-model";
 import { groupsOf } from "@/model/physical/astral-naming";
 import { Layers, type LayersState } from "@/renderers/layers";
 import { applyPerformanceSettings, setHaloOwnedByBorders } from "@/renderers/performance";
-import { is3dView, isAstralView, setAstralView } from "@/renderers/view-mode";
+import { is3dView, isAstralView, returnToAstralSector, setAstralView } from "@/renderers/view-mode";
 import { StylePresetsService } from "@/services/style-presets";
 import type { StylesData } from "@/types/styles";
 import { invokeActiveZooming } from "@/ui/map/zoom";
@@ -127,6 +127,7 @@ async function enter(): Promise<void> {
   if (styled) options.map.style.preset = "astral";
   Options.persist();
   applyButtonState(true);
+  returnToAstralSector(); // the Astral chart is the Sector View: the top of the hierarchy
   applyLayers(ASTRAL_PRESETS[ASTRAL_DEFAULT_PRESET].layers);
   hintNaming();
 
@@ -149,6 +150,7 @@ async function exit(): Promise<void> {
   options.map.style.preset = previous?.stylePreset ?? "default";
   Options.persist();
   applyButtonState(false);
+  returnToAstralSector(); // leaving the chart resets the navigation hierarchy
   applyLayers(previous?.layers.active ?? POLITICAL_LAYERS, previous?.layers.order);
 
   if (restoreStyle) {
