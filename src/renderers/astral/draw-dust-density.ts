@@ -1,4 +1,4 @@
-﻿// Dust density: elevation bands over the sector â€” the chart's read of where the dust is thick
+// Dust density: elevation bands over the sector — the chart's read of where the dust is thick
 import type { Layer } from "@/renderers/layers";
 import { getIsolines } from "@/utils/path-utils";
 import { buildDustBands } from "./dust-bands";

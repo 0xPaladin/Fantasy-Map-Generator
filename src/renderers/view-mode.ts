@@ -1,10 +1,11 @@
-// Which view the map is shown in: the flat map, the 3D mesh, the globe or the Astral chart
+// Which view the map is shown in: the flat map, the 3D mesh, the globe, the solar system orrery
+// or the Astral chart
 
 import { notifyAstralView } from "@/app/chrome/astral-view";
 
 export { subscribeAstralView } from "@/app/chrome/astral-view";
 
-type ViewMode = "standard" | "mesh" | "globe";
+type ViewMode = "standard" | "mesh" | "globe" | "system";
 type Cartography = "standard" | "astral";
 let viewMode: ViewMode = "standard";
 let cartography: Cartography = "standard";
@@ -17,6 +18,7 @@ export function setViewMode(mode: ViewMode): void {
 
 export const is3dView = (): boolean => viewMode !== "standard";
 export const isGlobeView = (): boolean => viewMode === "globe";
+export const isSystemView = (): boolean => viewMode === "system";
 export const isAstralView = (): boolean => cartography === "astral";
 export const isLivingWorldEnabled = (): boolean => livingWorldEnabled;
 

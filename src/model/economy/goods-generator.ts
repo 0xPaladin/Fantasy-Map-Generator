@@ -1,6 +1,8 @@
 import Alea from "alea";
 import { color, shuffler } from "d3";
+import { ASTRAL_GOODS_DATA, isAstralGoodsCatalogue } from "@/data/astral-goods";
 import { Icons } from "@/model/icons";
+import { tradeGoodsFor } from "@/model/physical/astral-naming";
 import { CULTURE_TYPES, type CultureType } from "@/model/society/cultures-generator";
 import { Tags } from "@/model/tags";
 import type { IconSet } from "@/types/icons";
@@ -980,6 +982,15 @@ export class GoodsModule {
   private cellId: number = 0;
   private goodById: Good[] = [];
 
+  isAstralCatalogue(): boolean {
+    return isAstralGoodsCatalogue(pack.goods);
+  }
+
+  switchToAstralGoods(): void {
+    pack.goods = structuredClone(ASTRAL_GOODS_DATA);
+    this.sync();
+  }
+
   regenerate(): void {
     this.generate({ randomSeed: Math.random() });
   }
@@ -993,6 +1004,20 @@ export class GoodsModule {
 
     // by default show the first good on the Goods layer
     if (pack.goods.length && !pack.goods.some(good => good.visible)) pack.goods[0].visible = true;
+
+    if (this.isAstralCatalogue()) {
+      this.cells = pack.cells;
+      this.cells.good = new Uint16Array(this.cells.i.length);
+
+      for (const burg of pack.burgs) {
+        if (!burg?.i || burg.removed) continue;
+        const [primaryGoodId] = tradeGoodsFor(burg);
+        this.cells.good[burg.cell] = primaryGoodId;
+      }
+
+      this.sync();
+      return;
+    }
 
     this.cells = pack.cells;
     this.cells.good = new Uint16Array(this.cells.i.length);

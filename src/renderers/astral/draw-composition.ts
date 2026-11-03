@@ -1,4 +1,4 @@
-﻿// Composition: biomes re-read as the resource character of a region â€” a tint over the dust sheet
+// Composition: biomes re-read as the resource character of a region — a tint over the dust sheet
 import type { Layer } from "@/renderers/layers";
 import { getIsolines } from "@/utils/path-utils";
 import { biomeClass, COMPOSITION_CLASSES } from "./biome-classes";

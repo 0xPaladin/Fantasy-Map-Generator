@@ -141,6 +141,11 @@ function renderDialog(): void {
         ></button>
         <button id="goodsTagsFilter" data-tip="${t("Filter goods by tags")}" class="icon-tags"></button>
         <button id="goodsAssign" data-tip="${t("Manually assign goods to cells")}" class="icon-brush"></button>
+        <button
+          id="goodsAstralToggle"
+          data-tip="${Goods.isAstralCatalogue() ? t("Restore Fantasy Goods catalogue") : t("Switch to Astral (Sci-Fi) Goods catalogue")}"
+          class="${Goods.isAstralCatalogue() ? "icon-globe" : "icon-rocket"}"
+        ></button>
         <button id="goodsAdd" data-tip="${t("Add")}" class="icon-plus hide"></button>
         <button id="goodsRegenerateGoods" data-tip="${t("Regenerate bonus goods placement")}" class="icon-arrows-cw hide"></button>
         <button id="goodsRegenerateProduction" data-tip="${t("Regenerate production and trade deals")}" class="icon-retweet hide"></button>
@@ -169,6 +174,7 @@ function renderDialog(): void {
   ensureEl("goodsPercentage").addEventListener("click", togglePercentageMode);
   ensureEl("goodsTagsFilter").addEventListener("click", openTagsVisibilityDialog);
   ensureEl("goodsAssign").addEventListener("click", enterResourceAssignMode);
+  ensureEl("goodsAstralToggle").addEventListener("click", toggleAstralGoodsMode);
   ensureEl("goodsAdd").addEventListener("click", () => Controllers.GoodEditor.open(undefined, refreshEditor));
   ensureEl("goodsRestore").addEventListener("click", goodsRestoreDefaults);
   ensureEl("goodsExport").addEventListener("click", downloadGoodsData);
@@ -520,6 +526,34 @@ function goodsRestoreDefaults() {
   });
 }
 
+function toggleAstralGoodsMode() {
+  const isAstral = Goods.isAstralCatalogue();
+  const title = isAstral ? t("Restore Fantasy Goods") : t("Switch to Astral Goods");
+  const message = isAstral
+    ? `${t("Restore standard fantasy goods catalogue and cell-level resource placement?")}<br>${t("This will regenerate goods and recompute the economy.")}`
+    : `${t("Switch to Astral sci-fi commodities and system-level trade tables?")}<br>${t("This will place resources at star systems and recompute the economy.")}`;
+
+  Dialog.confirm({
+    title,
+    message,
+    confirm: t("Switch"),
+    onConfirm: () => {
+      const previousIds = pack.goods.map(good => good.i);
+      if (isAstral) {
+        Goods.restoreDefaults();
+      } else {
+        Goods.switchToAstralGoods();
+      }
+      States.pruneTariffs({ goods: previousIds.filter(id => !Goods.get(id)) });
+      Goods.generate();
+      Production.regenerateEconomy();
+      Layers.draw("markets", "goods");
+      Layers.draw("trade");
+      refreshEditors();
+    }
+  });
+}
+
 function togglePercentageMode() {
   const body = ensureEl("goodsBody");
   body.dataset.type = body.dataset.type === "absolute" ? "percentage" : "absolute";
@@ -541,7 +575,11 @@ function enterResourceAssignMode(this: HTMLElement) {
 
   Dialog.update(dialogId, { position });
 
-  tip(t("Select good line in editor, click on cells to remove or add a bonus resource"), true);
+  if (Goods.isAstralCatalogue()) {
+    tip(t("Select commodity in editor, click on a star system to add or remove its specialty resource"), true);
+  } else {
+    tip(t("Select good line in editor, click on cells to remove or add a bonus resource"), true);
+  }
   select<SVGElement, unknown>("#viewbox").on("click", changeResourceOnCellClick);
 }
 
@@ -555,8 +593,16 @@ function selectResourceOnLineClick(this: HTMLElement) {
 function changeResourceOnCellClick(this: SVGElement, event: MouseEvent) {
   const body = ensureEl("goodsBody");
   const point = getPointer(event, this);
-  const cellId = Pack.findCell(...point);
+  let cellId = Pack.findCell(...point);
   if (cellId === undefined) return;
+
+  if (Goods.isAstralCatalogue()) {
+    const burg =
+      (pack.cells.burg[cellId] && pack.burgs[pack.cells.burg[cellId]]) ||
+      pack.burgs.find(b => b?.i && !b.removed && Math.hypot(b.x - point[0], b.y - point[1]) < 20);
+    if (!burg || burg.removed) return;
+    cellId = burg.cell;
+  }
 
   const selected = body.querySelector<HTMLElement>("div.selected");
   if (!selected) return;

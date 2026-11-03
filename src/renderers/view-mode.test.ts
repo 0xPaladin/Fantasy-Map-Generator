@@ -4,6 +4,7 @@ import {
   is3dView,
   isAstralView,
   isGlobeView,
+  isSystemView,
   setAstralView,
   setViewMode,
   subscribeAstralView
@@ -53,6 +54,16 @@ describe("view mode switching", () => {
     expect(getViewMode()).toBe("mesh");
     expect(is3dView()).toBe(true);
     expect(isGlobeView()).toBe(false);
+  });
+
+  it("handles system orrery view mode", () => {
+    setViewMode("system");
+    expect(getViewMode()).toBe("system");
+    expect(is3dView()).toBe(true);
+    expect(isGlobeView()).toBe(false);
+    expect(isSystemView()).toBe(true);
+    setViewMode("standard");
+    expect(isSystemView()).toBe(false);
   });
 
   it("resets back to standard view", () => {

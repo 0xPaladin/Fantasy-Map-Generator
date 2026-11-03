@@ -1,4 +1,6 @@
 import { sum } from "d3";
+import { ASTRAL_WORLD_TYPES } from "@/data/astral-goods";
+import { tradeGoodsFor, worldTypeFor } from "@/model/physical/astral-naming";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import type { Zone } from "@/model/political/zones-generator";
@@ -104,14 +106,35 @@ export class ProductionModule {
     const demandCoverage = this.calculateDemandCoverage(inventory, index.demandCoverageByGood);
     const records: ProductionRecord[] = [];
 
-    const good = Goods.get(pack.cells.good[burg.cell]);
-    if (good) {
-      const modifier = this.getModifiers(good, burg.cell);
-      const bonus = minmax(population * BONUS_URBAN_PRODUCTION, MIN_BONUS_PRODUCTION, MAX_BONUS_PRODUCTION);
-      const localBonus = bonus * modifier;
-      if (localBonus > 0) {
-        inventory[good.i] = (inventory[good.i] || 0) + localBonus;
-        records.push({ goodId: good.i, units: rn(localBonus, 2) });
+    if (Goods.isAstralCatalogue()) {
+      const [goodAId, goodBId] = tradeGoodsFor(burg);
+      const tradeGoodIds = [goodAId, goodBId];
+      const cellGoodId = pack.cells.good[burg.cell];
+      if (cellGoodId && !tradeGoodIds.includes(cellGoodId)) {
+        tradeGoodIds.push(cellGoodId);
+      }
+
+      for (const gId of tradeGoodIds) {
+        const g = Goods.get(gId);
+        if (!g) continue;
+        const modifier = this.getModifiers(g, burg.cell);
+        const bonus = minmax(population * BONUS_URBAN_PRODUCTION, MIN_BONUS_PRODUCTION, MAX_BONUS_PRODUCTION);
+        const localBonus = bonus * modifier;
+        if (localBonus > 0) {
+          inventory[g.i] = (inventory[g.i] || 0) + localBonus;
+          records.push({ goodId: g.i, units: rn(localBonus, 2) });
+        }
+      }
+    } else {
+      const good = Goods.get(pack.cells.good[burg.cell]);
+      if (good) {
+        const modifier = this.getModifiers(good, burg.cell);
+        const bonus = minmax(population * BONUS_URBAN_PRODUCTION, MIN_BONUS_PRODUCTION, MAX_BONUS_PRODUCTION);
+        const localBonus = bonus * modifier;
+        if (localBonus > 0) {
+          inventory[good.i] = (inventory[good.i] || 0) + localBonus;
+          records.push({ goodId: good.i, units: rn(localBonus, 2) });
+        }
       }
     }
 
@@ -729,6 +752,27 @@ export class ProductionModule {
   ): Record<number, number> {
     const produced: Record<number, number> = {};
 
+    if (Goods.isAstralCatalogue()) {
+      const burgId = pack.cells.burg[cellId];
+      if (!burgId) return produced;
+
+      const burg = pack.burgs[burgId];
+      if (!burg || burg.removed) return produced;
+
+      const goodId = pack.cells.good[cellId];
+      if (!goodId) return produced;
+
+      const good = Goods.get(goodId);
+      if (!good) return produced;
+
+      const pop = Math.max(1, burg.population || 1);
+      const modifier = this.getModifiers(good, cellId);
+      const baseUnits = Math.min(pop * BONUS_RURAL_PRODUCTION, MAX_BONUS_PRODUCTION);
+      const totalUnits = rn(baseUnits * modifier, 2);
+      if (totalUnits > 0) produced[goodId] = totalUnits;
+      return produced;
+    }
+
     const modifier = (good: Good) => this.getModifiers(good, cellId);
     const add = (goodId: number, amount: number) => {
       produced[goodId] = rn((produced[goodId] || 0) + amount, 2);
@@ -757,6 +801,57 @@ export class ProductionModule {
   }
 
   private getModifiers(good: Good, cellId: number): number {
+    if (Goods.isAstralCatalogue()) {
+      let modifier = 1;
+      const burgId = pack.cells.burg[cellId];
+      if (burgId && pack.burgs[burgId]) {
+        const burg = pack.burgs[burgId];
+        const worldType = worldTypeFor(burg);
+        const spec = ASTRAL_WORLD_TYPES[worldType];
+
+        for (const [tag, modValue] of Object.entries(spec.modifiers)) {
+          if (good.tags.includes(tag)) {
+            if (modValue === -2) modifier *= 1.6;
+            else if (modValue === -1) modifier *= 1.3;
+            else if (modValue === 1) modifier *= 0.85;
+            else if (modValue === 2) modifier *= 0.7;
+          }
+        }
+
+        if (spec.tradeTable.includes(good.i)) {
+          modifier *= 1.35;
+        }
+
+        if ((worldType === "Primitive" || worldType === "Savage") && good.name !== "Pretech Junk") {
+          if (
+            good.tags.includes("postech") ||
+            good.tags.includes("tl4") ||
+            good.tags.includes("pretech") ||
+            good.tags.includes("tl5")
+          ) {
+            modifier *= 0.25;
+          }
+        }
+      }
+
+      if (!good.multipliers) return rn(modifier, 2);
+
+      const biomeId = pack.cells.biome[cellId];
+      const cultureId = pack.cells.culture[cellId];
+      const stateId = pack.cells.state[cellId];
+      const religionId = pack.cells.religion[cellId];
+      const cultureType = (burgId ? pack.burgs[burgId]?.type : pack.cultures[cultureId]?.type) ?? DEFAULT_CULTURE_TYPE;
+
+      modifier *=
+        (good.multipliers.cultureType?.[cultureType] ?? 1) *
+        (good.multipliers.culture?.[cultureId] ?? 1) *
+        (good.multipliers.state?.[stateId] ?? 1) *
+        (good.multipliers.religion?.[religionId] ?? 1) *
+        (good.multipliers.biome?.[biomeId] ?? 1);
+
+      return rn(modifier, 2);
+    }
+
     const mult = good.multipliers;
     if (!mult) return 1;
 
