@@ -2,7 +2,7 @@ import { Controllers } from "@/controllers";
 import { DEFAULT_THREE_D, globeResolutionFor, timeOfDayPresets } from "@/data/view-3d-options";
 import { Options } from "@/model/options/options-model";
 import { SolarSystem } from "@/model/system/solar-system";
-import { is3dView } from "@/renderers/view-mode";
+import { enterAstralPlanetView, is3dView } from "@/renderers/view-mode";
 import { viewport } from "@/renderers/viewport/viewport";
 import { Services } from "@/services";
 import { getFileName } from "@/services/io/file-name";
@@ -31,10 +31,12 @@ const loadRenderer = (): Promise<Renderer> =>
         m.setSystemActions({
           openWorld: async (bodyId: string) => {
             await SolarSystem.switchBody(bodyId);
+            enterAstralPlanetView(SolarSystem.getBody(bodyId)?.parentId ?? bodyId);
             await open("viewGlobe");
           },
           openMap: async (bodyId: string) => {
             await SolarSystem.switchBody(bodyId);
+            enterAstralPlanetView(SolarSystem.getBody(bodyId)?.parentId ?? bodyId);
             enterStandard();
           }
         });

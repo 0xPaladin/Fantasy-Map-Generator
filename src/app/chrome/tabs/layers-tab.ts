@@ -7,7 +7,14 @@ import { ASTRAL_DEFAULT_PRESET, ASTRAL_PRESETS } from "@/data/astral-layers";
 import { LAYER_TOGGLES, type LayerButton, underlineHotkey } from "@/data/layer-labels";
 import type { LayerId } from "@/renderers/layers";
 import { Layers } from "@/renderers/layers";
-import { isAstralView, subscribeAstralView } from "@/renderers/view-mode";
+import {
+  getAstralNavLevel,
+  is3dView,
+  isAstralView,
+  returnToAstralSector,
+  returnToAstralSystem,
+  subscribeAstralView
+} from "@/renderers/view-mode";
 import { ViewportLayers } from "@/renderers/viewport/viewport-renderer";
 import { isCtrlClick } from "@/utils/common-utils";
 import { sentences, t } from "@/utils/i18n";
@@ -79,10 +86,49 @@ const TEMPLATE = /* html */ `
     <button data-tip="${sentences(t("Project map on globe"), t("Cannot be used for editing"))}" id="viewGlobe">${t("Globe")}</button>
     <button data-tip="${t("Living World simulation: seasonal clock, news ticker, inspector and god mode")}" id="viewLivingWorld">${t("Living World")}</button>
     <button data-tip="${t("Astral view: star chart layers, nebulae and systems")}" id="viewAstral">${t("Astral")}</button>
+    <button data-tip="${t("Return to the Sector View (star chart)")}" id="viewAstralBackSector" class="astral-nav-btn">
+      ${t("Back to Sector")}
+    </button>
+    <button data-tip="${t("Return to the System View (orrery) for this system")}" id="viewAstralBackSystem" class="astral-nav-btn">
+      ${t("Back to System")}
+    </button>
   </div>
 `;
 
 ensureEl("layersContent").innerHTML = TEMPLATE;
+
+// --- Astral view navigation back buttons ---
+function refreshAstralNavButtons(): void {
+  const level = getAstralNavLevel();
+  const sectorBtn = findEl<HTMLButtonElement>("viewAstralBackSector");
+  const systemBtn = findEl<HTMLButtonElement>("viewAstralBackSystem");
+  if (!sectorBtn || !systemBtn) return;
+  sectorBtn.style.display = level !== "sector" ? "" : "none";
+  systemBtn.style.display = level === "planet" ? "" : "none";
+}
+
+ensureEl("viewMode").addEventListener("click", event => {
+  const button = event.target as HTMLElement;
+  if (button.id === "viewAstralBackSector") {
+    event.stopPropagation();
+    if (is3dView()) void Controllers.View3d.enterStandard();
+    if (isAstralView()) void Controllers.AstralMode.exit();
+    returnToAstralSector();
+    refreshAstralNavButtons();
+    return;
+  }
+  if (button.id === "viewAstralBackSystem") {
+    event.stopPropagation();
+    if (is3dView()) void Controllers.View3d.enterStandard();
+    void Controllers.View3d.open("viewSystem");
+    returnToAstralSystem();
+    refreshAstralNavButtons();
+    return;
+  }
+});
+
+window.addEventListener("astralnav:change", refreshAstralNavButtons);
+refreshAstralNavButtons();
 
 function renderPresetOptions(): void {
   const select = ensureEl<HTMLSelectElement>("layersPreset");

@@ -17,6 +17,7 @@ import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { Layers } from "@/renderers/layers";
+import { enterAstralSystemView } from "@/renderers/view-mode";
 import type { StylesData } from "@/types/styles";
 import { Dialog } from "@/ui/dialog/dialog";
 import { noteButton } from "@/ui/dialog/dialog-helpers";
@@ -544,6 +545,7 @@ function ensureSolarSystem(): void {
 
 function openSystemOrrery(): void {
   ensureSolarSystem();
+  enterAstralSystemView(String(getSelectedId()));
   Dialog.close("astralSystemEditor");
   void Controllers.View3d.open("viewSystem");
 }

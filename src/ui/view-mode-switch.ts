@@ -7,6 +7,8 @@ import { findEl } from "@/utils/node-utils";
 export async function changeViewMode(event: Event): Promise<void> {
   const button = event.target as HTMLElement;
   if (button.tagName !== "BUTTON") return;
+  // the Astral back buttons are handled by their own listener in layers-tab.ts
+  if (button.id.startsWith("viewAstralBack")) return;
 
   if (button.id === "viewLivingWorld") {
     await toggleLivingWorld();
