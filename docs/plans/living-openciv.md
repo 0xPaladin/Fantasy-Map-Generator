@@ -201,99 +201,16 @@ flowchart LR
 > model, economy and sieges. The civilian half (Settlers, Builders, Missionaries)
 > still applies unchanged.
 
-### 5.1. 1 FMG `Regiment` = 1 OpenCiv Unit (`RegimentSimState`)
-Every regiment in `pack.states[s].military` is backed by a `RegimentSimState` (keyed by `${stateId}-${regiment.i}` or stored on `living.units`):
+### 5.1. Civilian regiments (Builders, Settlers & co.) still apply
+Combat regiments no longer carry a tactical `UnitSimState`. The eight **civilian** regiment types — Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor and Great Prophet — keep their single-unit simulation (work orders, spread charges, conversion strength, trade routes) and are stored as before on `living.units`. See [living-openciv-armies.md §14](living-openciv-armies.md) for the civilian roster and `living-civ-civilians.ts`.
 
-```ts
-export type UnitDomain = "land" | "sea";
+### 5.2. Movement & stacking (civilian only)
+A cell holds at most one **combat army** plus one **utility** regiment per state; foreign armies never share a cell. Civilian movement costs (roads `1/3`, unbridged rivers drain the remainder, hills/forest/jungle/marsh `2`) still apply to civilian regiments. Combat movement is slowest-block based and is described in [living-openciv-armies.md §6](living-openciv-armies.md).
 
-export type UnitCombatClass =
-  | "melee"
-  | "ranged"
-  | "mounted"
-  | "siege"
-  | "gunpowder"
-  | "armor"
-  | "recon"
-  | "naval_melee"
-  | "naval_ranged"
-  | "submarine"
-  | "civilian";
+### 5.3. Combat, sieges & city strikes
+All combat moved to the OpenConquest combined-arms stack model: one regiment = one army of up to 20 `ArmyBlock`s (`{ type, hp, exp }`), fought through OpenConquest `battle.ts` with category matchup, orders, magic, rout and sieges. City sieges are garrison battles; city strikes remove one block step (`0.1 hp`) per tick. The old 1UPT damage formula (`combatDamage`), promotions tree and `UnitSimState` combat fields are deleted.
 
-export interface UnitSimState {
-  unitTypeId: string;           // e.g. "warrior", "swordsman", "crossbowman", "catapult", "builder", "settler"
-  domain: UnitDomain;
-  combatClass: UnitCombatClass;
-  isUtility: boolean;           // true for settler, builder, work_boat, missionary, inquisitor, great_prophet
-  hp: number;                   // 1..100
-  movement: number;             // remaining movement in exact thirds
-  maxMovement: number;
-  combatStrength: number;
-  rangedStrength: number;
-  range: number;                // 2 for most ranged/siege, 3 for artillery/battleship
-  xp: number;
-  level: number;
-  promotions: string[];
-  fortified: boolean;           // true if Fortify Until Healed (alert) for a full tick without acting
-  hasAttacked: boolean;
-  spreadCharges?: number;       // 2 for Missionary, 4 for Great Prophet
-  conversionStrength?: number;  // 100% base, decays -25%/tick in closed foreign borders for Missionaries
-  workOrder?: {
-    improvementId: string;
-    turnsLeft: number;
-  } | null;
-}
-```
-
-- **Sync with FMG `Regiment`**:
-  - `regiment.a = unitSim.hp` (displays `1..100` directly on the `#armies` map badge, or `hp * 10` if scaled by `MEN_PER_HP`), `regiment.u = { [unitSim.unitTypeId]: regiment.a }`, `regiment.icon = unitDef.icon`, `regiment.n = unitSim.domain === "sea" ? 1 : 0`.
-
-### 5.2. 1UPT Stacking, Movement & Roads on `pack.cells`
-- **1UPT Rule (`hasStackingConflict`)**:
-  - A Voronoi cell `c` may hold at most **1 Military Regiment (`!isUtility`)** and **1 Utility Regiment (`isUtility`)** belonging to the same state.
-  - Foreign regiments never share a cell.
-  - Friendly regiments of the same category may pass *through* each other along an A* path ([`constructShortestPath`](../../src/model/physical/living-generator.ts)) if their remaining `movement` reaches an unoccupied destination cell on the same tick.
-- **Movement Cost (`getCellWeight(fromCell, toCell, unit)`)**:
-  - Connected by `pack.cells.routes` (and bridged via `Engineering` if crossing a river): `1/3` movement (`ROAD_MOVEMENT_COST = 1 / 3`).
-  - Unit with `ignores_terrain_cost` (`Scout` / `Woodsman` in forest): `1` movement on passable land.
-  - Unbridged river crossing: drains all remaining movement (`movement = 0`).
-  - Otherwise: `1` on flat land/water, `2` on hill/forest/jungle/marsh, `+1` for enemy land units inside territory of a state owning the `Great Wall` (until `Dynamite`).
-
-### 5.3. OpenCiv Combat, City Sieges, Healing, Promotions & Upgrades
-1. **Exponential Damage Formula (`Combat.getDamage`)**:
-   - Effective strength includes terrain (`+25%` Hill defense, `+25%` Forest/Jungle defense), river attack (`-20%` unless `Amphibious`), promotions (`Shock`, `Drill`, `Accuracy`, `Barrage`, `Siege`, `Cover`, `Charge`, `Formation`), Empire Happiness (`-33%` if `<= -10`), Wonders (`Himeji Castle` `+15%` friendly, `Statue of Zeus` `+15%` vs cities), Religion (`Defender of the Faith` / `Just War` `+20%`), and Commander/General aura (`+15%`).
-   - With $r = \text{stronger} / \text{weaker}$, $M = \frac{((r + 3)/4)^4 + 1}{2}$, wounded multiplier $w = 1 - 0.5 \times \frac{100 - \text{hp}}{100}$, and roll $u \in [0, 1)$:
-     $$\text{Base} = (24 + 12u) \times w, \quad \text{Damage} = \max\left(1, \left\lfloor \text{attacker} \ge \text{defender} \ ? \ \text{Base} \times M : \frac{\text{Base}}{M} \right\rfloor\right)$$
-   - In melee, both units take damage simultaneously; if both would die, the attacker survives at `1 HP`. Ranged attacks (`range >= 2`) inflict damage with **0 return damage**, blocked by hills/mountains/forests unless promoted with `Indirect Fire`.
-2. **Fortification-Only Healing (`healForTurn`)**:
-   - Wounded units heal at the start of their turn **only** if `fortified === true` for a full turn without moving or attacking (or unconditionally if promoted with `March` / `Repair`):
-     - `+25 HP` in a friendly Major Burg, `+20 HP` in friendly territory, `+10 HP` in neutral/enemy territory (`+5 HP` from adjacent friendly `Medic` / `Medic II`; `+30 HP` adjacent to a friendly city with `Faith Healers`).
-3. **Major Burg Sieges (`CityCombat`)**:
-   - Base `200 Max HP` (`+50` `Walls`, `+25` `Castle`, `+25` `Arsenal`, `+25` `Military Base` = up to `325 HP`), regenerating `+20 HP/tick`.
-   - Defense Strength:
-     $$\text{City CS} = \left(8 + 0.4 \times \text{citizens} + \text{buildingDefense} + 0.2 \times \text{garrisonCS}\right) \times (1 + 0.25 \times \text{isHill})$$
-   - Fires 1 indirect-fire **City Ranged Strike** (range `2`) per tick at the most vulnerable adjacent/nearby enemy regiment (`+30%` with `Goddess of Protection`).
-   - Ranged attacks cannot reduce a Major Burg below `1 HP`. A melee regiment reducing a Major Burg to `<= 0 HP` **captures the city and its province**:
-     - Transfers province cells via `States.setCells()`, halves `citizens` (min 1), resets City HP to `100`, clears `productionQueue`, destroys National Wonders, relocates `Palace` if it was the capital, and sets `bSim.unrest = 6 + citizens`.
-4. **XP, Promotions & Gold Upgrades**:
-   - Melee attack = `5 XP`, Melee defense = `4 XP`, Ranged attack/defense = `2 XP` (`Barracks` / `Armory` / `Military Academy` grant `+15 XP` each on training).
-   - Level threshold: $\text{XP}_{\text{level}} = 10 \times \text{level} \times (\text{level} + 1) / 2$. Upon leveling, the unit selects a promotion from its class tree (or `Heal Instantly` `+50 HP` if `hp <= 45`).
-   - **Unit Upgrades**: In friendly territory with `movement > 0` and target tech researched, a state spends $\lfloor (10 + 2 \times \max(0, \text{targetCost} - \text{currentCost})) / 5 \rfloor \times 5$ Gold from `state.treasury` to upgrade the regiment to its `upgrades_to` unit (preserving HP, XP, and promotions).
-
-### 5.4. Slice 5 Delivery Notes (1UPT Tactical Regiments, Builders, Settlers & City Sieges)
-- **Unit state**: `living.units` (keyed `${stateId}-${regimentId}`) holds one `UnitSimState` per native regiment, reconciled in `syncUnits()` on every `syncWorld()`. The dominant native category maps onto the strongest technology-unlocked OpenCiv unit chain (`warrior → spearman → swordsman → …`, `archer → …`, `horseman → …`, `catapult → …`, `trireme → …`). The native regiment mirrors the sim: `reg.a = hp`, `reg.u = { [unitTypeId]: hp }`, and `reg.n = 1` for fleets.
-- **Tactical tick**: `stepTactical()` runs after `stepEmpire()`. Cities regenerate `+20 HP` and reset their strike flag, idle units heal, Builders/Settlers work, military units engage or march, and cities fire their range-2 strikes.
-- **Combat** (`combatDamage`): OpenCiv's exponential formula — `M = (((r + 3) / 4)^4 + 1) / 2`, wounded scale `w = 1 - 0.5 × (100 - hp) / 100`, `Base = (24 + 12u) × w`, applied as `Base × M` for the stronger side and `Base / M` for the weaker. Modifiers: `+25%` hill/forest/jungle defense, `+25%` fortification, `-20%` river attack, Empire Happiness `×0.67`, and promotion `attackPercent`/`defensePercent`. Melee exchanges apply damage both ways (if both would fall, the attacker holds the field at 1 HP); ranged attacks return no damage and cannot target hills/canopy unless the unit has `indirect_fire`.
-- **Movement & 1UPT**: a cell holds at most one military and one utility unit per state (foreign units never share). Roads cost `1/3`, unbridged river crossings drain all remaining movement, hills/forest/jungle/marsh cost `2`, mountains and wrong-domain water are impassable. Units descend a BFS distance field toward their agenda target, one step at a time.
-- **Healing**: only while `fortified` (a unit that did not move or attack last tick) — `+25 HP` in a friendly Major Burg, `+20 HP` in friendly territory, `+10 HP` elsewhere.
-- **City sieges**: `maxHp = 200 + Walls (50) + Castle (25) + Arsenal (25) + Military Base (25)`; `City CS = (8 + 0.4 × citizens + building defense + 0.2 × garrison CS) × (1 + 0.25 × hill)`. Cities fire one range-2 strike per tick (`+30%` with `Goddess of Protection`); ranged attacks floor at `1 HP`, a melee capture halves citizens (min 1), resets HP to `100`, clears the production queue, destroys National/World Wonders, relocates the defeated Palace and seeds `unrest = 6 + citizens`.
-- **Builders**: pick the best unimproved owned cell within `BUILDER_RANGE = 8` hops (resource-aware `farm`/`mine`/`quarry`/`pasture`/`plantation`/`camp`/`lumber_mill`/`fishing_boats`), honour `requiredTech` and `buildTurns`, then write `living.cells[cell].improvement`. Route improvements (and idle builders) call native `Routes.connect()`.
-- **Settlers**: found a burg on owned, burg-free, workable land at least 3 hops from any settlement, using `Burgs.add()` with a stripped-pack fallback; the new burg starts at population `2` and joins the founding state.
-- **Recruitment & upgrades**: `recruitUnit()` and city production `unit` items spawn 1UPT units at a free cell; Barracks-style training buildings grant `+15 XP` each. `upgradeRegiment()` spends Gold to follow the catalog `upgradesTo` chain (tech-gated, preserving HP/XP/promotions); states with 200+ Gold auto-upgrade one regiment per season.
-- **Autonomous governor**: after the economy core, a city queues a Builder when ≥2 owned tiles are unimproved, a Settler when Content-with-4+-Happiness and 3+ citizens, and the best available melee unit when at war without one.
-- **Native compatibility**: the AER conquest battle is bypassed only on terrain packs (`assaultBurg` → `openCivAssault`), and lair raids only feed native AER unit blocks into the legacy battle so OpenCiv units are never corrupted.
-- **Deferred**: multi-unit pass-through movement, naval transport/embarkation, and tactical defence against lair raiders are later refinements; the legacy AER capacity ledger still gates `muster`/troubles until Slice 6.
-- **Tests**: `living-generator.test.ts` adds the *OpenCiv slice 5* block covering the damage formula and XP ladder, terrain defense/movement costs (road, river, mountain, sea), 1UPT stacking, category→unit mapping, unit sim creation and `reg.a` mirroring, melee battles with XP and removal, fortification healing, city production of 1UPT units, Builder improvements, Settler founding, city siege/capture, city strikes, ranged line of sight with Indirect Fire, training XP and Gold upgrades.
+For the full current model — rosters, recruitment, upkeep on `hp`, replenishment, veterancy, sieges and city strikes — see [living-openciv-armies.md](living-openciv-armies.md) §5–§10.
 
 ---
 

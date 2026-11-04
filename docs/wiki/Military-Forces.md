@@ -2,6 +2,8 @@
 
 Generation rules, unit types and regiments themselves are editable and customizable. You can add fantasy, modern or ancient units, change parameters and re-generate military to let the system automatically recreate regiments. Changes specific to state or culture can be done manually on regiments level.
 
+> **Living World armies.** When the _Living World_ simulation is on, a regiment is an **army stack** of up to 20 blocks, and each block is one culture-roster unit with a capability fraction (`hp` 0–1). The regiment editor's **+ / - block** buttons add or remove whole blocks at full capability, and combat stats come from the state's roster rather than the unit _Power_ field below. See [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World#armies-culture-unique-combined-arms-stacks).
+
 Regiments are displayed as state-colored boxes in a separate layer called _Military_ (<kbd>M</kbd> to toggle). To edit specific Regiment click on its box. To open Military overview screen go to _Tools_ and click on _Military_ (hotkey: <kbd>Shift</kbd> + <kbd>M</kbd>).
 
 ## Military overview
