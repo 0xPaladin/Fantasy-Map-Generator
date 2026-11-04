@@ -921,19 +921,27 @@ Each phase is independently shippable and testable. No phase may leave the map i
 3. A **second bridge** (`toBattleUnitsMen`) was required because the map already runs `battle.ts` against counted garrisons. Using the 1,000-strength scale there inflated attackers ~6×.
 4. `syncRegimentTotals` converts count-based blocks in place, so pre-migration `.map` saves load instead of producing `NaN` totals.
 
-### Phase B — Army sync, movement, stacking
+### Phase B — Army sync, movement, stacking — **DONE**
 
-- [ ] `syncUnits` → `syncArmies`: combat branch calls `ensureArmy`, never writes `reg.u`/`reg.a` (except `syncRegimentTotals`).
-- [ ] `unitOccupancy` → `armyOccupancy`.
-- [ ] `moveRegimentTo` unchanged; ensure `living.armies` entry travels with the regiment.
-- [ ] `moveUnitToward` → `moveArmyToward`; cost = slowest block.
-- [ ] `stepTactical` reads `living.armies` for combat regiments and `living.units` for utility.
-- [ ] `spawnUnit` stops clearing `reg.units`: interim it maps the produced `CivUnitDef.unitClass` to a roster unit via `matchRosterUnitByCategory` and appends one `{ type, hp: 1, exp }` block (keeps Phase B shippable before the production swap in Phase E).
-- [ ] `upgradeRegiment` / `autoUpgrade` are no-ops for combat regiments during Phase B–D (return `false`); `living.units[key]` is already gone. Phase E reinstates them on blocks.
-- [ ] Migration for old `living.units` combat entries and old count-based blocks (§13.1).
-- [ ] Tests: sync idempotence, stack clash, slowest-block cost, utility coexistence, count→hp migration, interim spawn.
+- [x] `syncUnits` → `syncArmies`: creates/keeps one state record per regiment. Combat regiments get blocks + `living.armies`; utility regiments keep their `UnitSimState` and get no blocks. Nothing writes `reg.u`/`reg.a` outside `syncRegimentTotals`.
+- [x] `unitOccupancy` → `armyOccupancy` (regiment granularity, one combat + one utility per state/cell).
+- [x] `moveRegimentTo` unchanged; `living.armies` is keyed by the regiment, so it travels automatically.
+- [x] `moveUnitToward` kept for utility; new `moveArmyToward` + `armyMovementCost`, speed = slowest block (cavalry 4, others 2) via `armySpeed`.
+- [x] `stepTactical` dispatches on the state record: utility → Settler/Builder/Missionary pipeline; combat → `stepArmyOrders` (enemy army → duel, city in range → bombard, else march).
+- [x] `spawnUnit`: civilians keep the 1UPT sim (`regiment.type` authoritative); combat ids map through `matchRosterUnitByCategory` and land in `spawnArmyBlock` as `{ type, hp: 1, exp }`.
+- [x] `upgradeRegiment` / `autoUpgrade` return false for combat armies (they need a sim); Phase E reinstates them on blocks.
+- [x] Migration: legacy combat sims convert to a full-strength block with `exp = level − 1`; count-based blocks convert in place (`migrateArmyBlocks` + `syncRegimentTotals`).
+- [x] Tests: sync idempotence (composition stable over ticks), legacy sim → block, legacy count → hp, lead-block power, army speed, spawn path.
 
-**Exit:** armies move and stack correctly; combat still uses the old duel on the lead block (interim). Unique composition is preserved end-to-end.
+**Exit:** met — armies move and stack as regiments; the interim duel damages the lead block and preserves composition; utility units are untouched. Full suite green.
+
+**Deviations / consequences, deliberate:**
+
+1. **No passive healing for combat armies in Phase B.** `tickUnitHealing` now serves utility only; block replenishment arrives with §10.7 in Phase E. Damage therefore persists between battles until then.
+2. **The regiment's `type` is authoritative for utility.** A civilian-type regiment can never be promoted into an army by stray blocks; `syncArmies` clears any blocks it finds on one.
+3. **Muster and production both skip civilian regiments.** `findRegimentForUnit` / `spawnArmyBlock` only append to combat regiments, which fixed a bug where a Builder regiment received a levy block.
+4. **City strikes already remove `CITY_STRIKE_HP = 0.1`** from one block, ahead of Phase D's fuller siege model.
+5. **The interim duel uses `blockPower × 6`** on the 0–100 `combatDamage` scale. It exists only to keep the map playable until Phase C replaces it; no balance tuning was spent on it.
 
 ### Phase C — Combined-arms battle
 

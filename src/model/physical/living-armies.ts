@@ -51,6 +51,64 @@ export function armyIsEmpty(regiment: Regiment): boolean {
   return armyBlocks(regiment).every(b => b.hp <= 0);
 }
 
+/**
+ * The block that leads the interim duel (Phase B): strongest by capability,
+ * then experience, then type for determinism. Phase C's combined-arms battle
+ * uses every block instead.
+ */
+export function armyLead(regiment: Regiment): ArmyBlock | undefined {
+  return armyBlocks(regiment)
+    .filter(b => b.hp > 0)
+    .sort((a, b) => b.hp - a.hp || b.exp - a.exp || a.type.localeCompare(b.type))[0];
+}
+
+/** Interim per-block power: the battle engine's shape, scaled by hp and exp. */
+export function blockPower(block: ArmyBlock, types: Record<string, UnitType>): number {
+  const t = types[block.type];
+  if (!t) return 0;
+  const expMult = 0.85 + 0.03 * Math.max(0, Math.min(9, block.exp));
+  return (t.attack + t.defense + t.charge / 2 + t.missile * 0.6) * expMult * Math.max(0, Math.min(1, block.hp));
+}
+
+/** Interim ranged test: the leading block carries missile power. */
+export function armyIsRangedBlocks(regiment: Regiment, types: Record<string, UnitType>): boolean {
+  const lead = armyLead(regiment);
+  if (!lead) return false;
+  return (types[lead.type]?.missile ?? 0) > 0;
+}
+
+/** Slowest block wins: cavalry 4, everything else 2 (no movement stat on UnitType). */
+export function armySpeed(regiment: Regiment, types: Record<string, UnitType>): number {
+  let speed = 4;
+  let live = 0;
+  for (const block of armyBlocks(regiment)) {
+    if (block.hp <= 0) continue;
+    live += 1;
+    speed = Math.min(speed, types[block.type]?.category === "cavalry" ? 4 : 2);
+  }
+  return live > 0 ? speed : 2;
+}
+
+/**
+ * Convert pre-hp blocks in place (§13.1): a block carrying `count` but no
+ * finite `hp` becomes `hp = count / quantity`; `fleet` slots are dropped.
+ */
+export function migrateArmyBlocks(regiment: Regiment, types?: Record<string, UnitType>): void {
+  if (!regiment.units) return;
+  const migrated: ArmyBlock[] = [];
+  for (const block of regiment.units) {
+    if (block.type === "fleet") continue;
+    let hp = block.hp;
+    if (!Number.isFinite(hp)) {
+      const legacy = (block as unknown as { count?: number }).count;
+      const quantity = types?.[block.type]?.quantity ?? 100;
+      hp = legacy !== undefined && Number.isFinite(legacy) ? Math.min(1, legacy / Math.max(1, quantity)) : 1;
+    }
+    if (hp > 0) migrated.push({ ...block, hp: Math.min(1, hp) });
+  }
+  regiment.units = migrated;
+}
+
 /** Combat regiments hold roster blocks; utility regiments never do (§11). */
 export function armyIsUtility(regiment: Regiment): boolean {
   return isCivilianUnit((regiment.type ?? "").toLowerCase());

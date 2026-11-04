@@ -54,7 +54,7 @@ import {
 } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
-import { CIV_PROMOTION_BY_ID, CIV_PROMOTIONS } from "@/data/living-civ-promotions";
+import { CIV_PROMOTION_BY_ID } from "@/data/living-civ-promotions";
 import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { CIV_ALL_UNITS, CIV_UNIT_BY_ID } from "@/data/living-civ-units";
@@ -102,10 +102,23 @@ import { buildMissionPhases, type MissionPhaseInput, phasesForParty } from "@/da
 import { excavationMissionTags, lairMissionTags, PACIFY_MISSION_TAGS, troubleMissionTags } from "@/data/mission-tags";
 import type { Good } from "@/model/economy/goods-generator";
 import { Routes } from "@/model/economy/routes-generator";
-import { armyMen, fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";
+import {
+  armyHp,
+  armyIsEmpty,
+  armyIsRangedBlocks,
+  armyLead,
+  armyMen,
+  armySpeed,
+  blockPower,
+  fromBattleUnitsMen,
+  isCivilianUnit,
+  matchRosterUnitByCategory,
+  migrateArmyBlocks,
+  normalizeArmy,
+  toBattleUnitsMen
+} from "@/model/physical/living-armies";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import {
-  getCategoryForUnit,
   Military,
   type MilitaryCategory,
   type Regiment,
@@ -120,6 +133,7 @@ import { isAstralView } from "@/renderers/view-mode";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import {
   type ActiveGuildMission,
+  type ArmySimState,
   type BurgSimState,
   type CapacityLedger,
   type CellResourceInfo,
@@ -1186,6 +1200,8 @@ export const UNIT_AGGRO_RANGE = 6;
 export const BUILDER_RANGE = 8;
 /** Ranged attacks cannot push a city below this HP. */
 export const CITY_MIN_RANGED_HP = 1;
+/** One city strike removes this much capability from a single block. */
+export const CITY_STRIKE_HP = 0.1;
 
 /** OpenCiv unit chains per native FMG category, weakest to strongest. */
 const UNIT_CHAINS: Readonly<Record<MilitaryCategory, readonly string[]>> = {
@@ -2327,7 +2343,7 @@ class LivingModel {
     this.syncBurgs(living);
     this.syncProvinces(living);
     this.syncStates(living);
-    this.syncUnits(living);
+    this.syncArmies(living);
     this.syncDangerMarkers(living);
     this.ensureCommanders();
     this.recomputeAllCapacities(living);
@@ -5329,38 +5345,110 @@ class LivingModel {
     return `${stateId}-${regimentId}`;
   }
 
-  /** Reconcile `living.units` with the native regiments (terrain packs only). */
-  private syncUnits(living: LivingWorldState): void {
+  /**
+   * Reconcile `living.units` (utility) and `living.armies` (combat) with the
+   * native regiments (terrain packs only). Composition stays on
+   * `Regiment.units`; this only guarantees one live state record per regiment.
+   */
+  private syncArmies(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
     living.units ??= {};
-    const alive = new Set<string>();
+    living.armies ??= {};
+    const unitTypes = Military.getUnitTypes();
+    const rosterCache = new Map<number, ResolvedRoster | undefined>();
+    const aliveUnits = new Set<string>();
+    const aliveArmies = new Set<string>();
+    const maxSlots = currentContent().config.military.maxUnitsPerArmy;
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
-      const techs = new Set(living.states[state.i]?.researchedTechs ?? []);
 
       for (const regiment of state.military ?? []) {
         const key = this.unitKey(state.i, regiment.i);
-        alive.add(key);
-        let unit = living.units[key];
-        if (!unit) {
-          unit = this.createUnitSim(regiment, techs);
-          living.units[key] = unit;
-        } else {
-          const def = this.unitDefinition(unit.unitTypeId);
-          if (def) this.applyUnitDefinition(unit, def);
+
+        // Legacy 1UPT combat sim: convert once, then drop it (§13.1).
+        const sim = living.units[key];
+        if (sim && !sim.isUtility) {
+          const roster = this.stateRoster(state, rosterCache);
+          const unit = roster ? matchRosterUnitByCategory(roster, sim.combatClass) : undefined;
+          if (unit) {
+            regiment.units = [{ type: unit.id, hp: 1, exp: Math.min(9, Math.max(0, (sim.level ?? 1) - 1)) }];
+          }
+          delete living.units[key];
         }
 
-        // Mirror the 1UPT unit onto the native regiment for the map badge.
-        regiment.a = Math.max(0, Math.round(unit.hp));
-        regiment.u = { [unit.unitTypeId]: regiment.a };
-        if (unit.domain === "sea") regiment.n = 1;
+        // Utility regiment: its civilian type is authoritative (living-openciv-armies.md §11).
+        const civilianType = (regiment.type ?? "").toLowerCase();
+        if (isCivilianUnit(civilianType)) {
+          const def = this.unitDefinition(civilianType);
+          if (!def?.isUtility) continue;
+          regiment.units = [];
+          const unit = living.units[key] ?? this.createUtilitySim(regiment, def);
+          this.applyUnitDefinition(unit, def);
+          if (unit.domain === "sea") regiment.n = 1;
+          regiment.a = Math.max(0, Math.round(unit.hp));
+          regiment.u = { [def.id]: regiment.a };
+          living.units[key] = unit;
+          aliveUnits.add(key);
+          continue;
+        }
+
+        migrateArmyBlocks(regiment, unitTypes);
+        if (!regiment.units?.length) continue;
+        normalizeArmy(regiment, maxSlots, unitTypes);
+        if (armyIsEmpty(regiment)) {
+          this.removeRegiment(state, regiment, living);
+          continue;
+        }
+        const speed = armySpeed(regiment, unitTypes);
+        const army = living.armies[key] ?? {
+          movement: speed,
+          maxMovement: speed,
+          stance: "fortify" as const,
+          hasFought: false
+        };
+        army.maxMovement = speed;
+        living.armies[key] = army;
+        aliveArmies.add(key);
+        syncRegimentTotals(regiment, unitTypes);
       }
     }
 
     for (const key of Object.keys(living.units)) {
-      if (!alive.has(key)) delete living.units[key];
+      if (!aliveUnits.has(key)) delete living.units[key];
     }
+    for (const key of Object.keys(living.armies)) {
+      if (!aliveArmies.has(key)) delete living.armies[key];
+    }
+  }
+
+  /** Roster for a state, cached for the duration of a sync pass. */
+  private stateRoster(state: State, cache: Map<number, ResolvedRoster | undefined>): ResolvedRoster | undefined {
+    if (!cache.has(state.i)) cache.set(state.i, Military.getRoster(state));
+    return cache.get(state.i);
+  }
+
+  /** Build a utility sim for an existing civilian regiment. */
+  private createUtilitySim(_regiment: Regiment, def: CivUnitDef): UnitSimState {
+    const unit: UnitSimState = {
+      unitTypeId: def.id,
+      domain: def.domain ?? "land",
+      combatClass: def.unitClass ?? "civilian",
+      isUtility: true,
+      hp: UNIT_MAX_HP,
+      movement: def.defaultMoveDistance ?? 2,
+      maxMovement: def.defaultMoveDistance ?? 2,
+      combatStrength: 0,
+      rangedStrength: 0,
+      range: 0,
+      xp: 0,
+      level: 1,
+      promotions: [],
+      fortified: false,
+      hasAttacked: false,
+      workOrder: null
+    };
+    return unit;
   }
 
   private unitDefinition(unitTypeId: string): CivUnitDef | undefined {
@@ -5380,34 +5468,6 @@ class LivingModel {
     unit.movement = Math.min(unit.movement, unit.maxMovement);
   }
 
-  /** Build a fresh 1UPT unit for a native regiment from its dominant AER category. */
-  private createUnitSim(regiment: Regiment, techs: ReadonlySet<string>): UnitSimState {
-    const unitTypes = Military.getUnitTypes();
-    const primary = Object.entries(regiment.u ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const category = primary ? getCategoryForUnit(primary, unitTypes) : regiment.n ? "naval" : "melee";
-    const def = bestUnitForCategory(category, techs);
-
-    const unit: UnitSimState = {
-      unitTypeId: def.id,
-      domain: def.domain ?? "land",
-      combatClass: def.unitClass ?? "melee",
-      isUtility: Boolean(def.isUtility),
-      hp: UNIT_MAX_HP,
-      movement: def.defaultMoveDistance ?? 2,
-      maxMovement: def.defaultMoveDistance ?? 2,
-      combatStrength: def.combatStrength ?? 0,
-      rangedStrength: def.rangedStrength ?? 0,
-      range: def.range ?? 0,
-      xp: Math.max(0, (regiment.units?.[0]?.exp ?? 0) * 10),
-      level: 1,
-      promotions: [],
-      fortified: false,
-      hasAttacked: false
-    };
-    unit.level = this.unitLevel(unit.xp);
-    return unit;
-  }
-
   private unitLevel(xp: number): number {
     let level = 1;
     while (level < 10 && xp >= xpForLevel(level + 1)) level += 1;
@@ -5419,17 +5479,23 @@ class LivingModel {
     return pack.history?.living?.units?.[this.unitKey(stateId, regimentId)];
   }
 
-  /** Current occupant registry for 1UPT checks. */
-  private unitOccupancy(living: LivingWorldState): Map<number, { stateId: number; isUtility: boolean; key: string }[]> {
+  /**
+   * Occupant registry: one combat army plus one utility regiment per state and
+   * cell, never two states (living-openciv-armies.md §7.1). Army granularity is
+   * the regiment, not the old 1UPT sim.
+   */
+  private armyOccupancy(living: LivingWorldState): Map<number, { stateId: number; isUtility: boolean; key: string }[]> {
     const map = new Map<number, { stateId: number; isUtility: boolean; key: string }[]>();
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
       for (const regiment of state.military ?? []) {
-        const unit = living.units?.[this.unitKey(state.i, regiment.i)];
-        if (!unit || unit.hp <= 0) continue;
         const key = this.unitKey(state.i, regiment.i);
+        const unit = living.units?.[key];
+        const isUtility = Boolean(unit?.isUtility);
+        if (isUtility && (!unit || unit.hp <= 0)) continue;
+        if (!isUtility && armyIsEmpty(regiment)) continue;
         const list = map.get(regiment.cell) ?? [];
-        list.push({ stateId: state.i, isUtility: unit.isUtility, key });
+        list.push({ stateId: state.i, isUtility, key });
         map.set(regiment.cell, list);
       }
     }
@@ -5468,14 +5534,16 @@ class LivingModel {
 
   private removeRegiment(state: State, regiment: Regiment, living: LivingWorldState): void {
     state.military = (state.military ?? []).filter(entry => entry !== regiment);
-    if (living.units) delete living.units[this.unitKey(state.i, regiment.i)];
+    const key = this.unitKey(state.i, regiment.i);
+    if (living.units) delete living.units[key];
+    if (living.armies) delete living.armies[key];
   }
 
-  /** One tactical tick: healing, builder/ settler work, movement, battles and city strikes. */
+  /** One tactical tick: utility work, army orders, battles and city strikes. */
   private stepTactical(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
-    this.syncUnits(living);
-    const occupancy = this.unitOccupancy(living);
+    this.syncArmies(living);
+    const occupancy = this.armyOccupancy(living);
 
     // Cities regenerate and reset their strike flag before units act.
     for (const burg of pack.burgs) {
@@ -5496,18 +5564,17 @@ class LivingModel {
       for (const regiment of [...(state.military ?? [])]) {
         const key = this.unitKey(state.i, regiment.i);
         const unit = living.units?.[key];
-        if (!unit) continue;
-        if (unit.hp <= 0) {
-          this.removeRegiment(state, regiment, living);
-          continue;
-        }
 
-        this.tickUnitHealing(unit, regiment, state);
-        unit.movement = unit.maxMovement;
-        unit.hasAttacked = false;
-
-        let acted = false;
-        if (unit.isUtility) {
+        // Utility regiment: Settler/Builder/Missionary keep the 1UPT sim.
+        if (unit?.isUtility) {
+          if (unit.hp <= 0) {
+            this.removeRegiment(state, regiment, living);
+            continue;
+          }
+          this.tickUnitHealing(unit, regiment, state);
+          unit.movement = unit.maxMovement;
+          unit.hasAttacked = false;
+          let acted = false;
           if (unit.unitTypeId === "settler") {
             acted = this.stepSettler(state, regiment, unit, living, occupancy);
           } else if (unit.unitTypeId === "missionary" || unit.unitTypeId === "inquisitor") {
@@ -5515,10 +5582,22 @@ class LivingModel {
           } else {
             acted = this.stepBuilder(state, regiment, unit, living, occupancy);
           }
-        } else {
-          acted = this.stepUnitOrders(state, regiment, unit, living, occupancy);
+          unit.fortified = !acted;
+          continue;
         }
-        unit.fortified = !acted;
+
+        // Combat army: blocks + per-tick state.
+        const army = living.armies?.[key];
+        if (!army) continue;
+        if (armyIsEmpty(regiment)) {
+          this.removeRegiment(state, regiment, living);
+          continue;
+        }
+        army.movement = army.maxMovement;
+        army.hasFought = false;
+        const acted = this.stepArmyOrders(state, regiment, army, living, occupancy);
+        army.stance = acted ? "march" : "fortify";
+        syncRegimentTotals(regiment, Military.getUnitTypes());
       }
 
       // Rich states upgrade one regiment per season.
@@ -5571,39 +5650,6 @@ class LivingModel {
     return Math.max(1, strength);
   }
 
-  /** Award XP, level up and pick a promotion (or heal instantly when badly wounded). */
-  private addUnitXp(unit: UnitSimState, amount: number, living: LivingWorldState): void {
-    unit.xp += Math.max(0, amount);
-    const level = this.unitLevel(unit.xp);
-    if (level <= unit.level) return;
-    unit.level = level;
-    if (unit.hp <= 45) {
-      unit.hp = Math.min(UNIT_MAX_HP, unit.hp + 50);
-      return;
-    }
-    this.grantPromotion(unit, living);
-  }
-
-  /** Deterministic promotion pick from the unit's class tree. */
-  private grantPromotion(unit: UnitSimState, _living: LivingWorldState): void {
-    const available = CIV_PROMOTIONS.filter(
-      promo =>
-        (promo.classes.includes(unit.combatClass) || promo.classes.includes("any")) &&
-        !unit.promotions.includes(promo.id) &&
-        (promo.requires ?? []).every(id => unit.promotions.includes(id))
-    );
-    const chosen = available[0];
-    if (!chosen) return;
-    unit.promotions.push(chosen.id);
-
-    for (const id of chosen.requires ?? []) {
-      if (!unit.promotions.includes(id)) unit.promotions.push(id);
-    }
-    const effects = chosen.effects;
-    if (effects?.movement) unit.maxMovement += effects.movement;
-    if (effects?.range) unit.range += effects.range;
-  }
-
   /** Move a unit along the cheapest descending path toward a target cell. */
   private moveUnitToward(
     regiment: Regiment,
@@ -5649,54 +5695,127 @@ class LivingModel {
     return moved;
   }
 
-  /** Unit orders: engage an enemy in range, bombard a city, or march on the agenda target. */
-  private stepUnitOrders(
+  /** Army orders: engage an enemy in range, bombard a city, or march on the agenda target. */
+  private stepArmyOrders(
     state: State,
     regiment: Regiment,
-    unit: UnitSimState,
+    army: ArmySimState,
     living: LivingWorldState,
     occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
   ): boolean {
-    const enemy = this.findEnemyInRange(state.i, regiment.cell, unit, living);
+    const types = Military.getUnitTypes();
+    const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
     if (enemy) {
-      this.resolveUnitBattle(state, regiment, unit, enemy.state, enemy.regiment, enemy.unit, living);
+      this.resolveArmyDuel(state, regiment, enemy.state, enemy.regiment, living);
       return true;
     }
 
-    if (unitIsRanged(unit)) {
-      const city = this.findCityInRange(state.i, regiment.cell, unit.range);
+    if (armyIsRangedBlocks(regiment, types)) {
+      const city = this.findCityInRange(state.i, regiment.cell, 2);
       if (city) {
-        this.bombardCity(state, unit, city.burg, city.bSim, living);
+        this.bombardCity(state, regiment, city.burg, city.bSim, living);
         return true;
       }
     }
 
     const target = this.tacticalTarget(state, living, regiment.cell);
     if (target === null) return false;
-    return this.moveUnitToward(regiment, unit, target, state.i, this.unitKey(state.i, regiment.i), occupancy);
+    return this.moveArmyToward(regiment, army, target, state.i, this.unitKey(state.i, regiment.i), occupancy);
   }
 
-  /** Nearest at-war enemy regiment within melee reach or the unit's firing range. */
-  private findEnemyInRange(
+  /** Movement cost for an army: the slowest block decides the terrain, not the lead. */
+  private armyMovementCost(from: number, to: number, regiment: Regiment, movement: number): number {
+    const target = getCellTerrainInfo(to);
+    if (regiment.n === 1) {
+      if (!target.isWater) return Number.POSITIVE_INFINITY;
+    } else if (target.isWater || target.isMountain) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    if (Number(pack.cells.routes?.[from]?.[to] ?? 0) > 0) return 1 / 3;
+
+    const riverCrossing =
+      Number(pack.cells.r?.[from] ?? 0) !== Number(pack.cells.r?.[to] ?? 0) && Number(pack.cells.r?.[to] ?? 0) > 0;
+    if (riverCrossing) return Math.max(1, movement);
+
+    if (target.movementCost >= 9999) return Number.POSITIVE_INFINITY;
+    return target.movementCost;
+  }
+
+  /** Closed borders: an army may only enter foreign land when at war. */
+  private canEnterForeignCellFor(stateId: number, cell: number): boolean {
+    const owner = pack.cells.state?.[cell] ?? 0;
+    if (!owner || owner === stateId) return true;
+    return this.isAtWar(stateId, owner);
+  }
+
+  /** March an army along the cheapest descending path toward a target cell. */
+  private moveArmyToward(
+    regiment: Regiment,
+    army: ArmySimState,
+    targetCell: number,
+    stateId: number,
+    key: string,
+    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
+  ): boolean {
+    const distances = this.cellHopDistances(targetCell, 40);
+    const isUtility = false;
+    let moved = false;
+    let guard = 0;
+
+    while (army.movement > 0 && guard++ < 12) {
+      const current = regiment.cell;
+      if (current === targetCell) break;
+      const currentDistance = distances.get(current) ?? Number.POSITIVE_INFINITY;
+      let best: { cell: number; distance: number; cost: number } | null = null;
+
+      for (const neighbor of pack.cells.c?.[current] ?? []) {
+        const distance = distances.get(neighbor);
+        if (distance === undefined || distance >= currentDistance) continue;
+        if (hasStackingConflict(occupancy.get(neighbor) ?? [], stateId, isUtility, key)) continue;
+        if (!this.canEnterForeignCellFor(stateId, neighbor)) continue;
+        const cost = this.armyMovementCost(current, neighbor, regiment, army.movement);
+        if (!Number.isFinite(cost) || cost > army.movement) continue;
+        if (
+          !best ||
+          distance < best.distance ||
+          (distance === best.distance && cost < best.cost) ||
+          (distance === best.distance && cost === best.cost && neighbor < best.cell)
+        ) {
+          best = { cell: neighbor, distance, cost };
+        }
+      }
+
+      if (!best) break;
+      this.moveRegimentTo(regiment, best.cell, stateId, key, occupancy);
+      army.movement = Math.max(0, army.movement - best.cost);
+      moved = true;
+    }
+
+    return moved;
+  }
+
+  /** Nearest at-war enemy **army** within melee reach or the army's firing range. */
+  private findEnemyArmyInRange(
     stateId: number,
     cell: number,
-    unit: UnitSimState,
+    regiment: Regiment,
     living: LivingWorldState
-  ): { state: State; regiment: Regiment; unit: UnitSimState } | null {
-    const range = unitIsRanged(unit) ? Math.max(1, unit.range) : 1;
-    const distances = this.cellHopDistances(cell, range);
+  ): { state: State; regiment: Regiment } | null {
+    const ranged = armyIsRangedBlocks(regiment, Military.getUnitTypes());
+    const distances = this.cellHopDistances(cell, ranged ? 2 : 1);
 
     for (const [candidate, hops] of distances) {
       if (hops === 0) continue;
       for (const other of pack.states) {
         if (!other?.i || other.removed || other.i === stateId) continue;
         if (!this.isAtWar(stateId, other.i)) continue;
-        for (const regiment of other.military ?? []) {
-          if (regiment.cell !== candidate) continue;
-          const enemyUnit = living.units?.[this.unitKey(other.i, regiment.i)];
-          if (!enemyUnit || enemyUnit.hp <= 0) continue;
-          if (rangedLineOfSightBlocked(candidate, unit)) continue;
-          return { state: other, regiment, unit: enemyUnit };
+        for (const enemy of other.military ?? []) {
+          if (enemy.cell !== candidate) continue;
+          if (!living.armies?.[this.unitKey(other.i, enemy.i)]) continue;
+          if (armyIsEmpty(enemy)) continue;
+          if (ranged && terrainDefenseMultiplier(candidate) > 1) continue;
+          return { state: other, regiment: enemy };
         }
       }
     }
@@ -5720,51 +5839,57 @@ class LivingModel {
     return null;
   }
 
-  /** OpenCiv melee/ranged duel between two 1UPT units. */
-  private resolveUnitBattle(
+  /** Interim Phase-B duel: the lead block of each army fights, composition survives. */
+  private resolveArmyDuel(
     attackerState: State,
     attackerRegiment: Regiment,
-    attacker: UnitSimState,
     defenderState: State,
     defenderRegiment: Regiment,
-    defender: UnitSimState,
     living: LivingWorldState
   ): void {
-    const ranged = unitIsRanged(attacker);
-    const attackStrength = this.effectiveStrength(
-      attacker,
-      attackerRegiment.cell,
+    const types = Military.getUnitTypes();
+    const attackerLead = armyLead(attackerRegiment);
+    const defenderLead = armyLead(defenderRegiment);
+    if (!attackerLead || !defenderLead) return;
+
+    const ranged = armyIsRangedBlocks(attackerRegiment, types);
+    const attackStrength = this.armyStrengthAt(
+      attackerRegiment,
       attackerState.i,
       "attack",
+      attackerRegiment.cell,
       defenderRegiment.cell
     );
-    const defendStrength = this.effectiveStrength(
-      defender,
-      defenderRegiment.cell,
+    const defendStrength = this.armyStrengthAt(
+      defenderRegiment,
       defenderState.i,
       "defend",
+      defenderRegiment.cell,
       attackerRegiment.cell
     );
 
-    const rng = this.rng("unit:battle", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
-    const dealt = combatDamage(attackStrength, defendStrength, defender.hp, rng.next());
-    defender.hp = Math.max(0, defender.hp - dealt);
-
+    const rng = this.rng("army:duel", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
+    const dealt = combatDamage(attackStrength, defendStrength, defenderLead.hp * 100, rng.next()) / 100;
+    defenderLead.hp = Math.max(0, defenderLead.hp - dealt);
     if (!ranged) {
-      const back = combatDamage(defendStrength, attackStrength, attacker.hp, rng.next());
-      attacker.hp = Math.max(0, attacker.hp - back);
+      const back = combatDamage(defendStrength, attackStrength, attackerLead.hp * 100, rng.next()) / 100;
+      attackerLead.hp = Math.max(0, attackerLead.hp - back);
     }
 
-    attacker.hasAttacked = true;
-    this.addUnitXp(attacker, ranged ? 2 : 5, living);
-    this.addUnitXp(defender, ranged ? 2 : 4, living);
+    const attackerArmy = living.armies?.[this.unitKey(attackerState.i, attackerRegiment.i)];
+    if (attackerArmy) attackerArmy.hasFought = true;
+    if (ranged) this.awardBlockExp(attackerLead, 2);
+    else {
+      this.awardBlockExp(attackerLead, 5);
+      this.awardBlockExp(defenderLead, 4);
+    }
 
-    if (defender.hp <= 0) {
-      // If both blows would be fatal, the attacker holds the field at 1 HP.
-      if (attacker.hp <= 0) attacker.hp = 1;
+    const defenderKey = this.unitKey(defenderState.i, defenderRegiment.i);
+    if (armyIsEmpty(defenderRegiment)) {
+      if (armyIsEmpty(attackerRegiment) && attackerRegiment.units?.[0]) attackerRegiment.units[0].hp = 0.01;
       this.removeRegiment(defenderState, defenderRegiment, living);
       if (!ranged) {
-        const occupancy = this.unitOccupancy(living);
+        const occupancy = this.armyOccupancy(living);
         this.moveRegimentTo(
           attackerRegiment,
           defenderRegiment.cell,
@@ -5774,9 +5899,11 @@ class LivingModel {
         );
       }
     }
-    if (attacker.hp <= 0) this.removeRegiment(attackerState, attackerRegiment, living);
+    if (armyIsEmpty(attackerRegiment)) {
+      this.removeRegiment(attackerState, attackerRegiment, living);
+    }
 
-    const defenderName = CIV_UNIT_BY_ID[defender.unitTypeId]?.name ?? "unit";
+    const defenderName = types[defenderLead.type]?.name ?? "unit";
     this.pushNews(living, {
       kind: "battle",
       text: ranged
@@ -5785,24 +5912,57 @@ class LivingModel {
       cell: defenderRegiment.cell,
       stateId: attackerState.i
     });
+    void defenderKey;
   }
 
-  /** A ranged unit bombards a Major Burg: no return damage, never below 1 HP. */
+  /** Interim army strength: lead block power on the 0..100 duel scale, with modifiers. */
+  private armyStrengthAt(
+    regiment: Regiment,
+    stateId: number,
+    role: "attack" | "defend",
+    cell: number,
+    targetCell?: number
+  ): number {
+    const types = Military.getUnitTypes();
+    const lead = armyLead(regiment);
+    if (!lead) return 1;
+    let strength = blockPower(lead, types) * 6;
+    if (role === "defend") {
+      strength *= terrainDefenseMultiplier(cell);
+      const army = pack.history?.living?.armies?.[this.unitKey(stateId, regiment.i)];
+      if (army?.stance === "fortify") strength *= 1.25;
+      if (targetCell !== undefined) {
+        const crossesRiver =
+          Number(pack.cells.r?.[cell] ?? 0) !== Number(pack.cells.r?.[targetCell] ?? 0) &&
+          Number(pack.cells.r?.[targetCell] ?? 0) > 0;
+        if (crossesRiver) strength *= 0.8;
+      }
+    }
+    const happiness = pack.history?.living?.states?.[stateId]?.happiness;
+    if (happiness !== undefined) strength *= happinessCombatMultiplier(happiness);
+    if (this.stateRelicCount(stateId, "weapon") > 0) strength *= 1 + WEAPON_RELIC_COMBAT_PERCENT / 100;
+    return Math.max(1, strength);
+  }
+
+  private awardBlockExp(block: { hp: number; exp: number }, amount: number): void {
+    if (block.hp <= 0) return;
+    block.exp = Math.min(9, block.exp + Math.max(1, Math.round(amount / 3)));
+  }
+
+  /** A ranged army bombards a Major Burg: no return damage, never below the floor. */
   private bombardCity(
     state: State,
-    unit: UnitSimState,
+    regiment: Regiment,
     burg: Burg,
     bSim: BurgSimState,
-    living: LivingWorldState
+    _living: LivingWorldState
   ): void {
     this.ensureCityHp(bSim);
-    const attack = this.effectiveStrength(unit, burg.cell, state.i, "attack", burg.cell);
+    const attack = this.armyStrengthAt(regiment, state.i, "attack", regiment.cell, burg.cell);
     const defense = this.cityDefenseStrength(bSim, burg);
-    const rng = this.rng("city:bombard", burg.i, living.tick);
+    const rng = this.rng("city:bombard", burg.i, pack.history?.living?.tick ?? 0);
     const damage = combatDamage(attack, defense, bSim.hp ?? CITY_BASE_HP, rng.next());
     bSim.hp = Math.max(CITY_MIN_RANGED_HP, (bSim.hp ?? CITY_BASE_HP) - damage);
-    unit.hasAttacked = true;
-    this.addUnitXp(unit, 2, living);
   }
 
   /** City HP: 200 base plus Walls/Castle/Arsenal/Military Base. */
@@ -5824,20 +5984,22 @@ class LivingModel {
     return Math.max(1, strength);
   }
 
-  /** Strongest friendly 1UPT regiment stationed on the city cell. */
+  /** Strongest friendly army stationed on the city cell (lead-block power). */
   private garrisonStrength(burg: Burg): number {
     const living = pack.history?.living;
-    if (!living?.units || !burg.state) return 0;
+    if (!burg.state) return 0;
+    const types = Military.getUnitTypes();
     let best = 0;
     for (const regiment of pack.states[burg.state]?.military ?? []) {
       if (regiment.cell !== burg.cell) continue;
-      const unit = living.units[this.unitKey(burg.state, regiment.i)];
-      if (unit) best = Math.max(best, unit.combatStrength);
+      if (!living?.armies?.[this.unitKey(burg.state, regiment.i)]) continue;
+      const lead = armyLead(regiment);
+      if (lead) best = Math.max(best, blockPower(lead, types) * 6);
     }
     return best;
   }
 
-  /** Each Major Burg fires one range-2 strike at the weakest enemy regiment nearby. */
+  /** Each Major Burg removes one block step from the weakest hostile army in range 2. */
   private stepCityStrikes(living: LivingWorldState): void {
     for (const burg of pack.burgs) {
       if (!burg?.i || burg.removed || !burg.state) continue;
@@ -5848,7 +6010,8 @@ class LivingModel {
       const state = pack.states[burg.state];
       if (!state?.i || state.removed || !this.stateAtWar(state)) continue;
 
-      let target: { state: State; regiment: Regiment; unit: UnitSimState } | null = null;
+      let target: { state: State; regiment: Regiment } | null = null;
+      let targetHp = 2;
       const distances = this.cellHopDistances(burg.cell, 2);
       for (const [candidate, hops] of distances) {
         if (hops === 0) continue;
@@ -5857,22 +6020,23 @@ class LivingModel {
           if (!this.isAtWar(state.i, other.i)) continue;
           for (const regiment of other.military ?? []) {
             if (regiment.cell !== candidate) continue;
-            const unit = living.units?.[this.unitKey(other.i, regiment.i)];
-            if (!unit || unit.hp <= 0) continue;
-            if (!target || unit.hp < target.unit.hp) target = { state: other, regiment, unit };
+            if (!living.armies?.[this.unitKey(other.i, regiment.i)]) continue;
+            const hp = armyHp(regiment);
+            if (hp > 0 && hp < targetHp) {
+              target = { state: other, regiment };
+              targetHp = hp;
+            }
           }
         }
       }
       if (!target) continue;
 
-      let strength = this.cityDefenseStrength(bSim, burg);
-      if (this.stateBeliefs(state, living).has("goddess_of_protection")) strength *= 1.3;
-      const rng = this.rng("city:strike", burg.i, living.tick);
-      const damage = combatDamage(strength, target.unit.combatStrength, target.unit.hp, rng.next());
-      target.unit.hp = Math.max(0, target.unit.hp - damage);
+      const lead = armyLead(target.regiment);
+      if (!lead) continue;
+      lead.hp = Math.max(0, lead.hp - CITY_STRIKE_HP);
       bSim.hasStruckThisTurn = true;
 
-      if (target.unit.hp <= 0) this.removeRegiment(target.state, target.regiment, living);
+      if (armyIsEmpty(target.regiment)) this.removeRegiment(target.state, target.regiment, living);
     }
   }
 
@@ -5898,8 +6062,7 @@ class LivingModel {
       for (const regiment of other.military ?? []) {
         const distance = reach.get(regiment.cell);
         if (distance === undefined) continue;
-        const unit = living.units?.[this.unitKey(other.i, regiment.i)];
-        if (!unit || unit.hp <= 0) continue;
+        if (!living.armies?.[this.unitKey(other.i, regiment.i)] || armyIsEmpty(regiment)) continue;
         if (!best || distance < best.distance || (distance === best.distance && regiment.cell < best.cell)) {
           best = { cell: regiment.cell, distance };
         }
@@ -6125,35 +6288,36 @@ class LivingModel {
     if (!army || !bSim) return false;
 
     this.ensureCityHp(bSim);
-    const unit = living.units?.[this.unitKey(state.i, army.i)];
-    if (!unit) return false;
+    const key = this.unitKey(state.i, army.i);
+    const armyState = living.armies?.[key];
+    if (!armyState) return false;
 
     const adjacent = (pack.cells.c?.[burg.cell] ?? []).includes(army.cell);
     if (!adjacent) {
-      const occupancy = this.unitOccupancy(living);
-      this.moveUnitToward(army, unit, burg.cell, state.i, this.unitKey(state.i, army.i), occupancy);
+      const occupancy = this.armyOccupancy(living);
+      this.moveArmyToward(army, armyState, burg.cell, state.i, key, occupancy);
       if (!(pack.cells.c?.[burg.cell] ?? []).includes(army.cell)) return false;
     }
 
-    const ranged = unitIsRanged(unit);
+    const lead = armyLead(army);
+    if (!lead) return false;
+    const ranged = armyIsRangedBlocks(army, Military.getUnitTypes());
     const defense = this.cityDefenseStrength(bSim, burg);
-    const attack = this.effectiveStrength(unit, army.cell, state.i, "attack", burg.cell);
+    const attack = this.armyStrengthAt(army, state.i, "attack", army.cell, burg.cell);
     const rng = this.rng("city:siege", state.i * 1000 + burg.i, living.tick);
 
-    let bonus = 1;
-    for (const id of unit.promotions) bonus *= 1 + (CIV_PROMOTION_BY_ID[id]?.effects?.vsCityPercent ?? 0) / 100;
-    const damage = combatDamage(attack * bonus, defense, bSim.hp ?? CITY_BASE_HP, rng.next());
+    const damage = combatDamage(attack, defense, bSim.hp ?? CITY_BASE_HP, rng.next());
     const floor = ranged ? CITY_MIN_RANGED_HP : 0;
     bSim.hp = Math.max(floor, (bSim.hp ?? CITY_BASE_HP) - damage);
 
     if (!ranged) {
-      const back = combatDamage(defense, attack, unit.hp, rng.next());
-      unit.hp = Math.max(0, unit.hp - back);
+      lead.hp = Math.max(0, lead.hp - combatDamage(defense, attack, lead.hp * 100, rng.next()) / 100);
     }
-    this.addUnitXp(unit, ranged ? 2 : 5, living);
-    unit.hasAttacked = true;
+    armyState.hasFought = true;
+    this.awardBlockExp(lead, ranged ? 2 : 5);
+    syncRegimentTotals(army, Military.getUnitTypes());
 
-    if (unit.hp <= 0) {
+    if (armyIsEmpty(army)) {
       this.removeRegiment(state, army, living);
       return false;
     }
@@ -6161,7 +6325,7 @@ class LivingModel {
 
     this.captureCity(state, burg, living);
     if (army.cell !== burg.cell) {
-      const occupancy = this.unitOccupancy(living);
+      const occupancy = this.armyOccupancy(living);
       this.moveRegimentTo(army, burg.cell, state.i, this.unitKey(state.i, army.i), occupancy);
     }
     return true;
@@ -6213,59 +6377,99 @@ class LivingModel {
     if (next) state.center = next.cell;
   }
 
-  /** Spawn a 1UPT unit at a burg, respecting 1UPT stacking. */
+  /** Produce one unit: civilians keep a 1UPT sim, combat units add an army block. */
   private spawnUnit(state: State, burg: Burg, unitTypeId: string): Regiment | null {
     const living = this.getState();
     const def = this.unitDefinition(unitTypeId);
-    if (!def) return null;
 
-    const cell = this.findSpawnCell(burg.cell, state.i, Boolean(def.isUtility), living);
-    if (cell === null) return null;
+    if (def?.isUtility || isCivilianUnit(unitTypeId)) {
+      if (!def) return null;
+      const cell = this.findSpawnCell(burg.cell, state.i, true, living);
+      if (cell === null) return null;
 
-    const regiment = this.createRegiment(state);
-    this.moveRegimentTo(regiment, cell, state.i, this.unitKey(state.i, regiment.i), this.unitOccupancy(living));
+      const regiment = this.createRegiment(state);
+      regiment.type = def.id;
+      this.moveRegimentTo(regiment, cell, state.i, this.unitKey(state.i, regiment.i), this.armyOccupancy(living));
 
-    const unit: UnitSimState = {
-      unitTypeId: def.id,
-      domain: def.domain ?? "land",
-      combatClass: def.unitClass ?? (def.isUtility ? "civilian" : "melee"),
-      isUtility: Boolean(def.isUtility),
-      hp: UNIT_MAX_HP,
-      movement: def.defaultMoveDistance ?? 2,
-      maxMovement: def.defaultMoveDistance ?? 2,
-      combatStrength: def.combatStrength ?? 0,
-      rangedStrength: def.rangedStrength ?? 0,
-      range: def.range ?? 0,
-      xp: 0,
-      level: 1,
-      promotions: [],
-      fortified: false,
-      hasAttacked: false,
-      workOrder: null
-    };
+      const unit = this.createUtilitySim(regiment, def);
+      unit.xp = this.trainingXp(burg);
+      unit.level = this.unitLevel(unit.xp);
 
-    // Barracks and similar training buildings grant +15 XP each on recruitment.
-    const trainingBuildings = (pack.history?.living?.burgs[burg.i]?.civBuildings ?? []).filter(id =>
-      ["barracks", "armory", "military_academy"].includes(id)
-    ).length;
-    unit.xp = trainingBuildings * 15;
-    unit.level = this.unitLevel(unit.xp);
+      living.units ??= {};
+      living.units[this.unitKey(state.i, regiment.i)] = unit;
+      regiment.a = UNIT_MAX_HP;
+      regiment.u = { [def.id]: UNIT_MAX_HP };
+      regiment.units = [];
+      regiment.n = (def.domain ?? "land") === "sea" ? 1 : 0;
 
-    living.units ??= {};
-    living.units[this.unitKey(state.i, regiment.i)] = unit;
-    regiment.a = UNIT_MAX_HP;
-    regiment.u = { [def.id]: UNIT_MAX_HP };
-    regiment.units = [];
-    regiment.n = (def.domain ?? "land") === "sea" ? 1 : 0;
+      this.pushNews(living, {
+        kind: "muster",
+        text: `${state.name} trained a ${def.name} in ${burg.name ?? "a city"}.`,
+        cell,
+        stateId: state.i,
+        burgId: burg.i
+      });
+      return regiment;
+    }
+
+    // Interim roster production: map the Civ class onto the culture's roster.
+    const unitTypes = Military.getUnitTypes();
+    const roster = Military.getRoster(state);
+    const typeId = unitTypes[unitTypeId]
+      ? unitTypeId
+      : roster
+        ? matchRosterUnitByCategory(roster, def?.unitClass ?? "melee")?.id
+        : undefined;
+    if (!typeId || !unitTypes[typeId]) return null;
+    return this.spawnArmyBlock(state, burg, typeId, unitTypes[typeId].name);
+  }
+
+  /** Muster one roster block into the army at a burg, or a new regiment if it is full. */
+  private spawnArmyBlock(state: State, burg: Burg, typeId: string, label: string): Regiment | null {
+    const living = this.getState();
+    const unitTypes = Military.getUnitTypes();
+    const maxSlots = currentContent().config.military.maxUnitsPerArmy;
+    const exp = Math.min(9, Math.floor(this.trainingXp(burg) / 15));
+
+    let regiment = (state.military ?? []).find(entry => {
+      if (entry.cell !== burg.cell) return false;
+      const key = this.unitKey(state.i, entry.i);
+      return Boolean(living.armies?.[key]) && (entry.units?.length ?? 0) < maxSlots;
+    });
+    if (!regiment) {
+      const cell = this.findSpawnCell(burg.cell, state.i, false, living);
+      if (cell === null) return null;
+      regiment = this.createRegiment(state);
+      this.moveRegimentTo(regiment, cell, state.i, this.unitKey(state.i, regiment.i), this.armyOccupancy(living));
+    }
+
+    const key = this.unitKey(state.i, regiment.i);
+    regiment.units ??= [];
+    regiment.units.push({ type: typeId, hp: 1, exp });
+    normalizeArmy(regiment, maxSlots, unitTypes);
+    syncRegimentTotals(regiment, unitTypes);
+
+    const speed = armySpeed(regiment, unitTypes);
+    living.armies ??= {};
+    living.armies[key] ??= { movement: speed, maxMovement: speed, stance: "fortify", hasFought: false };
 
     this.pushNews(living, {
       kind: "muster",
-      text: `${state.name} trained a ${def.name} in ${burg.name ?? "a city"}.`,
-      cell,
+      text: `${state.name} mustered ${label} in ${burg.name ?? "a city"}.`,
+      cell: regiment.cell,
       stateId: state.i,
       burgId: burg.i
     });
     return regiment;
+  }
+
+  /** Barracks and similar training buildings grant +15 XP each on recruitment. */
+  private trainingXp(burg: Burg): number {
+    return (
+      (pack.history?.living?.burgs[burg.i]?.civBuildings ?? []).filter(id =>
+        ["barracks", "armory", "military_academy"].includes(id)
+      ).length * 15
+    );
   }
 
   /** First free cell at or around the burg that respects 1UPT stacking. */
@@ -6275,7 +6479,7 @@ class LivingModel {
     isUtility: boolean,
     living: LivingWorldState
   ): number | null {
-    const occupancy = this.unitOccupancy(living);
+    const occupancy = this.armyOccupancy(living);
     const candidates = [burgCell, ...(pack.cells.c?.[burgCell] ?? [])];
     for (const cell of candidates) {
       const info = getCellTerrainInfo(cell);
@@ -6819,7 +7023,7 @@ class LivingModel {
         destination,
         stateId,
         this.unitKey(stateId, regiment.i),
-        this.unitOccupancy(living)
+        this.armyOccupancy(living)
       );
     }
   }
@@ -7018,9 +7222,16 @@ class LivingModel {
     if (!choice) return false;
 
     const regiment = choice.regiment ?? this.createRegiment(state);
+    const unitTypes = Military.getUnitTypes();
     regiment.units ??= [];
     regiment.units.push({ type: choice.unit.id, hp: 1, exp: 0 });
-    syncRegimentTotals(regiment, Military.getUnitTypes());
+    normalizeArmy(regiment, currentContent().config.military.maxUnitsPerArmy, unitTypes);
+    syncRegimentTotals(regiment, unitTypes);
+    const key = this.unitKey(state.i, regiment.i);
+    const speed = armySpeed(regiment, unitTypes);
+    const livingState = this.getState();
+    livingState.armies ??= {};
+    livingState.armies[key] ??= { movement: speed, maxMovement: speed, stance: "fortify", hasFought: false };
     if (choice.unit.troubleRole) this.commanderFor(state, regiment, choice.unit.troubleRole);
 
     const living = this.getState();
@@ -8464,6 +8675,7 @@ class LivingModel {
     let bestMen = 0;
     for (const regiment of state.military ?? []) {
       if (regiment.n) continue;
+      if (isCivilianUnit((regiment.type ?? "").toLowerCase())) continue;
       if (!regiment.units?.length) reconcileRegimentBlocks(regiment, unitTypes);
       // Civilian regiments and stale ids never fight (living-openciv-armies.md §11).
       if ((regiment.units ?? []).some(unit => unit.type !== "fleet" && !unitTypes[unit.type])) continue;
@@ -9185,6 +9397,7 @@ class LivingModel {
     const unitTypes = Military.getUnitTypes();
     for (const regiment of state.military ?? []) {
       if (regiment.n) continue;
+      if (isCivilianUnit((regiment.type ?? "").toLowerCase())) continue;
       if (!regiment.units) reconcileRegimentBlocks(regiment, unitTypes);
       const slots = regiment.units ?? [];
       if (slots.length >= maxUnits) continue;

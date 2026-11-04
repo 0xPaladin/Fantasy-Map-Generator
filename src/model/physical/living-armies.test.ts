@@ -5,14 +5,18 @@ import { type BattleModifiers, computeBattleSetup } from "@/conquest/engine/game
 import { resolveConfig } from "@/conquest/engine/game/config";
 import {
   armyHp,
+  armyLead,
   armyMen,
   armySlots,
+  armySpeed,
   armyStrength,
   BATTLE_STRENGTH,
+  blockPower,
   chooseOrder,
   fromBattleUnits,
   fromBattleUnitsMen,
   matchRosterUnitByCategory,
+  migrateArmyBlocks,
   nextRosterUnitInCategory,
   normalizeArmy,
   pickRosterUnit,
@@ -123,6 +127,46 @@ describe("block helpers", () => {
     expect(armyHp(regimentOf([]))).toBe(0);
     expect(armyHp(regimentOf([block({ hp: 0 })]))).toBe(0);
     expect(armyHp(regimentOf([block({ hp: 0.2 })]))).toBeCloseTo(0.2, 10);
+  });
+});
+
+describe("army speed, lead block and migration", () => {
+  it("uses the slowest block: cavalry 4, infantry 2", () => {
+    expect(armySpeed(regimentOf([block({ type: "knight" })]), roster.units)).toBe(4);
+    expect(armySpeed(regimentOf([block({ type: "knight" }), block({ type: "sword" })]), roster.units)).toBe(2);
+    expect(armySpeed(regimentOf([]), roster.units)).toBe(2);
+    // A dead slow block no longer holds the army back.
+    expect(armySpeed(regimentOf([block({ type: "knight" }), block({ type: "sword", hp: 0 })]), roster.units)).toBe(4);
+  });
+
+  it("picks the strongest block as the interim duel leader", () => {
+    const reg = regimentOf([block({ type: "sword", hp: 0.4 }), block({ type: "levy", hp: 0.9 })]);
+    expect(armyLead(reg)?.type).toBe("levy");
+    expect(armyLead(regimentOf([]))).toBeUndefined();
+  });
+
+  it("scales block power by hp and experience", () => {
+    const full = blockPower(block({ type: "sword", hp: 1, exp: 0 }), roster.units);
+    const half = blockPower(block({ type: "sword", hp: 0.5, exp: 0 }), roster.units);
+    const veteran = blockPower(block({ type: "sword", hp: 1, exp: 5 }), roster.units);
+    expect(half).toBeCloseTo(full / 2, 10);
+    expect(veteran).toBeGreaterThan(full);
+    expect(blockPower(block({ type: "ghost" }), roster.units)).toBe(0);
+  });
+
+  it("converts legacy count blocks to hp and drops the fleet marker", () => {
+    const reg = {
+      units: [
+        { type: "sword", count: 75, exp: 2 },
+        { type: "levy", hp: 0.4, exp: 0 },
+        { type: "fleet", hp: 1, exp: 0 }
+      ]
+    } as never as Parameters<typeof armySlots>[0];
+    migrateArmyBlocks(reg, roster.units);
+    expect(reg.units).toEqual([
+      { type: "sword", count: 75, exp: 2, hp: 0.75 },
+      { type: "levy", hp: 0.4, exp: 0 }
+    ]);
   });
 });
 
