@@ -66,6 +66,24 @@ export const controllingStates = (snapshot: CelestialBody["snapshot"]): Array<{ 
     .map(state => ({ name: state.name, color: state.color ?? "#9aa2b5" }));
 };
 
+/** habitability classification nomenclature */
+export const habitabilityNomenclature = (hi: number): string => {
+  switch (hi) {
+    case 1:
+      return "Earthlike";
+    case 2:
+      return "Survivable";
+    case 3:
+      return "EVA Possible";
+    case 4:
+      return "Robot Accessible";
+    case 5:
+      return "Inimical";
+    default:
+      return `HI ${hi}`;
+  }
+};
+
 // --- scene state --------------------------------------------------------------
 
 type Actions = {
@@ -694,6 +712,8 @@ function bindEvents(canvas: HTMLCanvasElement): void {
   const onDoubleClick = (event: MouseEvent) => {
     const bodyId = pickBody(canvas, event.clientX, event.clientY);
     if (!bodyId || bodyId === "::star") return;
+    const body = SolarSystem.getBody(bodyId);
+    if (body?.archetype === "gas_giant" || body?.astro.type === "gas giant") return; // gas giants have no surface
     void openWorld(bodyId);
   };
   const onResize = () => redraw();
@@ -977,13 +997,15 @@ function showInspector(body: CelestialBody): void {
   document.getElementById("systemInspector")?.remove();
 
   const states = controllingStates(body.snapshot);
-  const { type } = body.astro;
-  const subtype = body.astro.kind === "planet" ? body.astro.subtype : undefined;
   const colonies = colonySummary(body);
 
   const isPlanet = body.kind === "planet";
+  const isGasGiant = body.archetype === "gas_giant" || body.astro.type === "gas giant";
   const parentPlanet = body.parentId ? SolarSystem.getBody(body.parentId) : null;
   const moons = isPlanet ? SolarSystem.bodies.filter(b => b.kind === "moon" && b.parentId === body.id) : [];
+
+  const rKm = kindRadius(body) < 500 ? kindRadius(body) * 1000 : kindRadius(body);
+  const earthRadiusRatio = rKm / 6371;
 
   const panel = document.createElement("div");
   panel.id = "systemInspector";
@@ -996,14 +1018,14 @@ function showInspector(body: CelestialBody): void {
       ${parentPlanet ? `<div class="systemInspectorParentLink" data-parent="${parentPlanet.id}">← Back to ${escapeHtml(parentPlanet.name)}</div>` : ""}
       ${isPlanet ? `<div class="systemInspectorParentLink systemInspectorSystemLink">← ${t("Back to System View")}</div>` : ""}
       <div class="systemInspectorRow"><span>${t("Archetype")}</span><b>${t(ARCHETYPE_LABELS[body.archetype] ?? body.archetype)}</b></div>
-      <div class="systemInspectorRow"><span>${t("Classification")}</span><b>${type}${subtype && subtype !== type ? ` (${subtype})` : ""}</b></div>
       ${isPlanet ? `<div class="systemInspectorRow"><span>${t("Orbit")}</span><b>${rn(body.orbit.semiMajorAxisAU, 2)} AU</b></div>` : ""}
       <div class="systemInspectorRow"><span>${t("Period")}</span><b>${rn(body.orbit.periodDays, 1)} days</b></div>
+      <div class="systemInspectorRow"><span>${t("Radius")}</span><b>${rn(earthRadiusRatio, 2)} R⊕</b></div>
       <div class="systemInspectorRow"><span>${t("Gravity")}</span><b>${body.astro.g} g</b></div>
       <div class="systemInspectorRow"><span>${t("Surface temperature")}</span><b>${body.astro.tempC} °C</b></div>
       <div class="systemInspectorRow"><span>${t("Atmosphere")}</span><b>${body.astro.atmosphere}</b></div>
       <div class="systemInspectorRow"><span>${t("Hydrographics")}</span><b>${body.astro.hydrographics}%</b></div>
-      <div class="systemInspectorRow"><span>${t("Habitability")}</span><b>HI ${body.astro.HI}</b></div>
+      <div class="systemInspectorRow"><span>${t("Habitability")}</span><b class="systemInspectorHI hi-${body.astro.HI}">${habitabilityNomenclature(body.astro.HI)}</b></div>
       ${
         moons.length
           ? `<div class="systemInspectorSection">${t("Moons")} (${moons.length})</div>
@@ -1013,8 +1035,7 @@ function showInspector(body: CelestialBody): void {
             m => `
           <div class="systemInspectorMoonRow" data-moon="${m.id}">
             <span class="systemInspectorMoonName">↳ ${escapeHtml(m.name)}</span>
-            <span class="systemInspectorMoonType">${escapeHtml(m.astro.type)}</span>
-            <span class="systemInspectorMoonHI hi-${m.astro.HI}">HI ${m.astro.HI}</span>
+            <span class="systemInspectorMoonHI hi-${m.astro.HI}">${habitabilityNomenclature(m.astro.HI)}</span>
           </div>`
           )
           .join("")}
@@ -1022,20 +1043,18 @@ function showInspector(body: CelestialBody): void {
           : ""
       }
       ${
-        colonies
-          ? `<div class="systemInspectorSection">${t("Colonies")}</div>
-      <div class="systemInspectorRow"><span>${t("Population")}</span><b>${colonies.population}</b></div>
-      <div class="systemInspectorRow"><span>${t("Settlements")}</span><b>${colonies.burgs}</b></div>
-      <div class="systemInspectorRow"><span>${t("Spaceports")}</span><b>${colonies.spaceports}</b></div>
-      ${states.length ? `<div class="systemInspectorRow"><span>${t("States")}</span><b>${states.map(state => state.name).join(", ")}</b></div>` : ""}`
-          : `<div class="systemInspectorSection">${t("Surface not generated yet")}</div>`
+        !isGasGiant
+          ? colonies
+            ? `<div class="systemInspectorSection">${t("Colonies")}</div>
+        <div class="systemInspectorRow"><span>${t("Population")}</span><b>${colonies.population}</b></div>
+        <div class="systemInspectorRow"><span>${t("Settlements")}</span><b>${colonies.burgs}</b></div>
+        <div class="systemInspectorRow"><span>${t("Spaceports")}</span><b>${colonies.spaceports}</b></div>
+        ${states.length ? `<div class="systemInspectorRow"><span>${t("States")}</span><b>${states.map(state => state.name).join(", ")}</b></div>` : ""}`
+            : `<div class="systemInspectorSection">${t("Surface not generated yet")}</div>`
+          : ""
       }
     </div>
-    <footer>
-      <button id="systemInspectorGlobe">${t("Open globe")}</button>
-      <button id="systemInspectorMap">${t("Surface map")}</button>
-      <button id="systemInspectorColonize" disabled data-tip="${t("Available with the colonization tools")}">${t("Colonize")}</button>
-    </footer>
+    ${!isGasGiant ? `<footer><button id="systemInspectorViewSurface">${t("View Surface")}</button></footer>` : ""}
   `;
   document.body.appendChild(panel);
 
@@ -1050,10 +1069,7 @@ function showInspector(body: CelestialBody): void {
       if (moonId) zoomToMoon(moonId);
     });
   }
-  panel.querySelector("#systemInspectorGlobe")?.addEventListener("click", () => void openWorld(body.id));
-  panel
-    .querySelector("#systemInspectorMap")
-    ?.addEventListener("click", () => (actions?.openMap ? void actions.openMap(body.id) : void openWorld(body.id)));
+  panel.querySelector("#systemInspectorViewSurface")?.addEventListener("click", () => void openWorld(body.id));
 }
 
 function ensureInspectorStyle(): void {
@@ -1137,15 +1153,18 @@ function ensureInspectorStyle(): void {
       font-weight: 500;
       color: #e2e6f0;
     }
-    #systemInspector .systemInspectorMoonType {
-      color: #9aa2b5;
+    #systemInspector .systemInspectorHI {
+      font-weight: 600;
       font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 3px;
     }
     #systemInspector .systemInspectorMoonHI {
       font-weight: 600;
       font-size: 11px;
-      padding: 1px 5px;
+      padding: 1px 6px;
       border-radius: 3px;
+      white-space: nowrap;
     }
     #systemInspector .hi-1 { color: #86efac; background: rgba(34, 197, 94, 0.15); }
     #systemInspector .hi-2 { color: #93c5fd; background: rgba(59, 130, 246, 0.15); }
@@ -1154,7 +1173,6 @@ function ensureInspectorStyle(): void {
     #systemInspector .hi-5 { color: #ef4444; background: rgba(239, 68, 68, 0.15); }
     #systemInspector footer {
       display: flex;
-      gap: 6px;
       padding: 8px 12px;
       border-top: 1px solid #3a3f4d;
     }
@@ -1163,11 +1181,18 @@ function ensureInspectorStyle(): void {
       background: #2c3140;
       color: #e8eaf1;
       border: 1px solid #454b5e;
-      border-radius: 5px;
-      padding: 4px 6px;
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
+      transition: all 0.15s ease;
     }
-    #systemInspector footer button:disabled { opacity: 0.45; cursor: default; }
+    #systemInspector footer button:hover {
+      background: #384055;
+      border-color: #60a5fa;
+      color: #ffffff;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -1183,5 +1208,6 @@ export const SystemRenderer = {
   getSelectedBodyId,
   zoomToSystem,
   zoomToPlanet,
-  zoomToMoon
+  zoomToMoon,
+  habitabilityNomenclature
 };

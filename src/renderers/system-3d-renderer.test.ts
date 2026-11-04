@@ -4,6 +4,7 @@ import {
   controllingStates,
   ellipsePoint,
   gasGiantBandColors,
+  habitabilityNomenclature,
   orbitRadius,
   rockyBaseColor
 } from "./system-3d-renderer";
@@ -80,5 +81,16 @@ describe("controllingStates", () => {
 
   it("returns nothing for unmaterialized bodies", () => {
     expect(controllingStates(undefined)).toEqual([]);
+  });
+});
+
+describe("habitabilityNomenclature", () => {
+  it("translates numeric HI indices into standard astronomical nomenclature", () => {
+    expect(habitabilityNomenclature(1)).toBe("Earthlike");
+    expect(habitabilityNomenclature(2)).toBe("Survivable");
+    expect(habitabilityNomenclature(3)).toBe("EVA Possible");
+    expect(habitabilityNomenclature(4)).toBe("Robot Accessible");
+    expect(habitabilityNomenclature(5)).toBe("Inimical");
+    expect(habitabilityNomenclature(99)).toBe("HI 99");
   });
 });
