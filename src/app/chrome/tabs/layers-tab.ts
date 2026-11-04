@@ -84,7 +84,6 @@ const TEMPLATE = /* html */ `
       ${t("3D scene")}
     </button>
     <button data-tip="${sentences(t("Project map on globe"), t("Cannot be used for editing"))}" id="viewGlobe">${t("Globe")}</button>
-    <button data-tip="${t("Living World simulation: seasonal clock, news ticker, inspector and god mode")}" id="viewLivingWorld">${t("Living World")}</button>
     <button data-tip="${t("Astral view: star chart layers, nebulae and systems")}" id="viewAstral">${t("Astral")}</button>
     <button data-tip="${t("Return to the Sector View (star chart)")}" id="viewAstralBackSector" class="astral-nav-btn">
       ${t("Back to Sector")}
@@ -200,6 +199,18 @@ ensureEl("layersOrderButton").addEventListener("click", () => void Controllers.L
 Layers.subscribe(render);
 subscribeAstralView(render);
 subscribeConquestView(render);
+
+// Astral view hides the 3D scene and Globe view mode buttons
+function syncViewModeVisibility(): void {
+  const astral = isAstralView();
+  for (const id of ["viewMesh", "viewGlobe"]) {
+    const el = findEl(id);
+    if (el) el.hidden = astral;
+  }
+}
+
+syncViewModeVisibility();
+subscribeAstralView(syncViewModeVisibility);
 Layers.subscribe(() => ViewportLayers.renderNow());
 
 // the 3d view renders the map as a texture: refresh it on any layer change, once the batch has settled
