@@ -30,6 +30,8 @@ export interface BattleModifiers {
   defenderAmbushed: boolean;
   /** Attacker crossed a river boundary into the fight. */
   attackerCrossedRiver: boolean;
+  /** Defender stands on hill/forest/jungle/marsh (`config.battle.terrainDefenseBonus`). */
+  defenderTerrain?: boolean;
   labels: string[];
   /** Lord skill multipliers (§5.8 combat branch). */
   attackerLordMult?: number;
@@ -65,6 +67,9 @@ const categoryShares = (units: ArmyUnit[], types: Record<string, UnitType>) => {
   }
   return shares;
 };
+
+/** Power share per category — the Living World's deterministic order picker (living-armies.ts). */
+export { categoryShares };
 
 const sidePower = (units: ArmyUnit[], mult: number, types: Record<string, UnitType>): number =>
   units.reduce((acc, u) => acc + unitPower(u, types), 0) * mult;
@@ -244,7 +249,8 @@ export function computeBattleSetup(
     (1 +
       effectiveWalls * config.battle.wallBonusPerTier +
       (modifiers.defenderEncamped ? config.battle.encampBonus : 0) +
-      (modifiers.attackerCrossedRiver ? config.battle.riverDefenderBonus : 0)) *
+      (modifiers.attackerCrossedRiver ? config.battle.riverDefenderBonus : 0) +
+      (modifiers.defenderTerrain ? config.battle.terrainDefenseBonus : 0)) *
     (modifiers.defenderLordMult ?? 1);
 
   const attackerMult =
@@ -261,6 +267,7 @@ export function computeBattleSetup(
   if (modifiers.defenderEncamped) labels.push("defender encamped");
   if (modifiers.defenderAmbushed) labels.push("ambush!");
   if (modifiers.attackerCrossedRiver) labels.push("river crossing");
+  if (modifiers.defenderTerrain) labels.push("defender terrain");
   if ((modifiers.attackerLordMult ?? 1) > 1) labels.push("inspiring lord");
   if ((modifiers.defenderLordMult ?? 1) > 1) labels.push("stalwart defender");
 
@@ -275,7 +282,8 @@ export function computeBattleSetup(
     modifiers.walls === 0 &&
     !modifiers.defenderEncamped &&
     !modifiers.defenderAmbushed &&
-    !modifiers.attackerCrossedRiver
+    !modifiers.attackerCrossedRiver &&
+    !modifiers.defenderTerrain
   ) {
     labels.push("open field");
   }

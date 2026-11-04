@@ -8,13 +8,13 @@
       "shamshir_infantry": {
         "name": "Shamshir Infantry",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 8,
         "defense": 10,
         "charge": 4,
         "missile": 0,
-        "cost": 270,
-        "upkeep": 36,
+        "cost": 14,
+        "upkeep": 0.111,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -25,13 +25,13 @@
       "banduqchi": {
         "name": "Banduqchi Matchlocks",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 3,
         "defense": 6,
         "charge": 1,
         "missile": 14,
-        "cost": 390,
-        "upkeep": 48,
+        "cost": 19,
+        "upkeep": 0.148,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -42,103 +42,103 @@
       "sowar_cavalry": {
         "name": "Sowar Lancers",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 9,
         "defense": 9,
         "charge": 10,
         "missile": 0,
-        "cost": 480,
-        "upkeep": 58,
+        "cost": 22,
+        "upkeep": 0.178,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "zamburak": {
         "name": "Zamburak Camel Gunners",
         "category": "cavalry",
-        "blocks": 0.06,
-        "requiresGood": 18,
+        "quantity": 60,
         "attack": 5,
         "defense": 8,
         "charge": 3,
         "missile": 12,
-        "cost": 520,
-        "upkeep": 64,
+        "cost": 25,
+        "upkeep": 0.197,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "war_elephants": {
         "name": "Armored War Elephants",
         "category": "cavalry",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 13,
         "defense": 14,
         "charge": 14,
         "missile": 3,
-        "cost": 850,
-        "upkeep": 95,
+        "cost": 37,
+        "upkeep": 0.292,
         "capacityCost": {
           "m": 2,
           "w": 5,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "topkhana_cannon": {
         "name": "Topkhana Great Bombard",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 2,
         "defense": 4,
         "charge": 0,
         "missile": 16,
-        "cost": 880,
-        "upkeep": 90,
+        "cost": 35,
+        "upkeep": 0.277,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "ahadi_guards": {
         "name": "Ahadi Imperial Guard",
         "category": "melee",
-        "blocks": 0.08,
-        "requiresGood": 4,
+        "quantity": 80,
         "attack": 11,
         "defense": 12,
         "charge": 5,
         "missile": 4,
-        "cost": 580,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.215,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "paik_levy": {
         "name": "Paik Conscripts",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 8,
         "charge": 2,
         "missile": 0,
-        "cost": 95,
-        "upkeep": 14,
+        "cost": 5,
+        "upkeep": 0.043,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -149,13 +149,13 @@
       "tirandaz_levy": {
         "name": "Tirandaz Bowmen",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 8,
-        "cost": 110,
-        "upkeep": 16,
+        "cost": 6,
+        "upkeep": 0.049,
         "capacityCost": {
           "m": 1,
           "w": 1,

@@ -8,6 +8,7 @@ import {
   CIV_RELIGION_NAMES
 } from "./living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS, getCivBuilding } from "./living-civ-buildings";
+import { CIV_CIVILIAN_BY_ID, CIV_CIVILIANS, getCivCivilian } from "./living-civ-civilians";
 import {
   CIV_IMPROVEMENT_BY_ID,
   CIV_IMPROVEMENTS,
@@ -15,7 +16,6 @@ import {
   CIV_TILE_BY_ID,
   CIV_TILES
 } from "./living-civ-improvements";
-import { CIV_PROMOTION_BY_ID, CIV_PROMOTIONS, getCivPromotion } from "./living-civ-promotions";
 import { CIV_ERAS, CIV_TECH_BY_ID, CIV_TECHS, getCivTech } from "./living-civ-techs";
 import {
   activeCivEras,
@@ -29,14 +29,6 @@ import {
   resolveCivUnitName,
   selectCivTheme
 } from "./living-civ-themes";
-import {
-  CIV_ALL_UNITS,
-  CIV_CULTURE_UNIQUE_UNITS,
-  CIV_CULTURE_UNIT_MAP,
-  CIV_UNIT_BY_ID,
-  CIV_UNITS,
-  getCivUnit
-} from "./living-civ-units";
 
 function expectUniqueIds(items: readonly { id: string }[], label: string): void {
   const ids = items.map(item => item.id);
@@ -168,111 +160,41 @@ describe("living-civ catalogs (Slice 1)", () => {
     });
   });
 
-  describe("units", () => {
-    it("ports the base roster plus cultural uniques with valid upgrade paths", () => {
-      expect(CIV_UNITS).toHaveLength(52);
-      expect(CIV_CULTURE_UNIQUE_UNITS).toHaveLength(12);
-      expect(CIV_ALL_UNITS).toHaveLength(64);
-      expectUniqueIds(CIV_ALL_UNITS, "unit");
+  describe("civilians", () => {
+    it("keeps only the eight utility units the Civ mechanics still need", () => {
+      expect(CIV_CIVILIANS).toHaveLength(8);
+      expectUniqueIds(CIV_CIVILIANS, "civilian");
 
-      const baseIds = new Set(CIV_UNITS.map(unit => unit.id));
+      const ids = new Set(CIV_CIVILIANS.map(unit => unit.id));
+      for (const id of [
+        "settler",
+        "builder",
+        "work_boat",
+        "caravan",
+        "cargo_ship",
+        "missionary",
+        "inquisitor",
+        "great_prophet"
+      ]) {
+        expect(ids.has(id), `civilian ${id} exists`).toBe(true);
+      }
+
       const techIds = new Set(CIV_TECHS.map(tech => tech.id));
-      const promotionIds = new Set(CIV_PROMOTIONS.map(promotion => promotion.id));
-
-      for (const unit of CIV_ALL_UNITS) {
+      for (const unit of CIV_CIVILIANS) {
         expect(unit.name.length).toBeGreaterThan(0);
+        expect(unit.isUtility, `${unit.id} is utility`).toBe(true);
         expect(["land", "sea", undefined]).toContain(unit.domain);
-
         if (unit.requiredTech) {
           expect(techIds.has(unit.requiredTech), `${unit.id} tech ${unit.requiredTech}`).toBe(true);
         }
-        if (unit.obsoleteTech) {
-          expect(techIds.has(unit.obsoleteTech), `${unit.id} obsolete tech ${unit.obsoleteTech}`).toBe(true);
-        }
-        if (unit.upgradesTo) {
-          expect(CIV_UNIT_BY_ID[unit.upgradesTo], `${unit.id} upgrades to ${unit.upgradesTo}`).toBeDefined();
-        }
         if (unit.capturedAs) {
-          expect(CIV_UNIT_BY_ID[unit.capturedAs], `${unit.id} captured as ${unit.capturedAs}`).toBeDefined();
-        }
-        for (const promotion of unit.freePromotions ?? []) {
-          expect(promotionIds.has(promotion), `${unit.id} free promotion ${promotion}`).toBe(true);
-        }
-        if (unit.rangedStrength !== undefined) {
-          expect(unit.range, `${unit.id} ranged unit has range`).toBeGreaterThan(0);
+          expect(CIV_CIVILIAN_BY_ID[unit.capturedAs], `${unit.id} captured as ${unit.capturedAs}`).toBeDefined();
         }
       }
 
-      for (const unit of CIV_CULTURE_UNIQUE_UNITS) {
-        expect(unit.uniqueTo, `${unit.id} is tied to a culture`).toBeDefined();
-        const replaces = unit.replaces;
-        expect(replaces, `${unit.id} replaces a base unit`).toBeDefined();
-        expect(replaces !== undefined && baseIds.has(replaces), `${unit.id} replaces base unit ${replaces}`).toBe(true);
-        expect(unit.rosterIds ?? [], `${unit.id} lists rosters`).not.toHaveLength(0);
-      }
-
-      expect(CIV_UNIT_BY_ID.keshik).toBe(CIV_CULTURE_UNIQUE_UNITS[0]);
-      expect(getCivUnit("keshik")).toBe(CIV_CULTURE_UNIQUE_UNITS[0]);
-      expect(getCivUnit("not_a_unit")).toBeUndefined();
-    });
-
-    it("maps every conquest roster to existing unique units", () => {
-      const rosterEntries = Object.entries(CIV_CULTURE_UNIT_MAP);
-      expect(rosterEntries.length).toBeGreaterThan(0);
-
-      const rosterToUnits = new Map<string, string[]>();
-      for (const [rosterId, unitIds] of rosterEntries) {
-        expect(rosterId.length).toBeGreaterThan(0);
-        expect(unitIds.length, `${rosterId} has at least one unit`).toBeGreaterThan(0);
-
-        for (const unitId of unitIds) {
-          expect(CIV_UNIT_BY_ID[unitId], `${rosterId} unit ${unitId} exists`).toBeDefined();
-        }
-        rosterToUnits.set(rosterId, [...unitIds]);
-      }
-
-      for (const unit of CIV_CULTURE_UNIQUE_UNITS) {
-        for (const rosterId of unit.rosterIds ?? []) {
-          expect(rosterToUnits.get(rosterId), `${unit.id} roster ${rosterId} is mapped`).toContain(unit.id);
-        }
-      }
-    });
-  });
-
-  describe("promotions", () => {
-    it("ports promotions with closed, acyclic prerequisites", () => {
-      expect(CIV_PROMOTIONS).toHaveLength(78);
-      expectUniqueIds(CIV_PROMOTIONS, "promotion");
-
-      const promotionIds = new Set(CIV_PROMOTIONS.map(promotion => promotion.id));
-
-      for (const promotion of CIV_PROMOTIONS) {
-        expect(promotion.name.length).toBeGreaterThan(0);
-        expect(promotion.description.length).toBeGreaterThan(0);
-        expect(promotion.classes.length).toBeGreaterThan(0);
-
-        for (const prerequisite of promotion.requires ?? []) {
-          expect(promotionIds.has(prerequisite), `${promotion.id} requires ${prerequisite}`).toBe(true);
-        }
-        for (const [unitClass, prerequisites] of Object.entries(promotion.requiresByClass ?? {})) {
-          for (const prerequisite of prerequisites) {
-            expect(promotionIds.has(prerequisite), `${promotion.id} (${unitClass}) requires ${prerequisite}`).toBe(
-              true
-            );
-          }
-        }
-      }
-
-      const promotionGraph = new Map(
-        CIV_PROMOTIONS.map(promotion => [
-          promotion.id,
-          [...(promotion.requires ?? []), ...Object.values(promotion.requiresByClass ?? {}).flat()]
-        ])
-      );
-      expect(findCycle(promotionGraph)).toBeNull();
-      expect(CIV_PROMOTION_BY_ID[CIV_PROMOTIONS[0].id]).toBe(CIV_PROMOTIONS[0]);
-      expect(getCivPromotion("shock_i")).toBe(CIV_PROMOTIONS[0]);
-      expect(getCivPromotion("not_a_promotion")).toBeUndefined();
+      expect(CIV_CIVILIAN_BY_ID.builder).toBe(CIV_CIVILIANS.find(unit => unit.id === "builder"));
+      expect(getCivCivilian("builder")?.name).toBe("Builder");
+      expect(getCivCivilian("swordsman"), "combat units are roster-only now").toBeUndefined();
     });
   });
 
@@ -399,7 +321,7 @@ describe("living-civ catalogs (Slice 1)", () => {
         for (const tech of CIV_TECHS) {
           expect(resolveCivTechName(themeId, tech).length).toBeGreaterThan(0);
         }
-        for (const unit of CIV_ALL_UNITS) {
+        for (const unit of CIV_CIVILIANS) {
           expect(resolveCivUnitName(themeId, unit).length).toBeGreaterThan(0);
         }
         for (const building of CIV_BUILDINGS) {
@@ -410,10 +332,9 @@ describe("living-civ catalogs (Slice 1)", () => {
         }
       }
 
-      expect(resolveCivUnitName("historical", CIV_UNIT_BY_ID.warrior)).toBe("Warrior");
-      expect(resolveCivUnitName("fantasy", CIV_UNIT_BY_ID.warrior)).toBe("Warrior");
-      expect(resolveCivUnitName("astral", CIV_UNIT_BY_ID.warrior)).toBe("Enforcer");
-      expect(resolveCivUnitName("astral", CIV_UNIT_BY_ID.keshik)).toBe("Keshik");
+      expect(resolveCivUnitName("historical", CIV_CIVILIAN_BY_ID.builder!)).toBe("Builder");
+      expect(resolveCivUnitName("fantasy", CIV_CIVILIAN_BY_ID.builder!)).toBe("Builder");
+      expect(resolveCivUnitName("astral", CIV_CIVILIAN_BY_ID.builder!)).toBe("Constructor Drone");
       expect(resolveCivBuildingName("astral", CIV_BUILDING_BY_ID.palace)).toBe("Command Nexus");
       expect(resolveCivImprovementName("astral", CIV_IMPROVEMENT_BY_ID.farm)).toBe("Agripod");
     });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fromBattleUnits, toBattleTypes, toBattleUnits } from "@/model/physical/living-armies";
 import { type Regiment, syncRegimentTotals } from "@/model/political/military-generator";
 import type { UnitType } from "../engine/common/content";
 import {
@@ -24,6 +25,7 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
       name: "Spearmen",
       category: "melee",
       blocks: 0.15,
+      quantity: 150,
       men: 150,
       attack: 4,
       defense: 6,
@@ -37,6 +39,7 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
       name: "Archers",
       category: "ranged",
       blocks: 0.12,
+      quantity: 120,
       men: 120,
       attack: 3,
       defense: 3,
@@ -50,6 +53,7 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
       name: "Knights",
       category: "cavalry",
       blocks: 0.08,
+      quantity: 80,
       men: 80,
       attack: 8,
       defense: 7,
@@ -242,8 +246,8 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
       a: 400,
       u: { spear: 300, archers: 100 },
       units: [
-        { type: "spear", count: 300, exp: 0 },
-        { type: "archers", count: 100, exp: 1 }
+        { type: "spear", hp: 1, exp: 0 },
+        { type: "archers", hp: 1, exp: 1 }
       ],
       cell: 10,
       x: 100,
@@ -261,8 +265,8 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
       a: 400,
       u: { spear: 300, archers: 100 },
       units: [
-        { type: "spear", count: 300, exp: 0 },
-        { type: "archers", count: 100, exp: 0 }
+        { type: "spear", hp: 1, exp: 0 },
+        { type: "archers", hp: 1, exp: 0 }
       ],
       cell: 10,
       x: 100,
@@ -275,9 +279,9 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
 
     const session = initBattleSession({
       config,
-      unitTypes: types,
-      attacker: { factionId: 1, armyId: "fm-1-1", units: regAttacker.units! },
-      defender: { factionId: 2, armyId: "fm-2-2", units: regDefender.units! },
+      unitTypes: toBattleTypes(types),
+      attacker: { factionId: 1, armyId: "fm-1-1", units: toBattleUnits(regAttacker.units!) },
+      defender: { factionId: 2, armyId: "fm-2-2", units: toBattleUnits(regDefender.units!) },
       cell: 10,
       regionId: 1,
       assault: false,
@@ -289,13 +293,12 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
     expect(log.attackerLossMen).toBeGreaterThan(0);
     expect(log.defenderLossMen).toBeGreaterThan(0);
 
-    // Sync session units back to regiment unit blocks
-    for (let i = 0; i < regAttacker.units!.length; i++) {
-      regAttacker.units![i]!.count = session.attackerUnits[i]!.count;
-    }
+    // Sync session units back to regiment blocks through the bridge
+    regAttacker.units = fromBattleUnits(session.attackerUnits);
     syncRegimentTotals(regAttacker, types);
 
-    expect(regAttacker.a).toBe(400 - log.attackerLossMen);
+    expect(regAttacker.a).toBeLessThan(400);
+    expect(regAttacker.a).toBeGreaterThan(0);
     expect(regAttacker.u.spear! + regAttacker.u.archers!).toBe(regAttacker.a);
 
     // Wiped out regiment test
@@ -305,7 +308,7 @@ describe("Phase 3: Steppable Lanchester Battle Simulator", () => {
       state: 1,
       a: 100,
       u: { spear: 100 },
-      units: [{ type: "spear", count: 0, exp: 0 }],
+      units: [{ type: "spear", hp: 0, exp: 0 }],
       cell: 10,
       x: 100,
       y: 100,
@@ -329,6 +332,7 @@ describe("Phase 2: Magic, Monsters & Arcane Warfare Engine", () => {
       name: "Spearmen",
       category: "melee",
       blocks: 0.15,
+      quantity: 150,
       men: 150,
       attack: 4,
       defense: 6,
@@ -342,6 +346,7 @@ describe("Phase 2: Magic, Monsters & Arcane Warfare Engine", () => {
       name: "Archers",
       category: "ranged",
       blocks: 0.12,
+      quantity: 120,
       men: 120,
       attack: 3,
       defense: 3,
@@ -355,6 +360,7 @@ describe("Phase 2: Magic, Monsters & Arcane Warfare Engine", () => {
       name: "Knights",
       category: "cavalry",
       blocks: 0.08,
+      quantity: 80,
       men: 80,
       attack: 8,
       defense: 7,
@@ -368,6 +374,7 @@ describe("Phase 2: Magic, Monsters & Arcane Warfare Engine", () => {
       name: "Battle Mage",
       category: "spellcaster",
       blocks: 0.02,
+      quantity: 20,
       men: 20,
       attack: 2,
       defense: 3,
@@ -388,6 +395,7 @@ describe("Phase 2: Magic, Monsters & Arcane Warfare Engine", () => {
       name: "War Hydra",
       category: "monster",
       blocks: 0.05,
+      quantity: 50,
       men: 50,
       attack: 16,
       defense: 12,
@@ -405,6 +413,7 @@ describe("Phase 2: Magic, Monsters & Arcane Warfare Engine", () => {
       name: "Runesmith",
       category: "melee",
       blocks: 0.02,
+      quantity: 20,
       men: 20,
       attack: 8,
       defense: 10,

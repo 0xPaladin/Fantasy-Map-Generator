@@ -24,6 +24,7 @@
     "encampBonus": 0.1,
     "ambushBonus": 0.3,
     "riverDefenderBonus": 0.15,
+    "terrainDefenseBonus": 0.25,
     "marchAttackPenalty": 0,
     "magic": {
       "wardCap": 0.3,

@@ -81,36 +81,29 @@ export interface UnitType {
   name: string;
   category: UnitCategory;
   /**
-   * AER **blocks** this unit represents at full strength — **the authored
-   * primitive** (CAPACITY-PLAN Phase 4b).
+   * Nominal strength of one block at full capability — **the authored size**.
    *
-   * AER p1557: *"Military units might represent blocks of 1,000 or even 10,000
-   * men."* An AER unit is therefore a **block**, and an FMG regiment of 150
-   * swordsmen is `0.15` of one. That fraction is the honest number: the roster
-   * authors how much of a block a unit *is*, and {@link MEN_PER_BLOCK} decides
-   * how many men that is. Raise the constant to 10,000 and the same unit
-   * stands for 1,500 men — which is exactly the high-alert lever §4.4 describes,
-   * without editing a single roster.
-   *
-   * Named `blocks`, not `units`, because "unit" already means a *soldier type*
-   * everywhere else in the codebase — `UnitType`, `unitTypes`, `army.units`,
-   * `roster.units` — and AER's own "unit" is the block. Two nouns for the
-   * pricing unit, one for the soldier.
+   * It is the number the fiction claims: 100 levy, 240 clan troops, 1 dragon.
+   * Combat never reads it (the Living World's `ArmyBlock.hp` is the strength
+   * fraction), and the capacity model reads the derived fields below, so
+   * `quantity` is free to be anything a culture's roster needs it to be.
    */
-  blocks: number;
-  /**
-   * Men at full strength — **derived** as `blocks × MEN_PER_BLOCK`. Combat reads
-   * this (`battle.ts` `fill = count / men`, `economy.ts` `upkeep × count / men`)
-   * and both sides scale together, so the conversion is an arithmetic no-op for
-   * combat and for gold: it changes only how many *capacity points* a unit
-   * loads.
-   */
+  quantity: number;
+  /** @deprecated Derived: `men = quantity`. Kept for the capacity model and legacy saves. */
   men: number;
+  /** @deprecated Derived: `blocks = quantity / MEN_PER_BLOCK`. Kept for the capacity model. */
+  blocks: number;
   attack: number;
   defense: number;
   charge: number;
   missile: number;
+  /**
+   * **Production points** to raise one block at `hp = 1`, queued in a city
+   * (Living World). Replaces the retired Conquest recruit price; the campaign
+   * that read it as Gold is being phased out (living-openciv-armies.md §6.2).
+   */
   cost: number;
+  /** **Gold per tick** to keep one block at `hp = 1` (Living World). */
   upkeep: number;
   /**
    * Capacity this unit **loads** on its holder, per pool (CAPACITY-PLAN §1).
@@ -148,6 +141,15 @@ export interface UnitType {
   resistArcane?: number;
   /** Role in resolving provincial obstacles and troubles */
   troubleRole?: TroubleUnitRole;
+  /**
+   * OpenCiv tech id that unlocks this unit. Absent ⇒ the Living World falls
+   * back to a derived category ladder (living-armies.ts `requiredTechFor`).
+   */
+  requiredTech?: string;
+  /** Roster unit this upgrades into. Absent ⇒ next unit in the category ladder. */
+  upgradesTo?: string;
+  /** Explicit era override (1..8); otherwise derived from the upkeep rank. */
+  era?: number;
 }
 
 /** A roster: a unit pool + how Azgaar regiment categories map onto it. */
@@ -615,6 +617,7 @@ function parseRoster(file: string, doc: unknown, v: Validator, warnings: string[
   const allowedUnitKeys = [
     "name",
     "category",
+    "quantity",
     "blocks",
     "attack",
     "defense",
@@ -627,24 +630,26 @@ function parseRoster(file: string, doc: unknown, v: Validator, warnings: string[
     "requiresWallTier",
     "powers",
     "resistArcane",
-    "troubleRole"
+    "troubleRole",
+    "requiredTech",
+    "upgradesTo",
+    "era"
   ];
   for (const [uid, def] of Object.entries(unitsRaw)) {
     const d = (def ?? {}) as Record<string, unknown>;
-    // `men` did not merely become "unknown" — it became *wrong*. Phase 4b makes
-    // `blocks` the authored primitive, so an ignored `men: 150` would either be
-    // rejected for being absent or read as a fresh unit: a 6.7× inflation of
-    // every load that unit touches, reported only as a warning. Refuse it with
-    // the conversion written out instead.
+    // `quantity` is the authored size (living-openciv-armies.md §6.2); legacy
+    // `blocks` is accepted as the alias it always was — `blocks × MEN_PER_BLOCK`.
+    // `men` stays refused: it was retired once already and silently accepting it
+    // would be a second, silent unit mismatch.
     const unitBody: Record<string, unknown> = { ...d };
     if (unitBody.men !== undefined) {
       const authored = unitBody.men;
       delete unitBody.men;
       v.warn(
         `${file}#${uid}`,
-        `field 'men' was retired by the military conversion — author 'blocks' ` +
-          `(AER blocks of ${MEN_PER_BLOCK} men, CAPACITY-PLAN Phase 4b) instead: ` +
-          `men: ${String(authored)} ⇒ blocks: ${Number(authored) / MEN_PER_BLOCK}`
+        `field 'men' was retired by the military conversion — author 'quantity' ` +
+          `(nominal strength, living-openciv-armies.md §6.2) instead: ` +
+          `men: ${String(authored)} ⇒ quantity: ${Number(authored)}`
       );
     }
     // `capacity` on a *unit* is the same trap `men` was: the same word means
@@ -665,17 +670,27 @@ function parseRoster(file: string, doc: unknown, v: Validator, warnings: string[
       v.warn(`${file}#${uid}`, `field 'category' must be one of ${CATEGORIES.join(", ")}`);
       continue;
     }
-    // `blocks` is authored (CAPACITY-PLAN Phase 4b) and required; `men` derives
-    // from it. The floor is one *man*, not one block: a 150-man regiment is
-    // 0.15 of an AER block and has to be authorable as such, while a unit type
-    // representing no men at all would divide by zero in every fill ratio.
-    const blocksAtFullStrength = v.num(`${file}#${uid}`, d, "blocks", 1 / MEN_PER_BLOCK);
+    // `quantity` is authored (living-openciv-armies.md §6.2); `men` and `blocks`
+    // derive from it so the capacity model and legacy saves keep reading the
+    // numbers they always read. The floor is one *man*, not one block: a
+    // 150-man regiment is 0.15 of an AER block and has to be authorable as
+    // such, while a unit type representing no men at all would divide by zero
+    // in every fill ratio.
+    const quantityAtFullStrength = Math.max(
+      1,
+      Math.round(
+        d.quantity !== undefined
+          ? v.num(`${file}#${uid}`, d, "quantity", 1)
+          : v.num(`${file}#${uid}`, d, "blocks", 1 / MEN_PER_BLOCK) * MEN_PER_BLOCK
+      )
+    );
     const unit: Record<string, unknown> = {
       id: uid,
       name,
       category,
-      blocks: blocksAtFullStrength,
-      men: blocksAtFullStrength * MEN_PER_BLOCK,
+      quantity: quantityAtFullStrength,
+      men: quantityAtFullStrength,
+      blocks: quantityAtFullStrength / MEN_PER_BLOCK,
       attack: v.num(`${file}#${uid}`, d, "attack"),
       defense: v.num(`${file}#${uid}`, d, "defense"),
       charge: v.num(`${file}#${uid}`, d, "charge"),
@@ -691,7 +706,10 @@ function parseRoster(file: string, doc: unknown, v: Validator, warnings: string[
         : {}),
       ...(d.powers !== undefined ? { powers: parsePowers(`${file}#${uid}`, d.powers, v, warnings) } : {}),
       ...(d.resistArcane !== undefined ? { resistArcane: unitFraction(`${file}#${uid}`, d, "resistArcane", v) } : {}),
-      ...(typeof d.troubleRole === "string" ? { troubleRole: d.troubleRole as TroubleUnitRole } : {})
+      ...(typeof d.troubleRole === "string" ? { troubleRole: d.troubleRole as TroubleUnitRole } : {}),
+      ...(typeof d.requiredTech === "string" && d.requiredTech ? { requiredTech: d.requiredTech } : {}),
+      ...(typeof d.upgradesTo === "string" && d.upgradesTo ? { upgradesTo: d.upgradesTo } : {}),
+      ...(d.era !== undefined ? { era: v.num(`${file}#${uid}`, d, "era", 1) } : {})
     };
     units[uid] = unit;
   }
@@ -1224,27 +1242,61 @@ function parseFactionDef(file: string, body: Record<string, unknown>, v: Validat
       delete overrideBody.men;
       v.warn(
         `${file}#roster.units.${uid}`,
-        `field 'men' was retired by the military conversion — author 'blocks' ` +
-          `(AER blocks of ${MEN_PER_BLOCK} men, CAPACITY-PLAN Phase 4b) instead: ` +
-          `men: ${String(authored)} ⇒ blocks: ${Number(authored) / MEN_PER_BLOCK}`
+        `field 'men' was retired by the military conversion — author 'quantity' ` +
+          `(nominal strength, living-openciv-armies.md §6.2) instead: ` +
+          `men: ${String(authored)} ⇒ quantity: ${Number(authored)}`
       );
     }
     v.unknownKeys(
       `${file}#roster.units.${uid}`,
       overrideBody,
-      ["id", "name", "category", "units", "attack", "defense", "charge", "missile", "cost", "upkeep"],
+      [
+        "id",
+        "name",
+        "category",
+        "units",
+        "quantity",
+        "blocks",
+        "attack",
+        "defense",
+        "charge",
+        "missile",
+        "cost",
+        "upkeep",
+        "requiredTech",
+        "upgradesTo",
+        "era"
+      ],
       warnings
     );
     const out: Record<string, unknown> = {};
-    for (const key of ["blocks", "attack", "defense", "charge", "missile", "cost", "upkeep"] as const) {
+    for (const key of [
+      "quantity",
+      "blocks",
+      "attack",
+      "defense",
+      "charge",
+      "missile",
+      "cost",
+      "upkeep",
+      "era"
+    ] as const) {
       if (overrideBody[key] !== undefined)
-        out[key] = v.num(`${file}#roster.units.${uid}`, overrideBody, key, key === "blocks" ? 1 / MEN_PER_BLOCK : 0);
+        out[key] = v.num(
+          `${file}#roster.units.${uid}`,
+          overrideBody,
+          key,
+          key === "blocks" ? 1 / MEN_PER_BLOCK : key === "era" ? 1 : 0
+        );
     }
     if (overrideBody.name !== undefined) out.name = v.str(`${file}#roster.units.${uid}`, overrideBody, "name");
     if (overrideBody.category !== undefined) {
       const category = overrideBody.category;
       if (typeof category === "string" && CATEGORIES.includes(category as UnitCategory)) out.category = category;
       else v.warn(`${file}#roster.units.${uid}`, `category must be one of ${CATEGORIES.join(", ")}`);
+    }
+    for (const key of ["requiredTech", "upgradesTo"] as const) {
+      if (overrideBody[key] !== undefined) out[key] = v.str(`${file}#roster.units.${uid}`, overrideBody, key);
     }
     unitOverrides[uid] = out as Partial<UnitType>;
   }
@@ -2012,10 +2064,17 @@ export function resolveForPack(
       const base = units[uid];
       if (base) {
         const merged = { ...base, ...patch, id: base.id };
-        // `men` is derived, so re-derive it whenever the override moves `units`
-        // — otherwise a faction that declares 0.3 of a block would inherit the
-        // base roster's men ceiling and the two would silently disagree.
-        merged.men = merged.blocks * MEN_PER_BLOCK;
+        // `quantity` is the authored size and `men`/`blocks` derive from it, so
+        // re-derive whenever the override moves the size — otherwise a faction
+        // that overrides `quantity` (or the legacy `blocks`) would inherit the
+        // base roster's ceiling and the three fields would silently disagree.
+        const quantity = Math.max(
+          1,
+          Math.round(patch.quantity !== undefined ? patch.quantity : (patch.blocks ?? base.blocks) * MEN_PER_BLOCK)
+        );
+        merged.quantity = quantity;
+        merged.men = quantity;
+        merged.blocks = quantity / MEN_PER_BLOCK;
         units[uid] = merged;
       }
     }

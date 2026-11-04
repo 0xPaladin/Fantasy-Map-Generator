@@ -84,7 +84,6 @@ const TEMPLATE = /* html */ `
       ${t("3D scene")}
     </button>
     <button data-tip="${sentences(t("Project map on globe"), t("Cannot be used for editing"))}" id="viewGlobe">${t("Globe")}</button>
-    <button data-tip="${t("Astral view: star chart layers, nebulae and systems")}" id="viewAstral">${t("Astral")}</button>
     <button data-tip="${t("Return to the Sector View (star chart)")}" id="viewAstralBackSector" class="astral-nav-btn">
       ${t("Back to Sector")}
     </button>
@@ -127,16 +126,6 @@ ensureEl("viewMode").addEventListener("click", event => {
 window.addEventListener("astralnav:change", refreshAstralNavButtons);
 refreshAstralNavButtons();
 
-// the Astral button is the chart's entry point: once the chart is on it leaves the UI,
-// and the Standard button is the exit back to the flat map (which brings the button back)
-function refreshAstralModeButton(): void {
-  const astralButton = findEl<HTMLButtonElement>("viewAstral");
-  if (!astralButton) return;
-  astralButton.style.display = isAstralView() ? "none" : "";
-}
-
-subscribeAstralView(refreshAstralModeButton);
-refreshAstralModeButton();
 
 function renderPresetOptions(): void {
   const select = ensureEl<HTMLSelectElement>("layersPreset");

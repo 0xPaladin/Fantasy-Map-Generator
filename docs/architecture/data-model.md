@@ -228,6 +228,7 @@ States (countries) data is stored as an array of objects with strict element ord
 - `name`: `string` - regiment name
 - `n`: `number` - `1` if regiment is a separate unit (like naval units), `0` is not
 - `u`: `Record<unitName, number>` - regiment content object
+- `units`: `ArmyBlock[]` - optional. Living World army composition: `{ type: rosterUnitId, hp: 0..1, exp: 0..9 }`. `u` and `a` mirror the blocks as nominal men
 - `note`: `string` - optional. The user's note (legend) about the regiment, as html. Removed with it
 
 ## Provinces

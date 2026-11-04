@@ -7,13 +7,13 @@
       "state_halberdiers": {
         "name": "Electoral Halberdiers",
         "category": "melee",
-        "blocks": 0.16,
+        "quantity": 160,
         "attack": 7,
         "defense": 13,
         "charge": 3,
         "missile": 0,
-        "cost": 290,
-        "upkeep": 40,
+        "cost": 15,
+        "upkeep": 0.123,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -24,13 +24,13 @@
       "state_handgunners": {
         "name": "Nuln State Handgunners",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 3,
         "defense": 5,
         "charge": 1,
         "missile": 14,
-        "cost": 400,
-        "upkeep": 50,
+        "cost": 19,
+        "upkeep": 0.154,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -41,67 +41,67 @@
       "elector_greatswords": {
         "name": "Elector's Stubborn Greatswords",
         "category": "melee",
-        "blocks": 0.12,
-        "requiresGood": 4,
+        "quantity": 120,
         "attack": 12,
         "defense": 13,
         "charge": 6,
         "missile": 0,
-        "cost": 580,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.215,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "outrider_pistoleers": {
         "name": "Outrider Repeaters",
         "category": "cavalry",
-        "blocks": 0.06,
-        "requiresGood": 18,
+        "quantity": 60,
         "attack": 7,
         "defense": 8,
         "charge": 6,
         "missile": 11,
-        "cost": 500,
-        "upkeep": 60,
+        "cost": 23,
+        "upkeep": 0.185,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "inner_circle_knights": {
         "name": "Grand Order Knights",
         "category": "cavalry",
-        "blocks": 0.06,
-        "requiresGood": 18,
+        "quantity": 60,
         "attack": 11,
         "defense": 13,
         "charge": 13,
         "missile": 0,
-        "cost": 650,
-        "upkeep": 80,
+        "cost": 31,
+        "upkeep": 0.246,
         "capacityCost": {
           "m": 3,
           "w": 4,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "demigryph_knights": {
         "name": "Demigryph Halberd-Knights",
         "category": "monster",
-        "blocks": 0.04,
+        "quantity": 40,
         "attack": 14,
         "defense": 14,
         "charge": 14,
         "missile": 0,
-        "cost": 850,
-        "upkeep": 100,
+        "cost": 39,
+        "upkeep": 0.308,
         "capacityCost": {
           "m": 3,
           "w": 4,
@@ -115,13 +115,13 @@
       "templar_priests": {
         "name": "Hammer-Priests & War-Altar",
         "category": "spellcaster",
-        "blocks": 0.03,
+        "quantity": 30,
         "attack": 9,
         "defense": 11,
         "charge": 4,
         "missile": 8,
-        "cost": 800,
-        "upkeep": 90,
+        "cost": 35,
+        "upkeep": 0.277,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -136,13 +136,13 @@
       "collegiate_wizards": {
         "name": "Collegiate Battle Wizards",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 3,
         "defense": 4,
         "charge": 0,
         "missile": 17,
-        "cost": 950,
-        "upkeep": 110,
+        "cost": 42,
+        "upkeep": 0.338,
         "capacityCost": {
           "m": 1,
           "w": 3,
@@ -157,20 +157,20 @@
       "steam_behemoth": {
         "name": "Ironclad Steam Tank",
         "category": "monster",
-        "blocks": 0.02,
-        "requiresGood": 4,
+        "quantity": 20,
         "attack": 14,
         "defense": 18,
         "charge": 14,
         "missile": 14,
-        "cost": 1100,
-        "upkeep": 130,
+        "cost": 50,
+        "upkeep": 0.4,
         "capacityCost": {
           "m": 3,
           "w": 5,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "powers": {
           "terror": 0.06
         }
@@ -178,31 +178,31 @@
       "helstorm_battery": {
         "name": "Helblaster & Rocket Battery",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 2,
         "defense": 4,
         "charge": 0,
         "missile": 18,
-        "cost": 900,
-        "upkeep": 90,
+        "cost": 35,
+        "upkeep": 0.277,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "militia_spears": {
         "name": "Town Spearmen Levy",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 4,
         "defense": 9,
         "charge": 2,
         "missile": 0,
-        "cost": 100,
-        "upkeep": 15,
+        "cost": 6,
+        "upkeep": 0.046,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -213,13 +213,13 @@
       "free_company_crossbows": {
         "name": "Free Company Crossbows",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 8,
-        "cost": 120,
-        "upkeep": 18,
+        "cost": 7,
+        "upkeep": 0.055,
         "capacityCost": {
           "m": 1,
           "w": 1,

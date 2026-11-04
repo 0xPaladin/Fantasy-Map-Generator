@@ -8,13 +8,13 @@
       "pikemen": {
         "name": "Pikemen",
         "category": "melee",
-        "blocks": 0.18,
+        "quantity": 180,
         "attack": 6,
         "defense": 14,
         "charge": 2,
         "missile": 0,
-        "cost": 280,
-        "upkeep": 38,
+        "cost": 15,
+        "upkeep": 0.117,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -25,13 +25,13 @@
       "arquebusiers": {
         "name": "Arquebusiers",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 4,
         "defense": 6,
         "charge": 1,
         "missile": 13,
-        "cost": 380,
-        "upkeep": 48,
+        "cost": 19,
+        "upkeep": 0.148,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -42,103 +42,103 @@
       "tercio": {
         "name": "Spanish Tercio",
         "category": "melee",
-        "blocks": 0.2,
-        "requiresGood": 4,
+        "quantity": 200,
         "attack": 9,
         "defense": 15,
         "charge": 4,
         "missile": 4,
-        "cost": 550,
-        "upkeep": 65,
+        "cost": 25,
+        "upkeep": 0.2,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "doppelsoldner": {
         "name": "Doppelsöldner",
         "category": "melee",
-        "blocks": 0.1,
-        "requiresGood": 4,
+        "quantity": 100,
         "attack": 12,
         "defense": 8,
         "charge": 7,
         "missile": 0,
-        "cost": 420,
-        "upkeep": 55,
+        "cost": 21,
+        "upkeep": 0.169,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "reiters": {
         "name": "Reiter Cavalry",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 8,
         "defense": 10,
         "charge": 6,
         "missile": 7,
-        "cost": 520,
-        "upkeep": 65,
+        "cost": 25,
+        "upkeep": 0.2,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "gendarme": {
         "name": "Gendarmes",
         "category": "cavalry",
-        "blocks": 0.06,
-        "requiresGood": 18,
+        "quantity": 60,
         "attack": 11,
         "defense": 12,
         "charge": 12,
         "missile": 0,
-        "cost": 620,
-        "upkeep": 75,
+        "cost": 29,
+        "upkeep": 0.231,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "culverin": {
         "name": "Culverin Battery",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 2,
         "defense": 4,
         "charge": 0,
         "missile": 16,
-        "cost": 850,
-        "upkeep": 85,
+        "cost": 33,
+        "upkeep": 0.262,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "militia_pikes": {
         "name": "Town Militia",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 4,
         "defense": 10,
         "charge": 2,
         "missile": 0,
-        "cost": 110,
-        "upkeep": 16,
+        "cost": 6,
+        "upkeep": 0.049,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -149,13 +149,13 @@
       "militia_shot": {
         "name": "Militia Arquebus",
         "category": "ranged",
-        "blocks": 0.1,
+        "quantity": 100,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 9,
-        "cost": 130,
-        "upkeep": 20,
+        "cost": 8,
+        "upkeep": 0.062,
         "capacityCost": {
           "m": 1,
           "w": 1,

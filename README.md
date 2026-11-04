@@ -1,6 +1,6 @@
 # Fantasy Map Generator (Unified Mod Fork)
 
-> An enhanced fork of [Azgaar's Fantasy Map Generator](https://github.com/Azgaar/Fantasy-Map-Generator) unifying procedural world generation with dynamic seasonal simulation (Living World), science-fiction star sector cartography (Astral Cartographer), and chronological history (Legends Browser).
+> An enhanced fork of [Azgaar's Fantasy Map Generator](https://github.com/Azgaar/Fantasy-Map-Generator) unifying procedural world generation with a seasonal 4X simulation (Living World), culture-unique combined-arms warfare, science-fiction star sector cartography (Astral Cartographer), and chronological history (Legends Browser).
 
 ---
 
@@ -9,7 +9,7 @@
 Azgaar's *Fantasy Map Generator* is the premier open-source tool for procedural cartography and worldbuilding. This fork unifies major creative expansions directly into the core application, delivering a seamless experience without external panels or fragile patches:
 
 1. **[Living World](docs/wiki/Living-World.md)** *(Integrated)*  
-   Transforms static fantasy maps into an active, evolving living world. Advances time season by season across the native map: states draw and spend capacity pools (Military, Wealth, Stability, Culture), pursue ruler-weighted agendas, muster standing regiments, develop provinces, and fight wars. Provinces grapple with procedural **Troubles** and entrenched **Lairs** that launch seasonal raids against vulnerable settlements, while strained realms risk succession crises, rebellions, and secessionist breakaways. Features an interactive draggable HUD, live news ticker, detailed diorama inspector cards, and sandbox God-Mode controls.
+   Transforms static fantasy maps into an active, evolving world, season by season, using an **OpenCiv economy** and **OpenConquest warfare**. Cities work tiles for seven yields, grow citizens, claim culture borders and run production queues; states research an 80-tech tree, bank Gold, keep their people happy and spread religion. Armies are culture-unique **combined-arms stacks**: every state fields its roster's own units as blocks, fought through the OpenConquest battle engine with matchup, orders, magic, rout and sieges. Provinces face procedural **Troubles** and entrenched **Lairs**, while strained realms risk succession crises, rebellions and breakaways. Includes an interactive HUD, live news, diorama inspector cards and sandbox controls.
 
 2. **[Astral Cartographer](docs/astral/README.md)** *(Integrated)*  
    Reimagines the procedural engine for science-fiction star sector cartography. Ships 12 sci-fi name bases and 3 culture sets (AstralTrek, AstralJammer, Grimdark) in core data, on-demand polity/sector naming and star classes, and an **Astral view** that turns any map into an immersive star-sector chart — featuring nebulae, a stellar-density heatmap, and class-coloured star systems in place of burgs.
@@ -23,9 +23,9 @@ Azgaar's *Fantasy Map Generator* is the premier open-source tool for procedural 
 
 This fork follows FMG's native architectural layers:
 - **State**: World data remains pure state, backward-compatible with stock `.map` files.
-- **Generators**: Simulation and history pipelines integrate as clean, deterministic steps (`src/generators/living-generator.ts`, `src/generators/history-generator.ts`).
+- **Generators**: Simulation and history pipelines integrate as clean, deterministic steps (`src/model/physical/living-generator.ts`, `src/model/story/history-generator.ts`).
 - **Controllers & UI**: In-app tools (such as the Living World HUD and Legends Browser) register as native controllers.
-- **Living World Engine**: The seasonal simulation advances the world directly in-canvas across native FMG layers (states, provinces, burgs, military, markers, history).
+- **Living World Engine**: The seasonal simulation advances the world directly in-canvas across native FMG layers (states, provinces, burgs, military, markers, history). Army state lives on `Regiment.units` as `ArmyBlock`s; `src/model/physical/living-armies.ts` holds the pure helpers, roster gating and the `hp ↔ count` bridge into `src/conquest/engine/game/battle.ts`.
 
 All modifications to stock files are designed to be append-only and minimally invasive. For upstream merge instructions and touch-point tracking, see **[`MERGING.md`](MERGING.md)**.
 
@@ -58,7 +58,9 @@ The plans for ongoing and future work live in [`docs/plans`](docs/plans):
 
 | Plan | What it covers |
 |---|---|
-| [`living-world.md`](docs/plans/living-world.md) | **Living World** — dynamic seasonal simulation, capacity pools, provincial troubles, lairs & raids, military muster, agendas, unrest, and ruler lifespans (shipped) |
+| [`living-openciv.md`](docs/plans/living-openciv.md) | **Living World economy** — the 7-yield OpenCiv engine: cities, borders, production, tech, gold, happiness and religion (shipped) |
+| [`living-openciv-armies.md`](docs/plans/living-openciv-armies.md) | **Living World armies** — combined-arms stacks, `hp` blocks, roster recruitment, refits, replenishment, sieges and city strikes (shipped) |
+| [`living-world.md`](docs/plans/living-world.md) | the earlier roleplay layer: troubles, lairs, agendas, unrest and rulers (shipped; still authoritative for those systems) |
 | [`astral-ui-overhaul.md`](docs/plans/astral-ui-overhaul.md) | the **Astral view** — the star chart, nebulae, density and systems (shipped) |
 | [`history-generation.md`](docs/plans/history-generation.md) | the shipped chronicle: events, fallen realms, the Legends browser |
 | [`history-epochs.md`](docs/plans/history-epochs.md) | **epochs** — the political layer regenerated K times, so the past is causal and the borders can be scrubbed through time |

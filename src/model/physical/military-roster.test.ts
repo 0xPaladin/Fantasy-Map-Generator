@@ -15,6 +15,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       name: "Spearmen",
       category: "melee",
       blocks: 0.15,
+      quantity: 150,
       men: 150,
       attack: 4,
       defense: 6,
@@ -28,6 +29,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       name: "Swordsmen",
       category: "melee",
       blocks: 0.15,
+      quantity: 150,
       men: 150,
       attack: 6,
       defense: 5,
@@ -41,6 +43,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       name: "Archers",
       category: "ranged",
       blocks: 0.12,
+      quantity: 120,
       men: 120,
       attack: 3,
       defense: 3,
@@ -54,6 +57,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       name: "Knights",
       category: "cavalry",
       blocks: 0.08,
+      quantity: 80,
       men: 80,
       attack: 8,
       defense: 7,
@@ -67,6 +71,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       name: "Trebuchet",
       category: "artillery",
       blocks: 0.04,
+      quantity: 40,
       men: 40,
       attack: 10,
       defense: 2,
@@ -80,6 +85,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       name: "Battle Mage",
       category: "spellcaster",
       blocks: 0.02,
+      quantity: 20,
       men: 20,
       attack: 2,
       defense: 3,
@@ -93,6 +99,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       name: "War Hydra",
       category: "monster",
       blocks: 0.05,
+      quantity: 50,
       men: 50,
       attack: 16,
       defense: 12,
@@ -154,9 +161,9 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
         state: 1,
         icon: "⚔️",
         units: [
-          { type: "spear", count: 150, exp: 1 },
-          { type: "spear", count: 150, exp: 2 },
-          { type: "archers", count: 120, exp: 0 }
+          { type: "spear", hp: 1, exp: 1 },
+          { type: "spear", hp: 1, exp: 2 },
+          { type: "archers", hp: 1, exp: 0 }
         ]
       };
 
@@ -182,7 +189,7 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
         name: "1st Fleet",
         state: 1,
         icon: "🌊",
-        units: [{ type: "fleet", count: 250, exp: 0 }]
+        units: [{ type: "fleet", hp: 1, exp: 0 }]
       };
 
       syncRegimentTotals(reg, mockUnitTypes);
@@ -211,9 +218,9 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
       reconcileRegimentBlocks(reg, mockUnitTypes);
       expect(reg.units).toBeDefined();
       expect(reg.units!.length).toBe(3); // 2 spear blocks of 150 + 1 archer block of 120
-      expect(reg.units![0]).toEqual({ type: "spear", count: 150, exp: 0 });
-      expect(reg.units![1]).toEqual({ type: "spear", count: 150, exp: 0 });
-      expect(reg.units![2]).toEqual({ type: "archers", count: 120, exp: 0 });
+      expect(reg.units![0]).toEqual({ type: "spear", hp: 1, exp: 0 });
+      expect(reg.units![1]).toEqual({ type: "spear", hp: 1, exp: 0 });
+      expect(reg.units![2]).toEqual({ type: "archers", hp: 1, exp: 0 });
       expect(reg.a).toBe(420);
     });
 
@@ -228,8 +235,8 @@ describe("Phase 2: Roster Units & Regiment Blocks", () => {
         by: 10,
         u: { spear: 300 },
         units: [
-          { type: "spear", count: 150, exp: 3 },
-          { type: "spear", count: 150, exp: 5 }
+          { type: "spear", hp: 1, exp: 3 },
+          { type: "spear", hp: 1, exp: 5 }
         ],
         n: 0,
         name: "Veteran Regiment",

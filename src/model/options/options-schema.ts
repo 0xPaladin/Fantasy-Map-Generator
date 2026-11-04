@@ -199,6 +199,8 @@ export const mapSchema = z.strictObject({
   units,
   style: z.strictObject({ preset: z.string().min(1) }),
   astral: z.boolean().default(false),
+  /** Whole world / Northern / Tropical / Southern map placement, or Astral star chart */
+  extents: z.enum(["whole", "northern", "tropical", "southern", "astral"]).default("whole"),
   burgs: z.strictObject({ groups: z.array(burgGroup) }),
   labels: z.strictObject({ groups: z.array(labelGroup) }),
   military: z.strictObject({ units: z.array(militaryUnit) }),

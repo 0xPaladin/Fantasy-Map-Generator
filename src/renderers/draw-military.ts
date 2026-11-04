@@ -1,5 +1,6 @@
 import { color, easeSinInOut, select, transition } from "d3";
 import { Icons } from "@/model/icons";
+import { armyHp, armySlots } from "@/model/physical/living-armies";
 import type { Regiment } from "@/model/political/military-generator";
 import { Military } from "@/model/political/military-generator";
 import { log } from "@/utils/logger";
@@ -27,6 +28,81 @@ export function updateRegimentIcon(use: SVGUseElement, regiment: Regiment): void
   for (const [name, value] of Object.entries({ x: box.x, y: box.y, width: box.size, height: box.size }))
     use.setAttribute(name, String(value));
 }
+
+const CATEGORY_COLORS: Record<string, string> = {
+  melee: "#34495e",
+  ranged: "#27ae60",
+  cavalry: "#d4ac0d",
+  artillery: "#c0392b",
+  monster: "#d35400",
+  spellcaster: "#8e44ad"
+};
+
+const livingArmy = (stateId: number, regiment: Regiment) => pack.history?.living?.armies?.[`${stateId}-${regiment.i}`];
+
+/** Capability bar, stack badge, composition strip and wounded tint for an army block. */
+// biome-ignore lint/suspicious/noExplicitAny: the bulk and single renderers use different d3 datum types
+const appendArmyBadges = (g: any, d: Regiment, stateId: number, size: number): void => {
+  const army = livingArmy(stateId, d);
+  if (!army) return;
+
+  const w = getRegimentWidth(d);
+  const h = size * 2;
+  const x1 = rn(d.x - w / 2, 2);
+  const y1 = rn(d.y - size, 2);
+  const hp = armyHp(d);
+  const barY = rn(y1 + h + 1, 2);
+  const barColor = hp >= 0.6 ? "#3fa34d" : hp >= 0.3 ? "#d9a441" : "#c0392b";
+
+  g.append("rect")
+    .attr("class", "armyHpTrack")
+    .attr("x", x1)
+    .attr("y", barY)
+    .attr("width", w)
+    .attr("height", 2)
+    .attr("fill", "#00000066");
+  g.append("rect")
+    .attr("class", "armyHpFill")
+    .attr("x", x1)
+    .attr("y", barY)
+    .attr("width", rn(w * hp, 2))
+    .attr("height", 2)
+    .attr("fill", barColor);
+
+  const slots = armySlots(d);
+  if (slots > 1) {
+    g.append("text")
+      .attr("class", "armySlots")
+      .attr("x", rn(x1 + w, 2))
+      .attr("y", rn(y1 + h - 1, 2))
+      .attr("text-anchor", "end")
+      .attr("font-size", `${rn(size * 0.9, 2)}px`)
+      .attr("fill", "#ffffff")
+      .text(slots);
+  }
+
+  const types = Military.getUnitTypes();
+  const seen = new Set<string>();
+  const categories: string[] = [];
+  for (const block of d.units ?? []) {
+    const category = types[block.type]?.category;
+    if (!category || seen.has(category)) continue;
+    seen.add(category);
+    categories.push(category);
+    if (categories.length === 3) break;
+  }
+  categories.forEach((category, index) => {
+    g.append("rect")
+      .attr("class", "armyCat")
+      .attr("x", rn(x1 + index * 3, 2))
+      .attr("y", rn(y1 - 3, 2))
+      .attr("width", 2)
+      .attr("height", 2)
+      .attr("fill", CATEGORY_COLORS[category] ?? "#888");
+  });
+
+  if (hp < 0.7) g.select("rect").attr("opacity", 0.72);
+};
 
 export const drawMilitary = (): void => {
   log.time("drawMilitary");
@@ -96,6 +172,9 @@ const drawRegimentsRenderer = (regiments: Regiment[], s: number): void => {
     .each(function (d) {
       updateRegimentIcon(this, d);
     });
+  g.each(function (d) {
+    appendArmyBadges(select(this), d, s, size);
+  });
 
   if (showNames) {
     g.append("text")
@@ -159,6 +238,7 @@ export const drawRegiment = (reg: Regiment, stateId: number): void => {
     .attr("height", h);
   const use = g.append("use").attr("class", "regimentIcon").node()!;
   updateRegimentIcon(use, reg);
+  appendArmyBadges(g, reg, stateId, size);
 
   if (showNames) {
     g.append("text")
@@ -200,4 +280,15 @@ export const moveRegiment = (reg: Regiment, x: number, y: number): void => {
     .transition(move)
     .attr("x", rn(x - size, 2))
     .attr("y", rn(y + size * 2.3, 2));
+  el.selectAll("rect.armyHpTrack, rect.armyHpFill")
+    .transition(move)
+    .attr("x", x1(x))
+    .attr("y", rn(y1(y) + h + 1, 2));
+  el.select("text.armySlots")
+    .transition(move)
+    .attr("x", rn(x1(x) + w, 2))
+    .attr("y", rn(y1(y) + h - 1, 2));
+  el.selectAll("rect.armyCat")
+    .transition(move)
+    .attr("y", rn(y1(y) - 3, 2));
 };

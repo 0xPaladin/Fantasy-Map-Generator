@@ -56,7 +56,7 @@ The OpenConquest integration is complete and tested: `reg.units` is generated, p
 
 | # | Decision | Resolution |
 | :-- | :--- | :--- |
-| 1 | Upkeep unit | **Per block, scaled by `hp`.** `max(0, Σ UnitType.upkeep × block.hp + 0.1 × civilians − 0.3)`. The 0.3 free allowance is three baseline blocks; a baseline 100-man block costs 0.1 Gold, so 1,000 men cost 1 Gold. |
+| 1 | Upkeep unit | **Per block, scaled by `hp`.** `max(0, Σ UnitType.upkeep × block.hp + 0.1 × civilians − 0.6)`. The 0.6 free allowance is three baseline blocks; a baseline 100-man block costs 0.2 Gold, so 1,000 men cost 2 Gold. |
 | 2 | Production catalog | **Roster only.** `chooseCityProduction`, `productionCost` and `spawnArmyBlock` read `ResolvedRoster`. |
 | 3 | Combat stat source | **Roster `UnitType`.** Civ **utility** units stay (Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor, Great Prophet); every Civ combat unit, culture unique and the `CivUnitDef` combat stat path is deleted. |
 | 4 | City strikes | **One block of damage per tick**, `−0.1 hp` on one deterministic block. |
@@ -139,6 +139,8 @@ export interface ArmyBlock {
   hp: number;
   /** Veteran rank 0..9 (replaces Civ promotions). */
   exp: number;
+  /** Trouble-resolution fatigue carried over from `ArmyUnit` (0..3). */
+  disruption?: number;
 }
 ```
 
@@ -213,10 +215,17 @@ export function chooseOrder(side: ArmyBlock[], types: Record<string, UnitType>, 
 
 /** Bridge — the only place `hp` and `count` meet. */
 export const BATTLE_STRENGTH = 1000; // one full block is 1,000 abstract strength in battle.ts
-export function toBattleUnits(units: ArmyBlock[]): ArmyUnit[];
+export function toBattleUnits(units: ArmyBlock[]): ArmyUnit[];       // block-vs-block sessions
 export function fromBattleUnits(units: ArmyUnit[]): ArmyBlock[];
+export function toBattleUnitsMen(units: ArmyBlock[], types: Record<string, UnitType>): ArmyUnit[]; // mixed sessions
+export function fromBattleUnitsMen(units: ArmyUnit[], types: Record<string, UnitType>): ArmyBlock[];
 export function toBattleTypes(types: Record<string, UnitType>): Record<string, UnitType>;
 ```
+
+**Two bridges, because the map already fights mixed battles.** `battle.ts` is not only the Living World's engine — the map's lair assaults, burg sieges and raid defence already call it with count-based garrisons (`garrisonUnits`, `lair.defenders`). Those sessions must keep real men on both sides:
+
+- `toBattleUnits` / `fromBattleUnits` — **block vs block** (army battles, Phase C). Every block becomes `BATTLE_STRENGTH` abstract men so `fill = hp` exactly, independent of `quantity`.
+- `toBattleUnitsMen` / `fromBattleUnitsMen` — **blocks vs counted units** (Phase A's map battles). `count = round(hp × quantity)`, so the counted side needs no rescaling and `fill = hp` still holds. Mixing the two scales in one session inflates the bridged side by `BATTLE_STRENGTH / quantity` — the exact bug Phase A had to fix.
 
 **The bridge is deliberately trivial.** `battle.ts` needs `count` relative to `men`, and `fill = count / men`. So every block is handed to it as `count = round(hp × BATTLE_STRENGTH)` against a **shallow copy of the type table with `men = BATTLE_STRENGTH`**:
 
@@ -252,9 +261,11 @@ Mapping every block onto 1,000 abstract men gives every block 0.1% resolution re
 Consequences, all desirable:
 
 - `fill = hp` **exactly**, for every unit type, including `quantity: 1` monsters. No rounding loss on small units.
-- `quantity` never reaches the battle engine, so `battle.ts` is untouched. `battle-screen.ts` is the only other direct reader of `Regiment.units`; it gets a three-line edge conversion at `:154-159` (read) and `:185` (write-back) and otherwise keeps working entirely in `count`.
+- `quantity` never reaches a block-vs-block session, so in Phase C it has no mechanical effect at all. Mixed sessions use it only to leave the counted side unchanged.
 - Every block is one tactical element, so losses split by block; a 10-priest block and a 150-axemen block lose approximately the same fraction of `hp` per round. Only the absolute `…Men` numbers in `BattleOutcome` differ, and the Living World never displays those.
 - `BattleOutcome`'s `attackerLossMen` / `defenderLossMen` / `…RemainingMen` are in that same abstract strength. Never show them as a headcount: use `lossesHp` for the report and `armyMen(reg)` for the map.
+
+`battle.ts` and `battle-screen.ts` therefore stay on absolute `count`; the only changes at their edges are the bridge calls (`battle-screen.ts:154-159`, `:185`, `regiment-editor.ts:429`, and the map battle sites listed in §15/Phase A).
 
 ### 5.4. Invariants
 
@@ -334,7 +345,7 @@ export interface UnitType {
 | `quantity` | definition | Nominal size the fiction claims | men-equivalent; 100 for the baseline swordsman |
 | `hp` | instance | Current capability | 0..1 |
 | `cost` | definition | Production to raise one block | ~25 for a baseline block |
-| `upkeep` | definition | Gold per tick at `hp = 1` | 0.1 for a baseline block |
+| `upkeep` | definition | Gold per tick at `hp = 1` | 0.2 for a baseline block |
 | `capacityCost` | definition | AER capacity points per block | legacy capacity model only |
 
 `cost` and `upkeep` are **not** on the same scale and must never be converted into each other at runtime. §10.0 explains the two anchors.
@@ -588,25 +599,25 @@ The OpenCiv economy is unchanged in structure; only the **unit** it prices chang
 
 ### 10.0. Two scales, two anchors
 
-The Living World prices a block in **Production** (to raise) and **Gold per tick** (to keep). Those are different scales, and the baseline `0.1` cannot be both:
+The Living World prices a block in **Production** (to raise) and **Gold per tick** (to keep). Those are different scales, and one number cannot serve both:
 
-- `upkeep: 0.1` Gold is the anchor the design asked for: ten 100-man blocks = 1,000 men = **1 Gold/tick**.
-- `cost: 0.1` Production would complete a unit in a single tick, because a Living World city makes 2–6 points per tick. So the raise price is anchored to city output instead.
+- `upkeep: 0.2` Gold per 100-man block: ten blocks = 1,000 men = **2 Gold/tick**. Derived from measured income, not picked (§10.1).
+- `cost: 0.1` Production would complete a unit in a single tick, because a measured city makes a median of 5 points per tick (§10.1). The raise price is anchored to city output instead.
 
 | Block | `quantity` | `cost` (Production) | `upkeep` (Gold/tick) |
 | :--- | ---: | ---: | ---: |
-| Baseline swordsman | 100 | **25** | **0.1** |
-| Dwarf Axemen | 150 | ~18 | 0.072 |
-| Gromril Ironwardens | 120 | ~32 | 0.128 |
-| Slann Star Priest | 10 | ~52 | 0.208 |
+| Baseline (median block) | 100 | **25** | **0.2** |
+| Dwarf Axemen | 150 | 17 | 0.138 |
+| Gromril Ironwardens | 120 | 31 | 0.246 |
+| Slann Star Priest | 10 | 50 | 0.4 |
 
-The figures are *illustrative*: they assume the measured median roster upkeep is ≈62.5 (the sample mean across 347 units), giving `UPKEEP_SCALE ≈ 0.0016`. §10.1 measures the real median and replaces that number.
+**Measured, shipped** (§10.1): median roster upkeep 65 → `UPKEEP_SCALE = 0.003077`, `PRODUCTION_PER_UPKEEP = 125`. After migration across 32 rosters / 347 units: `quantity` 10–240 (median 100), `upkeep` 0.018–0.446 (median **0.2**), `cost` 5–56 (median 25).
 
 Both values are authored in the roster JSON by the migration:
 
 ```ts
-upkeep = round3(upkeep * UPKEEP_SCALE);                    // 0.1 for a baseline block
-cost   = Math.max(1, Math.round(upkeep * PRODUCTION_PER_UPKEEP)); // 25 for a baseline block
+upkeep = round3(upkeep * UPKEEP_SCALE);                    // 0.2 for a baseline block
+cost   = Math.max(5, Math.round(upkeep * PRODUCTION_PER_UPKEEP)); // 25 for a baseline block
 ```
 
 `cost` is derived from `upkeep` **once**, so elites cost more to raise *and* more to keep without doubling the data.
@@ -615,13 +626,33 @@ cost   = Math.max(1, Math.round(upkeep * PRODUCTION_PER_UPKEEP)); // 25 for a ba
 
 No divisor is guessed. Phase A measures, and the measured constants ship with the roster migration:
 
-1. Generate 5 maps, run 20 ticks each, record per-state `gold/tick` and per-city `production/tick` (`cityYields`).
-2. Take the median state income and median city output.
-3. Set `UPKEEP_SCALE = 0.1 / median(rosterUpkeep)` across the 347 roster units — this is what makes a median block cost 0.1 Gold.
+1. Load a real map (`src/conquest/test-data/sample-world.json`), decompress its cells to the runtime pack shape, clear stale armies, and run 12 ticks.
+2. Record per-burg `cityYields.gold`/`.production`, and per-state gross gold, building maintenance and net gold before armies.
+3. Set `UPKEEP_SCALE = BASELINE_UPKEEP / median(rosterUpkeep)` across the 347 roster units.
 4. Set `PRODUCTION_PER_UPKEEP` so the baseline `cost` lands in **20–40 Production**, i.e. one block per 5–10 ticks of a young city.
 5. Confirm the median state can field ~10 baseline blocks for ≤35% of its income. If not, move `UPKEEP_SCALE`, not the formula.
 
 The measurement table (map, median income, median production, resulting constants) is committed alongside the data migration so the numbers are reproducible.
+
+**Measured (Phase A, real map):** `sample-world.json` decompressed to the runtime pack shape, armies cleared, 12 ticks. 176 owned major burgs across 16 states:
+
+| Measure | Median | q10 | q90 |
+| :--- | ---: | ---: | ---: |
+| Citizens per burg | 4 | 1 | 6 |
+| Gold per burg / tick | **3** | 2 | 9 |
+| Production per burg / tick | **5** | 1 | 8 |
+| Burgs per state | 3 | 1 | 8 |
+| Gross state Gold | 16 | — | 55 |
+| Building maintenance per state | 7 | — | 17 |
+| **Net state Gold before armies** | **10** | −1 | 38 |
+
+Derivation at 30%:
+
+- A median burg earns 3 Gold/tick ⇒ **0.9 Gold** for its army. At `0.2`/block that is **4–5 blocks (≈450 men)**; at the original `0.1` it was 9 blocks, which let a three-burg state pay for two max-size armies.
+- A median state nets 10 Gold after maintenance ⇒ **3 Gold** for the army = **15 blocks (≈2,000 men)**, i.e. one field army with headroom for buildings, hurries and tech.
+- Production is unaffected: 25 Production / 5 per tick = **5 ticks per block**, inside the 5–10 target.
+
+So `BASELINE_UPKEEP = 0.2` Gold, `UPKEEP_SCALE = 0.2/65 = 0.003077`, and `PRODUCTION_PER_UPKEEP = 125` keeps the raise price at 25. The starting treasury (150) buys ~50 ticks of a 15-block army, so a realm must grow or shrink its host.
 
 ### 10.2. Upkeep
 
@@ -639,15 +670,15 @@ const civilians = state.military.filter(armyIsUtility).length * CIVILIAN_UPKEEP;
 const upkeep = Math.max(0, combat + civilians - UPKEEP_FREE);
 ```
 
-- `BASELINE_UPKEEP = 0.1` Gold; `UPKEEP_FREE = 3 * BASELINE_UPKEEP = 0.3` Gold (three baseline blocks).
+- `BASELINE_UPKEEP = 0.2` Gold; `UPKEEP_FREE = 3 * BASELINE_UPKEEP = 0.6` Gold (three baseline blocks).
 - `CIVILIAN_UPKEEP = 0.1` Gold per civilian regiment.
 - A damaged block pays proportionally: `hp = 0.5` costs half.
-- 1,000 men of baseline troops = 10 blocks = **1 Gold/tick**.
+- 1,000 men of baseline troops = 10 blocks = **2 Gold/tick**.
 - Round only at the treasury boundary, to 2 decimals, exactly like `applyTreasury` (`:5242`); keep the unrounded figure for display.
 
 `settleDebt` (`:5245`) disbands **one block** from the newest regiment, not the whole regiment; only remove the regiment when its last block dies.
 
-> Balance note: 20 baseline blocks cost 2 Gold/tick and 20 elite blocks 3–4 Gold/tick, against median state income of 2–3 Gold/tick and a 150 Gold opening treasury. Founding armies are affordable; sustained conquest needs city growth or a smaller, better army. That is the intended pressure, and it is checked by the Phase E measurement test, not by feel.
+> Balance note: 20 baseline blocks cost 4 Gold/tick and 20 elite blocks 6–8 Gold/tick, against a measured median state net of **10 Gold/tick** and a 150 Gold opening treasury. A median realm can hold one full army inside 30% of income; a second one eats most of the rest, which is the intended pressure. Checked against the measured income table (§10.1), not by feel.
 
 ### 10.3. Production
 
@@ -817,12 +848,12 @@ Saves carry **counts**, not `hp`, so every path below ends in the same conversio
 
 ### 13.2. Roster data migration
 
-One mechanical script, one commit, no hand edits across 32 files:
+One mechanical script, one commit, no hand edits across 32 files (`scripts/migrate-roster-quantity.mjs`). **Shipped** with `UPKEEP_SCALE = 0.003077` (median upkeep 65) and `PRODUCTION_PER_UPKEEP = 125`:
 
 1. `quantity = round(blocks × MEN_PER_BLOCK)` — exactly today's derived `men`, so the capacity model and `reconcileRegimentBlocks` see identical numbers.
 2. `men` and `blocks` become derived at parse time; delete both keys from the JSON.
 3. `upkeep *= UPKEEP_SCALE` (§10.1 measurement), rounded to 3 decimals.
-4. `cost = round(upkeep * PRODUCTION_PER_UPKEEP)` — the Conquest Gold `cost` (50–1250) is **not** migrated; it priced instant Gold recruitment and has no meaning here.
+4. `cost = max(5, round(upkeep * PRODUCTION_PER_UPKEEP))` — the Conquest Gold `cost` (50–1250) is **not** migrated; it priced instant Gold recruitment and has no meaning here.
 5. `capacityCost` is left untouched: the legacy capacity model only.
 
 Acceptance check on the migrated directory: median `quantity` ≈ 100, `upkeep` ∈ [0.01, 0.25], `cost` ∈ [10, 60], and every roster still parses with zero warnings.
@@ -845,7 +876,7 @@ Gate **stack combat** behind `config.military.armies` (surfaced from `options.ma
 
 The flag deliberately **cannot** restore the pre-Phase-B model: `living.units` combat entries are converted in Phase B and the `CivUnitDef` combat stats are deleted at the end of Phase E. Document that in the settings tooltip so "turn it off" is not mistaken for a save rescue. The flag's real job is isolating a battle-model regression while leaving armies intact.
 
-Remove the flag in Phase F one release after it ships on by default.
+**Removed in Phase F.** The flag never gated a shipped path once Phase C landed (the interim duel was deleted), so keeping it would have implied a rescue route that did not exist. `config.military.armies` is no longer in `config.ts` or `game.json`.
 
 ---
 
@@ -866,88 +897,125 @@ Remove the flag in Phase F one release after it ships on by default.
 
 Each phase is independently shippable and testable. No phase may leave the map in a state where `reg.units` and `living.armies` disagree.
 
-### Phase A — Foundations (no behavior change)
+### Phase A — Foundations (no behavior change) — **DONE**
 
-- [ ] `src/conquest/engine/common/types.ts`: add `ArmyBlock { type, hp, exp }`; `ArmyUnit` unchanged; `Regiment.units: ArmyBlock[]`.
-- [ ] `src/controllers/political/military/battle-screen.ts`: convert `Regiment.units` through `toBattleUnits`/`fromBattleUnits` at `:154-159` and `:185` (the only direct consumer).
-- [ ] `src/controllers/political/military/regiment-editor.ts`: push `{ type, hp: 1, exp: 0 }` at `:429`; the counts it displays still come from `reg.u`.
-- [ ] `src/conquest/engine/common/content.ts`: `UnitType.quantity`, `cost`/`upkeep` docs, `requiredTech`/`upgradesTo`/`era`; parser reads `quantity` and derives `men`/`blocks`; `allowedUnitKeys`.
-- [ ] Roster data migration (§13.2) in one scripted commit.
-- [ ] Update exact-value campaign expectations (`engine.test.ts`, `capacity.test.ts`, `purse.test.ts`, `phase6.test.ts`) for the rescaled `upkeep`/`cost`.
-- [ ] `src/types/living.ts`: add `ArmySimState`, `ArmyStance`, `ArmyBattleRecord`; add `armies?` to `LivingWorldState`; re-document `units?` as utility-only.
-- [ ] `src/conquest/engine/game/config.ts`: `battle.terrainDefenseBonus = 0.25` + `military.armies = true` (reuse the existing `military.maxUnitsPerArmy = 20`).
-- [ ] `src/conquest/engine/game/battle.ts`: optional `BattleModifiers.defenderTerrain`; fold `terrainDefenseBonus` into `defenderMult`; export `categoryShares`. No change to the damage or loss maths.
-- [ ] `src/model/physical/living-armies.ts` (**new**): helpers and bridge from §5.3, plus `requiredTechFor`, `nextRosterUnitInCategory`, `pickRosterUnit`, `matchRosterUnitByCategory`, `chooseOrder`.
-- [ ] Calibration measurement (§10.1) and the committed measurement table.
-- [ ] Tests: bridge round-trip (`hp 0.37 → count 370 → hp 0.37`), helpers against `default` + `dwarf` rosters, parser equivalence (`quantity` vs legacy `blocks`), `computeBattleSetup` terrain, `requiredTechFor` ladder.
+- [x] `src/conquest/engine/common/types.ts`: `ArmyBlock { type, hp, exp, disruption? }`; `ArmyUnit` unchanged; `Regiment.units: ArmyBlock[]`.
+- [x] `src/controllers/political/military/battle-screen.ts`: edge conversion through the mixed bridge.
+- [x] `src/controllers/political/military/regiment-editor.ts`: pushes `{ type, hp: 1, exp: 0 }`; counts still come from `reg.u`.
+- [x] `src/conquest/engine/common/content.ts`: `UnitType.quantity`, `cost`/`upkeep` re-documented, `requiredTech`/`upgradesTo`/`era`; parser reads `quantity` (legacy `blocks` accepted silently), derives `men`/`blocks`; `allowedUnitKeys` extended.
+- [x] Roster data migration (§13.2) in one scripted commit (`scripts/migrate-roster-quantity.mjs`).
+- [x] `src/types/living.ts`: `ArmySimState`, `ArmyStance`, `ArmyBattleRecord`, `LivingWorldState.armies`; `units` documented as utility-only.
+- [x] `src/conquest/engine/game/config.ts` + `game.json`: `battle.terrainDefenseBonus = 0.25`, `military.armies = true`.
+- [x] `src/conquest/engine/game/battle.ts`: `defenderTerrain`, `terrainDefenseBonus` folded into `defenderMult`, `categoryShares` exported. No damage-maths change.
+- [x] `src/model/physical/living-armies.ts` (**new**): helpers, both bridges, tech gating, `chooseOrder`.
+- [x] Calibration: measured city income, `UPKEEP_SCALE = 0.003077`, `PRODUCTION_PER_UPKEEP = 125`.
+- [x] Map battle sites converted to the mixed bridge (`living-generator.ts`: lair assault, siege, raid defenders, emergent hosts, `applyArmySurvivors`); `syncRegimentTotals` also converts legacy count blocks in place.
+- [x] Tests: `living-armies.test.ts` (bridge round-trip, helpers, ladder, orders, terrain), parser equivalence and faction-override re-derivation (`content.test.ts`), fixture updates.
 
-**Exit:** all existing tests pass unchanged; no gameplay change; nothing imports `living-armies.ts` except its test.
+**Exit:** met — full suite green (245 files / 3,431 tests), `tsc` clean, no gameplay change, nothing imports `living-armies.ts` outside the bridge call sites yet.
 
-### Phase B — Army sync, movement, stacking
+**Deviations from the original sketch, deliberate:**
 
-- [ ] `syncUnits` → `syncArmies`: combat branch calls `ensureArmy`, never writes `reg.u`/`reg.a` (except `syncRegimentTotals`).
-- [ ] `unitOccupancy` → `armyOccupancy`.
-- [ ] `moveRegimentTo` unchanged; ensure `living.armies` entry travels with the regiment.
-- [ ] `moveUnitToward` → `moveArmyToward`; cost = slowest block.
-- [ ] `stepTactical` reads `living.armies` for combat regiments and `living.units` for utility.
-- [ ] `spawnUnit` stops clearing `reg.units`: interim it maps the produced `CivUnitDef.unitClass` to a roster unit via `matchRosterUnitByCategory` and appends one `{ type, hp: 1, exp }` block (keeps Phase B shippable before the production swap in Phase E).
-- [ ] `upgradeRegiment` / `autoUpgrade` are no-ops for combat regiments during Phase B–D (return `false`); `living.units[key]` is already gone. Phase E reinstates them on blocks.
-- [ ] Migration for old `living.units` combat entries and old count-based blocks (§13.1).
-- [ ] Tests: sync idempotence, stack clash, slowest-block cost, utility coexistence, count→hp migration, interim spawn.
+1. `ArmyBlock` keeps `disruption?` — the trouble-resolution system already stores fatigue on map blocks.
+2. `blocks` remains accepted as a silent legacy alias (the migration removes it from shipped rosters); only `men` still warns.
+3. A **second bridge** (`toBattleUnitsMen`) was required because the map already runs `battle.ts` against counted garrisons. Using the 1,000-strength scale there inflated attackers ~6×.
+4. `syncRegimentTotals` converts count-based blocks in place, so pre-migration `.map` saves load instead of producing `NaN` totals.
 
-**Exit:** armies move and stack correctly; combat still uses the old duel on the lead block (interim). Unique composition is preserved end-to-end.
+### Phase B — Army sync, movement, stacking — **DONE**
 
-### Phase C — Combined-arms battle
+- [x] `syncUnits` → `syncArmies`: creates/keeps one state record per regiment. Combat regiments get blocks + `living.armies`; utility regiments keep their `UnitSimState` and get no blocks. Nothing writes `reg.u`/`reg.a` outside `syncRegimentTotals`.
+- [x] `unitOccupancy` → `armyOccupancy` (regiment granularity, one combat + one utility per state/cell).
+- [x] `moveRegimentTo` unchanged; `living.armies` is keyed by the regiment, so it travels automatically.
+- [x] `moveUnitToward` kept for utility; new `moveArmyToward` + `armyMovementCost`, speed = slowest block (cavalry 4, others 2) via `armySpeed`.
+- [x] `stepTactical` dispatches on the state record: utility → Settler/Builder/Missionary pipeline; combat → `stepArmyOrders` (enemy army → duel, city in range → bombard, else march).
+- [x] `spawnUnit`: civilians keep the 1UPT sim (`regiment.type` authoritative); combat ids map through `matchRosterUnitByCategory` and land in `spawnArmyBlock` as `{ type, hp: 1, exp }`.
+- [x] `upgradeRegiment` / `autoUpgrade` return false for combat armies (they need a sim); Phase E reinstates them on blocks.
+- [x] Migration: legacy combat sims convert to a full-strength block with `exp = level − 1`; count-based blocks convert in place (`migrateArmyBlocks` + `syncRegimentTotals`).
+- [x] Tests: sync idempotence (composition stable over ticks), legacy sim → block, legacy count → hp, lead-block power, army speed, spawn path.
 
-- [ ] `resolveArmyBattle` (§8) replacing `resolveUnitBattle` in `stepUnitOrders`.
-- [ ] `toBattleUnits`/`fromBattleUnits`/`toBattleTypes` at the battle boundary; write-back via `fromBattleUnits` + `syncRegimentTotals`.
-- [ ] `chooseOrder`, modifier assembly, seeded PRNG, XP, occupation, news.
-- [ ] Delete `effectiveStrength` combat path for armies (keep for city strikes until Phase D).
-- [ ] `estimateOdds` surfaced on the HUD for each adjacent enemy.
-- [ ] Tests: 2:1 annihilation, rout, charge vs brace, cavalry vs ranged, monster/spellcaster, terrain, river, encamp, unhappy, relic, determinism, zero-hp pruning, `reg.a` mirror, `hp` conservation (`Σ hp before − Σ hp after == lossesHp`).
+**Exit:** met — armies move and stack as regiments; the interim duel damages the lead block and preserves composition; utility units are untouched. Full suite green.
 
-**Exit:** battles are army stacks; `MATCHUP` and rout are live; unique forces fight with their real stats.
+**Deviations / consequences, deliberate:**
 
-### Phase D — Sieges & city strikes
+1. **No passive healing for combat armies in Phase B.** `tickUnitHealing` now serves utility only; block replenishment arrives with §10.7 in Phase E. Damage therefore persists between battles until then.
+2. **The regiment's `type` is authoritative for utility.** A civilian-type regiment can never be promoted into an army by stray blocks; `syncArmies` clears any blocks it finds on one.
+3. **Muster and production both skip civilian regiments.** `findRegimentForUnit` / `spawnArmyBlock` only append to combat regiments, which fixed a bug where a Builder regiment received a levy block.
+4. **City strikes already remove `CITY_STRIKE_HP = 0.1`** from one block, ahead of Phase D's fuller siege model.
+5. **The interim duel uses `blockPower × 6`** on the 0–100 `combatDamage` scale. It exists only to keep the map playable until Phase C replaces it; no balance tuning was spent on it.
 
-- [ ] `bombardCity` → siege battle with `garrisonUnits` (hp blocks built from the roster, `hp: 1`).
-- [ ] Capture/retreat paths.
-- [ ] `stepCityStrikes` removes **one block step** of capability: deterministic target (highest `hp`, tie by `type`), `hp -= CITY_STRIKE_HP` (0.1).
-- [ ] `cityDefenseStrength` = garrison battle power via the bridge; keep `8 + 0.4×citizens + defense` as a floor.
-- [ ] Tests: garrison composition, walls tiers, capture, retreat, strike damage, `hp` pruning at 0.
+### Phase C — Combined-arms battle — **DONE**
 
-**Exit:** sieges are stack battles; cities can fall to a real army.
+- [x] `resolveArmyBattle` replaces the interim duel; `stepArmyOrders` calls it on contact.
+- [x] Both sides are blocks, so `toBattleUnits` / `fromBattleUnits` / `toBattleTypes` are the boundary; write-back runs `normalizeArmy` + `syncRegimentTotals`.
+- [x] Modifiers assembled from stance (`encamp`/`fortify`, `ambush`), terrain, river, city walls under the defender, happiness and the weapon relic. Labels come from `computeBattleSetup`.
+- [x] Deterministic orders: `chooseOrder` on contact, then `balanced`, or `charge` when losing and cavalry is present. PRNG stream `"army:battle"`.
+- [x] XP +1 per surviving block on the winning side (clamped 9); occupation only when the winner still has a melee block; `ArmyBattleRecord` (`lossesHp`, `blocksLost`, `survivorsHp`) stored on both armies.
+- [x] `effectiveStrength` and the Civ promotion path removed; `assaultOdds` and sieges now read `armyStrengthAt`.
+- [x] HUD army rows show capability %, slot count, stance, and `estimateOdds` against each adjacent enemy at war.
+- [x] Tests: 2:1 battle and hp loss accounting, determinism, monster/spellcaster blocks, zero-hp pruning, slot cap, `reg.a` mirror.
 
-### Phase E — Economy on `hp` & Civ combat retirement
+**Exit:** met — armies fight through `battle.ts`; `MATCHUP`, orders, rout and magic are live; unique roster stats decide the outcome. Full suite green.
 
-- [ ] Upkeep `Σ upkeep × hp` (§10.2) plus `CIVILIAN_UPKEEP`; `settleDebt` disbands one block.
-- [ ] `productionCost` + `chooseCityProduction` read the roster `cost` (Production) for combat, `CIV_CIVILIAN_BY_ID` for civilians.
-- [ ] `spawnArmyBlock` (§10.4) appends `hp: 1`; `spawnUtilityUnit` for civilians.
-- [ ] `upgradeArmyBlocks` + `autoUpgrade` on `UnitType.upgradesTo` / category ladder, preserving `hp`/`exp`.
-- [ ] `replenishArmies` in `hp`; remove combat `tickUnitHealing`.
-- [ ] `hurryProduction` price from roster `cost`.
-- [ ] **Rename** `src/data/living-civ-units.ts` → `living-civ-civilians.ts`, exporting `CIV_CIVILIANS` / `CIV_CIVILIAN_BY_ID`; keep only the 8 utility defs.
-- [ ] **Delete** every combat `CivUnitDef`, `CIV_CULTURE_UNIQUE_UNITS`, `CIV_CULTURE_UNIT_MAP`, `bestUnitForCategory`, `UNIT_CHAINS`, `createUnitSim` (combat branch), `grantPromotion`, and `src/data/living-civ-promotions.ts`.
-- [ ] Migrate the call sites listed in §6.5 (`living-generator.ts`, `living-hud.ts`, `political/burgs/burg-editor.ts`, `living-civ-themes.ts`).
-- [ ] Rewrite `living-civ-catalogs.test.ts` for civilians only; delete the `bestUnitForCategory` test block.
-- [ ] Tests: upkeep at `hp` 1 / 0.5, free allowance, civilian upkeep, bankruptcy, production cost scale, block spawn at cap, upgrade tech gate and `hp` preservation, replenishment per terrain/stance.
+**Notes / consequences:**
 
-**Exit:** the OpenCiv treasury prices armies by `Σ upkeep × hp`; the Civ combat catalog and promotion tree no longer exist; `reg.units` is the only combat composition.
+1. **A "2:1 annihilation" is a rout, not a wipe.** `battle.ts` ends the fight at `routThreshold` and `finalizeBattle` applies extra losses to the loser, so a stronger army normally leaves the weaker one damaged rather than empty. That is the intended OpenConquest behaviour.
+2. **Stance is still coarse.** Phase B's `stepTactical` assigns `march`/`fortify`; `encamp`/`ambush` are read by the modifier assembly and exercised by tests, but the AI stance table (§7.3) is not wired yet. Phase F can add it once balance data exists.
+3. **The HUD is still a list, not the battle card.** Capability, blocks, stance and adjacent odds are in; the compact report card and the composition drill-down are Phase F.
+4. **City battles are still Phase B's one-shot siege** (`openCivAssault`), using `armyStrengthAt`; Phase D replaces them with a real garrison battle.
 
-### Phase F — UI, rendering, balance, cleanup
+### Phase D — Sieges & city strikes — **DONE**
 
-- [ ] `living-hud.ts` army panel (capability %, nominal men, blocks, exp, stance) + compact battle card (`survivorsHp`, blocks lost, rounds, modifiers, `estimateOdds` bar).
-- [ ] `draw-military.ts` capability bar, stack badge, composition strip, wounded tint on `armyHp < 0.7`.
-- [ ] `draw-living-overlay.ts` battle markers.
-- [ ] Settings: `military.maxUnitsPerArmy`, `military.replenishFraction`, `battle.maxRounds`, `battle.routThreshold`, `battle.terrainDefenseBonus`.
-- [ ] Delete the interim lead-block duel (`resolveUnitBattle`, `combatDamage`, `effectiveStrength` combat path) now that Phase D's city strike no longer needs an HP roll.
-- [ ] Remove the `options.map.military.armies` flag one release after it ships on by default.
-- [ ] Balance sweep: `UPKEEP_FREE`, `CIVILIAN_UPKEEP`, `PRODUCTION_PER_UPKEEP`, `replenishFraction`, `maxUnitsPerArmy`, `attritionScale`, `terrainDefenseBonus`, `CITY_STRIKE_HP`.
-- [ ] Annotate roster JSON with explicit `requiredTech`/`upgradesTo` per culture (optional; ladder is the fallback).
-- [ ] Update `living-openciv.md` §5 to point here.
-- [ ] Delete obsolete tests; add the determinism + migration suite.
+- [x] `openCivAssault` is a real siege: the burg's roster garrison becomes blocks (`fromBattleUnitsMen`), fights through `battle.ts` with `assault: true`, then the attacker is written back or retreats.
+- [x] Capture on an attacker win (existing `captureCity`); a repulsed army retreats to the nearest friendly/unowned adjacent cell (`retreatArmy`) and the city keeps its HP.
+- [x] `stepCityStrikes` picks the weakest hostile army in range 2, then one block (highest `hp`, tie by `type`), removes `CITY_STRIKE_HP`, prunes it at 0 and mirrors totals.
+- [x] `cityDefenseStrength` is the garrison's block power (plus a stationed army), with `8 + 0.4×citizens + defense` as the floor; `assaultOdds` now runs the same `estimateOdds` as the real siege.
+- [x] Public `cityGarrison(burgId)` for the HUD and tests.
+- [x] Tests: roster garrison composition and wall scaling, capture, repulse/retreat, one-block strike damage, 0-hp pruning.
 
-**Exit:** feature complete, documented, balanced, and the 1UPT tactical layer is gone.
+**Exit:** met — cities fall to armies rather than HP grind, and city strikes are deterministic block damage. Full suite green.
+
+**Notes / consequences:**
+
+1. **The defending field army is not folded into the siege battle.** Decision 5 defers reinforcements; a stationed army fights in `stepTactical` and contributes to `cityDefenseStrength`, but the siege itself is attacker vs garrison. Folding both into one session needs index-partitioned write-back and is left to the reinforcement phase.
+2. **City HP is a display/pace stat now.** Capture is decided by the battle; `bSim.hp` still regenerates, gates city strikes and is set to 0 on capture (then reset by `captureCity`).
+3. **Ranged bombardment stays a chip action.** `bombardCity` can still lower city HP, but it cannot capture: the garrison has to be beaten. Persistent blockade-style bombardment would need garrison HP to be stored, which it deliberately is not.
+4. **`toBattleTypes` is memoised by table identity.** Rebuilding 347 scaled types per odds query made the siege AI quadratic; the `WeakMap` fixed a 10× test slowdown.
+### Phase E — Economy on `hp` & Civ combat retirement — **DONE**
+
+- [x] Upkeep is `Σ UnitType.upkeep × block.hp` plus `CIVILIAN_UPKEEP` per civilian regiment, less `UPKEEP_FREE` (0.6 Gold). Rounding happens at the treasury boundary.
+- [x] `settleDebt` disbands **one block** from the newest regiment; the regiment is removed only when its last block dies.
+- [x] `productionCost` reads the roster `cost` for combat ids and `CIV_CIVILIAN_BY_ID` for civilians; `hurryProduction` inherits it.
+- [x] `chooseCityProduction` picks a roster melee via `pickRosterUnit` when a war has no field army; civilians still come from the civilian catalog.
+- [x] Block refits (`upgradeArmyBlocks`) follow `UnitType.upgradesTo` or the category ladder, gate on `requiredTechFor`, pay Gold, and preserve `hp`/`exp`. `autoUpgrade` refits one block per season while the treasury holds 50+.
+- [x] `replenishArmies` adds capability between ticks: `replenishFraction` in a friendly city, half in friendly land, none in neutral/enemy, ×`encampReplenishBonus` while encamped; no healing after fighting. Combat `tickUnitHealing` stays gone; utility keeps it.
+- [x] Combat catalog retired: `living-civ-units.ts` and `living-civ-promotions.ts` are deleted, replaced by **`living-civ-civilians.ts`** (`CIV_CIVILIANS`, `CIV_CIVILIAN_BY_ID`, `getCivCivilian`) with the eight utility defs. `CIV_UNIT_BY_ID`, `CIV_ALL_UNITS`, the culture uniques, `UNIT_CHAINS`, `bestUnitForCategory` and the promotion tree are gone.
+- [x] Call sites migrated: `living-generator.ts`, `living-hud.ts`, `political/burgs/burg-editor.ts` (production names fall back from civilians to `Military.getUnitTypes()`), and the catalog test.
+- [x] Tests: upkeep at `hp 1`/`0.5` with the free allowance and civilian rate, one-block bankruptcy, roster-driven production, block refit preserving `hp`/`exp`, replenishment by terrain and stance.
+
+**Exit:** met — the treasury prices `Σ upkeep × hp`, production and upgrades are roster-driven, and the Civ combat catalog plus promotion tree no longer exist. Full suite green (246 files / 3,448 tests).
+
+**Notes / consequences:**
+
+1. **The free allowance (0.6 Gold) covers roughly three baseline blocks.** A small starting army therefore costs nothing, matching the old "three free regiments" feel, but the fourth block starts charging.
+2. **Upkeep is per block, not per 1,000 men.** A 10-man Slann block pays its own `upkeep`, so elites stay expensive even when the fiction says the unit is tiny.
+3. **`encamp` is now reachable**: a resting army below 60% in a friendly city entrenches, which doubles replenishment and feeds the siege/field defender bonus.
+4. **Civilian production names** resolve through the civilian catalog first, then the roster; combat ids are roster-only and no longer fall back to a Civ definition.
+5. **Legacy saves with Civ ids in a production queue** still work: `spawnUnit` maps an unknown id through `matchRosterUnitByCategory`, so an old "warrior" order becomes a roster melee block.
+
+### Phase F — UI, rendering, balance, cleanup — **DONE (balance sweep deferred)**
+
+- [x] `living-hud.ts` army panel: capability %, nominal men, block count, mean `exp`, stance, adjacent-enemy odds with a bar, per-block composition drill-down, and a compact battle card (role, result, rounds, hp lost, blocks lost, % left).
+- [x] `draw-military.ts`: capability bar under the box (green/amber/red), stack badge when >1 block, a three-square composition strip by category, and a wounded tint below 70% `hp`.
+- [x] Field battles leave a `battlefields` marker (`addBattleMarker`); the living overlay already renders that marker layer.
+- [x] Settings are the engine config keys (`military.maxUnitsPerArmy`, `military.replenishFraction`, `battle.maxRounds`, `battle.routThreshold`, `battle.terrainDefenseBonus`), documented in §12.4. No user-facing toggle was added.
+- [x] Interim combat deleted: `resolveUnitBattle`, `combatDamage`, `effectiveStrength`, `unitIsRanged`, `rangedLineOfSightBlocked`, `findCityInRange`, `bombardCity` and the ranged city branch are gone. City strikes are flat block damage; sieges are battles.
+- [x] The `options.map.military.armies` feature flag is removed from `config.ts` and `game.json`. It never gated anything after Phase C (the interim duel no longer exists), so keeping it would have implied a rescue path that did not exist.
+- [x] Determinism and migration tests: same seed/tick reproduces identical battle blocks; legacy 1UPT sims and count blocks convert on load; the catalog test is civilians-only.
+- [ ] **Balance sweep across generated maps** — not a code task; the calibration guard (`living-calibration.test.ts`) enforces the 3–7 blocks-per-burg window and will fail when the economy drifts. Live tuning of `UPKEEP_FREE`, `CIVILIAN_UPKEEP`, `replenishFraction`, `maxUnitsPerArmy`, `attritionScale`, `terrainDefenseBonus` and `CITY_STRIKE_HP` is deferred to play data.
+- [ ] Optional roster annotations (`requiredTech` / `upgradesTo` per culture) — deferred deliberately; the derived ladder is the documented fallback and keeps 32 JSON files untouched.
+- [x] `living-openciv.md` §5 now points here.
+
+**Exit:** the 1UPT tactical layer and its last helpers are gone; armies render their capability and composition; the HUD reports battles. Full suite green (246 files / 3,446 tests).
 
 ---
 
@@ -981,13 +1049,13 @@ Each phase is independently shippable and testable. No phase may leave the map i
 - Determinism: same seed → identical outcome and identical `hp` values.
 - Siege: garrison composition, walls, capture, retreat.
 - City strike removes `CITY_STRIKE_HP` from exactly one block.
-- Upkeep: `20 × 0.1 Gold` blocks = 2 Gold; a block at `hp 0.5` pays half; 0.3 free allowance; `CIVILIAN_UPKEEP` per civilian; bankruptcy disbands one block.
+- Upkeep: 20 baseline blocks = 4 Gold; a block at `hp 0.5` pays half; 0.6 free allowance; `CIVILIAN_UPKEEP` per civilian; bankruptcy disbands one block.
 - Production: roster `cost` in Production, tech gate, block appended at cap → new regiment; civilian ids still resolve.
 - Upgrade: tech gate, Gold cost, `hp` and `exp` preserved.
 - Replenishment: `+0.25 hp` in a city, `+0.125` in friendly territory, `+0` neutral, `+0.5` encamped, nothing after fighting.
 - Migration: old `living.units` combat entry → `hp: 1` block via `sim.combatClass`; old `count` blocks → `count / quantity`.
 - Inventory guard: a test asserts no `src/**` module imports `CIV_UNIT_BY_ID`, `CIV_ALL_UNITS`, `CIV_PROMOTIONS`, `bestUnitForCategory` or `UNIT_CHAINS`.
-- Untouched suite: `battle.test.ts` passes without edits, because `ArmyUnit` is unchanged. Campaign economy suites (`engine.test.ts`, `capacity.test.ts`, `purse.test.ts`, `phase6.test.ts`) get their expected upkeep/recruit numbers updated to the rescaled roster values in Phase A; the campaign itself is not rebalanced, since it is being retired.
+- Untouched suite: `battle.test.ts` and the campaign suites (`engine.test.ts`, `capacity.test.ts`, `purse.test.ts`, `phase6.test.ts`) passed **unchanged** — they use inline fixtures, so the roster rescale never reached them.
 
 ### UI
 
@@ -1001,10 +1069,10 @@ Each phase is independently shippable and testable. No phase may leave the map i
 
 | Risk | Impact | Mitigation |
 | :--- | :--- | :--- |
-| `cost` and `upkeep` get conflated again | Units finish in one tick, or upkeep becomes trivial | They are separate anchors with separate scales (§10.0). A test asserts a baseline block's `cost ≥ 10` Production and its `upkeep == 0.1` Gold; no runtime conversion between them. |
+| `cost` and `upkeep` get conflated again | Units finish in one tick, or upkeep becomes trivial | They are separate anchors with separate scales (§10.0). A test asserts a baseline block's `cost ≥ 10` Production and its `upkeep == 0.2` Gold; no runtime conversion between them. |
 | Calibration guessed, not measured | States bankrupt or free-ride | §10.1 measures median income/production over 5 generated maps before `UPKEEP_SCALE` and `PRODUCTION_PER_UPKEEP` are committed. Tune the constants, never the formula. |
 | Rescaling roster `upkeep` unbalances the standalone Conquest campaign | Its armies become almost free | **Accepted.** The campaign is being retired by this integration; only `battle.ts` is carried forward. Its exact-value tests are updated, its economy is not rebalanced. |
-| Upkeep swings the economy | Bankruptcy or runaway armies | `Σ upkeep × hp` is proportional to capability, so damaged armies are cheaper. 20 baseline blocks = 2 Gold/tick; free allowance 0.3 Gold; Phase E measurement test compares against median income. |
+| Upkeep swings the economy | Bankruptcy or runaway armies | `Σ upkeep × hp` is proportional to capability, so damaged armies are cheaper. 20 baseline blocks = 4 Gold/tick; free allowance 0.6 Gold; recalibrated against measured median income (3 Gold/burg, 10 Gold/state). |
 | "One regiment = one Gold" assumptions leak | Wrong treasury forecasts | Grep `UNIT_UPKEEP_FREE`, `stateUnitCount`, `regiments` in `living-generator.ts`; route every count through `armyBlocks`/`armyHp`. |
 | Deleting the Civ combat catalog breaks a missed call site | Build or runtime failure | Phase E lands only after a repo-wide search for `CIV_UNIT_BY_ID`, `CIV_ALL_UNITS`, `CIV_PROMOTIONS`, `bestUnitForCategory`, `UNIT_CHAINS` is empty. Rename the file so a stale import fails at compile time. |
 | Old saves carry `living.units` combat entries with ids that no longer exist | Crash on load | Migrate by `sim.combatClass`, not by catalog id (§13.1); clamp `exp`; never look up a deleted `CivUnitDef`. |
@@ -1027,8 +1095,8 @@ Each phase is independently shippable and testable. No phase may leave the map i
 | # | Decision | Rationale | Consequence |
 | :-- | :--- | :--- | :--- |
 | 1 | Strength is **`hp` ∈ (0, 1] on `ArmyBlock`** | It is exactly the battle model's `fill`, it is state rather than definition, and it makes a 1-dragon block and a 1,000-rat block use the same maths. | `hp` lives beside `exp` in `reg.units`; `ArmyUnit` (the campaign/battle type) keeps `count` and is unchanged. |
-| 2 | Upkeep is **`Σ upkeep × hp`** | Proportional to capability, and algebraically identical to OpenConquest's `upkeep × count / men`. | Free allowance 0.3 Gold (three baseline blocks); `hp 0.5` pays half. |
-| 3 | `cost` is **Production**, `upkeep` is **Gold**, calibrated separately | A single number cannot serve both: 0.1 Production completes in one tick, while 0.1 Gold is the right per-block upkeep. | `cost` anchored at ~25 Production for a baseline block by measurement; `PRODUCTION_PER_UPKEEP = 250` used only by the migration. |
+| 2 | Upkeep is **`Σ upkeep × hp`** | Proportional to capability, and algebraically identical to OpenConquest's `upkeep × count / men`. | Free allowance 0.6 Gold (three baseline blocks); `hp 0.5` pays half. |
+| 3 | `cost` is **Production**, `upkeep` is **Gold**, calibrated separately | A single number cannot serve both: 0.1 Production completes in one tick, while 0.2 Gold is what measured income supports. | `cost` anchored at ~25 Production for a baseline block by measurement; `PRODUCTION_PER_UPKEEP = 125` used only by the migration. |
 | 4 | **Roster** production catalog | The roster is the culture-unique source; Civ combat defs duplicate it with worse data. | `productionCost`, `chooseCityProduction`, `spawnArmyBlock` read `ResolvedRoster`. |
 | 5 | **Only Civ civilians survive** | Civ mechanics need Settler/Builder/Work Boat/Caravan/Cargo Ship/Missionary/Inquisitor/Great Prophet; combat needs nothing from `CivUnitDef`. | `living-civ-units.ts` → `living-civ-civilians.ts`; `living-civ-promotions.ts` deleted. |
 | 6 | City strikes remove **`CITY_STRIKE_HP = 0.1`** from one block | Keeps "cities defend themselves" without an HP duel or LOS. | Deterministic target: highest `hp`, tie by `type`. |
@@ -1054,7 +1122,8 @@ Nothing remains open. Any new question discovered during implementation should b
 | `src/conquest/engine/game/battle.ts` | A, C, D | `defenderTerrain`; export `categoryShares`; otherwise **untouched** |
 | `src/conquest/engine/game/config.ts` | A | `battle.terrainDefenseBonus`, `military.armies` flag; reuses existing `military.maxUnitsPerArmy` |
 | `src/conquest/engine/game/units.ts` | D | optional sorted `garrisonUnits` for stable block order |
-| `src/model/physical/living-armies.ts` | A | **new** pure army helpers + `hp ↔ count` bridge |
+| `src/model/physical/living-armies.ts` | A | **new** pure army helpers + both `hp ↔ count` bridges |
+| `scripts/migrate-roster-quantity.mjs` | A | **new** one-shot roster migration (`blocks → quantity`, price rescale) |
 | `src/model/physical/living-generator.ts` | B–E | `syncArmies`, `armyOccupancy`, movement, `resolveArmyBattle`, siege, economy on `hp`, spawn/upgrade/replenish |
 | `src/model/political/military-generator.ts` | A–B | `generate`/`reconcileRegimentBlocks` map their count slots to `{ type, hp: count / quantity, exp }`; `syncRegimentTotals` computes `Σ round(hp × quantity)` |
 | `src/data/living-civ-units.ts` → `living-civ-civilians.ts` | E | keep 8 utility defs; export `CIV_CIVILIANS` / `CIV_CIVILIAN_BY_ID` |
@@ -1076,9 +1145,10 @@ Nothing remains open. Any new question discovered during implementation should b
 - A block's strength is a single `hp` fraction in `(0, 1]`, and it is the number used by upkeep, the battle engine's `fill`, the UI bar and replenishment. `quantity` appears only in display and in the legacy `men`/`blocks` mirror.
 - A state whose roster contains `ironbreaker`, `waywatcher` and a `monster` fields an army that keeps all three block types through recruitment, movement, battle and upgrade.
 - A 2:1 army wins with roughly Lanchester-scale losses, and a 25% rout ends the fight before annihilation.
-- The OpenCiv treasury still charges building maintenance, and army upkeep is `Σ upkeep × hp` with a 0.3 Gold free allowance: 20 baseline blocks cost 2 Gold/tick, a half-strength block pays half.
+- The OpenCiv treasury still charges building maintenance, and army upkeep is `Σ upkeep × hp` with a 0.6 Gold free allowance: 20 baseline blocks cost 4 Gold/tick, a half-strength block pays half.
 - A baseline block costs ~25 **Production** and 0.1 **Gold/tick**; the two scales are never converted at runtime, and the constants come from the committed measurement table.
 - Civilian units (Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor, Great Prophet) still work and cost 0.1 Gold each.
+- A median burg's 30% budget fields about 4–5 blocks; a median state's 30% fields about 15 blocks.
 - A city falls only after its garrison is beaten in a stack battle, not after N single-duel exchanges.
 - Same save + same tick reproduces the same battle result, block `hp` values and survivors.
 - `battle.ts` is unmodified and its tests pass untouched; `battle-screen.ts` only converts at the edges and still renders absolute `count`.

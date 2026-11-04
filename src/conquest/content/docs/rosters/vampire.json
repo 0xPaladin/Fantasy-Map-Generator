@@ -7,13 +7,13 @@
       "skeleton_warriors": {
         "name": "Risen Barrow-Skeletons",
         "category": "melee",
-        "blocks": 0.2,
+        "quantity": 200,
         "attack": 5,
         "defense": 10,
         "charge": 2,
         "missile": 0,
-        "cost": 180,
-        "upkeep": 22,
+        "cost": 9,
+        "upkeep": 0.068,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -24,13 +24,13 @@
       "crypt_ghouls": {
         "name": "Flesh-Feaster Crypt Ghouls",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 9,
         "defense": 7,
         "charge": 5,
         "missile": 0,
-        "cost": 320,
-        "upkeep": 40,
+        "cost": 15,
+        "upkeep": 0.123,
         "capacityCost": {
           "m": 2,
           "w": 1,
@@ -41,20 +41,20 @@
       "grave_guard": {
         "name": "Wight-Blade Barrow Guard",
         "category": "melee",
-        "blocks": 0.12,
-        "requiresGood": 4,
+        "quantity": 120,
         "attack": 11,
         "defense": 14,
         "charge": 5,
         "missile": 0,
-        "cost": 550,
-        "upkeep": 65,
+        "cost": 25,
+        "upkeep": 0.2,
         "capacityCost": {
           "m": 3,
           "w": 2,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "powers": {
           "hex": 0.05
         }
@@ -62,13 +62,13 @@
       "cairn_wraiths": {
         "name": "Ethereal Wraiths & Banshees",
         "category": "melee",
-        "blocks": 0.06,
+        "quantity": 60,
         "attack": 10,
         "defense": 12,
         "charge": 6,
         "missile": 9,
-        "cost": 650,
-        "upkeep": 75,
+        "cost": 29,
+        "upkeep": 0.231,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -83,38 +83,38 @@
       "black_knights": {
         "name": "Wight-Steed Black Knights",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 10,
         "defense": 12,
         "charge": 12,
         "missile": 0,
-        "cost": 580,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.215,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "blood_knights": {
         "name": "Vampire Blood-Order Knights",
         "category": "cavalry",
-        "blocks": 0.05,
-        "requiresGood": 18,
+        "quantity": 50,
         "attack": 15,
         "defense": 14,
         "charge": 16,
         "missile": 0,
-        "cost": 850,
-        "upkeep": 100,
+        "cost": 39,
+        "upkeep": 0.308,
         "capacityCost": {
           "m": 3,
           "w": 4,
           "s": 2,
           "c": 0
         },
+        "requiresGood": 18,
         "powers": {
           "heal": 6,
           "terror": 0.05
@@ -123,13 +123,13 @@
       "vargheists": {
         "name": "Winged Vargheists & Varghulfs",
         "category": "monster",
-        "blocks": 0.04,
+        "quantity": 40,
         "attack": 14,
         "defense": 10,
         "charge": 13,
         "missile": 0,
-        "cost": 750,
-        "upkeep": 85,
+        "cost": 33,
+        "upkeep": 0.262,
         "capacityCost": {
           "m": 3,
           "w": 3,
@@ -144,13 +144,13 @@
       "terrorgheist": {
         "name": "Abyssal Death-Shriek Terrorgheist",
         "category": "monster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 16,
         "defense": 14,
         "charge": 13,
         "missile": 14,
-        "cost": 1200,
-        "upkeep": 140,
+        "cost": 54,
+        "upkeep": 0.431,
         "capacityCost": {
           "m": 4,
           "w": 4,
@@ -165,13 +165,13 @@
       "necromancer_coven": {
         "name": "Master Necromancers & Mortis Engine",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 4,
         "defense": 6,
         "charge": 1,
         "missile": 12,
-        "cost": 980,
-        "upkeep": 115,
+        "cost": 44,
+        "upkeep": 0.354,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -187,20 +187,20 @@
       "corpse_balista": {
         "name": "Bone-Thrower & Screaming Bell-Cart",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 3,
         "defense": 5,
         "charge": 0,
         "missile": 12,
-        "cost": 650,
-        "upkeep": 65,
+        "cost": 25,
+        "upkeep": 0.2,
         "capacityCost": {
           "m": 2,
           "w": 2,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "powers": {
           "heal": 4
         }
@@ -208,13 +208,13 @@
       "shambling_thralls": {
         "name": "Shambling Thralls Levy",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 6,
         "charge": 1,
         "missile": 0,
-        "cost": 60,
-        "upkeep": 8,
+        "cost": 5,
+        "upkeep": 0.025,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -225,13 +225,13 @@
       "fell_bat_swarms": {
         "name": "Fell Bat Swarms",
         "category": "ranged",
-        "blocks": 0.1,
+        "quantity": 100,
         "attack": 3,
         "defense": 4,
         "charge": 3,
         "missile": 6,
-        "cost": 100,
-        "upkeep": 12,
+        "cost": 5,
+        "upkeep": 0.037,
         "capacityCost": {
           "m": 0,
           "w": 1,

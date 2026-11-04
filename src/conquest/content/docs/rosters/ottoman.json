@@ -8,13 +8,13 @@
       "azaps": {
         "name": "Azap Infantry",
         "category": "melee",
-        "blocks": 0.16,
+        "quantity": 160,
         "attack": 7,
         "defense": 9,
         "charge": 5,
         "missile": 0,
-        "cost": 220,
-        "upkeep": 30,
+        "cost": 12,
+        "upkeep": 0.092,
         "capacityCost": {
           "m": 2,
           "w": 1,
@@ -25,31 +25,31 @@
       "janissary_infantry": {
         "name": "Janissary Halberdiers",
         "category": "melee",
-        "blocks": 0.14,
-        "requiresGood": 4,
+        "quantity": 140,
         "attack": 10,
         "defense": 13,
         "charge": 5,
         "missile": 0,
-        "cost": 520,
-        "upkeep": 62,
+        "cost": 24,
+        "upkeep": 0.191,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "janissary_musketeers": {
         "name": "Janissary Musketeers",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 4,
         "defense": 7,
         "charge": 2,
         "missile": 15,
-        "cost": 440,
-        "upkeep": 54,
+        "cost": 21,
+        "upkeep": 0.166,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -60,85 +60,85 @@
       "sipahis": {
         "name": "Sipahi Heavy Cavalry",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 10,
         "defense": 11,
         "charge": 10,
         "missile": 4,
-        "cost": 560,
-        "upkeep": 66,
+        "cost": 25,
+        "upkeep": 0.203,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "akinji": {
         "name": "Akinji Light Raiders",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 7,
         "defense": 7,
         "charge": 5,
         "missile": 8,
-        "cost": 420,
-        "upkeep": 50,
+        "cost": 19,
+        "upkeep": 0.154,
         "capacityCost": {
           "m": 2,
           "w": 2,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "sahi_bombard": {
         "name": "Şahi Great Bombard",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 1,
         "defense": 4,
         "charge": 0,
         "missile": 18,
-        "cost": 950,
-        "upkeep": 95,
+        "cost": 37,
+        "upkeep": 0.292,
         "capacityCost": {
           "m": 2,
           "w": 5,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "topcu_field_guns": {
         "name": "Topçu Field Artillery",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 2,
         "defense": 4,
         "charge": 0,
         "missile": 14,
-        "cost": 780,
-        "upkeep": 78,
+        "cost": 30,
+        "upkeep": 0.24,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "garrison_azap": {
         "name": "Garrison Azaps",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 8,
         "charge": 2,
         "missile": 0,
-        "cost": 95,
-        "upkeep": 14,
+        "cost": 5,
+        "upkeep": 0.043,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -149,13 +149,13 @@
       "garrison_bows": {
         "name": "Garrison Bowmen",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 8,
-        "cost": 110,
-        "upkeep": 16,
+        "cost": 6,
+        "upkeep": 0.049,
         "capacityCost": {
           "m": 1,
           "w": 1,

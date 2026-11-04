@@ -27,7 +27,8 @@ interface UnitDraft {
   id: string;
   name: string;
   category: string;
-  /** AER blocks at full strength — `men` is derived as blocks × MEN_PER_BLOCK. */
+  /** Nominal strength at full capability — the authored size (`men`/`blocks` derive). */
+  quantity: number;
   blocks: number;
   attack: number;
   defense: number;
@@ -73,7 +74,16 @@ function rosterIdOf(file: { doc: unknown }): string {
 }
 
 const CATEGORIES = ["melee", "ranged", "cavalry", "artillery", "monster", "spellcaster"];
-const UNIT_NUMBERS: (keyof UnitDraft)[] = ["blocks", "attack", "defense", "charge", "missile", "cost", "upkeep"];
+const UNIT_NUMBERS: (keyof UnitDraft)[] = [
+  "quantity",
+  "blocks",
+  "attack",
+  "defense",
+  "charge",
+  "missile",
+  "cost",
+  "upkeep"
+];
 
 function rosterFields(r: RosterDraft, unitIds: string[]): Field[] {
   return [
@@ -909,13 +919,14 @@ export function openConfigDialog(): void {
           id,
           name: id,
           category: "melee",
+          quantity: 100,
           blocks: 0.1,
           attack: 5,
           defense: 5,
           charge: 0,
           missile: 0,
-          cost: 100,
-          upkeep: 20
+          cost: 25,
+          upkeep: 0.1
         };
         draft.activeUnit = id;
         rerender();

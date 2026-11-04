@@ -15,6 +15,7 @@ import { heightmapTemplates } from "@/data/heightmap-templates";
 import { isLanguage, LANGUAGES } from "@/data/languages";
 import { precreatedHeightmaps } from "@/data/precreated-heightmaps";
 import type { Sampling } from "@/model/graph/lattice";
+import { Coordinates } from "@/model/physical/coordinates";
 import { DEFAULT_THEME_COLOR, Options } from "@/model/options/options-model";
 import type { OptionsData } from "@/model/options/options-schema";
 import { Pins } from "@/model/options/pins";
@@ -60,6 +61,11 @@ const OPTION_BINDINGS: Record<string, OptionBinding> = {
   mapWidth: { read: o => o.generation.graph.width, update: onMapSizeChange, pin: "mapWidth", event: "change" },
   mapHeight: { read: o => o.generation.graph.height, update: onMapSizeChange, pin: "mapHeight", event: "change" },
   seed: { read: o => o.map.seed, update: generateMapWithSeed, event: "change" },
+  extents: {
+    read: o => o.map.extents,
+    update: value => applyExtents(value),
+    event: "change"
+  },
   graphPreset: { read: o => getGraphPreset(o.generation.graph), update: applyGraphPreset },
   sampling: option({
     read: o => o.generation.graph.sampling,
@@ -240,6 +246,19 @@ const TEMPLATE = /* html */ `
     ${t("Map settings (apply to new maps)")}:
   </p>
   <table>
+    <tr data-tip="${t("The part of the world the map covers, or whether it is an Astral star chart. Astral cannot be undone")}">
+      <td>${t("Extents")}</td>
+      <td>
+        <select id="extentsInput" data-option="extents">
+          <option value="whole">${t("Whole world")}</option>
+          <option value="northern">${t("Northern")}</option>
+          <option value="tropical">${t("Tropical")}</option>
+          <option value="southern">${t("Southern")}</option>
+          <option value="astral">${t("Astral")}</option>
+        </select>
+      </td>
+      <td></td>
+    </tr>
     <tr
       data-tip="${t("Map seed number. Press 'Enter' to apply. A seed reproduces the same map only if the map size and the settings are the same")}"
     >
@@ -644,6 +663,7 @@ export function syncOptionInputs(): void {
   syncCultures();
   syncPngResolution();
   syncViewOnly();
+  syncExtentsLock();
 }
 
 function syncViewOnly(): void {
@@ -720,6 +740,45 @@ function onOptionInput(event: Event): void {
     pendingInputs.delete(input);
     Options.persist();
   }
+}
+
+/** The part of the world the next map covers: Whole / Northern / Tropical / Southern mirror the
+ * Configure World presets; Astral switches the map to the star chart and cannot be undone. */
+const EXTENT_PRESETS: Record<string, [number, number]> = {
+  whole: [100, 50],
+  northern: [33, 25],
+  tropical: [33, 50],
+  southern: [33, 75]
+};
+
+async function applyExtents(value: string): Promise<void> {
+  // once astral there is no going back to a standard extent
+  if (options.map.astral === true && value !== "astral") {
+    syncExtentsLock();
+    return;
+  }
+  if (value === options.map.extents) return;
+  Options.set(o => {
+    o.map.extents = value as OptionsData["map"]["extents"];
+  });
+  if (value === "astral") {
+    await Controllers.AstralMode.enter();
+  } else {
+    options.map.astral = false;
+    const [size, latitude] = EXTENT_PRESETS[value];
+    options.map.geography.mapSize = size;
+    options.map.geography.latitude = latitude;
+    Coordinates.calculate();
+  }
+  syncExtentsLock();
+}
+
+function syncExtentsLock(): void {
+  const astral = options.map.astral === true;
+  const select = optionInputs<HTMLSelectElement>("extents")[0];
+  if (!select) return;
+  select.disabled = astral;
+  if (astral) select.value = "astral";
 }
 
 /** The extent the next map is generated on: not the window it will be looked at through */

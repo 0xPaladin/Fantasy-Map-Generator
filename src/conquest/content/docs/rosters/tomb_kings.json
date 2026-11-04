@@ -7,13 +7,13 @@
       "sun_skeletons": {
         "name": "Sun-Bleached Skeleton Cohorts",
         "category": "melee",
-        "blocks": 0.2,
+        "quantity": 200,
         "attack": 5,
         "defense": 10,
         "charge": 2,
         "missile": 0,
-        "cost": 180,
-        "upkeep": 22,
+        "cost": 9,
+        "upkeep": 0.068,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -24,13 +24,13 @@
       "asp_bowmen": {
         "name": "Blessed Asp-Arrow Archers",
         "category": "ranged",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 5,
         "charge": 1,
         "missile": 10,
-        "cost": 260,
-        "upkeep": 30,
+        "cost": 12,
+        "upkeep": 0.092,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -41,20 +41,20 @@
       "tomb_guard": {
         "name": "Bronze-Clad Tomb Guard",
         "category": "melee",
-        "blocks": 0.14,
-        "requiresGood": 4,
+        "quantity": 140,
         "attack": 9,
         "defense": 14,
         "charge": 4,
         "missile": 0,
-        "cost": 500,
-        "upkeep": 60,
+        "cost": 23,
+        "upkeep": 0.185,
         "capacityCost": {
           "m": 2,
           "w": 2,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "powers": {
           "hex": 0.04
         }
@@ -62,38 +62,38 @@
       "royal_chariots": {
         "name": "Golden War-Chariot Squadron",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 9,
         "defense": 9,
         "charge": 13,
         "missile": 5,
-        "cost": 580,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.215,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "necropolis_serpents": {
         "name": "Necropolis Cobra-Knights",
         "category": "cavalry",
-        "blocks": 0.05,
-        "requiresGood": 18,
+        "quantity": 50,
         "attack": 12,
         "defense": 13,
         "charge": 13,
         "missile": 0,
-        "cost": 680,
-        "upkeep": 80,
+        "cost": 31,
+        "upkeep": 0.246,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 18,
         "powers": {
           "terror": 0.04
         }
@@ -101,13 +101,13 @@
       "ushabti": {
         "name": "Stone-God Ushabti",
         "category": "monster",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 13,
         "defense": 13,
         "charge": 10,
         "missile": 8,
-        "cost": 750,
-        "upkeep": 85,
+        "cost": 33,
+        "upkeep": 0.262,
         "capacityCost": {
           "m": 3,
           "w": 3,
@@ -122,13 +122,13 @@
       "necrosphinx": {
         "name": "Colossal Royal Necrosphinx",
         "category": "monster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 18,
         "defense": 17,
         "charge": 14,
         "missile": 0,
-        "cost": 1150,
-        "upkeep": 130,
+        "cost": 50,
+        "upkeep": 0.4,
         "capacityCost": {
           "m": 4,
           "w": 4,
@@ -143,13 +143,13 @@
       "liche_hierophants": {
         "name": "Hierophants of the Mortuary Cult",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 3,
         "defense": 5,
         "charge": 0,
         "missile": 13,
-        "cost": 950,
-        "upkeep": 110,
+        "cost": 42,
+        "upkeep": 0.338,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -166,20 +166,20 @@
       "skull_catapult": {
         "name": "Screaming Skull Catapult & Casket of Souls",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 2,
         "defense": 4,
         "charge": 0,
         "missile": 16,
-        "cost": 800,
-        "upkeep": 80,
+        "cost": 31,
+        "upkeep": 0.246,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 2,
           "c": 0
         },
+        "requiresGood": 4,
         "powers": {
           "terror": 0.05,
           "hex": 0.05
@@ -188,13 +188,13 @@
       "risen_spearmen": {
         "name": "Risen Spearmen Levy",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 8,
         "charge": 1,
         "missile": 0,
-        "cost": 80,
-        "upkeep": 10,
+        "cost": 5,
+        "upkeep": 0.031,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -205,13 +205,13 @@
       "risen_archers": {
         "name": "Risen Archers Levy",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 2,
         "defense": 3,
         "charge": 1,
         "missile": 6,
-        "cost": 90,
-        "upkeep": 12,
+        "cost": 5,
+        "upkeep": 0.037,
         "capacityCost": {
           "m": 0,
           "w": 1,

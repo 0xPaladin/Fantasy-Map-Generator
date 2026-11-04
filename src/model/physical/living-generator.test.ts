@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
+import { currentContent } from "@/conquest/content/store";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { valueModifier } from "@/conquest/engine/game/saves";
+import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
-import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import type { Burg } from "@/model/political/burgs-generator";
+import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
+import { Military, syncRegimentTotals } from "@/model/political/military-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { HistoricalFigure } from "@/types/history";
 import type { HistoricalRelic } from "@/types/living";
 import { createRng } from "@/utils/rng";
 import {
+  activeCivThemeId,
+  BASE_EMPIRE_HAPPINESS,
   borderCultureNeeded,
   borderInfluenceScore,
   citizensFromPopulation,
@@ -25,10 +31,16 @@ import {
   getCellYieldSources,
   getCellYields,
   guildTierForRenown,
+  happinessCombatMultiplier,
   happinessGrowthFactor,
+  hasStackingConflict,
+  hurryGoldCost,
   isMajorBurg,
   isMinorBurg,
+  isTechSelectable,
+  UPKEEP_FREE,
   Living,
+  LUXURY_HAPPINESS,
   maxHeroesForTier,
   maxPartyForTier,
   populationFromCitizens,
@@ -38,22 +50,8 @@ import {
   syncBurgFlagsFromBuildings,
   syncCivBuildingsFromFlags,
   syncCivFlagsFromBuildings,
-  activeCivThemeId,
-  bestUnitForCategory,
-  combatDamage,
-  happinessCombatMultiplier,
-  hasStackingConflict,
-  hurryGoldCost,
-  isTechSelectable,
   terrainDefenseMultiplier,
-  rangedLineOfSightBlocked,
-  unitIsRanged,
-  unitMovementCost,
-  xpForLevel,
-  BASE_EMPIRE_HAPPINESS,
-  LUXURY_HAPPINESS,
-  UNIT_MAX_HP,
-  UNIT_UPKEEP_FREE
+  unitMovementCost
 } from "./living-generator";
 
 function makeGuildFigure(i: number, overrides: Partial<HistoricalFigure> = {}): HistoricalFigure {
@@ -213,8 +211,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
               by: 10,
               u: { spear: 300 },
               units: [
-                { type: "spear", count: 150, exp: 0 },
-                { type: "spear", count: 150, exp: 0 }
+                { type: "spear", hp: 1, exp: 0 },
+                { type: "spear", hp: 1, exp: 0 }
               ],
               n: 0,
               name: "1st Aeloria Regiment",
@@ -437,7 +435,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   it("storms a resisting Free Burg and applies occupation unrest", () => {
     const living = Living.init();
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 2000, exp: 0 }];
+    army.units = Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 }));
     army.a = 2000;
     pack.cells.province[5] = 1;
     living.provinces[1].order = 80;
@@ -457,7 +455,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   it("repulses a weak assault and records a grudge", () => {
     const living = Living.init();
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 10, exp: 0 }];
+    army.units = [{ type: "spear", hp: 0.07, exp: 0 }];
     army.a = 10;
 
     expect(Living.colonize(1, 4)).toBe(false);
@@ -474,7 +472,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     const living = Living.init();
     pack.burgs[2].capital = 0;
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 2000, exp: 0 }];
+    army.units = Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 }));
     army.a = 2000;
 
     expect(Living.conquerBurg(1, 2)).toBe(true);
@@ -499,7 +497,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         bx: 30,
         by: 30,
         u: { spear: 2000 },
-        units: [{ type: "spear", count: 2000, exp: 0 }],
+        units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
         n: 0,
         name: "2nd Khazadia Regiment",
         state: 2,
@@ -551,7 +549,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         bx: 30,
         by: 30,
         u: { balbenGuard: 1000 },
-        units: [{ type: "balbenGuard", count: 1000, exp: 0 }],
+        units: Array.from({ length: 10 }, () => ({ type: "balbenGuard", hp: 1, exp: 0 })),
         n: 0,
         name: "Khazad Guard",
         state: 2,
@@ -576,7 +574,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   it("raises a rebel and restores a Free Burg when unravel fills", () => {
     const living = Living.init();
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 2000, exp: 0 }];
+    army.units = Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 }));
     army.a = 2000;
 
     expect(Living.colonize(1, 4)).toBe(true);
@@ -987,9 +985,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     // Give state 1 a strong field army to ensure victory
     const army = pack.states[1].military![0];
     army.units = [
-      { type: "cavalry", count: 300, exp: 5 },
-      { type: "spear", count: 400, exp: 3 },
-      { type: "archers", count: 300, exp: 3 }
+      ...Array.from({ length: 4 }, () => ({ type: "cavalry", hp: 1, exp: 5 })),
+      ...Array.from({ length: 3 }, () => ({ type: "spear", hp: 1, exp: 3 })),
+      ...Array.from({ length: 3 }, () => ({ type: "archers", hp: 1, exp: 3 }))
     ];
 
     const result = Living.assaultLair(1, 1);
@@ -2044,7 +2042,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         capital: 0
       });
       const army = pack.states[1].military![0];
-      army.units = [{ type: "cavalry", count: 2000, exp: 5 }];
+      army.units = Array.from({ length: 25 }, () => ({ type: "cavalry", hp: 1, exp: 5 }));
       expect(Living.conquerBurg(1, 5)).toBe(true);
       expect(Living.getEschaton()).toBe(3);
     });
@@ -2551,11 +2549,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           military: []
         }
       ],
-      provinces: [
-        { i: 0 },
-        { i: 1, state: 1, burg: 1, center: 5 },
-        { i: 2, state: 2, burg: 2, center: 11 }
-      ],
+      provinces: [{ i: 0 }, { i: 1, state: 1, burg: 1, center: 5 }, { i: 2, state: 2, burg: 2, center: 11 }],
       history: {
         events: [],
         realms: [],
@@ -2820,7 +2814,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       bx: 50,
       by: 50,
       u: { spear: 100 },
-      units: [{ type: "spear", count: 100, exp: 0 }],
+      units: [{ type: "spear", hp: 1, exp: 0 }],
       n: 0,
       icon: "⚔️",
       state: 1
@@ -2867,9 +2861,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(Living.grantTech(1, "pottery")).toBe(false);
       expect(isTechSelectable(CIV_TECH_BY_ID.pottery!, new Set(), "fantasy")).toBe(true);
       expect(isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(), "fantasy")).toBe(false);
-      expect(
-        isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(["gunpowder", "printing_press"]), "fantasy")
-      ).toBe(true);
+      expect(isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(["gunpowder", "printing_press"]), "fantasy")).toBe(
+        true
+      );
       expect(isTechSelectable(CIV_TECH_BY_ID.refrigeration!, new Set(), "fantasy")).toBe(false);
     });
 
@@ -2952,21 +2946,54 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       // Monument maintenance 1 plus 4 regiments (1 above the free allowance).
       living.burgs[1].civBuildings = ["palace", "monument"];
-      pack.states[1].military = Array.from({ length: UNIT_UPKEEP_FREE + 1 }, (_, index) => makeRegiment(index));
+      pack.states[1].military = Array.from({ length: Math.ceil(UPKEEP_FREE / 0.2) + 1 }, (_, index) => makeRegiment(index));
       Living.tick(1);
-      expect(sSim.yieldsPerTurn?.gold).toBe(3);
+      // Five 100-man blocks cost less than the three-block free allowance; only maintenance bites.
+      expect(sSim.yieldsPerTurn?.gold).toBe(4);
     });
 
-    it("disbands the newest regiment when the treasury goes negative", () => {
+    it("disbands one block when the treasury goes negative", () => {
       const living = Living.init();
-      pack.states[1].military = [makeRegiment(0), makeRegiment(1)];
+      const first = makeRegiment(0);
+      const second = makeRegiment(1);
+      second.units = [
+        { type: "spear", hp: 1, exp: 0 },
+        { type: "spear", hp: 1, exp: 0 }
+      ];
+      pack.states[1].military = [first, second];
       pack.states[1].treasury = -10;
 
       Living.tick(1);
 
       expect(pack.states[1].treasury).toBe(0);
-      expect(pack.states[1].military).toHaveLength(1);
+      expect(pack.states[1].military).toHaveLength(2);
+      expect(second.units).toHaveLength(1);
       expect(living.recentNews.some(item => item.text.includes("disbanded"))).toBe(true);
+    });
+
+    it("charges upkeep per block scaled by hp, with the free allowance and civilian rate", () => {
+      const living = Living.init();
+      const types = Military.getUnitTypes();
+      const elite = Object.values(types).sort((a, b) => b.upkeep - a.upkeep)[0]!;
+      const count = Math.ceil((UPKEEP_FREE + elite.upkeep * 2) / elite.upkeep);
+      const full = { ...makeRegiment(0), units: Array.from({ length: count }, () => ({ type: elite.id, hp: 1, exp: 0 })) };
+      const half = {
+        ...makeRegiment(1),
+        units: Array.from({ length: count }, () => ({ type: elite.id, hp: 0.5, exp: 0 }))
+      };
+      const civilian = { ...makeRegiment(2), type: "builder", units: [] };
+      pack.states[1].military = [full, half, civilian];
+
+      Living.tick(1);
+
+      const b1 = living.burgs[1];
+      const gross = b1.cityYields?.gold ?? 0;
+      const maintenance = (b1.civBuildings ?? []).reduce(
+        (sum, id) => sum + (CIV_BUILDING_BY_ID[id]?.maintenance ?? 0),
+        0
+      );
+      const upkeep = Math.max(0, elite.upkeep * count * 1.5 + 0.1 - UPKEEP_FREE);
+      expect(living.states[1].yieldsPerTurn?.gold).toBeCloseTo(gross - maintenance - upkeep, 2);
     });
 
     it("derives Empire Happiness from luxuries, buildings and city costs", () => {
@@ -3054,7 +3081,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       bx: 0,
       by: 0,
       u: { spear: 100 },
-      units: [{ type: "spear", count: 100, exp: 0 }],
+      units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
       n: 0,
       icon: "⚔️",
       state
@@ -3064,18 +3091,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     beforeEach(() => {
       setupCityWorld();
-    });
-
-    it("computes OpenCiv combat damage and XP thresholds", () => {
-      expect(combatDamage(10, 10, UNIT_MAX_HP, 0.5)).toBe(30);
-      expect(combatDamage(20, 10, UNIT_MAX_HP, 0)).toBe(41);
-      expect(combatDamage(10, 20, UNIT_MAX_HP, 0)).toBe(13);
-      expect(combatDamage(10, 10, 50, 0)).toBe(18);
-      expect(combatDamage(1, 1, UNIT_MAX_HP, 0)).toBe(24);
-
-      expect(xpForLevel(1)).toBe(10);
-      expect(xpForLevel(2)).toBe(30);
-      expect(xpForLevel(3)).toBe(60);
     });
 
     it("applies terrain defense and movement costs", () => {
@@ -3134,79 +3149,181 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(hasStackingConflict(occupied, 1, false, "1-0")).toBe(false);
     });
 
-    it("maps native categories onto the strongest unlocked OpenCiv unit", () => {
-      expect(bestUnitForCategory("melee", new Set())).toMatchObject({ id: "warrior", combatStrength: 8 });
-      expect(bestUnitForCategory("melee", new Set(["bronze_working"]))).toMatchObject({ id: "spearman" });
-      expect(bestUnitForCategory("melee", new Set(["bronze_working", "iron_working"]))).toMatchObject({
-        id: "swordsman"
-      });
-      expect(bestUnitForCategory("ranged", new Set(["archery"]))).toMatchObject({ id: "archer", range: 2 });
-      expect(bestUnitForCategory("cavalry", new Set(["horseback_riding"]))).toMatchObject({ id: "horseman" });
-      expect(unitIsRanged({ range: 2, rangedStrength: 7 } as never)).toBe(true);
-    });
-
-    it("creates a 100 HP unit sim for every native regiment and mirrors reg.a", () => {
+    it("seeds blocks and an army record for every native regiment", () => {
       pack.states[1].military = [makeRegiment(0, 5)];
       const living = Living.init();
 
-      const unit = living.units?.[unitKey(1, 0)];
-      expect(unit).toMatchObject({ unitTypeId: "warrior", hp: UNIT_MAX_HP, domain: "land", isUtility: false });
-      expect(pack.states[1].military?.[0].a).toBe(UNIT_MAX_HP);
-      expect(pack.states[1].military?.[0].u).toEqual({ warrior: UNIT_MAX_HP });
+      const regiment = pack.states[1].military![0];
+      expect(regiment.units).toHaveLength(13);
+      expect(living.armies?.[unitKey(1, 0)]).toMatchObject({ stance: "fortify", hasFought: false });
+      expect(living.units?.[unitKey(1, 0)]).toBeUndefined();
+      // a mirrors men: 13 spear blocks at the roster's 150-man quantity.
+      expect(regiment.a).toBe(13 * 150);
     });
 
-    it("fights adjacent enemy regiments, awards XP and removes the dead", () => {
+    it("fights adjacent armies, damages the lead block and removes the dead", () => {
       Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5)];
+      const defenders = [makeRegiment(0, 6, 2)];
+      defenders[0]!.units = [{ type: "levy_spear", hp: 1, exp: 0 }];
+      pack.states[2].military = defenders;
       const living = Living.init();
-      const attackerReg = Living.recruitUnit(1, 1, "swordsman")!;
-      const defenderReg = Living.recruitUnit(2, 2, "warrior")!;
 
-      defenderReg.cell = 6;
-      const attacker = living.units?.[unitKey(1, attackerReg.i)]!;
-      const defender = living.units?.[unitKey(2, defenderReg.i)]!;
-      const startHp = defender.hp;
+      Living.tick(1);
+      expect(living.armies?.[unitKey(1, 0)]).toBeDefined();
+      const defenderBlocks = pack.states[2].military?.[0]?.units ?? [];
+      expect(defenderBlocks.reduce((sum, block) => sum + block.hp, 0)).toBeLessThan(1);
+
+      Living.tick(6);
+      // The melee winner survives and the defeated regiment leaves the field.
+      expect(pack.states[2].military ?? []).toHaveLength(0);
+      expect(pack.states[1].military?.length ?? 0).toBeGreaterThan(0);
+    });
+
+    it("converts a legacy 1UPT combat sim into army blocks", () => {
+      const living = Living.init();
+      pack.states[1].military = [makeRegiment(0, 5)];
+      pack.states[1].military![0].units = [];
+      const key = unitKey(1, 0);
+      living.units![key] = {
+        unitTypeId: "warrior",
+        domain: "land",
+        combatClass: "melee",
+        isUtility: false,
+        hp: 60,
+        movement: 2,
+        maxMovement: 2,
+        combatStrength: 30,
+        rangedStrength: 0,
+        range: 0,
+        xp: 0,
+        level: 4,
+        promotions: [],
+        fortified: false,
+        hasAttacked: false
+      };
 
       Living.tick(1);
 
-      expect(defender.hp).toBeLessThan(startHp);
-      expect(attacker.xp).toBeGreaterThan(0);
-
-      Living.tick(4);
-
-      // The melee winner survives and the defeated regiment leaves the field.
-      expect(living.units?.[unitKey(2, defenderReg.i)]).toBeUndefined();
-      expect(living.units?.[unitKey(1, attackerReg.i)]?.hp).toBeGreaterThan(0);
+      expect(living.units?.[key]).toBeUndefined();
+      expect(pack.states[1].military![0].units?.[0]?.exp).toBe(3); // level 4 → exp 3
+      expect(living.armies?.[key]).toBeDefined();
     });
 
-    it("heals only while fortified, faster inside friendly cities", () => {
+    it("resolves a 2:1 army battle, reports losses in hp and mirrors reg.a", () => {
+      const living = Living.init();
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5)];
+      const defenders = [makeRegiment(0, 6, 2)];
+      defenders[0]!.units = defenders[0]!.units!.slice(0, 4);
+      pack.states[2].military = defenders;
+      const attacker = pack.states[1].military![0]!;
+      const beforeAttacker = (attacker.units ?? []).reduce((sum, block) => sum + block.hp, 0);
+
+      Living.tick(1);
+
+      const afterAttacker = (attacker.units ?? []).reduce((sum, block) => sum + block.hp, 0);
+      const record = living.armies?.[unitKey(1, 0)]?.lastBattle;
+      if (record) {
+        // A tick can contain both sides' attacks; the record is the last battle.
+        expect(record.lossesHp).toBeLessThanOrEqual(beforeAttacker - afterAttacker + 1e-9);
+        expect(record.rounds).toBeGreaterThan(0);
+        expect(record.survivorsHp).toBeGreaterThan(0);
+      }
+      // 13 blocks against 4 wins: the weaker army routs and loses capability.
+      expect(pack.states[1].military ?? []).toHaveLength(1);
+      const defenderAfter = (pack.states[2].military?.[0]?.units ?? []).reduce((sum, block) => sum + block.hp, 0);
+      expect(defenderAfter).toBeLessThan(4);
+      // Survivors are whole blocks with hp in (0, 1], and reg.a mirrors men.
+      for (const block of attacker.units ?? []) {
+        expect(block.hp).toBeGreaterThan(0);
+        expect(block.hp).toBeLessThanOrEqual(1);
+      }
+      const quantity = Military.getUnitTypes()[attacker.units![0]!.type]!.quantity;
+      expect(attacker.a).toBe((attacker.units ?? []).reduce((sum, block) => sum + Math.round(block.hp * quantity), 0));
+    });
+
+    it("is deterministic for the same tick, armies and seed", () => {
+      const run = () => {
+        setupCityWorld();
+        Living.forceWar(1, 2);
+        pack.states[1].military = [makeRegiment(0, 5)];
+        pack.states[2].military = [makeRegiment(0, 6, 2)];
+        Living.init();
+        Living.tick(1);
+        return JSON.stringify({
+          attacker: pack.states[1].military?.[0]?.units,
+          defender: pack.states[2].military?.[0]?.units
+        });
+      };
+
+      expect(run()).toBe(run());
+    });
+
+    it("fights monster and spellcaster blocks through the roster", () => {
+      const types = Military.getUnitTypes();
+      const monster = Object.values(types).find(unit => unit.category === "monster");
+      const caster = Object.values(types).find(unit => unit.category === "spellcaster");
+      expect(monster?.id).toBeDefined();
+      expect(caster?.id).toBeDefined();
+
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5), makeRegiment(1, 5)];
+      pack.states[1].military![1]!.units = [{ type: monster!.id, hp: 1, exp: 4 }];
+      const defenders = [makeRegiment(0, 6, 2)];
+      defenders[0]!.units = [{ type: caster!.id, hp: 1, exp: 2 }];
+      pack.states[2].military = defenders;
+      const living = Living.init();
+
+      Living.tick(1);
+
+      expect(living.armies?.[unitKey(1, 1)]).toBeDefined();
+      expect(living.armies?.[unitKey(1, 1)]?.lastBattle ?? living.armies?.[unitKey(2, 0)]?.lastBattle).toBeDefined();
+    });
+
+    it("prunes destroyed blocks and keeps the stack under the slot cap", () => {
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5)];
+      pack.states[2].military = [makeRegiment(0, 6, 2)];
+      const living = Living.init();
+
+      Living.tick(1);
+
+      const blocks = pack.states[1].military?.[0]?.units ?? [];
+      expect(blocks.length).toBeGreaterThan(0);
+      expect(blocks.length).toBeLessThanOrEqual(currentContent().config.military.maxUnitsPerArmy);
+      expect(blocks.every(block => block.hp > 0)).toBe(true);
+      expect(living.armies?.[unitKey(1, 0)]?.lastBattle?.blocksLost).toBeGreaterThanOrEqual(0);
+    });
+
+    it("keeps army composition across ticks without duplicating blocks", () => {
       pack.states[1].military = [makeRegiment(0, 5)];
       const living = Living.init();
-      const unit = living.units?.[unitKey(1, 0)]!;
-      unit.hp = 50;
+      const before = pack.states[1].military![0].units!.length;
 
-      Living.tick(1);
-      expect(unit.fortified).toBe(true);
-      expect(unit.hp).toBe(50); // heals at the start of the next season
+      Living.tick(3);
 
-      Living.tick(1);
-      expect(unit.hp).toBe(75); // +25 in a friendly city
-
-      unit.fortified = false;
-      Living.tick(1);
-      expect(unit.hp).toBe(75); // an active unit does not heal
+      expect(pack.states[1].military![0].units).toHaveLength(before);
+      expect(living.armies?.[unitKey(1, 0)]).toBeDefined();
+      expect(living.units?.[unitKey(1, 0)]).toBeUndefined();
     });
 
-    it("trains a 1UPT unit through the city production queue", () => {
+    it("produces a combat unit into an army block", () => {
       const living = Living.init();
       const b1 = living.burgs[1];
-      b1.productionQueue = [{ kind: "unit", id: "warrior" }];
-      b1.productionProgress = { "unit:warrior": 0 };
+      const melee = Military.getRoster(pack.states[1]!)!.garrison.melee;
+      b1.productionQueue = [{ kind: "unit", id: melee }];
+      b1.productionProgress = { [`unit:${melee}`]: 0 };
 
       expect(Living.hurryProduction(1)).toBe(false); // treasury too thin
 
+      pack.states[1].military = [makeRegiment(0, 5)];
       pack.states[1].treasury = 1000;
       expect(Living.hurryProduction(1)).toBe(true);
-      expect(pack.states[1].military?.some(regiment => living.units?.[unitKey(1, regiment.i)])).toBe(true);
+
+      const blocks = (pack.states[1].military ?? []).reduce((sum, reg) => sum + (reg.units?.length ?? 0), 0);
+      expect(blocks).toBeGreaterThan(13);
+      expect(Object.keys(living.armies ?? {}).length).toBeGreaterThan(0);
     });
 
     it("recruits utility units and lets a Builder improve a tile", () => {
@@ -3239,22 +3356,15 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.recentNews.some(item => item.kind === "colonize" && item.cell === 15)).toBe(true);
     });
 
-    it("besieges a city, fires ranged strikes and captures it at 0 HP", () => {
-      const living = Living.init();
+    it("captures a city once its garrison is beaten", () => {
       pack.burgs[2].capital = 0;
+      pack.states[1].military = [makeRegiment(0, 7)];
+      const living = Living.init();
       Living.forceWar(1, 2);
-      const regiment = makeRegiment(0, 7);
-      pack.states[1].military = [regiment];
 
-      Living.tick(1); // seeds the unit sim
-      const attacker = living.units?.[unitKey(1, 0)]!;
-      const b2 = living.burgs[2];
-      expect(b2.maxHp).toBe(200);
-      expect(b2.hp).toBeGreaterThan(0);
-
-      attacker.combatStrength = 90; // one decisive storm for a deterministic capture
       expect(Living.conquerBurg(1, 2)).toBe(true);
 
+      const b2 = living.burgs[2];
       expect(pack.burgs[2].state).toBe(1);
       expect(b2.hp).toBe(100);
       expect(b2.citizens).toBe(1);
@@ -3263,50 +3373,113 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(b2.unrest).toBeGreaterThanOrEqual(7);
     });
 
-    it("lets a city strike enemy regiments within range two", () => {
+    it("builds the siege garrison from the roster and scales it with walls", () => {
+      Living.init();
+      pack.burgs[2].capital = 1;
+      const types = Military.getUnitTypes();
+      const noWalls = Living.cityGarrison(2).map(block => block.type);
+      pack.burgs[2].walls = 3;
+      const withWalls = Living.cityGarrison(2).map(block => block.type);
+
+      expect(noWalls.length).toBeGreaterThan(0);
+      expect(withWalls.length).toBeGreaterThan(noWalls.length);
+      for (const id of withWalls) expect(types[id]).toBeDefined();
+      // Every garrison block enters the fight at full capability.
+      expect(Living.cityGarrison(2).every(block => block.hp === 1)).toBe(true);
+    });
+
+    it("repels a weak assault and retreats the survivors", () => {
+      pack.burgs[2].capital = 0;
+      pack.burgs[2].walls = 3;
+      const weak = makeRegiment(0, 7);
+      weak.units = [{ type: weak.units![0]!.type, hp: 0.05, exp: 0 }];
+      pack.states[1].military = [weak];
       const living = Living.init();
       Living.forceWar(1, 2);
-      pack.states[1].military = [makeRegiment(0, 7)];
 
-      Living.tick(1);
+      expect(Living.conquerBurg(1, 2)).toBe(false);
 
-      const unit = living.units?.[unitKey(1, 0)]!;
-      expect(unit.hp).toBeLessThan(UNIT_MAX_HP);
+      expect(pack.burgs[2].state).toBe(2);
+      const army = living.armies?.[unitKey(1, 0)];
+      if (army) expect(pack.states[1].military![0]!.cell).not.toBe(pack.burgs[2].cell);
     });
 
-    it("upgrades a regiment for Gold once its technology is known", () => {
+    it("lets a city strike one block of an enemy army within range two", () => {
       const living = Living.init();
-      const regiment = makeRegiment(0, 5);
-      pack.states[1].military = [regiment];
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 9)];
+
       Living.tick(1);
 
-      const unit = living.units?.[unitKey(1, 0)]!;
-      unit.hp = 40;
+      const blocks = pack.states[1].military?.[0]?.units ?? [];
+      const damaged = blocks.filter(block => block.hp < 1);
+      expect(damaged).toHaveLength(1);
+      expect(1 - damaged[0]!.hp).toBeCloseTo(0.1, 5);
+      expect((pack.states[1].military?.[0]?.units ?? []).every(block => block.hp > 0)).toBe(true);
+      expect(living.armies?.[unitKey(1, 0)]).toBeDefined();
+    });
 
+    it("prunes a block destroyed by a city strike", () => {
+      const living = Living.init();
+      Living.forceWar(1, 2);
+      const doomed = makeRegiment(0, 7); // in enemy land: no replenishment
+      doomed.units = [{ type: doomed.units![0]!.type, hp: 0.05, exp: 0 }];
+      pack.states[1].military = [doomed];
+      living.states[1].agenda = { kind: "muster", label: "Mustering", progress: 0, required: 999 };
+
+      Living.tick(1);
+
+      expect(pack.states[1].military ?? []).toHaveLength(0);
+      expect(living.armies?.[unitKey(1, 0)]).toBeUndefined();
+    });
+
+    it("refits army blocks for Gold, preserving hp and exp", () => {
+      pack.states[1].military = [makeRegiment(0, 5)];
+      const living = Living.init();
+      const types = Military.getUnitTypes();
+      const roster = Military.getRoster(pack.states[1]!)!;
+      const currentId = roster.garrison.melee;
+      const current = types[currentId]!;
+      const target = current.upgradesTo
+        ? types[current.upgradesTo]
+        : nextRosterUnitInCategory(roster, currentId);
+      expect(target).toBeDefined();
+
+      const regiment = pack.states[1].military![0]!;
+      regiment.units = [{ type: current.id, hp: 0.45, exp: 6 }];
+      syncRegimentTotals(regiment, types);
       pack.states[1].treasury = 1000;
-      expect(Living.upgradeRegiment(1, 0)).toBe(false); // iron_working not researched
+      living.states[1]!.researchedTechs = [requiredTechFor(target!, roster)];
 
-      living.states[1].researchedTechs = ["iron_working"];
       expect(Living.upgradeRegiment(1, 0)).toBe(true);
 
-      expect(unit.unitTypeId).toBe("swordsman");
-      expect(unit.hp).toBe(40);
+      expect(regiment.units![0]!.type).toBe(target!.id);
+      expect(regiment.units![0]!.hp).toBe(0.45);
+      expect(regiment.units![0]!.exp).toBe(6);
       expect(pack.states[1].treasury).toBeLessThan(1000);
-      expect(pack.states[1].military?.[0].u).toEqual({ swordsman: 40 });
     });
 
-    it("blocks bombardment over hills and canopy until Indirect Fire", () => {
-      Living.init();
-      const regiment = Living.recruitUnit(1, 1, "archer")!;
-      const archer = pack.history.living?.units?.[unitKey(1, regiment.i)]!;
-      const warrior = { ...archer, rangedStrength: 0, range: 0 };
+    it("replenishes damaged blocks in a city, half in friendly land, never in neutral land", () => {
+      const living = Living.init();
+      const types = Military.getUnitTypes();
+      const unitType = Object.keys(types)[0]!;
+      const cityReg = makeRegiment(0, 5);
+      cityReg.units = [{ type: unitType, hp: 0.4, exp: 0 }];
+      const fieldReg = makeRegiment(1, 1);
+      fieldReg.units = [{ type: unitType, hp: 0.4, exp: 0 }];
+      const neutralReg = makeRegiment(2, 2);
+      neutralReg.units = [{ type: unitType, hp: 0.4, exp: 0 }];
+      pack.states[1].military = [cityReg, fieldReg, neutralReg];
+      living.states[1].agenda = { kind: "muster", label: "Mustering", progress: 0, required: 999 };
 
-      pack.cells.biome[12] = 6; // forest canopy
-      expect(unitIsRanged(archer)).toBe(true);
-      expect(rangedLineOfSightBlocked(12, archer)).toBe(true);
-      expect(rangedLineOfSightBlocked(1, archer)).toBe(false);
-      expect(rangedLineOfSightBlocked(12, { ...archer, promotions: ["indirect_fire"] })).toBe(false);
-      expect(rangedLineOfSightBlocked(12, warrior)).toBe(false);
+      Living.tick(1);
+
+      // City: 0.25 base × 2 encamp bonus = +0.5.
+      expect(cityReg.units![0]!.hp).toBeCloseTo(0.9, 5);
+      // Friendly land: half the base rate.
+      expect(fieldReg.units![0]!.hp).toBeCloseTo(0.525, 5);
+      // Neutral land: no replenishment.
+      expect(neutralReg.units![0]!.hp).toBeCloseTo(0.4, 5);
     });
 
     it("grants training experience from military buildings", () => {
@@ -3314,8 +3487,11 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       living.burgs[1].civBuildings = ["palace", "barracks"];
 
       const regiment = Living.recruitUnit(1, 1, "warrior")!;
-      const unit = living.units?.[unitKey(1, regiment.i)]!;
-      expect(unit.xp).toBe(15);
+      const block = living.armies?.[unitKey(1, regiment.i)] ? regiment.units?.[0] : undefined;
+      expect(block?.exp).toBeGreaterThan(0);
+
+      const builder = Living.recruitUnit(1, 1, "builder")!;
+      expect(living.units?.[unitKey(1, builder.i)]?.xp).toBe(15);
     });
 
     it("lazily initializes the tactical unit record on old saves", () => {
@@ -3337,17 +3513,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       bx: 0,
       by: 0,
       u: { spear: 100 },
-      units: [{ type: "spear", count: 100, exp: 0 }],
+      units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
       n: 0,
       icon: "⚔️",
       state
     });
 
-    const makeRelic = (
-      id: number,
-      category: HistoricalRelic["category"],
-      stateId = 1
-    ): HistoricalRelic => ({
+    const makeRelic = (id: number, category: HistoricalRelic["category"], stateId = 1): HistoricalRelic => ({
       id,
       name: `${category} relic`,
       category,
@@ -3459,7 +3631,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(Living.signPeace(1, 2)).toBe(true);
 
       expect(pack.cells.state[regiment.cell]).not.toBe(2);
-      expect(living.units?.["1-0"]).toBeDefined();
+      expect(living.armies?.["1-0"]).toBeDefined();
     });
 
     it("applies leased relic perks to yields and happiness", () => {
@@ -3560,8 +3732,8 @@ describe("Unified Figures slice 1: specialist commanders", () => {
               by: 10,
               u: { spear: 300 },
               units: [
-                { type: "spear", count: 150, exp: 0 },
-                { type: "sage_coven", count: 8, exp: 0 }
+                { type: "spear", hp: 1, exp: 0 },
+                { type: "sage_coven", hp: 1, exp: 0 }
               ],
               n: 0,
               name: "1st Aeloria Regiment",
@@ -3599,7 +3771,7 @@ describe("Unified Figures slice 1: specialist commanders", () => {
     const figures = pack.history.figures!;
     const regiment = pack.states[1].military![0];
     regiment.crew = [];
-    regiment.units!.push({ type: "magistrates", count: 5, exp: 0 });
+    regiment.units!.push({ type: "magistrates", hp: 1, exp: 0 });
     Living.ensureCommanders();
     const crew = (regiment.crew ?? []).map(id => figures[id]!);
     expect(crew.some(f => f.roles.some(r => r.type === "specialist" && r.specialty === "magistrate"))).toBe(true);
@@ -3682,8 +3854,8 @@ describe("Unified Figures slice 2: named dispatch", () => {
               by: 10,
               u: { spear: 300 },
               units: [
-                { type: "spear", count: 150, exp: 0 },
-                { type: "sage_coven", count: 8, exp: 0 }
+                { type: "spear", hp: 1, exp: 0 },
+                { type: "sage_coven", hp: 1, exp: 0 }
               ],
               n: 0,
               name: "1st Aeloria Regiment",

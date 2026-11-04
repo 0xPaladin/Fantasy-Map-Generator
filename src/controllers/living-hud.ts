@@ -11,10 +11,9 @@ import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_PROMOTION_BY_ID } from "@/data/living-civ-promotions";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
-import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { describeRelicBonuses, RELIC_CATALOG, reserveRelics, vaultHasRoom, vaultRelics } from "@/data/living-relics";
@@ -26,6 +25,9 @@ import {
   PACIFY_MISSION_TAGS,
   troubleMissionTags
 } from "@/data/mission-tags";
+import { estimateOdds, type BattleModifiers } from "@/conquest/engine/game/battle";
+import { Military } from "@/model/political/military-generator";
+import { armyHp, armyIsEmpty, armyLead, armyMen, armySlots, toBattleTypes, toBattleUnits } from "@/model/physical/living-armies";
 import { Pack } from "@/model/graph/pack-generator";
 import {
   activeCivThemeId,
@@ -337,6 +339,26 @@ const TEMPLATE = /* html */ `
     #${INSPECTOR_ID} .livingSection { border-top: 1px solid rgba(0, 0, 0, 0.12); padding: 0.3em 0; }
     #${INSPECTOR_ID} .livingSectionTitle { font-weight: bold; margin-bottom: 0.15em; }
     #${INSPECTOR_ID} .livingMuted { color: #777; font-style: italic; }
+    #${INSPECTOR_ID} .livingOddsBar {
+      display: inline-block;
+      width: 4em;
+      height: 0.45em;
+      margin-left: 0.4em;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 2px;
+      overflow: hidden;
+      vertical-align: middle;
+    }
+    #${INSPECTOR_ID} .livingOddsBar > span { display: block; height: 100%; background: #5e4fa2; }
+    #${INSPECTOR_ID} .livingBattleCard {
+      margin-top: 0.2em;
+      padding: 0.2em 0.4em;
+      border-left: 2px solid #a33d3d;
+      background: rgba(163, 61, 61, 0.08);
+      font-size: 0.85em;
+    }
+    #${INSPECTOR_ID} details > summary { cursor: pointer; color: #777; }
+    #${INSPECTOR_ID} details ul { margin: 0.15em 0 0 1em; padding: 0; }
     #${INSPECTOR_ID} .livingBar { height: 0.4em; background: rgba(0, 0, 0, 0.12); border-radius: 2px; overflow: hidden; }
     #${INSPECTOR_ID} .livingBar > i { display: block; height: 100%; background: #5e4fa2; }
     #${INSPECTOR_ID} .livingBar.danger > i { background: #a33d3d; }
@@ -1636,18 +1658,78 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
       holyCity ? ` · holy city ${escapeHtml(holyCity)}` : ""
     }</div>`;
 
+  const types = Military.getUnitTypes();
+  const battleConfig = currentContent().config;
+  const baseModifiers: BattleModifiers = {
+    walls: 0,
+    defenderEncamped: false,
+    defenderAmbushed: false,
+    attackerCrossedRiver: false,
+    labels: []
+  };
+  /** The army occupying a cell, used only for the odds preview. */
+  function armyAt(id: number, cell: number) {
+    return (pack.states[id]?.military ?? []).find(
+      entry => entry.cell === cell && living.armies?.[`${id}-${entry.i}`] && !armyIsEmpty(entry)
+    );
+  }
+  const adjacentEnemyOdds = (cell: number): string[] => {
+    const own = armyAt(stateId, cell);
+    if (!own) return [];
+    const lines: string[] = [];
+    for (const neighbor of pack.cells.c?.[cell] ?? []) {
+      for (const other of pack.states) {
+        if (!other?.i || other.removed || other.i === stateId) continue;
+        if (pack.states[stateId]?.diplomacy?.[other.i] !== "Enemy") continue;
+        const enemy = armyAt(other.i, neighbor);
+        if (!enemy) continue;
+        const odds = estimateOdds(
+          battleConfig,
+          { factionId: stateId, armyId: null, units: toBattleUnits(own.units ?? []) },
+          { factionId: other.i, armyId: null, units: toBattleUnits(enemy.units ?? []) },
+          baseModifiers,
+          toBattleTypes(types)
+        );
+        lines.push(
+          `<div class="livingMuted">vs ${escapeHtml(other.name)}: ${odds.attackerWinPct}% win ` +
+            `<span class="livingOddsBar"><span style="width:${odds.attackerWinPct}%"></span></span></div>`
+        );
+      }
+    }
+    return lines;
+  };
+
   const regiments = (pack.states[stateId]?.military ?? [])
     .map(regiment => {
-      const unit = living.units?.[`${stateId}-${regiment.i}`];
+      const key = `${stateId}-${regiment.i}`;
+      const army = living.armies?.[key];
+      if (army) {
+        const lead = armyLead(regiment);
+        const name = lead ? (types[lead.type]?.name ?? lead.type) : "Army";
+        const hpPct = Math.round(armyHp(regiment) * 100);
+        const blocks = armySlots(regiment);
+        const men = armyMen(regiment, types);
+        const exp = (regiment.units ?? []).reduce((sum, block) => sum + block.exp, 0) / Math.max(1, blocks);
+        const battle = army.lastBattle
+          ? `<div class="livingBattleCard">${army.lastBattle.role === "attacker" ? "Attack" : "Defence"} · ${
+              army.lastBattle.winner === army.lastBattle.role ? "won" : "lost"
+            } · ${army.lastBattle.rounds} rounds · ${Math.round(army.lastBattle.lossesHp * 100) / 100} hp lost · ${
+              army.lastBattle.blocksLost
+            } blocks · ${Math.round(army.lastBattle.survivorsHp * 100)}% left</div>`
+          : "";
+        const composition = (regiment.units ?? [])
+          .map(block => {
+            const def = types[block.type];
+            const quantity = def ? Math.max(1, Math.round(def.quantity)) : 1;
+            return `<li>${escapeHtml(def?.name ?? block.type)} · ${Math.round(block.hp * 100)}% · exp ${block.exp} · ~${quantity} nominal</li>`;
+          })
+          .join("");
+        return `<li><div>${escapeHtml(name)} · ${hpPct}% · ~${men} men · ${blocks} blocks · exp ${exp.toFixed(1)} · ${army.stance}</div>${adjacentEnemyOdds(regiment.cell).join("")}${battle}<details><summary>composition</summary><ul>${composition}</ul></details></li>`;
+      }
+      const unit = living.units?.[key];
       if (!unit) return "";
-      const def = CIV_UNIT_BY_ID[unit.unitTypeId];
-      const promotions = unit.promotions
-        .map(id => CIV_PROMOTION_BY_ID[id]?.name ?? id)
-        .filter(Boolean)
-        .join(", ");
-      return `<li>${escapeHtml(def?.name ?? unit.unitTypeId)} · HP ${Math.round(unit.hp)} · Lv ${unit.level}${
-        promotions ? ` · ${escapeHtml(promotions)}` : ""
-      }</li>`;
+      const def = CIV_CIVILIAN_BY_ID[unit.unitTypeId];
+      return `<li>${escapeHtml(def?.name ?? unit.unitTypeId)} · utility</li>`;
     })
     .filter(Boolean)
     .join("");
@@ -1673,7 +1755,7 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
   </div>
   ${
     regiments
-      ? `<div class="livingSection"><div class="livingSectionTitle">Regiments (1UPT)</div><ul>${regiments}</ul></div>`
+      ? `<div class="livingSection"><div class="livingSectionTitle">Armies</div><ul>${regiments}</ul></div>`
       : ""
   }`;
 }
@@ -1699,7 +1781,10 @@ function renderCivCity(bSim: CitySimView, burgId: number): string {
   const queue = (bSim.productionQueue ?? [])
     .slice(0, 4)
     .map(item => {
-      const def = item.kind === "unit" ? CIV_UNIT_BY_ID[item.id] : CIV_BUILDING_BY_ID[item.id];
+      const def =
+        item.kind === "unit"
+          ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
+          : CIV_BUILDING_BY_ID[item.id];
       const cost = Math.max(1, Math.round(def?.cost ?? 1));
       const progress = Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
       return `<li>${escapeHtml(def?.name ?? item.id)} <span class="livingGuildChipStatus">${progress} / ${

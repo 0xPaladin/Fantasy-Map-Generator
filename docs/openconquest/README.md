@@ -116,7 +116,7 @@ To maintain easy upstream synchronisation with [Azgaar's upstream repository](ht
 2. **Core FMG Cartographic Rendering** ([`src/renderers/draw-burg-icons.ts`](../../src/renderers/draw-burg-icons.ts)):
    - Renders state capitals with circled star markers (`burgs-atlas-star-circled`) and province capitals with smaller star markers (`burgs-atlas-star`), eliminating the need for redundant custom settlements or regions layers.
 3. **Military & Battle Pipeline** ([`src/generators/military-generator.ts`](../../src/generators/military-generator.ts), [`src/controllers/battle-screen.ts`](../../src/controllers/battle-screen.ts)):
-   - Allocates native `ArmyUnit[]` blocks for FMG regiments directly from each state's bound roster (`state.rosterId`), feeding seamlessly into both the campaign compiler and the turn-by-turn Lanchester battle simulator.
+   - Allocates roster blocks for FMG regiments from each state's bound roster (`state.rosterId`); the Living World stores them as `ArmyBlock[]` (`hp` capability) and bridges to the count-based `ArmyUnit[]` the Lanchester engine consumes.
 4. **Map Commands & App Entry Point** ([`src/components/map-commands.ts`](../../src/components/map-commands.ts), [`src/main.ts`](../../src/main.ts)):
    - Registers omnibar commands (`openConquest`) and appends `import "@/conquest/entry"` so Conquest controllers and listeners register during app bootstrap.
 
@@ -170,7 +170,7 @@ Combat is resolved through an auditable, deterministic statistical model grounde
 2. **Matchup Matrix**: Tactical interactions scale effectiveness across a complete 6×6 archetype matrix (`melee`, `ranged`, `cavalry`, `artillery`, `monster`, `spellcaster`). For instance, cavalry counters missile (×1.3) and spellcasters (×1.5), monsters crush melee lines (×1.3) but suffer concentrated missile fire (×1.25), and spellcasters blast dense infantry (×1.25).
 3. **Attrition Rounds & Stances**: Combat simulates up to 6 rounds where casualties compound based on relative force disparity (Lanchester loss pressure). In the interactive Battle Screen, commanders can assign per-round tactical stances (Shock, Flank, Skirmish, Brace, Retreat) and step through engagements round-by-round.
 4. **Rout & Pursuit**: Armies rout when falling below their threshold (base 25%, modified by enemy `terror`); losing forces suffer an additional 30% casualty rate during pursuit.
-5. **Contextual Modifiers & Troop Sync**: Wall tiers, river crossings, encamped defender bonuses, arcane siege breaches, and commanding lord skills are evaluated per round. Final battle outcomes synchronize surviving `ArmyUnit[]` blocks directly back to regiments on the map. For a complete mathematical breakdown of Linear vs. Square laws and frontage constraints, see [`lanchester-model.md`](lanchester-model.md).
+5. **Contextual Modifiers & Troop Sync**: Wall tiers, river crossings, encamped defender bonuses, arcane siege breaches, and commanding lord skills are evaluated per round. Final battle outcomes are bridged back to the regiment's `ArmyBlock`s on the map, preserving block capability. For a complete mathematical breakdown of Linear vs. Square laws and frontage constraints, see [`lanchester-model.md`](lanchester-model.md).
 
 ### Magic, Monsters & Arcane Warfare
 OpenConquest models asymmetric fantasy warfare through a deterministic magic and monster system ([`docs/plans/openconquest-magic-system.md`](../plans/openconquest-magic-system.md)):

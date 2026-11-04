@@ -7,13 +7,13 @@
       "dreadspears": {
         "name": "Dread-Spire Spearmen",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 7,
         "defense": 13,
         "charge": 3,
         "missile": 0,
-        "cost": 340,
-        "upkeep": 48,
+        "cost": 19,
+        "upkeep": 0.148,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -24,13 +24,13 @@
       "darkshards": {
         "name": "Repeater Crossbow Darkshards",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 4,
         "defense": 7,
         "charge": 1,
         "missile": 14,
-        "cost": 480,
-        "upkeep": 58,
+        "cost": 22,
+        "upkeep": 0.178,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -41,13 +41,13 @@
       "witch_furies": {
         "name": "Blood-Cauldron Witch Furies",
         "category": "melee",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 14,
         "defense": 7,
         "charge": 9,
         "missile": 0,
-        "cost": 580,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.215,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -62,56 +62,56 @@
       "black_tower_guard": {
         "name": "Obsidian Guard & Executioners",
         "category": "melee",
-        "blocks": 0.1,
-        "requiresGood": 4,
+        "quantity": 100,
         "attack": 14,
         "defense": 14,
         "charge": 7,
         "missile": 0,
-        "cost": 650,
-        "upkeep": 78,
-        "capacityCost": {
-          "m": 3,
-          "w": 3,
-          "s": 1,
-          "c": 1
-        }
-      },
-      "dark_riders": {
-        "name": "Raven-Cloak Outriders",
-        "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
-        "attack": 8,
-        "defense": 7,
-        "charge": 9,
-        "missile": 9,
-        "cost": 580,
-        "upkeep": 68,
-        "capacityCost": {
-          "m": 2,
-          "w": 3,
-          "s": 0,
-          "c": 1
-        }
-      },
-      "cold_one_knights": {
-        "name": "Dread-Raptor Lancers",
-        "category": "cavalry",
-        "blocks": 0.06,
-        "requiresGood": 18,
-        "attack": 13,
-        "defense": 13,
-        "charge": 13,
-        "missile": 0,
-        "cost": 720,
-        "upkeep": 85,
+        "cost": 30,
+        "upkeep": 0.24,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 1
         },
+        "requiresGood": 4
+      },
+      "dark_riders": {
+        "name": "Raven-Cloak Outriders",
+        "category": "cavalry",
+        "quantity": 80,
+        "attack": 8,
+        "defense": 7,
+        "charge": 9,
+        "missile": 9,
+        "cost": 26,
+        "upkeep": 0.209,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 0,
+          "c": 1
+        },
+        "requiresGood": 18
+      },
+      "cold_one_knights": {
+        "name": "Dread-Raptor Lancers",
+        "category": "cavalry",
+        "quantity": 60,
+        "attack": 13,
+        "defense": 13,
+        "charge": 13,
+        "missile": 0,
+        "cost": 33,
+        "upkeep": 0.262,
+        "capacityCost": {
+          "m": 3,
+          "w": 3,
+          "s": 1,
+          "c": 1
+        },
+        "requiresGood": 18,
         "powers": {
           "terror": 0.04
         }
@@ -119,13 +119,13 @@
       "war_hydra": {
         "name": "Many-Headed War-Hydra",
         "category": "monster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 16,
         "defense": 14,
         "charge": 12,
         "missile": 10,
-        "cost": 1100,
-        "upkeep": 125,
+        "cost": 48,
+        "upkeep": 0.385,
         "capacityCost": {
           "m": 4,
           "w": 4,
@@ -140,13 +140,13 @@
       "dark_sorceresses": {
         "name": "Conclave of Dark Magic",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 4,
         "defense": 5,
         "charge": 1,
         "missile": 18,
-        "cost": 1000,
-        "upkeep": 120,
+        "cost": 46,
+        "upkeep": 0.369,
         "capacityCost": {
           "m": 1,
           "w": 3,
@@ -162,31 +162,31 @@
       "reaper_bolts": {
         "name": "Reaper Multi-Bolt Throwers",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 3,
         "defense": 4,
         "charge": 0,
         "missile": 15,
-        "cost": 750,
-        "upkeep": 75,
+        "cost": 29,
+        "upkeep": 0.231,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "corsair_watch": {
         "name": "Corsair Watch",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 4,
         "defense": 8,
         "charge": 2,
         "missile": 0,
-        "cost": 110,
-        "upkeep": 16,
+        "cost": 6,
+        "upkeep": 0.049,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -197,13 +197,13 @@
       "crossbow_watch": {
         "name": "Crossbow Watch",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 7,
-        "cost": 130,
-        "upkeep": 18,
+        "cost": 7,
+        "upkeep": 0.055,
         "capacityCost": {
           "m": 0,
           "w": 1,

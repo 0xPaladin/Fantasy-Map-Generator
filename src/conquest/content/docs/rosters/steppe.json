@@ -8,20 +8,20 @@
       "cavalry": {
         "name": "Steppe Horse Archers",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 9,
         "defense": 8,
         "charge": 8,
         "missile": 4,
-        "cost": 450,
-        "upkeep": 55,
+        "cost": 21,
+        "upkeep": 0.169,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       }
     },
     "recruitable": [

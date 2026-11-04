@@ -1,7 +1,7 @@
 import { quadtree, sum } from "d3";
 import { currentContent } from "@/conquest/content/store";
 import type { ResolvedRoster, UnitType } from "@/conquest/engine/common/content";
-import type { ArmyUnit } from "@/conquest/engine/common/types";
+import type { ArmyBlock } from "@/conquest/engine/common/types";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import type { MilitaryUnit } from "@/types/military";
@@ -25,7 +25,7 @@ export interface Regiment {
   by: number; // base y (for movement)
   province?: number; // province id of birth
   u: Record<string, number>; // units composition (unitId -> count)
-  units?: ArmyUnit[]; // concrete roster unit blocks
+  units?: ArmyBlock[]; // concrete roster unit blocks { type, hp, exp }
   rosterId?: string; // state's assigned roster identifier
   crew?: number[]; // attached figure ids (pack.history.figures): commanders of specialist units (unified-figures)
   n: number; // 0 = land regiment, 1 = naval fleet
@@ -71,19 +71,38 @@ export function getCategoryForUnit(unitId: string, unitTypes?: Record<string, Un
   return "melee";
 }
 
-export function syncRegimentTotals(regiment: Regiment, _unitTypes?: Record<string, UnitType>): void {
+/**
+ * Mirror the block composition into `reg.u` / `reg.a`. Both stay **headcount**
+ * mirrors (`Σ round(hp × quantity)`), because the map badge, saves and the
+ * editor all display men (living-openciv-armies.md §5.4). Strength itself
+ * lives on `ArmyBlock.hp`. The `fleet` pseudo-slot is skipped — its ship count
+ * survives in `reg.u` and is re-attached below.
+ */
+export function syncRegimentTotals(regiment: Regiment, unitTypes?: Record<string, UnitType>): void {
   if (regiment.units) {
+    const fleetShips = regiment.n ? regiment.u?.fleet : undefined;
     const u: Record<string, number> = {};
     let total = 0;
     for (const slot of regiment.units) {
-      if (slot.count > 0) {
-        u[slot.type] = (u[slot.type] || 0) + slot.count;
-        total += slot.count;
+      if (slot.type === "fleet") continue;
+      // Legacy saves carry count-based blocks; convert once, in place (§13.1).
+      if (!Number.isFinite(slot.hp) || slot.hp <= 0) {
+        const legacy = (slot as unknown as { count?: number }).count;
+        slot.hp =
+          legacy !== undefined && Number.isFinite(legacy)
+            ? Math.min(1, legacy / (unitTypes?.[slot.type]?.quantity ?? 100))
+            : slot.hp === 0
+              ? 0
+              : 1;
       }
+      if (slot.hp <= 0) continue;
+      const men = Math.round(slot.hp * (unitTypes?.[slot.type]?.quantity ?? 100));
+      u[slot.type] = (u[slot.type] || 0) + men;
+      total += men;
     }
-    if (regiment.n && regiment.u?.fleet && !u.fleet) {
-      u.fleet = regiment.u.fleet;
-      total += u.fleet;
+    if (fleetShips) {
+      u.fleet = fleetShips;
+      total += fleetShips;
     }
     regiment.u = u;
     regiment.a = total;
@@ -92,6 +111,12 @@ export function syncRegimentTotals(regiment: Regiment, _unitTypes?: Record<strin
   }
 }
 
+/**
+ * Rebuild `reg.units` from the `reg.u` men mirror — the legacy-save path and
+ * the editor's troop editor (living-openciv-armies.md §13.1). New blocks are
+ * whole (`hp = count / quantity`); the `"fleet"` pseudo-type is kept out of the
+ * combat blocks and re-appended as the naval marker.
+ */
 export function reconcileRegimentBlocks(regiment: Regiment, unitTypes: Record<string, UnitType>, maxUnits = 20): void {
   const existingSlots = regiment.units ?? [];
   const expByType = new Map<string, number[]>();
@@ -101,24 +126,24 @@ export function reconcileRegimentBlocks(regiment: Regiment, unitTypes: Record<st
     expByType.set(s.type, list);
   }
 
-  const slots: ArmyUnit[] = [];
+  const slots: ArmyBlock[] = [];
   for (const [typeId, totalMen] of Object.entries(regiment.u)) {
     if (typeId === "fleet" || totalMen <= 0) continue;
     const ut = unitTypes[typeId];
-    const blockSize = ut && ut.men > 0 ? ut.men : 100;
+    const blockSize = ut && ut.quantity > 0 ? ut.quantity : 100;
     let remaining = totalMen;
     const expList = expByType.get(typeId) ?? [];
     let expIdx = 0;
     while (remaining > 0 && slots.length < maxUnits) {
       const count = Math.min(blockSize, remaining);
       const exp = expList[expIdx++] ?? 0;
-      slots.push({ type: typeId, count, exp });
+      slots.push({ type: typeId, hp: count / blockSize, exp });
       remaining -= count;
     }
   }
 
   if (regiment.n && regiment.u.fleet) {
-    slots.push({ type: "fleet", count: regiment.u.fleet, exp: 0 });
+    slots.push({ type: "fleet", hp: 1, exp: 0 });
   }
 
   regiment.units = slots;
@@ -938,7 +963,7 @@ class MilitaryModule {
   }
 
   /** Set a regiment's explicit unit slots directly */
-  setUnitSlots(stateId: number, regimentId: number, slots: ArmyUnit[]): void {
+  setUnitSlots(stateId: number, regimentId: number, slots: ArmyBlock[]): void {
     const regiment = this.living(stateId, regimentId);
     regiment.units = slots.map(s => ({ ...s }));
     syncRegimentTotals(regiment, this.getUnitTypes());

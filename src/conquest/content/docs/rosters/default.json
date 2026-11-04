@@ -7,13 +7,13 @@
       "sword": {
         "name": "Swordsmen",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 8,
         "defense": 11,
         "charge": 4,
         "missile": 0,
-        "cost": 300,
-        "upkeep": 40,
+        "cost": 15,
+        "upkeep": 0.123,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -24,13 +24,13 @@
       "spear": {
         "name": "Spearmen",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 5,
         "defense": 13,
         "charge": 3,
         "missile": 0,
-        "cost": 250,
-        "upkeep": 35,
+        "cost": 14,
+        "upkeep": 0.108,
         "capacityCost": {
           "m": 2,
           "w": 1,
@@ -41,13 +41,13 @@
       "archers": {
         "name": "Archers",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 3,
         "defense": 5,
         "charge": 1,
         "missile": 11,
-        "cost": 350,
-        "upkeep": 45,
+        "cost": 17,
+        "upkeep": 0.138,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -58,49 +58,49 @@
       "cavalry": {
         "name": "Cavalry",
         "category": "cavalry",
-        "blocks": 0.08,
-        "requiresGood": 18,
+        "quantity": 80,
         "attack": 9,
         "defense": 9,
         "charge": 9,
         "missile": 0,
-        "cost": 500,
-        "upkeep": 60,
+        "cost": 23,
+        "upkeep": 0.185,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 18
       },
       "artillery": {
         "name": "Ballistae",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 2,
         "defense": 3,
         "charge": 0,
         "missile": 14,
-        "cost": 800,
-        "upkeep": 80,
+        "cost": 31,
+        "upkeep": 0.246,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "levy_spear": {
         "name": "Levy Spearmen",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 9,
         "charge": 2,
         "missile": 0,
-        "cost": 100,
-        "upkeep": 15,
+        "cost": 6,
+        "upkeep": 0.046,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -111,13 +111,13 @@
       "levy_archers": {
         "name": "Levy Archers",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 8,
-        "cost": 120,
-        "upkeep": 18,
+        "cost": 7,
+        "upkeep": 0.055,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -128,31 +128,31 @@
       "balbenGuard": {
         "name": "Balben Guard",
         "category": "melee",
-        "blocks": 0.1,
-        "requiresGood": 4,
+        "quantity": 100,
         "attack": 10,
         "defense": 13,
         "charge": 5,
         "missile": 0,
-        "cost": 600,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.215,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "necromancer": {
         "name": "Death-Cult Necromancer",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 5,
         "defense": 6,
         "charge": 1,
         "missile": 10,
-        "cost": 700,
-        "upkeep": 80,
+        "cost": 31,
+        "upkeep": 0.246,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -168,13 +168,13 @@
       "undead_swarm": {
         "name": "Risen Undead Swarm",
         "category": "melee",
-        "blocks": 0.2,
+        "quantity": 200,
         "attack": 4,
         "defense": 8,
         "charge": 2,
         "missile": 0,
-        "cost": 150,
-        "upkeep": 20,
+        "cost": 8,
+        "upkeep": 0.062,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -188,13 +188,13 @@
       "dead_legion": {
         "name": "Skeletal Dead Legion",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 9,
         "defense": 13,
         "charge": 4,
         "missile": 0,
-        "cost": 450,
-        "upkeep": 50,
+        "cost": 19,
+        "upkeep": 0.154,
         "capacityCost": {
           "m": 3,
           "w": 2,
@@ -208,103 +208,103 @@
       "guardsmen": {
         "name": "Watchmen",
         "category": "melee",
-        "troubleRole": "guardsmen",
-        "blocks": 0.1,
+        "quantity": 100,
         "attack": 4,
         "defense": 8,
         "charge": 2,
         "missile": 0,
-        "cost": 150,
-        "upkeep": 20,
+        "cost": 8,
+        "upkeep": 0.062,
         "capacityCost": {
           "m": 1,
           "w": 1,
           "s": 0,
           "c": 0
-        }
+        },
+        "troubleRole": "guardsmen"
       },
       "merchant_company": {
         "name": "Merchant Factors",
         "category": "melee",
-        "troubleRole": "merchant",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 0,
-        "cost": 200,
-        "upkeep": 25,
+        "cost": 10,
+        "upkeep": 0.077,
         "capacityCost": {
           "m": 0,
           "w": 2,
           "s": 0,
           "c": 0
-        }
+        },
+        "troubleRole": "merchant"
       },
       "sage_coven": {
         "name": "Learned Sages",
         "category": "spellcaster",
-        "troubleRole": "sage",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 3,
         "defense": 4,
         "charge": 1,
         "missile": 6,
-        "cost": 300,
-        "upkeep": 35,
+        "cost": 14,
+        "upkeep": 0.108,
         "capacityCost": {
           "m": 0,
           "w": 1,
           "s": 0,
           "c": 1
-        }
+        },
+        "troubleRole": "sage"
       },
       "prophet_band": {
         "name": "Zealot Prophets",
         "category": "spellcaster",
-        "troubleRole": "prophet",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 4,
         "defense": 5,
         "charge": 2,
         "missile": 4,
-        "cost": 250,
-        "upkeep": 30,
+        "cost": 12,
+        "upkeep": 0.092,
         "capacityCost": {
           "m": 0,
           "w": 0,
           "s": 2,
           "c": 0
-        }
+        },
+        "troubleRole": "prophet"
       },
       "magistrates": {
         "name": "Royal Magistrates",
         "category": "melee",
-        "troubleRole": "magistrate",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 3,
         "defense": 6,
         "charge": 1,
         "missile": 0,
-        "cost": 250,
-        "upkeep": 30,
+        "cost": 12,
+        "upkeep": 0.092,
         "capacityCost": {
           "m": 0,
           "w": 1,
           "s": 1,
           "c": 0
-        }
+        },
+        "troubleRole": "magistrate"
       },
       "assassins": {
         "name": "Guild Assassins",
         "category": "melee",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 5,
         "defense": 5,
         "charge": 2,
         "missile": 0,
-        "cost": 300,
-        "upkeep": 40,
+        "cost": 15,
+        "upkeep": 0.123,
         "capacityCost": {
           "m": 0,
           "w": 0,
@@ -315,13 +315,13 @@
       "envoys": {
         "name": "Court Envoys",
         "category": "melee",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 2,
         "defense": 3,
         "charge": 0,
         "missile": 0,
-        "cost": 250,
-        "upkeep": 30,
+        "cost": 12,
+        "upkeep": 0.092,
         "capacityCost": {
           "m": 0,
           "w": 1,

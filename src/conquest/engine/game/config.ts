@@ -21,6 +21,11 @@ export interface CampaignConfig {
     encampBonus: number;
     ambushBonus: number;
     riverDefenderBonus: number;
+    /**
+     * Defender on hill/forest/jungle/marsh (living-openciv-armies.md §8.3).
+     * Binary — the map has no per-terrain tiers, so one bonus covers them all.
+     */
+    terrainDefenseBonus: number;
     /** Ceilings on the summed per-side `UnitType.powers` / `resistArcane`. */
     magic: {
       wardCap: number;
@@ -281,6 +286,7 @@ export const DEFAULT_CONFIG: CampaignConfig = {
     encampBonus: 0.1,
     ambushBonus: 0.3,
     riverDefenderBonus: 0.15,
+    terrainDefenseBonus: 0.25,
     magic: { wardCap: 0.3, hexCap: 0.3, healCap: 40, terrorCap: 0.15, arcaneSiegeCap: 2, resistCap: 0.5 }
   },
   economy: {
