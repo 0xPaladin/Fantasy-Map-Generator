@@ -1,10 +1,9 @@
 # Plan — Colonized Solar System: Planetary Templates, Biomes, Multi-Body State & 3D Orrery
 
-Updated: 2026-11-01. **Status: phases 1–4 shipped** on the astral branch (crater primitive and
+Updated: 2026-11-04. **Status: phases 1–5 shipped** on the astral branch (crater primitive and
 planetary templates, archetypes/climate/exo-biomes, the `SolarSystem` registry with
-`switchBody` and the Sol preset, the 3D orrery opened from the System Editor); phase 5
-(cross-world colonization, shared cultures/states, interplanetary routes, system overview)
-remains open. See [`docs/astral/README.md`](../astral/README.md) → *The colonized solar
+`switchBody` and the Sol preset, the 3D orrery opened from the System Editor, and the
+sector-bound planetary polity and physical globe pipeline). See [`docs/astral/README.md`](../astral/README.md) → *The colonized solar
 system* for the shipped overview. Inputs:
 [globe-world.md](globe-world.md),
 [astral-system-details.md](astral-system-details.md),
@@ -339,31 +338,24 @@ To keep `view-3d-renderer.ts` modular and readable, implement the Orrery scene b
 
 ## 7. Phase 5 — Cross-World Colonization, Shared Cultures/States & Interplanetary Routes
 
-### 7.1. Shared System Registry (`system.cultures` & `system.states`)
+### 7.1. Sector Origin Context & Polity Binding (`src/model/system/planetary-polity.ts`)
 
-When a solar system is initialized from a Homeworld:
-1. **Canonical IDs**:
-   - The Homeworld's `pack.cultures` and `pack.states` become the baseline `system.cultures` and `system.states`.
-   - Every secondary body's `pack.cultures` and `pack.states` is initialized as a clone of `system.cultures` and `system.states` (with local `cells = 0, area = 0, burgs = 0, rural = 0, urban = 0` on uninhabited worlds).
-   - This guarantees that State `#1` (e.g., *United Nations of Earth*) or Culture `#3` has the **exact same ID, name, color, heraldry (`coa`), and diplomatic relations** on Earth, Luna, Mars, and Europa.
+When a solar system is initialized or opened from a Sector star system burg:
+1. **`SystemOriginContext` Extraction**:
+   - `extractSystemOriginContext(pack, burgId)` extracts the system burg's primary Culture, State, Province, and Religion, plus up to 2 minority cultures from neighboring burgs in the same polity.
+2. **Pre-Seeded Locked Culture**:
+   - `seedPlanetaryCultures(pack, originContext)` locks the sector culture into `pack.cultures[1]`, preserving its name, base, color, shield, ancestry, alignment, and values.
+   - `Cultures.generate()` expands this locked culture across the planetary surface so all burgs and provinces share the sector culture's linguistic naming base.
+3. **Limited Colonial Administrations & 100% Provinces**:
+   - `preparePlanetaryGenerationConfig(config, astro, originContext)` scales states count by habitability index (`HI`): `0` for uninhabitable bodies, `1` for outposts/hostile worlds, and `1–3` for core habitable worlds.
+   - Sets `provinces.ratio = 100%` and `religions.limit = 0`.
+   - `applySystemPolityContext(pack, astro, originContext)` formats State 1 as a direct colonial administration (e.g. `"<SectorState> <BodyName> Directorate"`), creates harmonious allied sub-state charters if additional states exist, runs `Provinces.generate()` so provinces serve as the primary planetary surface division, and binds the sector religion.
+4. **Full-Globe Geometry & Astronomical Radius Scaling**:
+   - Bodies enforce exact 2:1 globe dimensions (`globeWidth = 2 * globeHeight`, `mapSize = 100`, `latT = 180`, `lonT = 360`, `lat = 50`, `lon = 50`, `extents = "whole"`).
+   - Planetary heightmap templates (`globeWorld`, `volcanicWorld`, `icyMoon`, `lunarWorld`, `martianWorld`, `titanWorld`) have whole-world chance 1 in `WHOLE_WORLD_CHANCE`.
+   - Distance scale is set via `computePlanetaryDistanceScale(radiusKm, graphHeight, kmPerUnit)` ($\text{scale} = \frac{\pi R_{\text{km}}}{\text{kmPerUnit} \cdot \text{graph.height}}$).
 
 ### 7.2. Automated & Interactive Off-World Colonization (`src/model/system/colonization-generator.ts`)
-
-When materializing or colonizing a secondary body (`bodyId !== homeworldId`):
-
-1. **Colonization Eligibility**:
-   - Ranked by `body.astro.HI` (`1..4`) and top cell suitability `pack.cells.s`.
-2. **Sponsor Selection (Who Colonizes?)**:
-   - Top Homeworld states (ranked by urban population, ports, and treasury) plus 1–3 newly chartered **Colonial / Orbital Factions** (e.g., *Martian Congressional Republic*, *Tycho Orbital Syndicate*, *Jovian Combine*, added to `system.states` with `type = "Naval"` or `"Nomadic"`).
-3. **Spaceport Burg Placement**:
-   - Place $N$ colonial outposts/domes (`pack.burgs`) on the highest-scoring cells (`pack.cells.s`, prioritizing polar ice craters on `lunar`, thermal rifts on `icy_moon`, and lowland coastlines/basins on `martian`/`titan`).
-   - Mark the primary colonial settlements with `burg.port = 1` (or `burg.spaceport = true`) so they act as orbital transfer hubs.
-4. **Cultural Drift (`culture.origins`)**:
-   - Depending on orbital distance and habitability:
-     - Inner moons (`Luna`) retain their founding Homeworld `culture` IDs.
-     - Major planetary colonies (`Mars`, `Titan`, `Ganymede`) can spawn a derived colonial culture in `system.cultures` with `origins: [founderCultureId]` (e.g., *Martian*, *Jovian*, *Belter*), preserving the full cultural evolution tree across the solar system.
-5. **Territory Expansion on the Colony Globe**:
-   - Run `States.expandStates()` on the secondary body with expansionism scaled by `body.astro.HI` (tight dome-city perimeters on `HI = 3..4` airless moons; broad regional territories on `HI = 1..2` Mars/terraformed worlds).
 
 ### 7.3. Interplanetary Trade Routes (`system.interplanetaryRoutes`)
 
@@ -390,4 +382,4 @@ seed}/astral/system/${burg id}` + forced primary) so the table and the worlds ag
 | **Phase 2** | ✅ Shipped | Planetary Archetypes + Climate Sync + Exo-Biomes (`13..27`) + Atmosphere-gated rivers | `biomes-generator.ts`, `planetary-profile.ts`, `river-generator.ts` | Authentic planetary colors, biomes, habitability scoring, and 100% pure `.map` save/load compatibility. |
 | **Phase 3** | ✅ Shipped | `SolarSystem` model + `switchBody(bodyId)` + Sol/Procedural system initialization | `src/model/system/solar-system.ts`, `sol-system-preset.ts` | Multi-world state management and instant body switching from `FMG.SolarSystem` and UI. |
 | **Phase 4** | ✅ Shipped | 3D Solar System Orrery (System view) + Body Inspector | `view-mode.ts`, `view-3d.ts`, `system-3d-renderer.ts` | Interactive Three.js solar system view with live globe textures, orbit rings, and click-to-enter world. Opened from the System Editor dialog. |
-| **Phase 5** | ⬚ Open | Cross-world shared `Cultures`/`States`, Spaceport colonization & Interplanetary routes | `colonization-generator.ts`, `system-overview.ts` | Multi-planet empires, colonial cultural drift, 3D transfer arcs, and System Overview table. |
+| **Phase 5** | ✅ Shipped | Sector Polity & Origin Context Binding, Colonial Sub-States, 100% Provinces, Full Globe Physical Settings & Radius Scaling | `src/model/system/planetary-polity.ts`, `src/model/physical/planetary-profile.ts`, `src/model/system/solar-system.ts`, `src/controllers/astral-system-editor.ts` | Materialized worlds bound to sector culture, limited colonial administrations with 100% provinces, bound religion, full 2:1 globe geometry, and true astronomical radius distance scale. |

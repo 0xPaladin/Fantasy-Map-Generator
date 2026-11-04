@@ -20,6 +20,7 @@ import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-sy
 import { starTypeData } from "@/model/physical/astral-system/astrophysics";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
+import { extractSystemOriginContext } from "@/model/system/planetary-polity";
 import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
@@ -568,15 +569,16 @@ function ensureSolarSystem(): void {
   const seed = `${options.map.seed}/astral/system/${burgId}`;
   if (SolarSystem.seed === seed && SolarSystem.bodies.length) return; // keep materialized snapshots
   const burg = pack.burgs[burgId];
+  const originContext = extractSystemOriginContext(pack, burgId);
   if (isCoreOrCapital(burg)) {
-    SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name });
+    SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name }, originContext);
   } else {
     const { class: spectral } = starClassFor(burg);
-    SolarSystem.initFromSeed(seed, {
-      primaryType: starTypeData[spectral] ? spectral : "G",
-      forceHabitable: false,
-      systemName: burg.name
-    });
+    SolarSystem.initFromSeed(
+      seed,
+      { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false, systemName: burg.name },
+      originContext
+    );
   }
 }
 

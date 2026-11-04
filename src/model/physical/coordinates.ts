@@ -35,6 +35,12 @@ const TEMPLATE_POSITIONS: Record<string, SizeAndPosition> = {
 // chance for a random template to cover the whole world, if the land does not go over the map borders
 const WHOLE_WORLD_CHANCE: Record<string, number> = {
   pangea: 1,
+  globeWorld: 1,
+  volcanicWorld: 1,
+  icyMoon: 1,
+  lunarWorld: 1,
+  martianWorld: 1,
+  titanWorld: 1,
   shattered: 0.7,
   continents: 0.5,
   archipelago: 0.35,
