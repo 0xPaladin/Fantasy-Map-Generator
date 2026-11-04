@@ -87,6 +87,7 @@ class OptionsModel {
         },
         style: { preset: "default" },
         astral: false,
+        extents: "whole",
         burgs: { groups: Burgs.getDefaultGroups() },
         labels: { groups: Labels.getDefaultGroups() },
         military: { units: Military.getDefaultOptions() },

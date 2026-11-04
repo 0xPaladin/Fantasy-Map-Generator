@@ -17,11 +17,6 @@ export async function changeViewMode(event: Event): Promise<void> {
 
   if (isLivingWorldEnabled()) await exitLivingWorld();
 
-  if (button.id === "viewAstral") {
-    await Controllers.AstralMode.toggle();
-    return;
-  }
-
   if (isAstralView()) await Controllers.AstralMode.exit();
 
   if (isConquestEnabled()) await Controllers.ConquestMode.exit();
