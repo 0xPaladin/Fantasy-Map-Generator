@@ -234,11 +234,26 @@ export function toBattleTypes(types: Record<string, UnitType>) {
 }
 ```
 
+### Why not `count = hp × quantity`?
+
+That is the literal mapping, and for the *maths* it is equivalent: `fill = count / men` still equals `hp`, and `applyLosses` takes a fraction of side men and splits it by `count`, so a block loses the same fraction of its `hp` either way.
+
+It breaks in the **quantisation**, because `applyLosses` works in integer men:
+
+```ts
+loss = Math.min(unit.count, Math.floor(remaining * weight / weightSum));
+```
+
+- `quantity: 1` (a dragon) → one man is 100% of the block. Its share floors to `0` most rounds, so it can never take damage; when it finally does, it dies in one hit.
+- `quantity: 10` (a Slann block) → each integer man is 10% of the block, so damage arrives in 0.1 jumps and magic healing is just as lumpy.
+
+Mapping every block onto 1,000 abstract men gives every block 0.1% resolution regardless of what the fiction claims. That is the point of "`hp` is the state, `quantity` is fiction": `quantity` must have **zero** mechanical effect, including through rounding.
+
 Consequences, all desirable:
 
 - `fill = hp` **exactly**, for every unit type, including `quantity: 1` monsters. No rounding loss on small units.
 - `quantity` never reaches the battle engine, so `battle.ts` is untouched. `battle-screen.ts` is the only other direct reader of `Regiment.units`; it gets a three-line edge conversion at `:154-159` (read) and `:185` (write-back) and otherwise keeps working entirely in `count`.
-- Losses distribute evenly across blocks rather than proportional to headcount, which is the correct reading of "each block is one tactical element".
+- Every block is one tactical element, so losses split by block; a 10-priest block and a 150-axemen block lose approximately the same fraction of `hp` per round. Only the absolute `…Men` numbers in `BattleOutcome` differ, and the Living World never displays those.
 - `BattleOutcome`'s `attackerLossMen` / `defenderLossMen` / `…RemainingMen` are in that same abstract strength. Never show them as a headcount: use `lossesHp` for the report and `armyMen(reg)` for the map.
 
 ### 5.4. Invariants
