@@ -17,12 +17,12 @@ import { rn } from "@/utils/number-utils";
 // --- pure orrery math (unit-tested) ------------------------------------------
 
 export const AU_SCALE = 18; // scene units per astronomical unit (linear scale)
-export const STAR_RADIUS = 2.2; // visual radius of the primary star
+export const STAR_RADIUS = 1.5; // visual radius of the primary star
 
 /** to-scale orbital radius: linear scale with AU, with a minimum clearance outside the star */
 export const orbitRadius = (semiMajorAxisAU: number, scaleAU = AU_SCALE): number => {
   const clampedAU = Math.max(semiMajorAxisAU, 0);
-  return clampedAU <= 0 ? 0 : Math.max(STAR_RADIUS + 1.2, clampedAU * scaleAU);
+  return clampedAU <= 0 ? 0 : Math.max(STAR_RADIUS + 0.8, clampedAU * scaleAU);
 };
 
 /** point on the Kepler orbit ellipse, the star sitting in its focus */
@@ -31,14 +31,16 @@ export const ellipsePoint = (semiMajor: number, eccentricity: number, angle: num
   return { x: r * Math.cos(angle), z: r * Math.sin(angle) };
 };
 
-/** scene-space body radius, scaled to Earth radius (Earth = 6.371 Mm) */
-export const bodySceneRadius = (radiusMegameters: number, kind: "planet" | "moon"): number => {
-  const rMm = radiusMegameters > 500 ? radiusMegameters / 1000 : radiusMegameters;
-  const earthRatio = Math.max(rMm / 6.371, 0.05);
+/** scene-space body radius, scaled to Earth radius (Earth = 6,371 km) */
+export const bodySceneRadius = (radiusKmOrMm: number, kind: "planet" | "moon"): number => {
+  const rKm = radiusKmOrMm < 500 ? radiusKmOrMm * 1000 : radiusKmOrMm;
+  const earthRatio = Math.max(0.08, rKm / 6371);
+
   if (kind === "moon") {
-    return Math.max(0.06, 0.09 * earthRatio);
+    return Math.min(0.07, Math.max(0.022, 0.038 * Math.pow(earthRatio, 0.5)));
   }
-  return Math.max(0.18, 0.28 * earthRatio);
+
+  return Math.min(0.60, Math.max(0.045, 0.11 * Math.pow(earthRatio, 0.55)));
 };
 
 /** banded gas-giant palette: three palette colors per body, deterministic per body id */
@@ -81,6 +83,7 @@ let raycaster: THREE.Raycaster | null = null;
 let active = false;
 let animationFrame = 0;
 const bodyMeshes: THREE.Mesh[] = [];
+const planetGroups: THREE.Group[] = [];
 const disposables: Array<{ dispose(): void }> = [];
 const listeners: Array<[EventTarget, string, EventListenerOrEventListenerObject]> = [];
 
@@ -171,6 +174,7 @@ export function stop(): void {
   }
   disposables.length = 0;
   bodyMeshes.length = 0;
+  planetGroups.length = 0;
   scene = null;
 
   if (Renderer) {
@@ -249,8 +253,9 @@ function buildStar(color: THREE.Color): void {
   glow.width = glow.height = 256;
   const ctx = glow.getContext("2d")!;
   const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  gradient.addColorStop(0, "rgba(255,255,255,0.9)");
-  gradient.addColorStop(0.22, `rgba(${(color.r * 255) | 0},${(color.g * 255) | 0},${(color.b * 255) | 0},0.5)`);
+  gradient.addColorStop(0, "rgba(255,255,255,0.95)");
+  gradient.addColorStop(0.22, `rgba(${(color.r * 255) | 0},${(color.g * 255) | 0},${(color.b * 255) | 0},0.6)`);
+  gradient.addColorStop(0.65, `rgba(${(color.r * 255) | 0},${(color.g * 255) | 0},${(color.b * 255) | 0},0.15)`);
   gradient.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 256, 256);
@@ -258,7 +263,7 @@ function buildStar(color: THREE.Color): void {
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: texture, blending: THREE.AdditiveBlending, depthWrite: false })
   );
-  sprite.scale.set(16, 16, 1);
+  sprite.scale.set(STAR_RADIUS * 6.5, STAR_RADIUS * 6.5, 1);
   scene.add(sprite);
 }
 
@@ -280,6 +285,7 @@ function buildPlanet(body: CelestialBody): { group: THREE.Group; orbitRing: THRE
 
   const group = new THREE.Group();
   group.position.set(point.x, 0, point.z);
+  group.userData.planetId = body.id;
 
   const geometry = new THREE.SphereGeometry(radius, 48, 48);
   const material = new THREE.MeshLambertMaterial({ map: bodyTexture(body) });
@@ -290,17 +296,22 @@ function buildPlanet(body: CelestialBody): { group: THREE.Group; orbitRing: THRE
 
   const hasRingMesh = body.archetype === "gas_giant" && hasRings(body);
   if (hasRingMesh) group.add(buildRings(radius, body.id));
-  group.add(buildLabel(body, radius));
+  group.add(buildLabel(body, radius, false));
 
-  // Build moon sub-system around this planet in globe view
+  // Build moon sub-system around this planet in globe view (hidden by default in system view)
   const moons = SolarSystem.bodies.filter(b => b.kind === "moon" && b.parentId === body.id);
-  const ringsOuter = hasRingMesh ? radius * 2.3 : radius;
-  const minMoonDist = Math.max(radius * 1.8, ringsOuter + 0.4);
+  const moonsGroup = new THREE.Group();
+  moonsGroup.name = "moonsGroup";
+  moonsGroup.visible = false; // Hidden in system view!
+
+  const ringsOuter = hasRingMesh ? radius * 2.2 : radius;
+  const baseMoonDist = Math.max(radius * 2.0, ringsOuter + 0.25);
+  const moonStep = Math.max(0.24, radius * 0.45);
 
   for (let mIdx = 0; mIdx < moons.length; mIdx++) {
     const moon = moons[mIdx];
     const moonRadius = bodySceneRadius(kindRadius(moon), "moon");
-    const moonOrbitDist = minMoonDist + (mIdx + 1) * (radius * 0.7 + 0.5) + (moon.orbit.semiMajorAxisAU ? moon.orbit.semiMajorAxisAU * 0.2 : 0);
+    const moonOrbitDist = baseMoonDist + (mIdx + 0.5) * moonStep;
     const mAngle = moon.orbit.angleRad;
     const mx = Math.cos(mAngle) * moonOrbitDist;
     const mz = Math.sin(mAngle) * moonOrbitDist;
@@ -311,26 +322,29 @@ function buildPlanet(body: CelestialBody): { group: THREE.Group; orbitRing: THRE
     moonMesh.position.set(mx, 0, mz);
     moonMesh.userData.bodyId = moon.id;
     moonMesh.userData.parentId = body.id;
-    group.add(moonMesh);
+    moonsGroup.add(moonMesh);
     bodyMeshes.push(moonMesh);
 
     // Orbit ring around planet
     const moonRing = buildOrbitRing(moonOrbitDist, moon.orbit.eccentricity, true);
-    group.add(moonRing);
+    moonsGroup.add(moonRing);
 
-    // Label for moon
-    const moonLabel = buildLabel(moon, moonRadius);
+    // Compact label for moon
+    const moonLabel = buildLabel(moon, moonRadius, true);
     moonLabel.position.x = mx;
     moonLabel.position.z = mz;
-    group.add(moonLabel);
+    moonsGroup.add(moonLabel);
   }
+
+  group.add(moonsGroup);
+  planetGroups.push(group);
 
   return { group, orbitRing: buildOrbitRing(orbit, body.orbit.eccentricity, false) };
 }
 
 function buildRings(radius: number, bodyId: string): THREE.Mesh {
-  const inner = radius * 1.4;
-  const outer = radius * 2.3;
+  const inner = radius * 1.35;
+  const outer = radius * 2.2;
   const geometry = new THREE.RingGeometry(inner, outer, 64);
 
   const textureCanvas = document.createElement("canvas");
@@ -360,7 +374,7 @@ function buildRings(radius: number, bodyId: string): THREE.Mesh {
 }
 
 function buildOrbitRing(orbit: number, eccentricity: number, isMoon: boolean): THREE.LineLoop {
-  const segments = isMoon ? 64 : 128;
+  const segments = isMoon ? 48 : 128;
   const points: THREE.Vector3[] = [];
   for (let step = 0; step < segments; step++) {
     const angle = (step / segments) * Math.PI * 2;
@@ -370,48 +384,79 @@ function buildOrbitRing(orbit: number, eccentricity: number, isMoon: boolean): T
     points.push(new THREE.Vector3(point.x, 0, point.z));
   }
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({ color: 0x8b93a7, transparent: true, opacity: isMoon ? 0.22 : 0.28 });
+  const material = new THREE.LineBasicMaterial({
+    color: isMoon ? 0x6e7890 : 0x8b93a7,
+    transparent: true,
+    opacity: isMoon ? 0.28 : 0.26
+  });
   return new THREE.LineLoop(geometry, material);
 }
 
-function buildLabel(body: CelestialBody, radius: number): THREE.Sprite {
+function buildLabel(body: CelestialBody, radius: number, isMoon = false): THREE.Sprite {
   const states = controllingStates(body.snapshot);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d")!;
   const name = body.name;
   const archetype = ARCHETYPE_LABELS[body.archetype] ?? body.archetype;
-  ctx.font = "600 26px sans-serif";
+
+  if (isMoon) {
+    ctx.font = "600 20px sans-serif";
+    const textWidth = Math.max(80, ctx.measureText(name).width + 16);
+    canvas.width = textWidth;
+    canvas.height = 34;
+
+    ctx.fillStyle = "rgba(12, 14, 20, 0.65)";
+    ctx.beginPath();
+    ctx.roundRect(0, 0, canvas.width, canvas.height, 6);
+    ctx.fill();
+
+    ctx.font = "600 16px sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#e8eaf1";
+    ctx.fillText(name, 8, 17);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+    const sprite = new THREE.Sprite(material);
+    const scale = 0.28;
+    sprite.scale.set(scale * (canvas.width / canvas.height), scale, 1);
+    sprite.position.y = radius + 0.16;
+    sprite.renderOrder = 2;
+    return sprite;
+  }
+
+  ctx.font = "600 24px sans-serif";
   const width = Math.max(
-    140,
+    130,
     ctx.measureText(name).width + 24,
     24 + ctx.measureText(archetype).width + states.length * 18
   );
   canvas.width = width;
-  canvas.height = 58;
-  ctx.font = "600 26px sans-serif";
+  canvas.height = 54;
+  ctx.font = "600 24px sans-serif";
   ctx.textBaseline = "top";
-  ctx.fillStyle = "rgba(12, 14, 20, 0.55)";
+  ctx.fillStyle = "rgba(12, 14, 20, 0.60)";
   ctx.beginPath();
   ctx.roundRect(0, 0, canvas.width, canvas.height, 8);
   ctx.fill();
   ctx.fillStyle = "#f2f3f7";
-  ctx.fillText(name, 10, 6);
-  ctx.font = "400 16px sans-serif";
+  ctx.fillText(name, 10, 5);
+  ctx.font = "400 15px sans-serif";
   ctx.fillStyle = "#aab2c5";
-  ctx.fillText(archetype, 10, 34);
+  ctx.fillText(archetype, 10, 31);
   for (const [index, state] of states.entries()) {
     ctx.fillStyle = state.color;
     ctx.beginPath();
-    ctx.arc(width - 14 - index * 16, 42, 5, 0, Math.PI * 2);
+    ctx.arc(width - 14 - index * 16, 39, 5, 0, Math.PI * 2);
     ctx.fill();
   }
 
   const texture = new THREE.CanvasTexture(canvas);
   const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
   const sprite = new THREE.Sprite(material);
-  const scale = radius * 2 + 1.4;
-  sprite.scale.set(scale * (canvas.width / canvas.height) * 0.5, scale * 0.5, 1);
-  sprite.position.y = radius + scale * 0.55;
+  const scale = Math.max(0.9, radius * 1.5 + 0.65);
+  sprite.scale.set(scale * (canvas.width / canvas.height) * 0.45, scale * 0.45, 1);
+  sprite.position.y = radius + scale * 0.35;
   sprite.renderOrder = 2;
   return sprite;
 }
@@ -523,9 +568,19 @@ function kindRadius(body: CelestialBody): number {
 
 // --- navigation & zoom --------------------------------------------------------
 
+function setMoonsVisibility(activePlanetId: string | null): void {
+  for (const group of planetGroups) {
+    const moonsGroup = group.getObjectByName("moonsGroup");
+    if (moonsGroup) {
+      moonsGroup.visible = group.userData.planetId === activePlanetId;
+    }
+  }
+}
+
 function zoomToSystem(): void {
   currentViewMode = "system";
   selectedBodyId = null;
+  setMoonsVisibility(null);
 
   focusTarget = new THREE.Vector3(0, 0, 0);
   const camDist = Math.max(40, systemExtent * 1.3);
@@ -548,6 +603,7 @@ function zoomToPlanet(planetId: string): void {
 
   currentViewMode = "planet";
   selectedBodyId = planetId;
+  setMoonsVisibility(planetId);
 
   const worldPos = new THREE.Vector3();
   anchor.getWorldPosition(worldPos);
@@ -555,7 +611,7 @@ function zoomToPlanet(planetId: string): void {
   const planetRadius = bodySceneRadius(kindRadius(planet), "planet");
   const moons = SolarSystem.bodies.filter(b => b.kind === "moon" && b.parentId === planetId);
 
-  let maxMoonDist = planetRadius * 3;
+  let maxMoonDist = planetRadius * 2.5;
   for (const m of moons) {
     const mAnchor = bodyAnchor(m.id);
     if (mAnchor) {
@@ -566,17 +622,17 @@ function zoomToPlanet(planetId: string): void {
     }
   }
 
-  const frameDist = Math.max(planetRadius * 4.5, maxMoonDist * 2.2);
+  const frameDist = Math.max(planetRadius * 4.5, maxMoonDist * 1.8);
   focusTarget = worldPos.clone();
   cameraTargetPos = new THREE.Vector3(
     worldPos.x,
-    worldPos.y + frameDist * 0.55,
-    worldPos.z + frameDist * 1.05
+    worldPos.y + frameDist * 0.45,
+    worldPos.z + frameDist * 0.95
   );
 
   if (controls) {
-    controls.minDistance = Math.max(0.5, planetRadius * 1.2);
-    controls.maxDistance = frameDist * 5;
+    controls.minDistance = Math.max(0.15, planetRadius * 1.1);
+    controls.maxDistance = Math.max(50, frameDist * 5);
   }
 
   updateVignetteActive(planetId);
@@ -590,22 +646,24 @@ function zoomToMoon(moonId: string): void {
   if (!anchor) return;
 
   selectedBodyId = moonId;
+  if (moon.parentId) setMoonsVisibility(moon.parentId);
+
   const worldPos = new THREE.Vector3();
   anchor.getWorldPosition(worldPos);
 
   const moonRadius = bodySceneRadius(kindRadius(moon), "moon");
-  const frameDist = Math.max(1.5, moonRadius * 7);
+  const frameDist = Math.max(0.45, moonRadius * 8);
 
   focusTarget = worldPos.clone();
   cameraTargetPos = new THREE.Vector3(
     worldPos.x,
-    worldPos.y + frameDist * 0.5,
-    worldPos.z + frameDist * 1.1
+    worldPos.y + frameDist * 0.45,
+    worldPos.z + frameDist * 0.95
   );
 
   if (controls) {
-    controls.minDistance = Math.max(0.1, moonRadius * 1.2);
-    controls.maxDistance = frameDist * 6;
+    controls.minDistance = Math.max(0.04, moonRadius * 1.1);
+    controls.maxDistance = Math.max(20, frameDist * 6);
   }
 
   if (moon.parentId) updateVignetteActive(moon.parentId);
@@ -660,7 +718,17 @@ function pickBody(canvas: HTMLCanvasElement, clientX: number, clientY: number): 
     -((clientY - rect.top) / rect.height) * 2 + 1
   );
   raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObjects(bodyMeshes, false)[0];
+
+  const visibleMeshes = bodyMeshes.filter(mesh => {
+    let cur: THREE.Object3D | null = mesh;
+    while (cur) {
+      if (!cur.visible) return false;
+      cur = cur.parent;
+    }
+    return true;
+  });
+
+  const hit = raycaster.intersectObjects(visibleMeshes, false)[0];
   return (hit?.object.userData.bodyId as string) ?? null;
 }
 
@@ -676,13 +744,17 @@ function animate(): void {
     if (controls) {
       if (focusTarget) {
         controls.target.lerp(focusTarget, 0.08);
-        if (controls.target.distanceTo(focusTarget) < 0.05) focusTarget = null;
+        if (controls.target.distanceTo(focusTarget) < 0.02) focusTarget = null;
       }
       if (cameraTargetPos && camera) {
         camera.position.lerp(cameraTargetPos, 0.08);
-        if (camera.position.distanceTo(cameraTargetPos) < 0.1) cameraTargetPos = null;
+        if (camera.position.distanceTo(cameraTargetPos) < 0.05) cameraTargetPos = null;
       }
       controls.update();
+    }
+    for (const pGroup of planetGroups) {
+      const planetSphere = pGroup.children[0];
+      if (planetSphere) planetSphere.rotation.y += 0.002;
     }
     render();
   };
@@ -922,6 +994,7 @@ function showInspector(body: CelestialBody): void {
     </header>
     <div class="systemInspectorBody">
       ${parentPlanet ? `<div class="systemInspectorParentLink" data-parent="${parentPlanet.id}">← Back to ${escapeHtml(parentPlanet.name)}</div>` : ""}
+      ${isPlanet ? `<div class="systemInspectorParentLink systemInspectorSystemLink">← ${t("Back to System View")}</div>` : ""}
       <div class="systemInspectorRow"><span>${t("Archetype")}</span><b>${t(ARCHETYPE_LABELS[body.archetype] ?? body.archetype)}</b></div>
       <div class="systemInspectorRow"><span>${t("Classification")}</span><b>${type}${subtype && subtype !== type ? ` (${subtype})` : ""}</b></div>
       ${isPlanet ? `<div class="systemInspectorRow"><span>${t("Orbit")}</span><b>${rn(body.orbit.semiMajorAxisAU, 2)} AU</b></div>` : ""}
@@ -967,9 +1040,10 @@ function showInspector(body: CelestialBody): void {
   document.body.appendChild(panel);
 
   panel.querySelector("#systemInspectorClose")?.addEventListener("click", () => panel.remove());
-  panel.querySelector(".systemInspectorParentLink")?.addEventListener("click", () => {
+  panel.querySelector(".systemInspectorParentLink:not(.systemInspectorSystemLink)")?.addEventListener("click", () => {
     if (parentPlanet) zoomToPlanet(parentPlanet.id);
   });
+  panel.querySelector(".systemInspectorSystemLink")?.addEventListener("click", () => zoomToSystem());
   for (const moonRow of panel.querySelectorAll(".systemInspectorMoonRow")) {
     moonRow.addEventListener("click", () => {
       const moonId = (moonRow as HTMLElement).dataset.moon;
