@@ -430,7 +430,7 @@ export function presetAstro(body: SolPresetBody): Planet | Moon {
     kind: body.kind,
     type: body.astro.type,
     subtype: body.astro.type,
-    radius: body.astro.radius,
+    radius: body.astro.radius < 50 ? body.astro.radius * 1000 : body.astro.radius,
     density: body.astro.density,
     hydrographics: body.astro.hydrographics,
     atmosphere: body.astro.atmosphere,

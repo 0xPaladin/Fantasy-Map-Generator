@@ -10,9 +10,14 @@ import { createRng } from "@/model/physical/astral-system/rng";
 import type { System } from "@/model/physical/astral-system/system";
 import { type GenerateSystemOptions, generateSystem } from "@/model/physical/astral-system/system";
 import { applyPlanetaryOptions, resolveArchetype } from "@/model/physical/planetary-profile";
+import {
+  applySystemPolityContext,
+  preparePlanetaryGenerationConfig,
+  seedPlanetaryCultures
+} from "@/model/system/planetary-polity";
 import type { GridGraph } from "@/types/grid-graph";
 import type { PackedGraph } from "@/types/packed-graph";
-import { ARCHETYPE_HEIGHTMAP_TEMPLATES, type PlanetaryArchetype } from "@/types/planetary";
+import { ARCHETYPE_HEIGHTMAP_TEMPLATES, type PlanetaryArchetype, type SystemOriginContext } from "@/types/planetary";
 import type { StylesData } from "@/types/styles";
 
 export interface WorldSnapshot {
@@ -59,6 +64,7 @@ class SolarSystemModule {
   activeBodyId: string | null = null;
   seed: string | null = null;
   star: System["star"] | null = null;
+  originContext?: SystemOriginContext;
   /** the FMG world the session started from, parked before the first body materialization */
   private originSnapshot: WorldSnapshot | null = null;
   /** view refresh hook; the app binds Layers.drawAll here so the model stays renderer-free */
@@ -81,6 +87,8 @@ class SolarSystemModule {
     if (!this.originSnapshot) return; // no body switch happened yet; the origin is what is on screen
     this.restoreGlobals(this.originSnapshot);
     this.activeBodyId = null;
+    this.syncView();
+    this.redraw();
   }
 
   /** Drop the parked origin world: for tests, or when the session's base map is regenerated */
@@ -90,8 +98,9 @@ class SolarSystemModule {
 
   /** Build a system from a procedural astral-system roll. Colonized systems center on a
    * habitable star by default — without it some seeds roll giant-poor primaries with no worlds */
-  initFromSeed(seed: string, opts: GenerateSystemOptions = {}): void {
+  initFromSeed(seed: string, opts: GenerateSystemOptions = {}, originContext?: SystemOriginContext): void {
     this.adopt(generateSystem(seed, { forceHabitable: true, ...opts }), opts.systemName);
+    this.originContext = originContext;
   }
 
   /** Build the canonical near-future Sol system preset */
@@ -110,6 +119,7 @@ class SolarSystemModule {
     this.activeBodyId = null;
     this.seed = null;
     this.star = null;
+    this.originContext = undefined;
   }
 
   private adopt(system: System, customName?: string): void {
@@ -192,9 +202,11 @@ class SolarSystemModule {
     const terranMoon = this.bodies.find(body => body.kind === "moon" && body.archetype === "terran");
     if (terranMoon) return terranMoon.id;
     return (
-      this.bodies.find(body => body.kind === "planet" && body.colonizable) ??
-      this.bodies.find(body => body.colonizable)
-    )?.id ?? null;
+      (
+        this.bodies.find(body => body.kind === "planet" && body.colonizable) ??
+        this.bodies.find(body => body.colonizable)
+      )?.id ?? null
+    );
   }
 
   /** Kepler's third law around the primary, mirroring generateSystem */
@@ -235,6 +247,7 @@ class SolarSystemModule {
     else this.restoreGlobals(target.snapshot);
 
     this.activeBodyId = target.id;
+    this.syncView();
     this.redraw();
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("system:bodySwitched", { detail: { bodyId: target.id } }));
@@ -274,21 +287,42 @@ class SolarSystemModule {
     // 2:1 equirectangular aspect for a full globe; mapSize 100 makes the pipeline's own
     // Coordinates.calculate() derive latT 180 / lonT 360 from the aspect ratio
     const globeHeight = Math.round(config.map.graph.width / 2);
-    config.map.graph = { ...config.map.graph, height: globeHeight };
-    config.generation.graph = { ...config.generation.graph, height: globeHeight };
-    config.generation.geography = { ...config.generation.geography, mapSize: 100 };
+    const globeWidth = globeHeight * 2;
+    config.map.graph = { ...config.map.graph, width: globeWidth, height: globeHeight };
+    config.generation.graph = { ...config.generation.graph, width: globeWidth, height: globeHeight };
+    config.generation.geography = { mapSize: 100, latitude: 50, longitude: 50 };
+    config.map.geography.mapSize = 100;
+    config.map.geography.latitude = 50;
+    config.map.geography.longitude = 50;
+    config.map.extents = "whole";
+    config.map.astral = false;
     config.generation.template = ARCHETYPE_HEIGHTMAP_TEMPLATES[archetype];
+
+    preparePlanetaryGenerationConfig(config, body.astro, this.originContext);
 
     globalThis.styles = structuredClone(globalThis.styles ?? ({} as StylesData));
     globalThis.options = config;
-    applyPlanetaryOptions(body.astro); // globe coordinates, climate and archetype onto the new options
+    applyPlanetaryOptions(body.astro); // globe coordinates, distance scale, climate and archetype onto the new options
     globalThis.grid = {} as GridGraph;
     globalThis.pack = {} as PackedGraph;
 
+    seedPlanetaryCultures(globalThis.pack, this.originContext);
+
     await GenerationPipeline.run({});
+
+    applySystemPolityContext(globalThis.pack, body.astro, this.originContext);
 
     body.materialized = true;
     body.snapshot = this.captureGlobals();
+  }
+
+  private syncView(): void {
+    if (typeof window === "undefined") return;
+    const svg = document.getElementById("map");
+    if (svg && options.map.graph) {
+      svg.setAttribute("width", String(options.map.graph.width));
+      svg.setAttribute("height", String(options.map.graph.height));
+    }
   }
 
   /** redraw the map after a switch; the hook keeps renderer imports out of headless contexts */

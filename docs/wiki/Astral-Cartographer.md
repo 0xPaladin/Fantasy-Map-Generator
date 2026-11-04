@@ -44,3 +44,11 @@ The big worlds sit on the comfortable stars; the small ones on the exotic, harsh
 The installations become the system's own: a port is a **shipyard**, a citadel a **bastion**, a plaza a **civic core**, a shanty a **drift**, a temple a **shrine**, walls are **shielding**.
 
 In the browser console, `Astral.systems()` returns the same list as data.
+
+### Planetary Surfaces & System Orrery
+Opening a system's **System Editor** reveals its stars and orbiting worlds. Each rocky planet or moon can be inspected in a 3D Three.js Orrery or materialized directly into a full-globe FMG map (`latT = 180`, `lonT = 360`, 2:1 aspect ratio).
+
+Materialized worlds inherit the star system's Culture, State, and Religion:
+- **Culture**: The sector culture expands across the globe, providing the sector's naming base, heraldry, and values to planetary settlements and regions.
+- **States & Provinces**: States are limited to colonial administrations (directorates, governorates, charters) of the overarching sector polity, while **Provinces (100% coverage)** serve as the primary political divisions across the planetary surface.
+- **Physical Scale**: The distance scale calculates directly from the astronomical radius ($\pi R_{\text{km}}$), faithfully scaling distances across worlds from minor icy moons to massive super-Earths.

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { Options } from "@/model/options/options-model";
+import type { SystemOriginContext } from "@/types/planetary";
 import { SolarSystem } from "./solar-system";
 
 const ARCHETYPES = ["terran", "lunar", "martian", "icy_moon", "titan", "volcanic", "gas_giant"];
@@ -24,9 +25,13 @@ describe("SolarSystem registry", () => {
     expect(SolarSystem.homeworldId).toBeTruthy();
 
     const homeworld = SolarSystem.homeworld!;
-    expect(homeworld.kind).toBe("planet");
+    expect(["planet", "moon"]).toContain(homeworld.kind);
     expect(homeworld.colonizable).toBe(true);
-    expect(homeworld.parentId).toBeNull();
+    if (homeworld.kind === "planet") {
+      expect(homeworld.parentId).toBeNull();
+    } else {
+      expect(homeworld.parentId).toMatch(/^planet-\d+$/);
+    }
 
     for (const moon of moons) {
       expect(moon.parentId).toMatch(/^planet-\d+$/);
@@ -190,5 +195,68 @@ describe("SolarSystem.switchBody", () => {
     await SolarSystem.switchBody(target.id);
     expect(grid).not.toBe(originGrid);
     expect(SolarSystem.activeBodyId).toBe(target.id);
+  });
+
+  it("binds materialized worlds to sector Culture, State, Provinces and Religion", async () => {
+    const originContext = {
+      burgId: 10,
+      burgName: "Nova Terra",
+      population: 50,
+      isCapital: false,
+      port: 0,
+      culture: {
+        i: 1,
+        name: "Valyrian",
+        base: "ROMAN",
+        color: "#c0392b",
+        shield: "heater",
+        type: "Generic",
+        origins: [0]
+      },
+      state: {
+        i: 1,
+        name: "Valyrian Freehold",
+        form: "Republic",
+        color: "#e74c3c",
+        coa: { shield: "heater" }
+      },
+      province: {
+        i: 1,
+        name: "Outer Rim Province",
+        state: 1
+      },
+      religion: {
+        i: 1,
+        name: "Cult of the Red Star",
+        type: "Organized",
+        form: "Monotheism",
+        color: "#f39c12"
+      }
+    };
+
+    SolarSystem.initFromSeed("42", {}, originContext as unknown as SystemOriginContext);
+    const homeworld = SolarSystem.homeworld!;
+    await SolarSystem.switchBody(homeworld.id);
+
+    // Physical full-globe geometry & radius scaling
+    expect(options.map.graph.width).toBe(options.map.graph.height * 2);
+    expect(options.map.geography.mapSize).toBe(100);
+    expect(options.map.geography.coordinates.latT).toBe(180);
+    expect(options.map.geography.coordinates.lonT).toBe(360);
+    expect(options.map.units.distance.scale).toBeGreaterThan(0);
+
+    // Sector Culture bound
+    expect(pack.cultures.length).toBeGreaterThan(1);
+    expect(pack.cultures[1].name).toBe("Valyrian");
+    expect(pack.cultures[1].base).toBe("ROMAN");
+
+    // Sector State bound as authority/administration
+    expect(pack.states.length).toBeGreaterThan(1);
+    expect(pack.states[1].name).toContain("Valyrian Freehold");
+    expect(pack.states[1].color).toBe("#e74c3c");
+
+    // Sector Religion bound
+    expect(pack.religions.length).toBeGreaterThan(1);
+    expect(pack.religions[1].name).toBe("Cult of the Red Star");
   });
 });

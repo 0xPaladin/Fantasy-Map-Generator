@@ -1439,10 +1439,9 @@ class CulturesGenerator {
     cultures.forEach((c: Culture, i: number) => {
       const newId = i + 1;
 
-      if (c.lock) {
+      if (c.lock && c.center !== undefined && this.cells.p[c.center]) {
         codes.push(c.code as string);
-        const lockedCenter = c.center === undefined ? undefined : this.cells.p[c.center];
-        if (lockedCenter) centers.add(lockedCenter);
+        centers.add(this.cells.p[c.center]);
 
         for (const i of this.cells.i) {
           if (this.cells.culture[i] === c.i) cultureIds[i] = newId;
@@ -1460,22 +1459,22 @@ class CulturesGenerator {
       c.i = newId;
       delete c.odd;
       delete c.sort;
-      c.color = colors[i];
-      c.type = defineCultureType(center);
-      c.expansionism = defineCultureExpansionism(c.type);
-      c.origins = [0];
-      c.code = abbreviate(c.name, codes);
+      c.color = c.color || colors[i];
+      c.type = c.type || defineCultureType(center);
+      c.expansionism = c.expansionism || defineCultureExpansionism(c.type);
+      c.origins = c.origins || [0];
+      c.code = c.code || abbreviate(c.name, codes);
       codes.push(c.code);
 
       // a culture starts from scratch: the neutral column, not its parent's
-      if (withTraits) {
+      if (withTraits && !c.alignment) {
         const rng = traitsRng(options.map.seed, "culture", newId);
         c.alignment = rollAlignment(rng);
         c.values = rollValues(rng, c.alignment);
       }
 
       cultureIds[center] = newId;
-      if (emblemShape === "random") c.shield = this.getRandomShield();
+      if (emblemShape === "random" && !c.shield) c.shield = this.getRandomShield();
       c.tags = c.tags ?? [];
     });
 
@@ -1576,7 +1575,7 @@ class CulturesGenerator {
     if (hasLocked) {
       for (const cellId of cells.i) {
         const culture = cultures[cells.culture[cellId]];
-        if (culture.lock) continue;
+        if (culture?.lock) continue;
         cells.culture[cellId] = 0;
       }
     } else {
@@ -1584,7 +1583,18 @@ class CulturesGenerator {
     }
 
     for (const culture of cultures) {
-      if (!culture.i || culture.removed || culture.lock) continue;
+      if (!culture.i || culture.removed) continue;
+      // Skip expanding if this locked culture already had established territory
+      if (culture.lock) {
+        let count = 0;
+        for (const cellId of cells.i) {
+          if (cells.culture[cellId] === culture.i) {
+            count++;
+            if (count > 1) break;
+          }
+        }
+        if (count > 1) continue;
+      }
       queue.push({ cellId: culture.center as number, cultureId: culture.i, priority: 0 }, 0);
     }
 

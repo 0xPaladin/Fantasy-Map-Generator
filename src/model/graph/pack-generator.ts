@@ -65,7 +65,11 @@ class PackModule {
 
   /** generate does clean pack graph so clear data where required */
   clear(): void {
+    const lockedCultures = pack?.cultures?.filter(c => c.lock && !c.removed);
     pack = {} as PackedGraph;
+    if (lockedCultures && lockedCultures.length > 0) {
+      pack.cultures = lockedCultures;
+    }
   }
 
   /** one quadtree per graph, rebuilt when the cell points are replaced */

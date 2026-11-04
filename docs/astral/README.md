@@ -222,13 +222,30 @@ height, moisture, temperature and latitude. Wet, warm martian basins fall throug
 terrestrial matrix, so terraformed coasts grow green inside the red. Biomes 0..12 stay untouched,
 and the tables round-trip through vanilla save and load byte for byte.
 
-**Planetary heightmaps.** Five templates materialize the archetypes: `lunarWorld` (cratered
-regolith over dry maria), `martianWorld` (southern highlands, a Valles Marineris-style rift and
-Tharsis shields), `icyMoon` (lineae rifts over a smooth shell), `titanWorld` (dune bands and
-polar hydrocarbon lakes) and `volcanicWorld` (flood basalts and calderas). A new `Crater`
-template tool composes a raised ejecta rim, an excavated bowl and — for deep impacts — a central
-rebound peak, and `smoothSeam` blends the map edges so dry globes stay continuous across the
-antimeridian. All five carry probability 0: standard fantasy rolls never pick them.
+**Planetary heightmaps & full-globe geometry.** Six templates materialize the archetypes: `globeWorld`
+(terran), `lunarWorld` (cratered regolith over dry maria), `martianWorld` (southern highlands, a
+Valles Marineris-style rift and Tharsis shields), `icyMoon` (lineae rifts over a smooth shell),
+`titanWorld` (dune bands and polar hydrocarbon lakes) and `volcanicWorld` (flood basalts and
+calderas). All six templates carry whole-world chance 1 in `WHOLE_WORLD_CHANCE`, and materializing
+a body enforces a 2:1 full globe (`mapSize = 100`, `latT = 180`, `lonT = 360`, `lat = 50`, `lon = 50`,
+`extents = "whole"`). A `Crater` template tool composes a raised ejecta rim, an excavated bowl and
+a central rebound peak, while `smoothSeam` blends the map edges so dry globes stay continuous across
+the antimeridian.
+
+**Astronomical radius scaling.** Each celestial body's radius is normalized to kilometers, and its
+map distance scale (`options.map.units.distance.scale`) is computed from the physical meridian
+($\text{scale} = \frac{\pi R_{\text{km}}}{\text{kmPerUnit} \cdot \text{graph.height}}$). Distances in
+miles or kilometers across the globe match the true physical dimensions of the planet or moon.
+
+**Sector polity, culture & religion binding.** Materializing a world from a star system extracts
+its `SystemOriginContext` from the sector map (burg, culture, state, province, and religion):
+- **Cultures**: The sector burg's primary culture is locked into `pack.cultures[1]`—preserving its
+  linguistic name base, shield, ancestry, alignment, and values—and expanded to cover the globe.
+- **States & Provinces**: Rather than generating random fantasy states, planetary states are limited
+  by habitability (`0` on uninhabitable bodies, `1` on outposts/moons, `1–3` on core worlds) and
+  structured as colonial administrations/directorates of the overarching sector polity. **Provinces are
+  generated at 100% coverage**, serving as the primary political divisions of the planetary surface.
+- **Religion**: The sector star system's religion is bound as the dominant planetary faith.
 
 **What the orrery draws.** The star, the planets, their orbit lines and rings; moons stay in the
 readout table and out of the 3D scene, keeping the system view readable at compressed orbital
@@ -306,6 +323,11 @@ As detailed in [`docs/plans/mod-merge-plan.md`](../plans/mod-merge-plan.md):
   Back to Sector / Back to System buttons under the layers panel, the Astral button hiding while
   the chart is on, and every planet view landing in the standard editable map. The design is in
   [`docs/plans/solar-system-colonization.md`](../plans/solar-system-colonization.md).
+- **Shipped (planetary polity & physical globe binding)**: materialized worlds inherit sector Culture,
+  State, Province, and Religion context via `SystemOriginContext`. States are limited to colonial
+  administrations with 100% province coverage as the primary surface layer. Worlds generate full 2:1
+  globes (`mapSize = 100`, `latT = 180`, `lonT = 360`, `extents = "whole"`), planetary templates carry
+  whole-world chance 1, and distance scales reflect normalized astronomical radii ($\pi R_{\text{km}}$).
 
 ---
 *For upstream merge tracking, see [MERGING.md](../../MERGING.md).*

@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Options } from "@/model/options/options-model";
 import type { Planet } from "@/model/physical/astral-system/planet";
-import { applyPlanetaryOptions, resolveArchetype } from "./planetary-profile";
+import {
+  applyPlanetaryOptions,
+  computePlanetaryDistanceScale,
+  getRadiusKm,
+  resolveArchetype
+} from "./planetary-profile";
 
 const body = (over: Partial<Planet> = {}): Planet =>
   ({
@@ -99,5 +104,43 @@ describe("applyPlanetaryOptions", () => {
 
     applyPlanetaryOptions(body({ hydrographics: 40, atmosphere: "Inert" }));
     expect(options.map.climate.precipitation).toBe(56);
+  });
+
+  it("sets the proper planetary heightmap template and distance scale", () => {
+    // Earth-sized body in km with miles as distance unit
+    options.map.units.distance.unit = "mi";
+    options.map.graph.height = 640;
+    const earthArchetype = applyPlanetaryOptions(
+      body({ HI: 1, radius: 6371, hydrographics: 70, atmosphere: "Breathable" })
+    );
+    expect(earthArchetype).toBe("terran");
+    expect(options.generation.template).toBe("globeWorld");
+    expect(options.map.units.distance.scale).toBe(19.43);
+
+    // Luna-sized body in megameters (Sol preset format)
+    const lunarArchetype = applyPlanetaryOptions(body({ HI: 3, radius: 1.737, hydrographics: 0, atmosphere: "Trace" }));
+    expect(lunarArchetype).toBe("lunar");
+    expect(options.generation.template).toBe("lunarWorld");
+    expect(options.map.units.distance.scale).toBe(5.3);
+
+    // In km unit
+    options.map.units.distance.unit = "km";
+    applyPlanetaryOptions(body({ HI: 1, radius: 6371 }));
+    expect(options.map.units.distance.scale).toBe(31.27);
+  });
+});
+
+describe("computePlanetaryDistanceScale & getRadiusKm", () => {
+  it("normalizes megameters and kilometers", () => {
+    expect(getRadiusKm({ radius: 6.371 })).toBe(6371);
+    expect(getRadiusKm({ radius: 6371 })).toBe(6371);
+    expect(getRadiusKm({ radius: 0.252 })).toBe(252);
+  });
+
+  it("calculates accurate pole-to-pole meridian scale", () => {
+    // Earth meridian ~ 20015 km / 640 px = 31.27 km/px
+    expect(computePlanetaryDistanceScale(6371, 640, 1)).toBe(31.27);
+    // In miles (1 mi = 1.609344 km): 20015 / (640 * 1.609344) = 19.43 mi/px
+    expect(computePlanetaryDistanceScale(6371, 640, 1.609344)).toBe(19.43);
   });
 });

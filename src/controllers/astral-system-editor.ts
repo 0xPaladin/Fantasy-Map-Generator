@@ -8,11 +8,19 @@ import { ASTRAL_WORLD_TYPE_KEYS, type AstralWorldType } from "@/data/astral-good
 import { Goods } from "@/model/economy/goods-generator";
 import { type Market, Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
-import { isCoreOrCapital, peopleOf, setWorldTypeFor, starClassFor, tradeGoodsFor, worldTypeFor } from "@/model/physical/astral-naming";
+import {
+  isCoreOrCapital,
+  peopleOf,
+  setWorldTypeFor,
+  starClassFor,
+  tradeGoodsFor,
+  worldTypeFor
+} from "@/model/physical/astral-naming";
 import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-system";
 import { starTypeData } from "@/model/physical/astral-system/astrophysics";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
+import { extractSystemOriginContext } from "@/model/system/planetary-polity";
 import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
@@ -354,7 +362,8 @@ function renderSystemDetails(details: SystemDetails): void {
       </tr>`;
 
       const moonRows = (planet.moonRows ?? [])
-        .map(moon => `
+        .map(
+          moon => `
       <tr style="background: rgba(255, 255, 255, 0.035)">
         <td style="${CELL_STYLE}; padding-left: 1.6em">
           <span style="opacity: 0.6; margin-right: 0.3em">↳</span>${escapeHtml(moon.name)}
@@ -378,7 +387,8 @@ function renderSystemDetails(details: SystemDetails): void {
         <td style="${CELL_STYLE}; text-align: right">${rn(moon.water)}%</td>
         <td style="${CELL_STYLE}" data-tip="HI ${moon.hi}">${escapeHtml(moon.habitability)}</td>
         <td style="${CELL_STYLE}; text-align: right">—</td>
-      </tr>`)
+      </tr>`
+        )
         .join("");
 
       return planetRow + moonRows;
@@ -558,11 +568,16 @@ function ensureSolarSystem(): void {
   const seed = `${options.map.seed}/astral/system/${burgId}`;
   if (SolarSystem.seed === seed && SolarSystem.bodies.length) return; // keep materialized snapshots
   const burg = pack.burgs[burgId];
+  const originContext = extractSystemOriginContext(pack, burgId);
   if (isCoreOrCapital(burg)) {
-    SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name });
+    SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name }, originContext);
   } else {
     const { class: spectral } = starClassFor(burg);
-    SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false, systemName: burg.name });
+    SolarSystem.initFromSeed(
+      seed,
+      { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false, systemName: burg.name },
+      originContext
+    );
   }
 }
 
@@ -578,7 +593,8 @@ async function openSystemOrrery(): Promise<void> {
 async function viewPlanetInFmg(event: Event): Promise<void> {
   const button = (event.target as HTMLElement).closest<HTMLElement>(".systemPlanetView");
   if (!button) return;
-  const bodyId = button.dataset?.body ?? (button.dataset?.planet !== undefined ? `planet-${button.dataset.planet}` : undefined);
+  const bodyId =
+    button.dataset?.body ?? (button.dataset?.planet !== undefined ? `planet-${button.dataset.planet}` : undefined);
   if (!bodyId) return;
 
   ensureSolarSystem();
