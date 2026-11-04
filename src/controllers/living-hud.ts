@@ -11,7 +11,6 @@ import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_PROMOTION_BY_ID } from "@/data/living-civ-promotions";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
 import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
@@ -26,6 +25,9 @@ import {
   PACIFY_MISSION_TAGS,
   troubleMissionTags
 } from "@/data/mission-tags";
+import { estimateOdds, type BattleModifiers } from "@/conquest/engine/game/battle";
+import { Military } from "@/model/political/military-generator";
+import { armyHp, armyIsEmpty, armyLead, armySlots, toBattleTypes, toBattleUnits } from "@/model/physical/living-armies";
 import { Pack } from "@/model/graph/pack-generator";
 import {
   activeCivThemeId,
@@ -1636,18 +1638,59 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
       holyCity ? ` · holy city ${escapeHtml(holyCity)}` : ""
     }</div>`;
 
+  const types = Military.getUnitTypes();
+  const battleConfig = currentContent().config;
+  const baseModifiers: BattleModifiers = {
+    walls: 0,
+    defenderEncamped: false,
+    defenderAmbushed: false,
+    attackerCrossedRiver: false,
+    labels: []
+  };
+  /** The army occupying a cell, used only for the odds preview. */
+  function armyAt(id: number, cell: number) {
+    return (pack.states[id]?.military ?? []).find(
+      entry => entry.cell === cell && living.armies?.[`${id}-${entry.i}`] && !armyIsEmpty(entry)
+    );
+  }
+  const adjacentEnemyOdds = (cell: number): string[] => {
+    const own = armyAt(stateId, cell);
+    if (!own) return [];
+    const lines: string[] = [];
+    for (const neighbor of pack.cells.c?.[cell] ?? []) {
+      for (const other of pack.states) {
+        if (!other?.i || other.removed || other.i === stateId) continue;
+        if (pack.states[stateId]?.diplomacy?.[other.i] !== "Enemy") continue;
+        const enemy = armyAt(other.i, neighbor);
+        if (!enemy) continue;
+        const odds = estimateOdds(
+          battleConfig,
+          { factionId: stateId, armyId: null, units: toBattleUnits(own.units ?? []) },
+          { factionId: other.i, armyId: null, units: toBattleUnits(enemy.units ?? []) },
+          baseModifiers,
+          toBattleTypes(types)
+        );
+        lines.push(`<div class="livingMuted">vs ${escapeHtml(other.name)}: ${odds.attackerWinPct}% win</div>`);
+      }
+    }
+    return lines;
+  };
+
   const regiments = (pack.states[stateId]?.military ?? [])
     .map(regiment => {
-      const unit = living.units?.[`${stateId}-${regiment.i}`];
+      const key = `${stateId}-${regiment.i}`;
+      const army = living.armies?.[key];
+      if (army) {
+        const lead = armyLead(regiment);
+        const name = lead ? (types[lead.type]?.name ?? lead.type) : "Army";
+        return `<li>${escapeHtml(name)} · ${Math.round(armyHp(regiment) * 100)}% · ${armySlots(regiment)} blocks · ${
+          army.stance
+        }${adjacentEnemyOdds(regiment.cell).join("")}</li>`;
+      }
+      const unit = living.units?.[key];
       if (!unit) return "";
       const def = CIV_UNIT_BY_ID[unit.unitTypeId];
-      const promotions = unit.promotions
-        .map(id => CIV_PROMOTION_BY_ID[id]?.name ?? id)
-        .filter(Boolean)
-        .join(", ");
-      return `<li>${escapeHtml(def?.name ?? unit.unitTypeId)} · HP ${Math.round(unit.hp)} · Lv ${unit.level}${
-        promotions ? ` · ${escapeHtml(promotions)}` : ""
-      }</li>`;
+      return `<li>${escapeHtml(def?.name ?? unit.unitTypeId)} · utility</li>`;
     })
     .filter(Boolean)
     .join("");
@@ -1673,7 +1716,7 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
   </div>
   ${
     regiments
-      ? `<div class="livingSection"><div class="livingSectionTitle">Regiments (1UPT)</div><ul>${regiments}</ul></div>`
+      ? `<div class="livingSection"><div class="livingSectionTitle">Armies</div><ul>${regiments}</ul></div>`
       : ""
   }`;
 }

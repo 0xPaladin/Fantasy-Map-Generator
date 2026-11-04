@@ -13,6 +13,8 @@ import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/conquest/engine/comp
 import {
   type BattleModifiers,
   type BattleOutcome,
+  type BattleSession,
+  type BattleTacticalOrder,
   estimateOdds,
   finalizeBattle,
   initBattleSession,
@@ -54,7 +56,6 @@ import {
 } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
-import { CIV_PROMOTION_BY_ID } from "@/data/living-civ-promotions";
 import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { CIV_ALL_UNITS, CIV_UNIT_BY_ID } from "@/data/living-civ-units";
@@ -109,12 +110,17 @@ import {
   armyLead,
   armyMen,
   armySpeed,
+  armyStrength,
   blockPower,
+  chooseOrder,
+  fromBattleUnits,
   fromBattleUnitsMen,
   isCivilianUnit,
   matchRosterUnitByCategory,
   migrateArmyBlocks,
   normalizeArmy,
+  toBattleTypes,
+  toBattleUnits,
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
@@ -133,7 +139,9 @@ import { isAstralView } from "@/renderers/view-mode";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import {
   type ActiveGuildMission,
+  type ArmyBattleRecord,
   type ArmySimState,
+  type ArmyStance,
   type BurgSimState,
   type CapacityLedger,
   type CellResourceInfo,
@@ -5617,39 +5625,6 @@ class LivingModel {
     unit.hp = Math.min(UNIT_MAX_HP, unit.hp + heal);
   }
 
-  /** Effective strength with terrain, river, fortification, happiness and promotion modifiers. */
-  private effectiveStrength(
-    unit: UnitSimState,
-    cell: number,
-    stateId: number,
-    role: "attack" | "defend",
-    targetCell?: number
-  ): number {
-    let strength = role === "attack" && unitIsRanged(unit) ? unit.rangedStrength : unit.combatStrength;
-    if (role === "defend") strength *= terrainDefenseMultiplier(cell);
-    if (role === "defend" && unit.fortified) strength *= 1.25;
-
-    if (role === "attack" && targetCell !== undefined) {
-      const crossesRiver =
-        Number(pack.cells.r?.[cell] ?? 0) !== Number(pack.cells.r?.[targetCell] ?? 0) &&
-        Number(pack.cells.r?.[targetCell] ?? 0) > 0;
-      if (crossesRiver) strength *= 0.8;
-    }
-
-    const happiness = pack.history?.living?.states?.[stateId]?.happiness;
-    if (happiness !== undefined) strength *= happinessCombatMultiplier(happiness);
-    if (this.stateRelicCount(stateId, "weapon") > 0) strength *= 1 + WEAPON_RELIC_COMBAT_PERCENT / 100;
-
-    for (const id of unit.promotions) {
-      const effects = CIV_PROMOTION_BY_ID[id]?.effects;
-      if (!effects) continue;
-      if (role === "attack") strength *= 1 + (effects.attackPercent ?? 0) / 100;
-      else strength *= 1 + (effects.defensePercent ?? 0) / 100;
-    }
-
-    return Math.max(1, strength);
-  }
-
   /** Move a unit along the cheapest descending path toward a target cell. */
   private moveUnitToward(
     regiment: Regiment,
@@ -5706,7 +5681,7 @@ class LivingModel {
     const types = Military.getUnitTypes();
     const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
     if (enemy) {
-      this.resolveArmyDuel(state, regiment, enemy.state, enemy.regiment, living);
+      this.resolveArmyBattle(state, regiment, enemy.state, enemy.regiment, living);
       return true;
     }
 
@@ -5839,80 +5814,216 @@ class LivingModel {
     return null;
   }
 
-  /** Interim Phase-B duel: the lead block of each army fights, composition survives. */
-  private resolveArmyDuel(
+  /**
+   * Combined-arms battle through OpenConquest's battle.ts
+   * (living-openciv-armies.md §8). Both sides are blocks, so the 1,000-strength
+   * bridge keeps `fill = hp` exactly; the outcome converts back to hp before
+   * anything else reads it.
+   */
+  private resolveArmyBattle(
     attackerState: State,
     attackerRegiment: Regiment,
     defenderState: State,
     defenderRegiment: Regiment,
     living: LivingWorldState
   ): void {
+    const { config } = currentContent();
     const types = Military.getUnitTypes();
-    const attackerLead = armyLead(attackerRegiment);
-    const defenderLead = armyLead(defenderRegiment);
-    if (!attackerLead || !defenderLead) return;
-
-    const ranged = armyIsRangedBlocks(attackerRegiment, types);
-    const attackStrength = this.armyStrengthAt(
-      attackerRegiment,
-      attackerState.i,
-      "attack",
-      attackerRegiment.cell,
-      defenderRegiment.cell
-    );
-    const defendStrength = this.armyStrengthAt(
-      defenderRegiment,
-      defenderState.i,
-      "defend",
-      defenderRegiment.cell,
-      attackerRegiment.cell
-    );
-
-    const rng = this.rng("army:duel", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
-    const dealt = combatDamage(attackStrength, defendStrength, defenderLead.hp * 100, rng.next()) / 100;
-    defenderLead.hp = Math.max(0, defenderLead.hp - dealt);
-    if (!ranged) {
-      const back = combatDamage(defendStrength, attackStrength, attackerLead.hp * 100, rng.next()) / 100;
-      attackerLead.hp = Math.max(0, attackerLead.hp - back);
-    }
-
-    const attackerArmy = living.armies?.[this.unitKey(attackerState.i, attackerRegiment.i)];
-    if (attackerArmy) attackerArmy.hasFought = true;
-    if (ranged) this.awardBlockExp(attackerLead, 2);
-    else {
-      this.awardBlockExp(attackerLead, 5);
-      this.awardBlockExp(defenderLead, 4);
-    }
-
+    const maxSlots = config.military.maxUnitsPerArmy;
+    const attackerKey = this.unitKey(attackerState.i, attackerRegiment.i);
     const defenderKey = this.unitKey(defenderState.i, defenderRegiment.i);
-    if (armyIsEmpty(defenderRegiment)) {
-      if (armyIsEmpty(attackerRegiment) && attackerRegiment.units?.[0]) attackerRegiment.units[0].hp = 0.01;
+    const attackerArmy = living.armies?.[attackerKey];
+    const defenderArmy = living.armies?.[defenderKey];
+
+    const attackerUnits = toBattleUnits(attackerRegiment.units ?? []);
+    const defenderUnits = toBattleUnits(defenderRegiment.units ?? []);
+    if (attackerUnits.length === 0 || defenderUnits.length === 0) return;
+
+    const before = {
+      attackerHp: armyStrength(attackerRegiment),
+      defenderHp: armyStrength(defenderRegiment),
+      attackerBlocks: attackerRegiment.units?.length ?? 0,
+      defenderBlocks: defenderRegiment.units?.length ?? 0
+    };
+
+    const session = initBattleSession({
+      config,
+      unitTypes: toBattleTypes(types),
+      attacker: {
+        factionId: attackerState.i,
+        armyId: `fm-${attackerState.i}-${attackerRegiment.i}`,
+        units: attackerUnits
+      },
+      defender: {
+        factionId: defenderState.i,
+        armyId: `fm-${defenderState.i}-${defenderRegiment.i}`,
+        units: defenderUnits
+      },
+      cell: defenderRegiment.cell,
+      regionId: pack.cells.province?.[defenderRegiment.cell] ?? 0,
+      assault: false,
+      modifiers: this.armyBattleModifiers(attackerState, attackerRegiment, defenderState, defenderRegiment)
+    });
+
+    const rng = this.rng("army:battle", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
+    while (session.status === "active" && session.round < config.battle.maxRounds) {
+      stepBattleRound(session, rng.next, {
+        attacker: this.battleOrder(session, "attacker", attackerArmy?.stance ?? "march"),
+        defender: this.battleOrder(session, "defender", defenderArmy?.stance ?? "fortify")
+      });
+    }
+    const outcome = finalizeBattle(session, rng.next);
+
+    attackerRegiment.units = fromBattleUnits(outcome.attacker.units);
+    defenderRegiment.units = fromBattleUnits(outcome.defender.units);
+    normalizeArmy(attackerRegiment, maxSlots, types);
+    normalizeArmy(defenderRegiment, maxSlots, types);
+
+    if (attackerArmy) attackerArmy.hasFought = true;
+    if (defenderArmy) defenderArmy.hasFought = true;
+
+    const winnerRegiment = outcome.winner === "attacker" ? attackerRegiment : defenderRegiment;
+    for (const block of winnerRegiment.units ?? []) this.awardBlockExp(block, 5);
+
+    syncRegimentTotals(attackerRegiment, types);
+    syncRegimentTotals(defenderRegiment, types);
+
+    const after = {
+      attackerHp: armyStrength(attackerRegiment),
+      defenderHp: armyStrength(defenderRegiment),
+      attackerBlocks: attackerRegiment.units?.length ?? 0,
+      defenderBlocks: defenderRegiment.units?.length ?? 0
+    };
+    if (attackerArmy) {
+      attackerArmy.lastBattle = this.battleRecord(
+        attackerRegiment,
+        "attacker",
+        outcome.winner,
+        session.round,
+        living.tick,
+        {
+          before: before.attackerHp,
+          after: after.attackerHp,
+          beforeBlocks: before.attackerBlocks,
+          afterBlocks: after.attackerBlocks
+        }
+      );
+    }
+    if (defenderArmy) {
+      defenderArmy.lastBattle = this.battleRecord(
+        defenderRegiment,
+        "defender",
+        outcome.winner,
+        session.round,
+        living.tick,
+        {
+          before: before.defenderHp,
+          after: after.defenderHp,
+          beforeBlocks: before.defenderBlocks,
+          afterBlocks: after.defenderBlocks
+        }
+      );
+    }
+
+    const attackerWiped = armyIsEmpty(attackerRegiment);
+    const defenderWiped = armyIsEmpty(defenderRegiment);
+    if (defenderWiped) {
+      if (attackerWiped && attackerRegiment.units?.[0]) attackerRegiment.units[0].hp = 0.01;
       this.removeRegiment(defenderState, defenderRegiment, living);
-      if (!ranged) {
+      if (this.armyHasMelee(attackerRegiment, types)) {
         const occupancy = this.armyOccupancy(living);
-        this.moveRegimentTo(
-          attackerRegiment,
-          defenderRegiment.cell,
-          attackerState.i,
-          this.unitKey(attackerState.i, attackerRegiment.i),
-          occupancy
-        );
+        this.moveRegimentTo(attackerRegiment, defenderRegiment.cell, attackerState.i, attackerKey, occupancy);
       }
     }
-    if (armyIsEmpty(attackerRegiment)) {
-      this.removeRegiment(attackerState, attackerRegiment, living);
-    }
+    if (attackerWiped && !defenderWiped) this.removeRegiment(attackerState, attackerRegiment, living);
 
-    const defenderName = types[defenderLead.type]?.name ?? "unit";
+    const winnerName = outcome.winner === "attacker" ? attackerState.name : defenderState.name;
     this.pushNews(living, {
       kind: "battle",
-      text: ranged
-        ? `${attackerState.name} bombarded ${defenderState.name}'s ${defenderName}.`
-        : `${attackerState.name} clashed with ${defenderState.name}.`,
+      text:
+        `${attackerState.name} and ${defenderState.name} fought` +
+        (session.labels.length ? ` (${session.labels.slice(0, 2).join(", ")})` : "") +
+        `; ${winnerName} held the field after ${session.round} rounds.`,
       cell: defenderRegiment.cell,
       stateId: attackerState.i
     });
-    void defenderKey;
+  }
+
+  /** Battle modifiers from stance, terrain, river, walls and the lord multipliers. */
+  private armyBattleModifiers(
+    attackerState: State,
+    attackerRegiment: Regiment,
+    defenderState: State,
+    defenderRegiment: Regiment
+  ): BattleModifiers {
+    const living = this.getState();
+    const defenderArmy = living.armies?.[this.unitKey(defenderState.i, defenderRegiment.i)];
+
+    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
+    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const walls = burg?.i && !burg.removed && burg.state === defenderState.i ? Number(burg.walls ?? 0) : 0;
+    const attackerCrossedRiver =
+      Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
+      Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
+
+    const relicMult = (stateId: number) =>
+      this.stateRelicCount(stateId, "weapon") > 0 ? 1 + WEAPON_RELIC_COMBAT_PERCENT / 100 : 1;
+    const attackerLordMult =
+      happinessCombatMultiplier(living.states[attackerState.i]?.happiness) * relicMult(attackerState.i);
+    const defenderLordMult =
+      happinessCombatMultiplier(living.states[defenderState.i]?.happiness) * relicMult(defenderState.i);
+
+    return {
+      walls,
+      defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
+      defenderAmbushed: defenderArmy?.stance === "ambush",
+      attackerCrossedRiver,
+      defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
+      labels: [],
+      ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
+      ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
+    };
+  }
+
+  /** Deterministic round orders (§8.4): stance on contact, then react to the power curve. */
+  private battleOrder(session: BattleSession, side: "attacker" | "defender", stance: ArmyStance): BattleTacticalOrder {
+    const units = side === "attacker" ? session.attackerUnits : session.defenderUnits;
+    const blocks = fromBattleUnits(units);
+    if (session.round === 0) return chooseOrder(blocks, session.unitTypes, stance);
+
+    const last = session.history.at(-1);
+    const frac = side === "attacker" ? (last?.attackerPowerFrac ?? 1) : (last?.defenderPowerFrac ?? 1);
+    const cavalry = blocks.some(block => session.unitTypes[block.type]?.category === "cavalry");
+    if (frac < session.config.battle.routThreshold + 0.15 && cavalry) return "charge";
+    return "balanced";
+  }
+
+  private armyHasMelee(regiment: Regiment, types: Record<string, UnitType>): boolean {
+    return (regiment.units ?? []).some(block => {
+      if (block.hp <= 0) return false;
+      const category = types[block.type]?.category;
+      return category !== "ranged" && category !== "artillery" && category !== "spellcaster";
+    });
+  }
+
+  private battleRecord(
+    regiment: Regiment,
+    role: "attacker" | "defender",
+    winner: "attacker" | "defender",
+    rounds: number,
+    tick: number,
+    hp: { before: number; after: number; beforeBlocks: number; afterBlocks: number }
+  ): ArmyBattleRecord {
+    return {
+      tick,
+      cell: regiment.cell,
+      role,
+      winner,
+      rounds,
+      lossesHp: Math.max(0, hp.before - hp.after),
+      blocksLost: Math.max(0, hp.beforeBlocks - hp.afterBlocks),
+      survivorsHp: hp.before > 0 ? Math.max(0, Math.min(1, hp.after / hp.before)) : 0
+    };
   }
 
   /** Interim army strength: lead block power on the 0..100 duel scale, with modifiers. */
@@ -8781,9 +8892,8 @@ class LivingModel {
     if (this.hasCityTerrain()) {
       const living = this.getState();
       const bSim = living.burgs[burg.i];
-      const unit = living.units?.[this.unitKey(stateId, army.i)];
-      if (!bSim || !unit) return 50;
-      const attack = this.effectiveStrength(unit, army.cell, stateId, "attack", burg.cell);
+      if (!bSim || !living.armies?.[this.unitKey(stateId, army.i)]) return 50;
+      const attack = this.armyStrengthAt(army, stateId, "attack", army.cell, burg.cell);
       const defense = this.cityDefenseStrength(bSim, burg);
       return minmax(Math.round(50 + (attack - defense) * 5), 5, 95);
     }

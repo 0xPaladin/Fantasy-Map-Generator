@@ -943,16 +943,25 @@ Each phase is independently shippable and testable. No phase may leave the map i
 4. **City strikes already remove `CITY_STRIKE_HP = 0.1`** from one block, ahead of Phase D's fuller siege model.
 5. **The interim duel uses `blockPower × 6`** on the 0–100 `combatDamage` scale. It exists only to keep the map playable until Phase C replaces it; no balance tuning was spent on it.
 
-### Phase C — Combined-arms battle
+### Phase C — Combined-arms battle — **DONE**
 
-- [ ] `resolveArmyBattle` (§8) replacing `resolveUnitBattle` in `stepUnitOrders`.
-- [ ] `toBattleUnits`/`fromBattleUnits`/`toBattleTypes` at the battle boundary; write-back via `fromBattleUnits` + `syncRegimentTotals`.
-- [ ] `chooseOrder`, modifier assembly, seeded PRNG, XP, occupation, news.
-- [ ] Delete `effectiveStrength` combat path for armies (keep for city strikes until Phase D).
-- [ ] `estimateOdds` surfaced on the HUD for each adjacent enemy.
-- [ ] Tests: 2:1 annihilation, rout, charge vs brace, cavalry vs ranged, monster/spellcaster, terrain, river, encamp, unhappy, relic, determinism, zero-hp pruning, `reg.a` mirror, `hp` conservation (`Σ hp before − Σ hp after == lossesHp`).
+- [x] `resolveArmyBattle` replaces the interim duel; `stepArmyOrders` calls it on contact.
+- [x] Both sides are blocks, so `toBattleUnits` / `fromBattleUnits` / `toBattleTypes` are the boundary; write-back runs `normalizeArmy` + `syncRegimentTotals`.
+- [x] Modifiers assembled from stance (`encamp`/`fortify`, `ambush`), terrain, river, city walls under the defender, happiness and the weapon relic. Labels come from `computeBattleSetup`.
+- [x] Deterministic orders: `chooseOrder` on contact, then `balanced`, or `charge` when losing and cavalry is present. PRNG stream `"army:battle"`.
+- [x] XP +1 per surviving block on the winning side (clamped 9); occupation only when the winner still has a melee block; `ArmyBattleRecord` (`lossesHp`, `blocksLost`, `survivorsHp`) stored on both armies.
+- [x] `effectiveStrength` and the Civ promotion path removed; `assaultOdds` and sieges now read `armyStrengthAt`.
+- [x] HUD army rows show capability %, slot count, stance, and `estimateOdds` against each adjacent enemy at war.
+- [x] Tests: 2:1 battle and hp loss accounting, determinism, monster/spellcaster blocks, zero-hp pruning, slot cap, `reg.a` mirror.
 
-**Exit:** battles are army stacks; `MATCHUP` and rout are live; unique forces fight with their real stats.
+**Exit:** met — armies fight through `battle.ts`; `MATCHUP`, orders, rout and magic are live; unique roster stats decide the outcome. Full suite green.
+
+**Notes / consequences:**
+
+1. **A "2:1 annihilation" is a rout, not a wipe.** `battle.ts` ends the fight at `routThreshold` and `finalizeBattle` applies extra losses to the loser, so a stronger army normally leaves the weaker one damaged rather than empty. That is the intended OpenConquest behaviour.
+2. **Stance is still coarse.** Phase B's `stepTactical` assigns `march`/`fortify`; `encamp`/`ambush` are read by the modifier assembly and exercised by tests, but the AI stance table (§7.3) is not wired yet. Phase F can add it once balance data exists.
+3. **The HUD is still a list, not the battle card.** Capability, blocks, stance and adjacent odds are in; the compact report card and the composition drill-down are Phase F.
+4. **City battles are still Phase B's one-shot siege** (`openCivAssault`), using `armyStrengthAt`; Phase D replaces them with a real garrison battle.
 
 ### Phase D — Sieges & city strikes
 

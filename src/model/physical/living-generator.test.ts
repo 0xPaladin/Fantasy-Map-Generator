@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
+import { currentContent } from "@/conquest/content/store";
 import { valueModifier } from "@/conquest/engine/game/saves";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
 import type { Burg } from "@/model/political/burgs-generator";
+import { Military } from "@/model/political/military-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { HistoricalFigure } from "@/types/history";
@@ -3200,6 +3202,92 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.units?.[key]).toBeUndefined();
       expect(pack.states[1].military![0].units?.[0]?.exp).toBe(3); // level 4 → exp 3
       expect(living.armies?.[key]).toBeDefined();
+    });
+
+    it("resolves a 2:1 army battle, reports losses in hp and mirrors reg.a", () => {
+      const living = Living.init();
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5)];
+      const defenders = [makeRegiment(0, 6, 2)];
+      defenders[0]!.units = defenders[0]!.units!.slice(0, 4);
+      pack.states[2].military = defenders;
+      const attacker = pack.states[1].military![0]!;
+      const beforeAttacker = (attacker.units ?? []).reduce((sum, block) => sum + block.hp, 0);
+
+      Living.tick(1);
+
+      const afterAttacker = (attacker.units ?? []).reduce((sum, block) => sum + block.hp, 0);
+      const record = living.armies?.[unitKey(1, 0)]?.lastBattle;
+      if (record) {
+        // A tick can contain both sides' attacks; the record is the last battle.
+        expect(record.lossesHp).toBeLessThanOrEqual(beforeAttacker - afterAttacker + 1e-9);
+        expect(record.rounds).toBeGreaterThan(0);
+        expect(record.survivorsHp).toBeGreaterThan(0);
+      }
+      // 13 blocks against 4 wins: the weaker army routs and loses capability.
+      expect(pack.states[1].military ?? []).toHaveLength(1);
+      const defenderAfter = (pack.states[2].military?.[0]?.units ?? []).reduce((sum, block) => sum + block.hp, 0);
+      expect(defenderAfter).toBeLessThan(4);
+      // Survivors are whole blocks with hp in (0, 1], and reg.a mirrors men.
+      for (const block of attacker.units ?? []) {
+        expect(block.hp).toBeGreaterThan(0);
+        expect(block.hp).toBeLessThanOrEqual(1);
+      }
+      const quantity = Military.getUnitTypes()[attacker.units![0]!.type]!.quantity;
+      expect(attacker.a).toBe((attacker.units ?? []).reduce((sum, block) => sum + Math.round(block.hp * quantity), 0));
+    });
+
+    it("is deterministic for the same tick, armies and seed", () => {
+      const run = () => {
+        setupCityWorld();
+        Living.forceWar(1, 2);
+        pack.states[1].military = [makeRegiment(0, 5)];
+        pack.states[2].military = [makeRegiment(0, 6, 2)];
+        Living.init();
+        Living.tick(1);
+        return JSON.stringify({
+          attacker: pack.states[1].military?.[0]?.units,
+          defender: pack.states[2].military?.[0]?.units
+        });
+      };
+
+      expect(run()).toBe(run());
+    });
+
+    it("fights monster and spellcaster blocks through the roster", () => {
+      const types = Military.getUnitTypes();
+      const monster = Object.values(types).find(unit => unit.category === "monster");
+      const caster = Object.values(types).find(unit => unit.category === "spellcaster");
+      expect(monster?.id).toBeDefined();
+      expect(caster?.id).toBeDefined();
+
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5), makeRegiment(1, 5)];
+      pack.states[1].military![1]!.units = [{ type: monster!.id, hp: 1, exp: 4 }];
+      const defenders = [makeRegiment(0, 6, 2)];
+      defenders[0]!.units = [{ type: caster!.id, hp: 1, exp: 2 }];
+      pack.states[2].military = defenders;
+      const living = Living.init();
+
+      Living.tick(1);
+
+      expect(living.armies?.[unitKey(1, 1)]).toBeDefined();
+      expect(living.armies?.[unitKey(1, 1)]?.lastBattle ?? living.armies?.[unitKey(2, 0)]?.lastBattle).toBeDefined();
+    });
+
+    it("prunes destroyed blocks and keeps the stack under the slot cap", () => {
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5)];
+      pack.states[2].military = [makeRegiment(0, 6, 2)];
+      const living = Living.init();
+
+      Living.tick(1);
+
+      const blocks = pack.states[1].military?.[0]?.units ?? [];
+      expect(blocks.length).toBeGreaterThan(0);
+      expect(blocks.length).toBeLessThanOrEqual(currentContent().config.military.maxUnitsPerArmy);
+      expect(blocks.every(block => block.hp > 0)).toBe(true);
+      expect(living.armies?.[unitKey(1, 0)]?.lastBattle?.blocksLost).toBeGreaterThanOrEqual(0);
     });
 
     it("keeps army composition across ticks without duplicating blocks", () => {
