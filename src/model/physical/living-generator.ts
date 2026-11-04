@@ -107,11 +107,9 @@ import {
   armyHp,
   armyIsEmpty,
   armyIsRangedBlocks,
-  armyLead,
   armyMen,
   armySpeed,
   armyStrength,
-  blockPower,
   chooseOrder,
   fromBattleUnits,
   fromBattleUnitsMen,
@@ -1213,24 +1211,8 @@ export const CITY_BASE_HP = 200;
 export const UNIT_AGGRO_RANGE = 6;
 /** Builders improve owned cells within this many hops. */
 export const BUILDER_RANGE = 8;
-/** Ranged attacks cannot push a city below this HP. */
-export const CITY_MIN_RANGED_HP = 1;
 /** One city strike removes this much capability from a single block. */
 export const CITY_STRIKE_HP = 0.1;
-
-/** OpenCiv exponential damage: stronger side multiplies, wounded defenders take less. */
-export function combatDamage(attackStrength: number, defendStrength: number, defenderHp: number, roll: number): number {
-  const attack = Math.max(1, attackStrength);
-  const defend = Math.max(1, defendStrength);
-  const stronger = Math.max(attack, defend);
-  const weaker = Math.min(attack, defend);
-  const ratio = stronger / weaker;
-  const multiplier = (((ratio + 3) / 4) ** 4 + 1) / 2;
-  const wounded = 1 - (0.5 * (UNIT_MAX_HP - minmax(defenderHp, 0, UNIT_MAX_HP))) / UNIT_MAX_HP;
-  const base = (24 + 12 * minmax(roll, 0, 0.999)) * wounded;
-  const applied = attack >= defend ? base * multiplier : base / multiplier;
-  return Math.max(1, Math.floor(applied));
-}
 
 /** Cumulative XP needed to reach a level. */
 export function xpForLevel(level: number): number {
@@ -1245,11 +1227,6 @@ export function terrainDefenseMultiplier(cell: number): number {
   const biome = Number(pack.cells.biome?.[cell] ?? 0);
   if (biome === 6 || biome === 7 || biome === 8) return 1.25;
   return 1;
-}
-
-/** A unit classifies as ranged when it has a ranged strength and range >= 2. */
-export function unitIsRanged(unit: UnitSimState): boolean {
-  return unit.range >= 2 && unit.rangedStrength > 0;
 }
 
 /** Movement cost from one cell to the next for a unit; Infinity blocks the step. */
@@ -1270,12 +1247,6 @@ export function unitMovementCost(from: number, to: number, unit: UnitSimState): 
 
   if (target.movementCost >= 9999) return Number.POSITIVE_INFINITY;
   return target.movementCost;
-}
-
-/** Hills and canopy block bombardment unless the unit has Indirect Fire. */
-export function rangedLineOfSightBlocked(cell: number, unit: UnitSimState): boolean {
-  if (!unitIsRanged(unit) || unit.promotions.includes("indirect_fire")) return false;
-  return terrainDefenseMultiplier(cell) > 1;
 }
 
 /** 1UPT: a cell holds at most one military and one utility unit per state; never two states. */
@@ -5705,19 +5676,10 @@ class LivingModel {
     living: LivingWorldState,
     occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
   ): boolean {
-    const types = Military.getUnitTypes();
     const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
     if (enemy) {
       this.resolveArmyBattle(state, regiment, enemy.state, enemy.regiment, living);
       return true;
-    }
-
-    if (armyIsRangedBlocks(regiment, types)) {
-      const city = this.findCityInRange(state.i, regiment.cell, 2);
-      if (city) {
-        this.bombardCity(state, regiment, city.burg, city.bSim, living);
-        return true;
-      }
     }
 
     const target = this.tacticalTarget(state, living, regiment.cell);
@@ -5820,23 +5782,6 @@ class LivingModel {
           return { state: other, regiment: enemy };
         }
       }
-    }
-    return null;
-  }
-
-  /** A hostile Major Burg within range (for ranged bombardment). */
-  private findCityInRange(stateId: number, cell: number, range: number): { burg: Burg; bSim: BurgSimState } | null {
-    const living = this.getState();
-    const distances = this.cellHopDistances(cell, Math.max(1, range));
-    for (const [candidate, hops] of distances) {
-      if (hops === 0) continue;
-      const burgId = Number(pack.cells.burg?.[candidate] ?? 0);
-      const burg = burgId ? pack.burgs[burgId] : undefined;
-      if (!burg?.i || burg.removed || !burg.state || burg.state === stateId) continue;
-      if (!this.isAtWar(stateId, burg.state)) continue;
-      const bSim = living.burgs[burg.i];
-      if (!bSim || (bSim.hp ?? 0) <= 0) continue;
-      return { burg, bSim };
     }
     return null;
   }
@@ -5974,6 +5919,7 @@ class LivingModel {
       cell: defenderRegiment.cell,
       stateId: attackerState.i
     });
+    this.addBattleMarker(defenderRegiment.cell, `${attackerState.name} vs ${defenderState.name}`);
   }
 
   /** Battle modifiers from stance, terrain, river, walls and the lord multipliers. */
@@ -6053,54 +5999,9 @@ class LivingModel {
     };
   }
 
-  /** Interim army strength: lead block power on the 0..100 duel scale, with modifiers. */
-  private armyStrengthAt(
-    regiment: Regiment,
-    stateId: number,
-    role: "attack" | "defend",
-    cell: number,
-    targetCell?: number
-  ): number {
-    const types = Military.getUnitTypes();
-    const lead = armyLead(regiment);
-    if (!lead) return 1;
-    let strength = blockPower(lead, types) * 6;
-    if (role === "defend") {
-      strength *= terrainDefenseMultiplier(cell);
-      const army = pack.history?.living?.armies?.[this.unitKey(stateId, regiment.i)];
-      if (army?.stance === "fortify") strength *= 1.25;
-      if (targetCell !== undefined) {
-        const crossesRiver =
-          Number(pack.cells.r?.[cell] ?? 0) !== Number(pack.cells.r?.[targetCell] ?? 0) &&
-          Number(pack.cells.r?.[targetCell] ?? 0) > 0;
-        if (crossesRiver) strength *= 0.8;
-      }
-    }
-    const happiness = pack.history?.living?.states?.[stateId]?.happiness;
-    if (happiness !== undefined) strength *= happinessCombatMultiplier(happiness);
-    if (this.stateRelicCount(stateId, "weapon") > 0) strength *= 1 + WEAPON_RELIC_COMBAT_PERCENT / 100;
-    return Math.max(1, strength);
-  }
-
   private awardBlockExp(block: { hp: number; exp: number }, amount: number): void {
     if (block.hp <= 0) return;
     block.exp = Math.min(9, block.exp + Math.max(1, Math.round(amount / 3)));
-  }
-
-  /** A ranged army bombards a Major Burg: no return damage, never below the floor. */
-  private bombardCity(
-    state: State,
-    regiment: Regiment,
-    burg: Burg,
-    bSim: BurgSimState,
-    _living: LivingWorldState
-  ): void {
-    this.ensureCityHp(bSim);
-    const attack = this.armyStrengthAt(regiment, state.i, "attack", regiment.cell, burg.cell);
-    const defense = this.cityDefenseStrength(bSim, burg);
-    const rng = this.rng("city:bombard", burg.i, pack.history?.living?.tick ?? 0);
-    const damage = combatDamage(attack, defense, bSim.hp ?? CITY_BASE_HP, rng.next());
-    bSim.hp = Math.max(CITY_MIN_RANGED_HP, (bSim.hp ?? CITY_BASE_HP) - damage);
   }
 
   /** City HP: 200 base plus Walls/Castle/Arsenal/Military Base. */
@@ -6112,38 +6013,9 @@ class LivingModel {
     bSim.hp = maxHp;
   }
 
-  /** City defense for display and odds: the roster garrison plus a stationed army, never below the civic floor. */
-  private cityDefenseStrength(bSim: BurgSimState, burg: Burg): number {
-    let defense = 0;
-    for (const id of bSim.civBuildings ?? []) defense += CIV_BUILDING_BY_ID[id]?.stats.defense ?? 0;
-    const floor = 8 + 0.4 * (bSim.citizens ?? 1) + defense;
-    const garrison = this.cityGarrisonBlocks(burg).reduce(
-      (sum, block) => sum + blockPower(block, Military.getUnitTypes()),
-      0
-    );
-    let strength = Math.max(floor, garrison + this.garrisonStrength(burg));
-    if (getCellTerrainInfo(burg.cell).isHill) strength *= 1.25;
-    return Math.max(1, strength);
-  }
-
   /** The burg's roster garrison as blocks at full capability (Phase D siege defender). */
   private cityGarrisonBlocks(burg: Burg): ArmyBlock[] {
     return fromBattleUnitsMen(this.burgDefenders(burg), Military.getUnitTypes());
-  }
-
-  /** Strongest friendly army stationed on the city cell (lead-block power). */
-  private garrisonStrength(burg: Burg): number {
-    const living = pack.history?.living;
-    if (!burg.state) return 0;
-    const types = Military.getUnitTypes();
-    let best = 0;
-    for (const regiment of pack.states[burg.state]?.military ?? []) {
-      if (regiment.cell !== burg.cell) continue;
-      if (!living?.armies?.[this.unitKey(burg.state, regiment.i)]) continue;
-      const lead = armyLead(regiment);
-      if (lead) best = Math.max(best, blockPower(lead, types) * 6);
-    }
-    return best;
   }
 
   /** Each Major Burg removes one block step from the weakest hostile army in range 2. */

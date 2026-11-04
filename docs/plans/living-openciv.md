@@ -192,7 +192,14 @@ flowchart LR
 
 ---
 
-## 5. Pillar 3: 1UPT Tactical Regiments, Builders, Settlers & Combat
+## 5. Pillar 3: Tactical Regiments, Builders, Settlers & Combat
+
+> **Superseded for combat (armies migration).** The 1UPT single-unit battlefield
+> described in this section is retired: one regiment is now a combined-arms stack
+> of `ArmyBlock`s fought through OpenConquest `battle.ts`. See
+> [living-openciv-armies.md](living-openciv-armies.md) §5–§10 for the current
+> model, economy and sieges. The civilian half (Settlers, Builders, Missionaries)
+> still applies unchanged.
 
 ### 5.1. 1 FMG `Regiment` = 1 OpenCiv Unit (`RegimentSimState`)
 Every regiment in `pack.states[s].military` is backed by a `RegimentSimState` (keyed by `${stateId}-${regiment.i}` or stored on `living.units`):

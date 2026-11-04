@@ -876,7 +876,7 @@ Gate **stack combat** behind `config.military.armies` (surfaced from `options.ma
 
 The flag deliberately **cannot** restore the pre-Phase-B model: `living.units` combat entries are converted in Phase B and the `CivUnitDef` combat stats are deleted at the end of Phase E. Document that in the settings tooltip so "turn it off" is not mistaken for a save rescue. The flag's real job is isolating a battle-model regression while leaving armies intact.
 
-Remove the flag in Phase F one release after it ships on by default.
+**Removed in Phase F.** The flag never gated a shipped path once Phase C landed (the interim duel was deleted), so keeping it would have implied a rescue route that did not exist. `config.military.armies` is no longer in `config.ts` or `game.json`.
 
 ---
 
@@ -1002,20 +1002,20 @@ Each phase is independently shippable and testable. No phase may leave the map i
 4. **Civilian production names** resolve through the civilian catalog first, then the roster; combat ids are roster-only and no longer fall back to a Civ definition.
 5. **Legacy saves with Civ ids in a production queue** still work: `spawnUnit` maps an unknown id through `matchRosterUnitByCategory`, so an old "warrior" order becomes a roster melee block.
 
-### Phase F — UI, rendering, balance, cleanup
+### Phase F — UI, rendering, balance, cleanup — **DONE (balance sweep deferred)**
 
-- [ ] `living-hud.ts` army panel (capability %, nominal men, blocks, exp, stance) + compact battle card (`survivorsHp`, blocks lost, rounds, modifiers, `estimateOdds` bar).
-- [ ] `draw-military.ts` capability bar, stack badge, composition strip, wounded tint on `armyHp < 0.7`.
-- [ ] `draw-living-overlay.ts` battle markers.
-- [ ] Settings: `military.maxUnitsPerArmy`, `military.replenishFraction`, `battle.maxRounds`, `battle.routThreshold`, `battle.terrainDefenseBonus`.
-- [ ] Delete the interim lead-block duel (`resolveUnitBattle`, `combatDamage`, `effectiveStrength` combat path) now that Phase D's city strike no longer needs an HP roll.
-- [ ] Remove the `options.map.military.armies` flag one release after it ships on by default.
-- [ ] Balance sweep: `UPKEEP_FREE`, `CIVILIAN_UPKEEP`, `PRODUCTION_PER_UPKEEP`, `replenishFraction`, `maxUnitsPerArmy`, `attritionScale`, `terrainDefenseBonus`, `CITY_STRIKE_HP`.
-- [ ] Annotate roster JSON with explicit `requiredTech`/`upgradesTo` per culture (optional; ladder is the fallback).
-- [ ] Update `living-openciv.md` §5 to point here.
-- [ ] Delete obsolete tests; add the determinism + migration suite.
+- [x] `living-hud.ts` army panel: capability %, nominal men, block count, mean `exp`, stance, adjacent-enemy odds with a bar, per-block composition drill-down, and a compact battle card (role, result, rounds, hp lost, blocks lost, % left).
+- [x] `draw-military.ts`: capability bar under the box (green/amber/red), stack badge when >1 block, a three-square composition strip by category, and a wounded tint below 70% `hp`.
+- [x] Field battles leave a `battlefields` marker (`addBattleMarker`); the living overlay already renders that marker layer.
+- [x] Settings are the engine config keys (`military.maxUnitsPerArmy`, `military.replenishFraction`, `battle.maxRounds`, `battle.routThreshold`, `battle.terrainDefenseBonus`), documented in §12.4. No user-facing toggle was added.
+- [x] Interim combat deleted: `resolveUnitBattle`, `combatDamage`, `effectiveStrength`, `unitIsRanged`, `rangedLineOfSightBlocked`, `findCityInRange`, `bombardCity` and the ranged city branch are gone. City strikes are flat block damage; sieges are battles.
+- [x] The `options.map.military.armies` feature flag is removed from `config.ts` and `game.json`. It never gated anything after Phase C (the interim duel no longer exists), so keeping it would have implied a rescue path that did not exist.
+- [x] Determinism and migration tests: same seed/tick reproduces identical battle blocks; legacy 1UPT sims and count blocks convert on load; the catalog test is civilians-only.
+- [ ] **Balance sweep across generated maps** — not a code task; the calibration guard (`living-calibration.test.ts`) enforces the 3–7 blocks-per-burg window and will fail when the economy drifts. Live tuning of `UPKEEP_FREE`, `CIVILIAN_UPKEEP`, `replenishFraction`, `maxUnitsPerArmy`, `attritionScale`, `terrainDefenseBonus` and `CITY_STRIKE_HP` is deferred to play data.
+- [ ] Optional roster annotations (`requiredTech` / `upgradesTo` per culture) — deferred deliberately; the derived ladder is the documented fallback and keeps 32 JSON files untouched.
+- [x] `living-openciv.md` §5 now points here.
 
-**Exit:** feature complete, documented, balanced, and the 1UPT tactical layer is gone.
+**Exit:** the 1UPT tactical layer and its last helpers are gone; armies render their capability and composition; the HUD reports battles. Full suite green (246 files / 3,446 tests).
 
 ---
 

@@ -22,7 +22,6 @@ import {
   borderInfluenceScore,
   citizensFromPopulation,
   classifyGood,
-  combatDamage,
   figureBias,
   figureCheckRoll,
   figureLevel,
@@ -45,7 +44,6 @@ import {
   maxHeroesForTier,
   maxPartyForTier,
   populationFromCitizens,
-  rangedLineOfSightBlocked,
   regionTierFromPop,
   settlementTierFromPop,
   syncBurgBuildingsFromFlags,
@@ -53,10 +51,7 @@ import {
   syncCivBuildingsFromFlags,
   syncCivFlagsFromBuildings,
   terrainDefenseMultiplier,
-  UNIT_MAX_HP,
-  unitIsRanged,
-  unitMovementCost,
-  xpForLevel
+  unitMovementCost
 } from "./living-generator";
 
 function makeGuildFigure(i: number, overrides: Partial<HistoricalFigure> = {}): HistoricalFigure {
@@ -3098,18 +3093,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       setupCityWorld();
     });
 
-    it("computes OpenCiv combat damage and XP thresholds", () => {
-      expect(combatDamage(10, 10, UNIT_MAX_HP, 0.5)).toBe(30);
-      expect(combatDamage(20, 10, UNIT_MAX_HP, 0)).toBe(41);
-      expect(combatDamage(10, 20, UNIT_MAX_HP, 0)).toBe(13);
-      expect(combatDamage(10, 10, 50, 0)).toBe(18);
-      expect(combatDamage(1, 1, UNIT_MAX_HP, 0)).toBe(24);
-
-      expect(xpForLevel(1)).toBe(10);
-      expect(xpForLevel(2)).toBe(30);
-      expect(xpForLevel(3)).toBe(60);
-    });
-
     it("applies terrain defense and movement costs", () => {
       expect(terrainDefenseMultiplier(1)).toBe(1);
       pack.cells.h[3] = 55;
@@ -3497,19 +3480,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(fieldReg.units![0]!.hp).toBeCloseTo(0.525, 5);
       // Neutral land: no replenishment.
       expect(neutralReg.units![0]!.hp).toBeCloseTo(0.4, 5);
-    });
-
-    it("blocks bombardment over hills and canopy until Indirect Fire", () => {
-      Living.init();
-      const archer = { range: 2, rangedStrength: 7, promotions: [] } as unknown as Parameters<typeof unitIsRanged>[0];
-      const warrior = { ...archer, rangedStrength: 0, range: 0 };
-
-      pack.cells.biome[12] = 6; // forest canopy
-      expect(unitIsRanged(archer)).toBe(true);
-      expect(rangedLineOfSightBlocked(12, archer)).toBe(true);
-      expect(rangedLineOfSightBlocked(1, archer)).toBe(false);
-      expect(rangedLineOfSightBlocked(12, { ...archer, promotions: ["indirect_fire"] })).toBe(false);
-      expect(rangedLineOfSightBlocked(12, warrior)).toBe(false);
     });
 
     it("grants training experience from military buildings", () => {

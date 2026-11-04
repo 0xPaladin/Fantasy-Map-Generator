@@ -178,12 +178,6 @@ export interface CampaignConfig {
     maxUnitsPerArmy: number;
     replenishFraction: number;
     encampReplenishBonus: number;
-    /**
-     * Living World combined-arms battle model (living-openciv-armies.md §13.4).
-     * `false` runs the interim lead-block duel; it cannot restore the retired
-     * 1UPT model. Removed one release after shipping on by default.
-     */
-    armies: boolean;
   };
   saves: {
     /**
@@ -327,7 +321,7 @@ export const DEFAULT_CONFIG: CampaignConfig = {
     startOrder: 75,
     occupiedOrder: 25
   },
-  military: { maxUnitsPerArmy: 20, replenishFraction: 0.25, encampReplenishBonus: 2, armies: true },
+  military: { maxUnitsPerArmy: 20, replenishFraction: 0.25, encampReplenishBonus: 2 },
   saves: { enabled: false, defaultDc: 12, bands: [6, 11, 16, 21], bandStep: 5 },
   capacity: {
     attritionPerTurn: 0.1,

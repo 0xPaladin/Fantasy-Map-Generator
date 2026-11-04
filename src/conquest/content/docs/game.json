@@ -52,8 +52,7 @@
   "military": {
     "maxUnitsPerArmy": 20,
     "replenishFraction": 0.25,
-    "encampReplenishBonus": 2,
-    "armies": true
+    "encampReplenishBonus": 2
   },
   "saves": {
     "enabled": false,

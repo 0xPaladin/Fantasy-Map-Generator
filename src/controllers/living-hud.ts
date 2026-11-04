@@ -27,7 +27,7 @@ import {
 } from "@/data/mission-tags";
 import { estimateOdds, type BattleModifiers } from "@/conquest/engine/game/battle";
 import { Military } from "@/model/political/military-generator";
-import { armyHp, armyIsEmpty, armyLead, armySlots, toBattleTypes, toBattleUnits } from "@/model/physical/living-armies";
+import { armyHp, armyIsEmpty, armyLead, armyMen, armySlots, toBattleTypes, toBattleUnits } from "@/model/physical/living-armies";
 import { Pack } from "@/model/graph/pack-generator";
 import {
   activeCivThemeId,
@@ -339,6 +339,26 @@ const TEMPLATE = /* html */ `
     #${INSPECTOR_ID} .livingSection { border-top: 1px solid rgba(0, 0, 0, 0.12); padding: 0.3em 0; }
     #${INSPECTOR_ID} .livingSectionTitle { font-weight: bold; margin-bottom: 0.15em; }
     #${INSPECTOR_ID} .livingMuted { color: #777; font-style: italic; }
+    #${INSPECTOR_ID} .livingOddsBar {
+      display: inline-block;
+      width: 4em;
+      height: 0.45em;
+      margin-left: 0.4em;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 2px;
+      overflow: hidden;
+      vertical-align: middle;
+    }
+    #${INSPECTOR_ID} .livingOddsBar > span { display: block; height: 100%; background: #5e4fa2; }
+    #${INSPECTOR_ID} .livingBattleCard {
+      margin-top: 0.2em;
+      padding: 0.2em 0.4em;
+      border-left: 2px solid #a33d3d;
+      background: rgba(163, 61, 61, 0.08);
+      font-size: 0.85em;
+    }
+    #${INSPECTOR_ID} details > summary { cursor: pointer; color: #777; }
+    #${INSPECTOR_ID} details ul { margin: 0.15em 0 0 1em; padding: 0; }
     #${INSPECTOR_ID} .livingBar { height: 0.4em; background: rgba(0, 0, 0, 0.12); border-radius: 2px; overflow: hidden; }
     #${INSPECTOR_ID} .livingBar > i { display: block; height: 100%; background: #5e4fa2; }
     #${INSPECTOR_ID} .livingBar.danger > i { background: #a33d3d; }
@@ -1670,7 +1690,10 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
           baseModifiers,
           toBattleTypes(types)
         );
-        lines.push(`<div class="livingMuted">vs ${escapeHtml(other.name)}: ${odds.attackerWinPct}% win</div>`);
+        lines.push(
+          `<div class="livingMuted">vs ${escapeHtml(other.name)}: ${odds.attackerWinPct}% win ` +
+            `<span class="livingOddsBar"><span style="width:${odds.attackerWinPct}%"></span></span></div>`
+        );
       }
     }
     return lines;
@@ -1683,9 +1706,25 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
       if (army) {
         const lead = armyLead(regiment);
         const name = lead ? (types[lead.type]?.name ?? lead.type) : "Army";
-        return `<li>${escapeHtml(name)} · ${Math.round(armyHp(regiment) * 100)}% · ${armySlots(regiment)} blocks · ${
-          army.stance
-        }${adjacentEnemyOdds(regiment.cell).join("")}</li>`;
+        const hpPct = Math.round(armyHp(regiment) * 100);
+        const blocks = armySlots(regiment);
+        const men = armyMen(regiment, types);
+        const exp = (regiment.units ?? []).reduce((sum, block) => sum + block.exp, 0) / Math.max(1, blocks);
+        const battle = army.lastBattle
+          ? `<div class="livingBattleCard">${army.lastBattle.role === "attacker" ? "Attack" : "Defence"} · ${
+              army.lastBattle.winner === army.lastBattle.role ? "won" : "lost"
+            } · ${army.lastBattle.rounds} rounds · ${Math.round(army.lastBattle.lossesHp * 100) / 100} hp lost · ${
+              army.lastBattle.blocksLost
+            } blocks · ${Math.round(army.lastBattle.survivorsHp * 100)}% left</div>`
+          : "";
+        const composition = (regiment.units ?? [])
+          .map(block => {
+            const def = types[block.type];
+            const quantity = def ? Math.max(1, Math.round(def.quantity)) : 1;
+            return `<li>${escapeHtml(def?.name ?? block.type)} · ${Math.round(block.hp * 100)}% · exp ${block.exp} · ~${quantity} nominal</li>`;
+          })
+          .join("");
+        return `<li><div>${escapeHtml(name)} · ${hpPct}% · ~${men} men · ${blocks} blocks · exp ${exp.toFixed(1)} · ${army.stance}</div>${adjacentEnemyOdds(regiment.cell).join("")}${battle}<details><summary>composition</summary><ul>${composition}</ul></details></li>`;
       }
       const unit = living.units?.[key];
       if (!unit) return "";
