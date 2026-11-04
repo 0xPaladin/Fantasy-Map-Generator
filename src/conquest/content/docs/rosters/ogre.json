@@ -7,13 +7,13 @@
       "gnoblar_fighters": {
         "name": "Scrap-Flint Gnoblar Mob",
         "category": "melee",
-        "blocks": 0.22,
+        "quantity": 220,
         "attack": 4,
         "defense": 6,
         "charge": 2,
         "missile": 0,
-        "cost": 120,
-        "upkeep": 16,
+        "cost": 6,
+        "upkeep": 0.025,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -24,13 +24,13 @@
       "ogre_bulls": {
         "name": "Gut-Plate Ogre Bulls",
         "category": "melee",
-        "blocks": 0.08,
+        "quantity": 80,
         "attack": 11,
         "defense": 10,
         "charge": 9,
         "missile": 0,
-        "cost": 450,
-        "upkeep": 54,
+        "cost": 21,
+        "upkeep": 0.083,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -41,49 +41,49 @@
       "ironguts": {
         "name": "Great-Mace Irongut Veterans",
         "category": "melee",
-        "blocks": 0.06,
-        "requiresGood": 4,
+        "quantity": 60,
         "attack": 14,
         "defense": 13,
         "charge": 11,
         "missile": 0,
-        "cost": 620,
-        "upkeep": 75,
+        "cost": 29,
+        "upkeep": 0.115,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "leadbelchers": {
         "name": "Cannon-Tube Leadbelchers",
         "category": "ranged",
-        "blocks": 0.06,
-        "requiresGood": 4,
+        "quantity": 60,
         "attack": 8,
         "defense": 9,
         "charge": 6,
         "missile": 15,
-        "cost": 580,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.108,
         "capacityCost": {
           "m": 2,
           "w": 3,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "mournfang_cavalry": {
         "name": "Mournfang Tusk-Cavalry",
         "category": "cavalry",
-        "blocks": 0.05,
+        "quantity": 50,
         "attack": 14,
         "defense": 13,
         "charge": 15,
         "missile": 0,
-        "cost": 740,
-        "upkeep": 88,
+        "cost": 34,
+        "upkeep": 0.135,
         "capacityCost": {
           "m": 3,
           "w": 3,
@@ -97,35 +97,35 @@
       "river_trolls": {
         "name": "Regenerating Bile-Trolls",
         "category": "monster",
-        "blocks": 0.06,
+        "quantity": 60,
         "attack": 13,
         "defense": 10,
         "charge": 8,
         "missile": 0,
-        "cost": 600,
-        "upkeep": 70,
+        "cost": 27,
+        "upkeep": 0.108,
         "capacityCost": {
           "m": 3,
           "w": 2,
           "s": 0,
           "c": 0
         },
-        "resistArcane": 0.15,
         "powers": {
           "heal": 10,
           "terror": 0.04
-        }
+        },
+        "resistArcane": 0.15
       },
       "stonehorn_behemoth": {
         "name": "Frost-Peak Stonehorn & Thundertusk",
         "category": "monster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 18,
         "defense": 17,
         "charge": 16,
         "missile": 8,
-        "cost": 1150,
-        "upkeep": 130,
+        "cost": 50,
+        "upkeep": 0.2,
         "capacityCost": {
           "m": 4,
           "w": 4,
@@ -140,13 +140,13 @@
       "slaughter_butchers": {
         "name": "Maw-Butchers & Firebellies",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 8,
         "defense": 9,
         "charge": 4,
         "missile": 13,
-        "cost": 900,
-        "upkeep": 105,
+        "cost": 40,
+        "upkeep": 0.161,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -162,31 +162,31 @@
       "ironblaster": {
         "name": "Rhinox-Drawn Ironblaster Cannon",
         "category": "artillery",
-        "blocks": 0.03,
-        "requiresGood": 4,
+        "quantity": 30,
         "attack": 9,
         "defense": 10,
         "charge": 8,
         "missile": 18,
-        "cost": 880,
-        "upkeep": 90,
+        "cost": 35,
+        "upkeep": 0.138,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 0
-        }
+        },
+        "requiresGood": 4
       },
       "gnoblar_watch": {
         "name": "Gnoblar Sentry Levy",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 5,
         "charge": 1,
         "missile": 0,
-        "cost": 50,
-        "upkeep": 6,
+        "cost": 5,
+        "upkeep": 0.009,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -197,13 +197,13 @@
       "gnoblar_trappers": {
         "name": "Gnoblar Trapper Slingers",
         "category": "ranged",
-        "blocks": 0.1,
+        "quantity": 100,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 7,
-        "cost": 65,
-        "upkeep": 8,
+        "cost": 5,
+        "upkeep": 0.012,
         "capacityCost": {
           "m": 0,
           "w": 1,

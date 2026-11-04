@@ -7,13 +7,13 @@
       "drake_wardens": {
         "name": "Scaled Drake-Warden Spears",
         "category": "melee",
-        "blocks": 0.16,
+        "quantity": 160,
         "attack": 7,
         "defense": 12,
         "charge": 3,
         "missile": 0,
-        "cost": 260,
-        "upkeep": 34,
+        "cost": 13,
+        "upkeep": 0.052,
         "capacityCost": {
           "m": 2,
           "w": 1,
@@ -25,51 +25,51 @@
       "scaled_phalanx": {
         "name": "Dragonscale Shield-Phalanx",
         "category": "melee",
-        "blocks": 0.14,
-        "requiresGood": 4,
+        "quantity": 140,
         "attack": 9,
         "defense": 15,
         "charge": 4,
         "missile": 0,
-        "cost": 450,
-        "upkeep": 54,
+        "cost": 21,
+        "upkeep": 0.083,
         "capacityCost": {
           "m": 2,
           "w": 2,
           "s": 0,
           "c": 0
         },
+        "requiresGood": 4,
         "resistArcane": 0.15
       },
       "flamebreath_vanguard": {
         "name": "Breath-Weapon Shock Greatswords",
         "category": "melee",
-        "blocks": 0.12,
-        "requiresGood": 4,
+        "quantity": 120,
         "attack": 13,
         "defense": 13,
         "charge": 7,
         "missile": 8,
-        "cost": 560,
-        "upkeep": 68,
+        "cost": 26,
+        "upkeep": 0.105,
         "capacityCost": {
           "m": 3,
           "w": 2,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "resistArcane": 0.15
       },
       "wyrmbow_cohort": {
         "name": "Dragonbone Greatbow Cohort",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 5,
         "defense": 8,
         "charge": 2,
         "missile": 14,
-        "cost": 440,
-        "upkeep": 54,
+        "cost": 21,
+        "upkeep": 0.083,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -81,13 +81,13 @@
       "drake_lancers": {
         "name": "Wingless Guard-Drake Cavalry",
         "category": "cavalry",
-        "blocks": 0.06,
+        "quantity": 60,
         "attack": 13,
         "defense": 14,
         "charge": 14,
         "missile": 0,
-        "cost": 700,
-        "upkeep": 84,
+        "cost": 32,
+        "upkeep": 0.129,
         "capacityCost": {
           "m": 3,
           "w": 3,
@@ -101,13 +101,13 @@
       "wyvern_riders": {
         "name": "Sky-Peak Wyvern Riders",
         "category": "monster",
-        "blocks": 0.04,
+        "quantity": 40,
         "attack": 15,
         "defense": 13,
         "charge": 14,
         "missile": 6,
-        "cost": 820,
-        "upkeep": 95,
+        "cost": 37,
+        "upkeep": 0.146,
         "capacityCost": {
           "m": 3,
           "w": 3,
@@ -121,66 +121,66 @@
       "elder_firewyrm": {
         "name": "Ancient Sovereign Fire-Wyrm",
         "category": "monster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 19,
         "defense": 17,
         "charge": 16,
         "missile": 14,
-        "cost": 1250,
-        "upkeep": 140,
+        "cost": 54,
+        "upkeep": 0.215,
         "capacityCost": {
           "m": 4,
           "w": 4,
           "s": 2,
           "c": 0
         },
-        "resistArcane": 0.25,
         "powers": {
           "ward": 0.08,
           "terror": 0.09,
           "arcaneSiege": 1
-        }
+        },
+        "resistArcane": 0.25
       },
       "draconic_sorcerers": {
         "name": "Bloodline Flame-Sorcerers",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 6,
         "defense": 8,
         "charge": 2,
         "missile": 17,
-        "cost": 950,
-        "upkeep": 110,
+        "cost": 42,
+        "upkeep": 0.169,
         "capacityCost": {
           "m": 1,
           "w": 2,
           "s": 3,
           "c": 1
         },
-        "resistArcane": 0.2,
         "powers": {
           "ward": 0.08,
           "hex": 0.12,
           "arcaneSiege": 1
-        }
+        },
+        "resistArcane": 0.2
       },
       "dragonfire_bombard": {
         "name": "Bronze Dragonfire Cannon",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 3,
         "defense": 6,
         "charge": 0,
         "missile": 18,
-        "cost": 880,
-        "upkeep": 92,
+        "cost": 35,
+        "upkeep": 0.141,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "powers": {
           "arcaneSiege": 1
         }
@@ -188,13 +188,13 @@
       "scale_levy": {
         "name": "Scaled Militia Levy",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 4,
         "defense": 7,
         "charge": 2,
         "missile": 0,
-        "cost": 70,
-        "upkeep": 9,
+        "cost": 5,
+        "upkeep": 0.014,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -205,13 +205,13 @@
       "drake_crossbows": {
         "name": "Draconic Sentry Crossbows",
         "category": "ranged",
-        "blocks": 0.1,
+        "quantity": 100,
         "attack": 2,
         "defense": 4,
         "charge": 1,
         "missile": 7,
-        "cost": 80,
-        "upkeep": 10,
+        "cost": 5,
+        "upkeep": 0.015,
         "capacityCost": {
           "m": 0,
           "w": 1,

@@ -7,13 +7,13 @@
       "clanrats": {
         "name": "Swarming Clan-Vermin",
         "category": "melee",
-        "blocks": 0.24,
+        "quantity": 240,
         "attack": 5,
         "defense": 7,
         "charge": 2,
         "missile": 0,
-        "cost": 150,
-        "upkeep": 20,
+        "cost": 8,
+        "upkeep": 0.031,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -24,31 +24,31 @@
       "stormvermin": {
         "name": "Black-Fur Storm-Halberds",
         "category": "melee",
-        "blocks": 0.16,
-        "requiresGood": 4,
+        "quantity": 160,
         "attack": 9,
         "defense": 12,
         "charge": 4,
         "missile": 0,
-        "cost": 440,
-        "upkeep": 52,
+        "cost": 20,
+        "upkeep": 0.08,
         "capacityCost": {
           "m": 2,
           "w": 2,
           "s": 0,
           "c": 1
-        }
+        },
+        "requiresGood": 4
       },
       "plague_censer_monks": {
         "name": "Frenzied Plague-Censer Monks",
         "category": "melee",
-        "blocks": 0.14,
+        "quantity": 140,
         "attack": 13,
         "defense": 6,
         "charge": 7,
         "missile": 0,
-        "cost": 480,
-        "upkeep": 58,
+        "cost": 22,
+        "upkeep": 0.089,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -62,31 +62,31 @@
       "warplock_jezzails": {
         "name": "Blight-Stone Jezzail Teams",
         "category": "ranged",
-        "blocks": 0.08,
-        "requiresGood": 4,
+        "quantity": 80,
         "attack": 3,
         "defense": 4,
         "charge": 1,
         "missile": 16,
-        "cost": 580,
-        "upkeep": 65,
+        "cost": 25,
+        "upkeep": 0.1,
         "capacityCost": {
           "m": 1,
           "w": 3,
           "s": 0,
           "c": 1
-        }
+        },
+        "requiresGood": 4
       },
       "poison_globadiers": {
         "name": "Blight-Wind Globadiers",
         "category": "ranged",
-        "blocks": 0.08,
+        "quantity": 80,
         "attack": 4,
         "defense": 5,
         "charge": 1,
         "missile": 13,
-        "cost": 500,
-        "upkeep": 55,
+        "cost": 21,
+        "upkeep": 0.085,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -100,13 +100,13 @@
       "doomwheels": {
         "name": "Whirling Warp-Wheels",
         "category": "cavalry",
-        "blocks": 0.04,
+        "quantity": 40,
         "attack": 12,
         "defense": 10,
         "charge": 14,
         "missile": 10,
-        "cost": 720,
-        "upkeep": 80,
+        "cost": 31,
+        "upkeep": 0.123,
         "capacityCost": {
           "m": 2,
           "w": 3,
@@ -120,13 +120,13 @@
       "rat_ogres": {
         "name": "Mutated Vermin-Ogres",
         "category": "monster",
-        "blocks": 0.06,
+        "quantity": 60,
         "attack": 13,
         "defense": 9,
         "charge": 11,
         "missile": 0,
-        "cost": 650,
-        "upkeep": 75,
+        "cost": 29,
+        "upkeep": 0.115,
         "capacityCost": {
           "m": 3,
           "w": 2,
@@ -140,13 +140,13 @@
       "pit_abomination": {
         "name": "Hell-Pit Flesh Behemoth",
         "category": "monster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 17,
         "defense": 13,
         "charge": 13,
         "missile": 0,
-        "cost": 1100,
-        "upkeep": 125,
+        "cost": 48,
+        "upkeep": 0.192,
         "capacityCost": {
           "m": 4,
           "w": 4,
@@ -161,13 +161,13 @@
       "grey_seers": {
         "name": "Horned-Bell Seers & Warlocks",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 4,
         "defense": 5,
         "charge": 1,
         "missile": 16,
-        "cost": 920,
-        "upkeep": 105,
+        "cost": 40,
+        "upkeep": 0.161,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -183,20 +183,20 @@
       "warp_cannon": {
         "name": "Blight-Lightning Cannon & Plagueclaw",
         "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 2,
         "defense": 3,
         "charge": 0,
         "missile": 19,
-        "cost": 880,
-        "upkeep": 90,
+        "cost": 35,
+        "upkeep": 0.138,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 1
         },
+        "requiresGood": 4,
         "powers": {
           "arcaneSiege": 1
         }
@@ -204,13 +204,13 @@
       "vermin_thralls": {
         "name": "Vermin Thrall Levy",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 3,
         "defense": 5,
         "charge": 1,
         "missile": 0,
-        "cost": 60,
-        "upkeep": 8,
+        "cost": 5,
+        "upkeep": 0.012,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -221,13 +221,13 @@
       "night_runner_slings": {
         "name": "Night Runner Slings",
         "category": "ranged",
-        "blocks": 0.1,
+        "quantity": 100,
         "attack": 2,
         "defense": 3,
         "charge": 1,
         "missile": 6,
-        "cost": 80,
-        "upkeep": 10,
+        "cost": 5,
+        "upkeep": 0.015,
         "capacityCost": {
           "m": 0,
           "w": 1,

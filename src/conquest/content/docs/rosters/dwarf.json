@@ -7,13 +7,13 @@
       "dwarf_axe": {
         "name": "Dwarf Axemen",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 7,
         "defense": 13,
         "charge": 3,
         "missile": 0,
-        "cost": 320,
-        "upkeep": 45,
+        "cost": 17,
+        "upkeep": 0.069,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -25,13 +25,13 @@
       "dwarf_crossbow": {
         "name": "Quarreller Crossbows",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 3,
         "defense": 7,
         "charge": 1,
         "missile": 12,
-        "cost": 400,
-        "upkeep": 50,
+        "cost": 19,
+        "upkeep": 0.077,
         "capacityCost": {
           "m": 1,
           "w": 1,
@@ -43,151 +43,151 @@
       "thunderers": {
         "name": "Dwarf Thunderers",
         "category": "ranged",
-        "blocks": 0.12,
-        "requiresGood": 4,
+        "quantity": 120,
         "attack": 4,
         "defense": 8,
         "charge": 1,
         "missile": 14,
-        "cost": 440,
-        "upkeep": 55,
+        "cost": 21,
+        "upkeep": 0.085,
         "capacityCost": {
           "m": 1,
           "w": 2,
           "s": 0,
           "c": 0
         },
+        "requiresGood": 4,
         "resistArcane": 0.15
       },
       "ironbreakers": {
         "name": "Gromril Ironwardens",
         "category": "melee",
-        "blocks": 0.12,
-        "requiresGood": 4,
+        "quantity": 120,
         "attack": 9,
         "defense": 18,
         "charge": 3,
         "missile": 3,
-        "cost": 680,
-        "upkeep": 80,
+        "cost": 31,
+        "upkeep": 0.123,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
         },
-        "resistArcane": 0.25,
+        "requiresGood": 4,
         "powers": {
           "ward": 0.06
-        }
+        },
+        "resistArcane": 0.25
       },
       "hammerers": {
         "name": "King's Hammerguard",
         "category": "melee",
-        "blocks": 0.12,
-        "requiresGood": 4,
+        "quantity": 120,
         "attack": 13,
         "defense": 14,
         "charge": 6,
         "missile": 0,
-        "cost": 640,
-        "upkeep": 75,
+        "cost": 29,
+        "upkeep": 0.115,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "resistArcane": 0.2
       },
       "dwarf_slayer": {
         "name": "Oathbound Slayers",
         "category": "melee",
-        "blocks": 0.1,
-        "requiresGood": 4,
+        "quantity": 100,
         "attack": 13,
         "defense": 9,
         "charge": 7,
         "missile": 0,
-        "cost": 650,
-        "upkeep": 75,
+        "cost": 29,
+        "upkeep": 0.115,
         "capacityCost": {
           "m": 3,
           "w": 3,
           "s": 1,
           "c": 0
         },
+        "requiresGood": 4,
         "resistArcane": 0.15
       },
       "runesmith_anvil": {
         "name": "Runelord & Anvil Guard",
         "category": "spellcaster",
-        "blocks": 0.02,
+        "quantity": 20,
         "attack": 8,
         "defense": 14,
         "charge": 2,
         "missile": 10,
-        "cost": 950,
-        "upkeep": 110,
+        "cost": 42,
+        "upkeep": 0.169,
         "capacityCost": {
           "m": 1,
           "w": 3,
           "s": 3,
           "c": 0
         },
-        "resistArcane": 0.35,
         "powers": {
           "ward": 0.14,
           "hex": 0.06
-        }
+        },
+        "resistArcane": 0.35
       },
       "gyro_bombard": {
         "name": "Steam-Copter Squadron",
         "category": "cavalry",
-        "blocks": 0.04,
-        "requiresGood": 4,
+        "quantity": 40,
         "attack": 7,
         "defense": 10,
         "charge": 9,
         "missile": 12,
-        "cost": 900,
-        "upkeep": 90,
-        "capacityCost": {
-          "m": 2,
-          "w": 4,
-          "s": 0,
-          "c": 0
-        }
-      },
-      "organ_gun": {
-        "name": "Multi-Barrel Organ Gun",
-        "category": "artillery",
-        "blocks": 0.04,
-        "requiresGood": 4,
-        "attack": 3,
-        "defense": 5,
-        "charge": 0,
-        "missile": 18,
-        "cost": 850,
-        "upkeep": 85,
+        "cost": 35,
+        "upkeep": 0.138,
         "capacityCost": {
           "m": 2,
           "w": 4,
           "s": 0,
           "c": 0
         },
+        "requiresGood": 4
+      },
+      "organ_gun": {
+        "name": "Multi-Barrel Organ Gun",
+        "category": "artillery",
+        "quantity": 40,
+        "attack": 3,
+        "defense": 5,
+        "charge": 0,
+        "missile": 18,
+        "cost": 33,
+        "upkeep": 0.131,
+        "capacityCost": {
+          "m": 2,
+          "w": 4,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 4,
         "resistArcane": 0.15
       },
       "levy_defenders": {
         "name": "Levy Defenders",
         "category": "melee",
-        "blocks": 0.15,
+        "quantity": 150,
         "attack": 4,
         "defense": 11,
         "charge": 2,
         "missile": 0,
-        "cost": 120,
-        "upkeep": 18,
+        "cost": 7,
+        "upkeep": 0.028,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -199,13 +199,13 @@
       "levy_throng": {
         "name": "Levy Throng",
         "category": "ranged",
-        "blocks": 0.12,
+        "quantity": 120,
         "attack": 2,
         "defense": 5,
         "charge": 1,
         "missile": 7,
-        "cost": 140,
-        "upkeep": 20,
+        "cost": 8,
+        "upkeep": 0.031,
         "capacityCost": {
           "m": 0,
           "w": 1,
