@@ -13,7 +13,7 @@
         "charge": 3,
         "missile": 0,
         "cost": 13,
-        "upkeep": 0.052,
+        "upkeep": 0.105,
         "capacityCost": {
           "m": 2,
           "w": 1,
@@ -31,7 +31,7 @@
         "charge": 4,
         "missile": 0,
         "cost": 21,
-        "upkeep": 0.083,
+        "upkeep": 0.166,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -50,7 +50,7 @@
         "charge": 7,
         "missile": 8,
         "cost": 26,
-        "upkeep": 0.105,
+        "upkeep": 0.209,
         "capacityCost": {
           "m": 3,
           "w": 2,
@@ -69,7 +69,7 @@
         "charge": 2,
         "missile": 14,
         "cost": 21,
-        "upkeep": 0.083,
+        "upkeep": 0.166,
         "capacityCost": {
           "m": 2,
           "w": 2,
@@ -87,7 +87,7 @@
         "charge": 14,
         "missile": 0,
         "cost": 32,
-        "upkeep": 0.129,
+        "upkeep": 0.258,
         "capacityCost": {
           "m": 3,
           "w": 3,
@@ -107,7 +107,7 @@
         "charge": 14,
         "missile": 6,
         "cost": 37,
-        "upkeep": 0.146,
+        "upkeep": 0.292,
         "capacityCost": {
           "m": 3,
           "w": 3,
@@ -127,7 +127,7 @@
         "charge": 16,
         "missile": 14,
         "cost": 54,
-        "upkeep": 0.215,
+        "upkeep": 0.431,
         "capacityCost": {
           "m": 4,
           "w": 4,
@@ -150,7 +150,7 @@
         "charge": 2,
         "missile": 17,
         "cost": 42,
-        "upkeep": 0.169,
+        "upkeep": 0.338,
         "capacityCost": {
           "m": 1,
           "w": 2,
@@ -173,7 +173,7 @@
         "charge": 0,
         "missile": 18,
         "cost": 35,
-        "upkeep": 0.141,
+        "upkeep": 0.283,
         "capacityCost": {
           "m": 2,
           "w": 4,
@@ -194,7 +194,7 @@
         "charge": 2,
         "missile": 0,
         "cost": 5,
-        "upkeep": 0.014,
+        "upkeep": 0.028,
         "capacityCost": {
           "m": 0,
           "w": 1,
@@ -211,7 +211,7 @@
         "charge": 1,
         "missile": 7,
         "cost": 5,
-        "upkeep": 0.015,
+        "upkeep": 0.031,
         "capacityCost": {
           "m": 0,
           "w": 1,

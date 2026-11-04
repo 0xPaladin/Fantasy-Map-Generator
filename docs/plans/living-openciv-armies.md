@@ -56,7 +56,7 @@ The OpenConquest integration is complete and tested: `reg.units` is generated, p
 
 | # | Decision | Resolution |
 | :-- | :--- | :--- |
-| 1 | Upkeep unit | **Per block, scaled by `hp`.** `max(0, Σ UnitType.upkeep × block.hp + 0.1 × civilians − 0.3)`. The 0.3 free allowance is three baseline blocks; a baseline 100-man block costs 0.1 Gold, so 1,000 men cost 1 Gold. |
+| 1 | Upkeep unit | **Per block, scaled by `hp`.** `max(0, Σ UnitType.upkeep × block.hp + 0.1 × civilians − 0.6)`. The 0.6 free allowance is three baseline blocks; a baseline 100-man block costs 0.2 Gold, so 1,000 men cost 2 Gold. |
 | 2 | Production catalog | **Roster only.** `chooseCityProduction`, `productionCost` and `spawnArmyBlock` read `ResolvedRoster`. |
 | 3 | Combat stat source | **Roster `UnitType`.** Civ **utility** units stay (Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor, Great Prophet); every Civ combat unit, culture unique and the `CivUnitDef` combat stat path is deleted. |
 | 4 | City strikes | **One block of damage per tick**, `−0.1 hp` on one deterministic block. |
@@ -345,7 +345,7 @@ export interface UnitType {
 | `quantity` | definition | Nominal size the fiction claims | men-equivalent; 100 for the baseline swordsman |
 | `hp` | instance | Current capability | 0..1 |
 | `cost` | definition | Production to raise one block | ~25 for a baseline block |
-| `upkeep` | definition | Gold per tick at `hp = 1` | 0.1 for a baseline block |
+| `upkeep` | definition | Gold per tick at `hp = 1` | 0.2 for a baseline block |
 | `capacityCost` | definition | AER capacity points per block | legacy capacity model only |
 
 `cost` and `upkeep` are **not** on the same scale and must never be converted into each other at runtime. §10.0 explains the two anchors.
@@ -599,25 +599,25 @@ The OpenCiv economy is unchanged in structure; only the **unit** it prices chang
 
 ### 10.0. Two scales, two anchors
 
-The Living World prices a block in **Production** (to raise) and **Gold per tick** (to keep). Those are different scales, and the baseline `0.1` cannot be both:
+The Living World prices a block in **Production** (to raise) and **Gold per tick** (to keep). Those are different scales, and one number cannot serve both:
 
-- `upkeep: 0.1` Gold is the anchor the design asked for: ten 100-man blocks = 1,000 men = **1 Gold/tick**.
-- `cost: 0.1` Production would complete a unit in a single tick, because a Living World city makes 2–6 points per tick. So the raise price is anchored to city output instead.
+- `upkeep: 0.2` Gold per 100-man block: ten blocks = 1,000 men = **2 Gold/tick**. Derived from measured income, not picked (§10.1).
+- `cost: 0.1` Production would complete a unit in a single tick, because a measured city makes a median of 5 points per tick (§10.1). The raise price is anchored to city output instead.
 
 | Block | `quantity` | `cost` (Production) | `upkeep` (Gold/tick) |
 | :--- | ---: | ---: | ---: |
-| Baseline (median block) | 100 | **25** | **0.1** |
-| Dwarf Axemen | 150 | 17 | 0.069 |
-| Gromril Ironwardens | 120 | 31 | 0.123 |
-| Slann Star Priest | 10 | 50 | 0.2 |
+| Baseline (median block) | 100 | **25** | **0.2** |
+| Dwarf Axemen | 150 | 17 | 0.138 |
+| Gromril Ironwardens | 120 | 31 | 0.246 |
+| Slann Star Priest | 10 | 50 | 0.4 |
 
-**Measured, shipped** (§10.1): median roster upkeep 65 → `UPKEEP_SCALE = 0.001538`, `PRODUCTION_PER_UPKEEP = 250`. After migration across 32 rosters / 347 units: `quantity` 10–240 (median 100), `upkeep` 0.009–0.223 (median 0.1), `cost` 5–56 (median 25).
+**Measured, shipped** (§10.1): median roster upkeep 65 → `UPKEEP_SCALE = 0.003077`, `PRODUCTION_PER_UPKEEP = 125`. After migration across 32 rosters / 347 units: `quantity` 10–240 (median 100), `upkeep` 0.018–0.446 (median **0.2**), `cost` 5–56 (median 25).
 
 Both values are authored in the roster JSON by the migration:
 
 ```ts
-upkeep = round3(upkeep * UPKEEP_SCALE);                    // 0.1 for a baseline block
-cost   = Math.max(1, Math.round(upkeep * PRODUCTION_PER_UPKEEP)); // 25 for a baseline block
+upkeep = round3(upkeep * UPKEEP_SCALE);                    // 0.2 for a baseline block
+cost   = Math.max(5, Math.round(upkeep * PRODUCTION_PER_UPKEEP)); // 25 for a baseline block
 ```
 
 `cost` is derived from `upkeep` **once**, so elites cost more to raise *and* more to keep without doubling the data.
@@ -626,15 +626,33 @@ cost   = Math.max(1, Math.round(upkeep * PRODUCTION_PER_UPKEEP)); // 25 for a ba
 
 No divisor is guessed. Phase A measures, and the measured constants ship with the roster migration:
 
-1. Generate 5 maps, run 20 ticks each, record per-state `gold/tick` and per-city `production/tick` (`cityYields`).
-2. Take the median state income and median city output.
-3. Set `UPKEEP_SCALE = 0.1 / median(rosterUpkeep)` across the 347 roster units — this is what makes a median block cost 0.1 Gold.
+1. Load a real map (`src/conquest/test-data/sample-world.json`), decompress its cells to the runtime pack shape, clear stale armies, and run 12 ticks.
+2. Record per-burg `cityYields.gold`/`.production`, and per-state gross gold, building maintenance and net gold before armies.
+3. Set `UPKEEP_SCALE = BASELINE_UPKEEP / median(rosterUpkeep)` across the 347 roster units.
 4. Set `PRODUCTION_PER_UPKEEP` so the baseline `cost` lands in **20–40 Production**, i.e. one block per 5–10 ticks of a young city.
 5. Confirm the median state can field ~10 baseline blocks for ≤35% of its income. If not, move `UPKEEP_SCALE`, not the formula.
 
 The measurement table (map, median income, median production, resulting constants) is committed alongside the data migration so the numbers are reproducible.
 
-**Phase A result:** the roster half is done — median unit upkeep 65 ⇒ `UPKEEP_SCALE = 0.001538`, and `PRODUCTION_PER_UPKEEP = 250` puts the median block at 25 Production. The *income* cross-check (step 5) needs a generated map and is carried by the Phase E upkeep test; if it fails, move `UPKEEP_SCALE`, not the formula.
+**Measured (Phase A, real map):** `sample-world.json` decompressed to the runtime pack shape, armies cleared, 12 ticks. 176 owned major burgs across 16 states:
+
+| Measure | Median | q10 | q90 |
+| :--- | ---: | ---: | ---: |
+| Citizens per burg | 4 | 1 | 6 |
+| Gold per burg / tick | **3** | 2 | 9 |
+| Production per burg / tick | **5** | 1 | 8 |
+| Burgs per state | 3 | 1 | 8 |
+| Gross state Gold | 16 | — | 55 |
+| Building maintenance per state | 7 | — | 17 |
+| **Net state Gold before armies** | **10** | −1 | 38 |
+
+Derivation at 30%:
+
+- A median burg earns 3 Gold/tick ⇒ **0.9 Gold** for its army. At `0.2`/block that is **4–5 blocks (≈450 men)**; at the original `0.1` it was 9 blocks, which let a three-burg state pay for two max-size armies.
+- A median state nets 10 Gold after maintenance ⇒ **3 Gold** for the army = **15 blocks (≈2,000 men)**, i.e. one field army with headroom for buildings, hurries and tech.
+- Production is unaffected: 25 Production / 5 per tick = **5 ticks per block**, inside the 5–10 target.
+
+So `BASELINE_UPKEEP = 0.2` Gold, `UPKEEP_SCALE = 0.2/65 = 0.003077`, and `PRODUCTION_PER_UPKEEP = 125` keeps the raise price at 25. The starting treasury (150) buys ~50 ticks of a 15-block army, so a realm must grow or shrink its host.
 
 ### 10.2. Upkeep
 
@@ -652,15 +670,15 @@ const civilians = state.military.filter(armyIsUtility).length * CIVILIAN_UPKEEP;
 const upkeep = Math.max(0, combat + civilians - UPKEEP_FREE);
 ```
 
-- `BASELINE_UPKEEP = 0.1` Gold; `UPKEEP_FREE = 3 * BASELINE_UPKEEP = 0.3` Gold (three baseline blocks).
+- `BASELINE_UPKEEP = 0.2` Gold; `UPKEEP_FREE = 3 * BASELINE_UPKEEP = 0.6` Gold (three baseline blocks).
 - `CIVILIAN_UPKEEP = 0.1` Gold per civilian regiment.
 - A damaged block pays proportionally: `hp = 0.5` costs half.
-- 1,000 men of baseline troops = 10 blocks = **1 Gold/tick**.
+- 1,000 men of baseline troops = 10 blocks = **2 Gold/tick**.
 - Round only at the treasury boundary, to 2 decimals, exactly like `applyTreasury` (`:5242`); keep the unrounded figure for display.
 
 `settleDebt` (`:5245`) disbands **one block** from the newest regiment, not the whole regiment; only remove the regiment when its last block dies.
 
-> Balance note: 20 baseline blocks cost 2 Gold/tick and 20 elite blocks 3–4 Gold/tick, against median state income of 2–3 Gold/tick and a 150 Gold opening treasury. Founding armies are affordable; sustained conquest needs city growth or a smaller, better army. That is the intended pressure, and it is checked by the Phase E measurement test, not by feel.
+> Balance note: 20 baseline blocks cost 4 Gold/tick and 20 elite blocks 6–8 Gold/tick, against a measured median state net of **10 Gold/tick** and a 150 Gold opening treasury. A median realm can hold one full army inside 30% of income; a second one eats most of the rest, which is the intended pressure. Checked against the measured income table (§10.1), not by feel.
 
 ### 10.3. Production
 
@@ -830,7 +848,7 @@ Saves carry **counts**, not `hp`, so every path below ends in the same conversio
 
 ### 13.2. Roster data migration
 
-One mechanical script, one commit, no hand edits across 32 files (`scripts/migrate-roster-quantity.mjs`). **Shipped** with `UPKEEP_SCALE = 0.001538` (median upkeep 65) and `PRODUCTION_PER_UPKEEP = 250`:
+One mechanical script, one commit, no hand edits across 32 files (`scripts/migrate-roster-quantity.mjs`). **Shipped** with `UPKEEP_SCALE = 0.003077` (median upkeep 65) and `PRODUCTION_PER_UPKEEP = 125`:
 
 1. `quantity = round(blocks × MEN_PER_BLOCK)` — exactly today's derived `men`, so the capacity model and `reconcileRegimentBlocks` see identical numbers.
 2. `men` and `blocks` become derived at parse time; delete both keys from the JSON.
@@ -890,7 +908,7 @@ Each phase is independently shippable and testable. No phase may leave the map i
 - [x] `src/conquest/engine/game/config.ts` + `game.json`: `battle.terrainDefenseBonus = 0.25`, `military.armies = true`.
 - [x] `src/conquest/engine/game/battle.ts`: `defenderTerrain`, `terrainDefenseBonus` folded into `defenderMult`, `categoryShares` exported. No damage-maths change.
 - [x] `src/model/physical/living-armies.ts` (**new**): helpers, both bridges, tech gating, `chooseOrder`.
-- [x] Calibration: `UPKEEP_SCALE = 0.001538`, `PRODUCTION_PER_UPKEEP = 250`.
+- [x] Calibration: measured city income, `UPKEEP_SCALE = 0.003077`, `PRODUCTION_PER_UPKEEP = 125`.
 - [x] Map battle sites converted to the mixed bridge (`living-generator.ts`: lair assault, siege, raid defenders, emergent hosts, `applyArmySurvivors`); `syncRegimentTotals` also converts legacy count blocks in place.
 - [x] Tests: `living-armies.test.ts` (bridge round-trip, helpers, ladder, orders, terrain), parser equivalence and faction-override re-derivation (`content.test.ts`), fixture updates.
 
@@ -1001,7 +1019,7 @@ Each phase is independently shippable and testable. No phase may leave the map i
 - Determinism: same seed → identical outcome and identical `hp` values.
 - Siege: garrison composition, walls, capture, retreat.
 - City strike removes `CITY_STRIKE_HP` from exactly one block.
-- Upkeep: `20 × 0.1 Gold` blocks = 2 Gold; a block at `hp 0.5` pays half; 0.3 free allowance; `CIVILIAN_UPKEEP` per civilian; bankruptcy disbands one block.
+- Upkeep: 20 baseline blocks = 4 Gold; a block at `hp 0.5` pays half; 0.6 free allowance; `CIVILIAN_UPKEEP` per civilian; bankruptcy disbands one block.
 - Production: roster `cost` in Production, tech gate, block appended at cap → new regiment; civilian ids still resolve.
 - Upgrade: tech gate, Gold cost, `hp` and `exp` preserved.
 - Replenishment: `+0.25 hp` in a city, `+0.125` in friendly territory, `+0` neutral, `+0.5` encamped, nothing after fighting.
@@ -1021,10 +1039,10 @@ Each phase is independently shippable and testable. No phase may leave the map i
 
 | Risk | Impact | Mitigation |
 | :--- | :--- | :--- |
-| `cost` and `upkeep` get conflated again | Units finish in one tick, or upkeep becomes trivial | They are separate anchors with separate scales (§10.0). A test asserts a baseline block's `cost ≥ 10` Production and its `upkeep == 0.1` Gold; no runtime conversion between them. |
+| `cost` and `upkeep` get conflated again | Units finish in one tick, or upkeep becomes trivial | They are separate anchors with separate scales (§10.0). A test asserts a baseline block's `cost ≥ 10` Production and its `upkeep == 0.2` Gold; no runtime conversion between them. |
 | Calibration guessed, not measured | States bankrupt or free-ride | §10.1 measures median income/production over 5 generated maps before `UPKEEP_SCALE` and `PRODUCTION_PER_UPKEEP` are committed. Tune the constants, never the formula. |
 | Rescaling roster `upkeep` unbalances the standalone Conquest campaign | Its armies become almost free | **Accepted.** The campaign is being retired by this integration; only `battle.ts` is carried forward. Its exact-value tests are updated, its economy is not rebalanced. |
-| Upkeep swings the economy | Bankruptcy or runaway armies | `Σ upkeep × hp` is proportional to capability, so damaged armies are cheaper. 20 baseline blocks = 2 Gold/tick; free allowance 0.3 Gold; Phase E measurement test compares against median income. |
+| Upkeep swings the economy | Bankruptcy or runaway armies | `Σ upkeep × hp` is proportional to capability, so damaged armies are cheaper. 20 baseline blocks = 4 Gold/tick; free allowance 0.6 Gold; recalibrated against measured median income (3 Gold/burg, 10 Gold/state). |
 | "One regiment = one Gold" assumptions leak | Wrong treasury forecasts | Grep `UNIT_UPKEEP_FREE`, `stateUnitCount`, `regiments` in `living-generator.ts`; route every count through `armyBlocks`/`armyHp`. |
 | Deleting the Civ combat catalog breaks a missed call site | Build or runtime failure | Phase E lands only after a repo-wide search for `CIV_UNIT_BY_ID`, `CIV_ALL_UNITS`, `CIV_PROMOTIONS`, `bestUnitForCategory`, `UNIT_CHAINS` is empty. Rename the file so a stale import fails at compile time. |
 | Old saves carry `living.units` combat entries with ids that no longer exist | Crash on load | Migrate by `sim.combatClass`, not by catalog id (§13.1); clamp `exp`; never look up a deleted `CivUnitDef`. |
@@ -1047,8 +1065,8 @@ Each phase is independently shippable and testable. No phase may leave the map i
 | # | Decision | Rationale | Consequence |
 | :-- | :--- | :--- | :--- |
 | 1 | Strength is **`hp` ∈ (0, 1] on `ArmyBlock`** | It is exactly the battle model's `fill`, it is state rather than definition, and it makes a 1-dragon block and a 1,000-rat block use the same maths. | `hp` lives beside `exp` in `reg.units`; `ArmyUnit` (the campaign/battle type) keeps `count` and is unchanged. |
-| 2 | Upkeep is **`Σ upkeep × hp`** | Proportional to capability, and algebraically identical to OpenConquest's `upkeep × count / men`. | Free allowance 0.3 Gold (three baseline blocks); `hp 0.5` pays half. |
-| 3 | `cost` is **Production**, `upkeep` is **Gold**, calibrated separately | A single number cannot serve both: 0.1 Production completes in one tick, while 0.1 Gold is the right per-block upkeep. | `cost` anchored at ~25 Production for a baseline block by measurement; `PRODUCTION_PER_UPKEEP = 250` used only by the migration. |
+| 2 | Upkeep is **`Σ upkeep × hp`** | Proportional to capability, and algebraically identical to OpenConquest's `upkeep × count / men`. | Free allowance 0.6 Gold (three baseline blocks); `hp 0.5` pays half. |
+| 3 | `cost` is **Production**, `upkeep` is **Gold**, calibrated separately | A single number cannot serve both: 0.1 Production completes in one tick, while 0.2 Gold is what measured income supports. | `cost` anchored at ~25 Production for a baseline block by measurement; `PRODUCTION_PER_UPKEEP = 125` used only by the migration. |
 | 4 | **Roster** production catalog | The roster is the culture-unique source; Civ combat defs duplicate it with worse data. | `productionCost`, `chooseCityProduction`, `spawnArmyBlock` read `ResolvedRoster`. |
 | 5 | **Only Civ civilians survive** | Civ mechanics need Settler/Builder/Work Boat/Caravan/Cargo Ship/Missionary/Inquisitor/Great Prophet; combat needs nothing from `CivUnitDef`. | `living-civ-units.ts` → `living-civ-civilians.ts`; `living-civ-promotions.ts` deleted. |
 | 6 | City strikes remove **`CITY_STRIKE_HP = 0.1`** from one block | Keeps "cities defend themselves" without an HP duel or LOS. | Deterministic target: highest `hp`, tie by `type`. |
@@ -1097,9 +1115,10 @@ Nothing remains open. Any new question discovered during implementation should b
 - A block's strength is a single `hp` fraction in `(0, 1]`, and it is the number used by upkeep, the battle engine's `fill`, the UI bar and replenishment. `quantity` appears only in display and in the legacy `men`/`blocks` mirror.
 - A state whose roster contains `ironbreaker`, `waywatcher` and a `monster` fields an army that keeps all three block types through recruitment, movement, battle and upgrade.
 - A 2:1 army wins with roughly Lanchester-scale losses, and a 25% rout ends the fight before annihilation.
-- The OpenCiv treasury still charges building maintenance, and army upkeep is `Σ upkeep × hp` with a 0.3 Gold free allowance: 20 baseline blocks cost 2 Gold/tick, a half-strength block pays half.
+- The OpenCiv treasury still charges building maintenance, and army upkeep is `Σ upkeep × hp` with a 0.6 Gold free allowance: 20 baseline blocks cost 4 Gold/tick, a half-strength block pays half.
 - A baseline block costs ~25 **Production** and 0.1 **Gold/tick**; the two scales are never converted at runtime, and the constants come from the committed measurement table.
 - Civilian units (Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor, Great Prophet) still work and cost 0.1 Gold each.
+- A median burg's 30% budget fields about 4–5 blocks; a median state's 30% fields about 15 blocks.
 - A city falls only after its garrison is beaten in a stack battle, not after N single-duel exchanges.
 - Same save + same tick reproduces the same battle result, block `hp` values and survivors.
 - `battle.ts` is unmodified and its tests pass untouched; `battle-screen.ts` only converts at the edges and still renders absolute `count`.

@@ -8465,6 +8465,8 @@ class LivingModel {
     for (const regiment of state.military ?? []) {
       if (regiment.n) continue;
       if (!regiment.units?.length) reconcileRegimentBlocks(regiment, unitTypes);
+      // Civilian regiments and stale ids never fight (living-openciv-armies.md §11).
+      if ((regiment.units ?? []).some(unit => unit.type !== "fleet" && !unitTypes[unit.type])) continue;
       const men = armyMen(regiment, unitTypes);
       if (men > bestMen) {
         best = regiment;

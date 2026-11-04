@@ -1,6 +1,6 @@
 // One-shot roster migration (living-openciv-armies.md §13.2):
 //   blocks × MEN_PER_BLOCK → quantity
-//   upkeep × UPKEEP_SCALE  → Gold-per-tick at hp 1 (baseline block = 0.1)
+//   upkeep × UPKEEP_SCALE  → Gold-per-tick at hp 1 (baseline block = 0.2)
 //   cost = round(upkeep × PRODUCTION_PER_UPKEEP) → Production to raise one block
 // Idempotent: a file already carrying `quantity` is left alone.
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
@@ -8,8 +8,8 @@ import { join } from "node:path";
 
 const DIR = join(process.cwd(), "src", "conquest", "content", "docs", "rosters");
 const MEN_PER_BLOCK = 1000;
-const BASELINE_UPKEEP = 0.1; // Gold per tick for a median block
-const PRODUCTION_PER_UPKEEP = 250; // floor 5 so the weakest militia still takes a tick or two
+const BASELINE_UPKEEP = 0.2; // Gold/tick per 100-man block: measured 30% of a median burg
+const PRODUCTION_PER_UPKEEP = 125; // keeps a median block at ~25 Production (5 ticks per block)
 
 const round = (v, d = 0) => Number(v.toFixed(d));
 
