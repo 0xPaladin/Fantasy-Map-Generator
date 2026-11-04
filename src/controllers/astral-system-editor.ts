@@ -8,7 +8,7 @@ import { ASTRAL_WORLD_TYPE_KEYS, type AstralWorldType } from "@/data/astral-good
 import { Goods } from "@/model/economy/goods-generator";
 import { type Market, Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
-import { peopleOf, setWorldTypeFor, starClassFor, tradeGoodsFor, worldTypeFor } from "@/model/physical/astral-naming";
+import { isCoreOrCapital, peopleOf, setWorldTypeFor, starClassFor, tradeGoodsFor, worldTypeFor } from "@/model/physical/astral-naming";
 import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-system";
 import { starTypeData } from "@/model/physical/astral-system/astrophysics";
 import { Burgs } from "@/model/political/burgs-generator";
@@ -17,7 +17,7 @@ import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { Layers } from "@/renderers/layers";
-import { enterAstralSystemView, isAstralView } from "@/renderers/view-mode";
+import { enterAstralPlanetView, enterAstralSystemView, isAstralView } from "@/renderers/view-mode";
 import type { StylesData } from "@/types/styles";
 import { Dialog } from "@/ui/dialog/dialog";
 import { noteButton } from "@/ui/dialog/dialog-helpers";
@@ -59,7 +59,12 @@ function renderDialog(): void {
   const editorHtml = /* html */ `<div id="astralSystemEditor" class="dialog">
       <style>
         #astralSystemEditor {
-          width: 46em;
+          width: 50em;
+        }
+        #astralSystemEditor .label {
+          display: inline;
+          margin-right: 0.25em;
+          opacity: 0.85;
         }
         #astralSystemEditor table {
           width: 100%;
@@ -80,62 +85,57 @@ function renderDialog(): void {
         }
       </style>
       <div id="astralSystemBody" style="padding-bottom: 0.3em">
-        <div style="display: flex; align-items: center">
+        <div style="display: flex; align-items: center; gap: 0.8em">
           <svg
             id="systemStar"
             data-tip="The system's star, drawn as the chart draws it"
             viewBox="0 0 140 140"
-            width="9em"
-            height="9em"
+            style="width: 4.8em; height: 4.8em; flex-shrink: 0"
           >
             <g id="systemStarShape" font-size="36" transform="translate(70 70)"></g>
           </svg>
-          <div style="display: grid; grid-auto-rows: minmax(1.6em, auto)">
-            <div id="systemSectorAndEmpire" style="font-weight: bold; max-width: 17em"></div>
-            <div>
-              <div class="label">Name:</div>
-              <input id="systemName" data-tip="Type to rename the system" autocorrect="off" spellcheck="false" style="width: 9em" />
-              <span id="systemNameSpeak" data-tip="Speak the name. You can change voice and language in options" class="speaker">🔊</span>
-              <span id="systemNameReRandom" data-tip="Generate random name for the system" class="icon-globe pointer"></span>
-              <span id="systemNameReCulture" data-tip="Generate people-specific name for the system" class="icon-book pointer"></span>
+          <div style="display: flex; flex-direction: column; gap: 0.35em; flex: 1; min-width: 0">
+            <div id="systemSectorAndEmpire" style="font-weight: bold; font-size: 1.05em"></div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.8em">
+              <span data-tip="The star's class, from how many people live in the system" style="display: inline-flex; align-items: center; gap: 0.2em">
+                <span class="label">Class:</span>
+                <span id="systemClass" style="font-weight: 500"></span>
+              </span>
+              <span style="display: inline-flex; align-items: center; gap: 0.2em">
+                <span class="label">Name:</span>
+                <input id="systemName" data-tip="Type to rename the system" autocorrect="off" spellcheck="false" style="width: 7.5em" />
+                <span id="systemNameSpeak" data-tip="Speak the name. You can change voice and language in options" class="speaker pointer">🔊</span>
+                <span id="systemNameReRandom" data-tip="Generate random name for the system" class="icon-globe pointer"></span>
+                <span id="systemNameReCulture" data-tip="Generate people-specific name for the system" class="icon-book pointer"></span>
+              </span>
+              <span data-tip="The people that holds the system" style="display: inline-flex; align-items: center; gap: 0.2em">
+                <span class="label">People:</span>
+                <select id="systemPeople" style="width: 7.5em"></select>
+              </span>
+              <span data-tip="Set system population. The star's class follows it" style="display: inline-flex; align-items: center; gap: 0.2em">
+                <span class="label">Population:</span>
+                <input id="systemPopulation" type="number" min="0" step="1" style="width: 4.8em" />
+              </span>
             </div>
-            <div data-tip="The people that holds the system">
-              <div class="label">People:</div>
-              <select id="systemPeople" style="width: 9em"></select>
-            </div>
-            <div data-tip="Set system population. The star's class follows it">
-              <div class="label">Population:</div>
-              <input id="systemPopulation" type="number" min="0" step="1" style="width: 9em" />
-            </div>
-            <div data-tip="The star's class, from how many people live in the system">
-              <div class="label">Class:</div>
-              <span id="systemClass"></span>
-            </div>
-            <div data-tip="System World Type and trade specialization">
-              <div class="label">World:</div>
-              <select id="systemWorldType" style="width: 9em"></select>
-            </div>
-            <div id="systemTradeGoodsLine" data-tip="Primary commodities traded in this system">
-              <div class="label">Trade:</div>
-              <span id="systemTradeGoods"></span>
-            </div>
-            <div data-tip="The installations that make the system what it is. Click one to toggle">
-              <div class="label">Installations:</div>
-              <span id="systemCapital" data-tip="Empire capital. Click to toggle" data-feature="capital" class="burgFeature icon-star"></span>
-              <span id="systemPort" data-tip="Shipyard. Click to toggle" data-feature="port" class="burgFeature icon-anchor"></span>
-              <span id="systemCitadel" data-tip="Bastion. Click to toggle" data-feature="citadel" class="burgFeature icon-chess-rook" style="font-size: 1.1em"></span>
-              <span id="systemWalls" data-tip="Shielding. Click to toggle" data-feature="walls" class="burgFeature icon-fort-awesome"></span>
-              <span id="systemPlaza" data-tip="Civic core. Click to toggle" data-feature="plaza" class="burgFeature icon-store"></span>
-              <span id="systemTemple" data-tip="Shrine. Click to toggle" data-feature="temple" class="burgFeature icon-chess-bishop" style="font-size: 1.1em; margin-left: 3px"></span>
-              <span id="systemShanty" data-tip="Drift. Click to toggle" data-feature="shanty" class="burgFeature icon-campground"></span>
-            </div>
-            <div data-tip="Gross product per population point, daily average">
-              <div class="label">Wealth</div>
-              <span id="systemWealth"></span>
-            </div>
-            <div data-tip="Set treasury balance">
-              <div class="label"><label for="systemTreasury">Treasury:</label></div>
-              <input id="systemTreasury" type="number" step="0.01" style="width: 9em" /> 🟡
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.8em">
+              <span data-tip="System World Type and trade specialization" style="display: inline-flex; align-items: center; gap: 0.2em">
+                <span class="label">World:</span>
+                <select id="systemWorldType" style="width: 7.5em"></select>
+              </span>
+              <span id="systemTradeGoodsLine" data-tip="Primary commodities traded in this system" style="display: inline-flex; align-items: center; gap: 0.2em">
+                <span class="label">Trade:</span>
+                <span id="systemTradeGoods"></span>
+              </span>
+              <span data-tip="The installations that make the system what it is. Click one to toggle" style="display: inline-flex; align-items: center; gap: 0.25em">
+                <span class="label">Installations:</span>
+                <span id="systemCapital" data-tip="Empire capital. Click to toggle" data-feature="capital" class="burgFeature icon-star"></span>
+                <span id="systemPort" data-tip="Shipyard. Click to toggle" data-feature="port" class="burgFeature icon-anchor"></span>
+                <span id="systemCitadel" data-tip="Bastion. Click to toggle" data-feature="citadel" class="burgFeature icon-chess-rook" style="font-size: 1.1em"></span>
+                <span id="systemWalls" data-tip="Shielding. Click to toggle" data-feature="walls" class="burgFeature icon-fort-awesome"></span>
+                <span id="systemPlaza" data-tip="Civic core. Click to toggle" data-feature="plaza" class="burgFeature icon-store"></span>
+                <span id="systemTemple" data-tip="Shrine. Click to toggle" data-feature="temple" class="burgFeature icon-chess-bishop" style="font-size: 1.1em; margin-left: 3px"></span>
+                <span id="systemShanty" data-tip="Drift. Click to toggle" data-feature="shanty" class="burgFeature icon-campground"></span>
+              </span>
             </div>
           </div>
         </div>
@@ -209,7 +209,6 @@ function renderDialog(): void {
   ensureEl("systemPeople").addEventListener("change", changePeople);
   ensureEl("systemPopulation").addEventListener("change", changePopulation);
   ensureEl("systemWorldType").addEventListener("change", changeWorldType);
-  ensureEl("systemTreasury").addEventListener("change", changeTreasury);
   ensureEl("astralSystemBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
     .forEach(el => void el.addEventListener("click", toggleFeature));
@@ -254,8 +253,6 @@ function updateSystemValues(): void {
   cultures.forEach(c => void peopleSelect.options.add(new Option(c.name, String(c.i), false, c.i === burg.culture)));
 
   ensureEl<HTMLInputElement>("systemPopulation").value = String(peopleOf(burg));
-  ensureEl<HTMLInputElement>("systemTreasury").value = String(rn(burg.treasury || 0, 2));
-  ensureEl("systemWealth").innerHTML = `🟡 ${rn(burg.population! > 0 ? (burg.product || 0) / burg.population! : 0, 2)}`;
 
   for (const feature of FEATURES) {
     ensureEl(featureId(feature)).classList.toggle("inactive", !burg[feature]);
@@ -405,17 +402,8 @@ function changeWorldType(this: HTMLSelectElement): void {
 function changePopulation(): void {
   const people = ensureEl<HTMLInputElement>("systemPopulation").valueAsNumber;
   if (Number.isFinite(people) && people >= 0) Burgs.setPopulation(getSelectedId(), people);
-  updateSystemValues(); // the class readout, the star and the wealth follow the people
+  updateSystemValues(); // the class readout and the star follow the people
   Layers.draw("systems");
-}
-
-function changeTreasury(this: HTMLInputElement): void {
-  try {
-    Burgs.setTreasury(getSelectedId(), this.valueAsNumber);
-  } catch {
-    tip("Enter a valid treasury amount", false, "error");
-  }
-  this.value = String(rn(pack.burgs[getSelectedId()].treasury || 0, 2));
 }
 
 function toggleFeature(this: HTMLElement): void {
@@ -539,8 +527,13 @@ function ensureSolarSystem(): void {
   const burgId = getSelectedId();
   const seed = `${options.map.seed}/astral/system/${burgId}`;
   if (SolarSystem.seed === seed && SolarSystem.bodies.length) return; // keep materialized snapshots
-  const { class: spectral } = starClassFor(pack.burgs[burgId]);
-  SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false });
+  const burg = pack.burgs[burgId];
+  if (isCoreOrCapital(burg)) {
+    SolarSystem.initFromSeed(seed, { forceHabitable: true });
+  } else {
+    const { class: spectral } = starClassFor(burg);
+    SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false });
+  }
 }
 
 async function openSystemOrrery(): Promise<void> {
@@ -568,6 +561,7 @@ async function viewPlanetInFmg(event: Event): Promise<void> {
   Dialog.close("astralSystemEditor");
   tip(`Generating ${body.name}...`, true);
   try {
+    enterAstralPlanetView(String(getSelectedId()));
     await SolarSystem.switchBody(body.id); // the planet's world becomes the active FMG map
     clearMainTip();
   } catch (error) {

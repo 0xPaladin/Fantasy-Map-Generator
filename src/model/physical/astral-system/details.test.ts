@@ -119,14 +119,46 @@ describe("generated system details", () => {
 });
 
 describe("the burg wrapper", () => {
-  it("seeds from the map and the burg id, with the burg's rolled class", () => {
+  it("generates core worlds with forceHabitable: true and matches starClassFor", () => {
     const burg = { i: 7, name: "Kessel", population: 500 };
 
-    expect(systemDetailsFor(burg)).toEqual(
+    const details = systemDetailsFor(burg);
+    expect(details).toEqual(
       generateSystemDetails({
         seed: "map-seed/astral/system/7",
         systemName: "Kessel",
-        spectral: starClassFor(burg).class
+        forceHabitable: true
+      })
+    );
+    expect(details.habitableCandidate).toBe(true);
+    expect(details.stars[0].spectral).toBe(starClassFor(burg).class);
+  });
+
+  it("generates capitals with forceHabitable: true even at low population", () => {
+    const burg = { i: 7, name: "Capital", population: 5, capital: 1 };
+
+    const details = systemDetailsFor(burg);
+    expect(details).toEqual(
+      generateSystemDetails({
+        seed: "map-seed/astral/system/7",
+        systemName: "Capital",
+        forceHabitable: true
+      })
+    );
+    expect(details.habitableCandidate).toBe(true);
+    expect(details.stars[0].spectral).toBe(starClassFor(burg).class);
+  });
+
+  it("generates fringe worlds with the rolled star class and forceHabitable: false", () => {
+    const burg = { i: 7, name: "Fringe", population: 5 };
+
+    const details = systemDetailsFor(burg);
+    expect(details).toEqual(
+      generateSystemDetails({
+        seed: "map-seed/astral/system/7",
+        systemName: "Fringe",
+        spectral: starClassFor(burg).class,
+        forceHabitable: false
       })
     );
   });

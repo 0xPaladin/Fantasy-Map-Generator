@@ -1,7 +1,15 @@
 // The 2d / 3d / globe buttons under the options panel, and the Astral and Living World modes
 import { Controllers } from "@/controllers";
 import { isConquestEnabled } from "@/controllers/conquest-mode";
-import { is3dView, isAstralView, isLivingWorldEnabled, setLivingWorld } from "@/renderers/view-mode";
+import { SolarSystem } from "@/model/system/solar-system";
+import {
+  getAstralNavLevel,
+  is3dView,
+  isAstralView,
+  isLivingWorldEnabled,
+  resetAstralNav,
+  setLivingWorld
+} from "@/renderers/view-mode";
 import { findEl } from "@/utils/node-utils";
 
 export async function changeViewMode(event: Event): Promise<void> {
@@ -22,12 +30,26 @@ export async function changeViewMode(event: Event): Promise<void> {
     return;
   }
 
+  if (button.id === "viewStandard") {
+    if (isAstralView()) {
+      await Controllers.AstralMode.exit();
+      return;
+    }
+    if (getAstralNavLevel() !== "sector") {
+      SolarSystem.returnToOrigin();
+      resetAstralNav();
+    }
+    if (isConquestEnabled()) await Controllers.ConquestMode.exit();
+    void Controllers.View3d.enterStandard();
+    return;
+  }
+
   if (isAstralView()) await Controllers.AstralMode.exit();
 
   if (isConquestEnabled()) await Controllers.ConquestMode.exit();
 
   const isPressed = button.classList.contains("pressed");
-  if (!isPressed && button.id !== "viewStandard") await Controllers.View3d.open(button.id);
+  if (!isPressed) await Controllers.View3d.open(button.id);
   else void Controllers.View3d.enterStandard();
 }
 

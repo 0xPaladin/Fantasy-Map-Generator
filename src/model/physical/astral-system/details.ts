@@ -1,9 +1,9 @@
 // The generated system readout: the astro port mapped to dialog rows.
 
-import { starClassFor } from "@/model/physical/astral-naming";
+import { isCoreOrCapital, starClassFor } from "@/model/physical/astral-naming";
 import type { Burg } from "@/model/political/burgs-generator";
 import { starTypeData } from "./astrophysics";
-import { generateSystem } from "./system";
+import { type GenerateSystemOptions, generateSystem } from "./system";
 
 export interface StarRow {
   role: string;
@@ -46,7 +46,8 @@ export interface SystemDetails {
 export interface SystemDetailsInput {
   seed: string;
   systemName: string;
-  spectral: string;
+  spectral?: string;
+  forceHabitable?: boolean;
 }
 
 const ROMAN_TABLE: [number, string][] = [
@@ -82,9 +83,11 @@ function toLetter(index: number): string {
 }
 
 /** Generate and map one system, a pure function of its inputs. */
-export function generateSystemDetails({ seed, systemName, spectral }: SystemDetailsInput): SystemDetails {
-  const primaryType = starTypeData[spectral] ? spectral : "G";
-  const system = generateSystem(seed, { primaryType });
+export function generateSystemDetails({ seed, systemName, spectral, forceHabitable }: SystemDetailsInput): SystemDetails {
+  const options: GenerateSystemOptions = {};
+  if (forceHabitable) options.forceHabitable = true;
+  if (spectral) options.primaryType = starTypeData[spectral] ? spectral : "G";
+  const system = generateSystem(seed, options);
   const { star } = system;
   const name = systemName.trim() || "System";
 
@@ -144,11 +147,23 @@ export function generateSystemDetails({ seed, systemName, spectral }: SystemDeta
 }
 
 /** The readout for one burg, seeded by the map and the burg id. */
-export function systemDetailsFor(burg: Pick<Burg, "i" | "name" | "population">): SystemDetails {
+export function systemDetailsFor(
+  burg: Pick<Burg, "i" | "name" | "population"> & Partial<Pick<Burg, "capital" | "state">>
+): SystemDetails {
+  const seed = `${options.map.seed}/astral/system/${burg.i}`;
+  const systemName = burg.name ?? "";
+  if (isCoreOrCapital(burg)) {
+    return generateSystemDetails({
+      seed,
+      systemName,
+      forceHabitable: true
+    });
+  }
   const { class: spectral } = starClassFor(burg);
   return generateSystemDetails({
-    seed: `${options.map.seed}/astral/system/${burg.i}`,
-    systemName: burg.name ?? "",
-    spectral
+    seed,
+    systemName,
+    spectral,
+    forceHabitable: false
   });
 }

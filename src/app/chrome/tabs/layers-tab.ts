@@ -12,6 +12,7 @@ import {
   getAstralNavLevel,
   is3dView,
   isAstralView,
+  isSystemView,
   returnToAstralSystem,
   subscribeAstralView
 } from "@/renderers/view-mode";
@@ -96,14 +97,60 @@ const TEMPLATE = /* html */ `
 
 ensureEl("layersContent").innerHTML = TEMPLATE;
 
-// --- Astral view navigation back buttons ---
-function refreshAstralNavButtons(): void {
+function setButtonVisible(btn: HTMLElement | null, visible: boolean): void {
+  if (!btn) return;
+  btn.style.display = visible ? "" : "none";
+  btn.hidden = !visible;
+}
+
+// --- Astral view and 3D navigation buttons ---
+function syncViewModeButtons(): void {
+  const astral = isAstralView();
   const level = getAstralNavLevel();
+  const system = isSystemView() || level === "system";
+
+  const standardBtn = findEl<HTMLButtonElement>("viewStandard");
+  const meshBtn = findEl<HTMLButtonElement>("viewMesh");
+  const globeBtn = findEl<HTMLButtonElement>("viewGlobe");
+  const astralBtn = findEl<HTMLButtonElement>("viewAstral");
   const sectorBtn = findEl<HTMLButtonElement>("viewAstralBackSector");
   const systemBtn = findEl<HTMLButtonElement>("viewAstralBackSystem");
-  if (!sectorBtn || !systemBtn) return;
-  sectorBtn.style.display = level !== "sector" ? "" : "none";
-  systemBtn.style.display = level === "planet" ? "" : "none";
+
+  if (!standardBtn || !meshBtn || !globeBtn || !astralBtn || !sectorBtn || !systemBtn) return;
+
+  if (level === "planet") {
+    // Planet FMG view: only Back to Sector and Back to System
+    setButtonVisible(standardBtn, false);
+    setButtonVisible(meshBtn, false);
+    setButtonVisible(globeBtn, false);
+    setButtonVisible(astralBtn, false);
+    setButtonVisible(sectorBtn, true);
+    setButtonVisible(systemBtn, true);
+  } else if (system) {
+    // 3D System Orrery view: only Standard and Back to Sector
+    setButtonVisible(standardBtn, true);
+    setButtonVisible(meshBtn, false);
+    setButtonVisible(globeBtn, false);
+    setButtonVisible(astralBtn, false);
+    setButtonVisible(sectorBtn, true);
+    setButtonVisible(systemBtn, false);
+  } else if (astral) {
+    // Astral Sector view: only Standard
+    setButtonVisible(standardBtn, true);
+    setButtonVisible(meshBtn, false);
+    setButtonVisible(globeBtn, false);
+    setButtonVisible(astralBtn, false);
+    setButtonVisible(sectorBtn, false);
+    setButtonVisible(systemBtn, false);
+  } else {
+    // Standard root FMG view: Standard, 3D scene, Globe, Astral
+    setButtonVisible(standardBtn, true);
+    setButtonVisible(meshBtn, true);
+    setButtonVisible(globeBtn, true);
+    setButtonVisible(astralBtn, true);
+    setButtonVisible(sectorBtn, false);
+    setButtonVisible(systemBtn, false);
+  }
 }
 
 ensureEl("viewMode").addEventListener("click", event => {
@@ -124,19 +171,10 @@ ensureEl("viewMode").addEventListener("click", event => {
   }
 });
 
-window.addEventListener("astralnav:change", refreshAstralNavButtons);
-refreshAstralNavButtons();
-
-// the Astral button is the chart's entry point: once the chart is on it leaves the UI,
-// and the Standard button is the exit back to the flat map (which brings the button back)
-function refreshAstralModeButton(): void {
-  const astralButton = findEl<HTMLButtonElement>("viewAstral");
-  if (!astralButton) return;
-  astralButton.style.display = isAstralView() ? "none" : "";
-}
-
-subscribeAstralView(refreshAstralModeButton);
-refreshAstralModeButton();
+window.addEventListener("astralnav:change", syncViewModeButtons);
+window.addEventListener("viewmode:change", syncViewModeButtons);
+subscribeAstralView(syncViewModeButtons);
+syncViewModeButtons();
 
 function renderPresetOptions(): void {
   const select = ensureEl<HTMLSelectElement>("layersPreset");
@@ -200,17 +238,6 @@ Layers.subscribe(render);
 subscribeAstralView(render);
 subscribeConquestView(render);
 
-// Astral view hides the 3D scene and Globe view mode buttons
-function syncViewModeVisibility(): void {
-  const astral = isAstralView();
-  for (const id of ["viewMesh", "viewGlobe"]) {
-    const el = findEl(id);
-    if (el) el.hidden = astral;
-  }
-}
-
-syncViewModeVisibility();
-subscribeAstralView(syncViewModeVisibility);
 Layers.subscribe(() => ViewportLayers.renderNow());
 
 // the 3d view renders the map as a texture: refresh it on any layer change, once the batch has settled
