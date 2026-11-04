@@ -17,13 +17,14 @@ import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { Layers } from "@/renderers/layers";
+import { enterAstralSystemView, isAstralView } from "@/renderers/view-mode";
 import type { StylesData } from "@/types/styles";
 import { Dialog } from "@/ui/dialog/dialog";
 import { noteButton } from "@/ui/dialog/dialog-helpers";
 import { applyDefaultViewboxEvents } from "@/ui/map/viewbox-events";
 import { zoomTo } from "@/ui/map/zoom";
 import { clearMainTip, tip } from "@/ui/tooltips";
-import { ensureEl, escapeHtml, getPointer, rand, rn, speak } from "@/utils";
+import { ensureEl, escapeHtml, findEl, getPointer, rand, rn, speak } from "@/utils";
 import { errorText } from "@/utils/string-utils";
 
 type ClassStyle = StylesData["systems"]["groups"][StarClassId];
@@ -195,7 +196,7 @@ function renderDialog(): void {
         <button id="systemView3d" data-tip="Open this system in the 3D orrery view">3D System</button>
         <button id="systemRelocate" data-tip="Relocate system. Click on map to move the system" class="icon-map-pin"></button>
         ${noteButton("systemLegend", "this system")}
-        <button id="systemLock" class="icon-lock-open" onmouseover="showElementLockTip(event)"></button>
+        <button id="systemLock" class="icon-lock-open"></button>
         <button id="systemRemove" data-tip="Remove non-capital system" data-shortcut="Delete" class="icon-trash fastDelete"></button>
       </div>
     </div>`;
@@ -542,8 +543,11 @@ function ensureSolarSystem(): void {
   SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false });
 }
 
-function openSystemOrrery(): void {
+async function openSystemOrrery(): Promise<void> {
   ensureSolarSystem();
+  // the orrery sits on the restored FMG profile: the star chart layers do not follow us down
+  if (isAstralView()) await Controllers.AstralMode.exit();
+  enterAstralSystemView(String(getSelectedId()));
   Dialog.close("astralSystemEditor");
   void Controllers.View3d.open("viewSystem");
 }
@@ -554,6 +558,7 @@ async function viewPlanetInFmg(event: Event): Promise<void> {
   if (index === undefined) return;
 
   ensureSolarSystem();
+  if (isAstralView()) await Controllers.AstralMode.exit(); // the planet's flat map needs the FMG profile
   const body = SolarSystem.getBody(`planet-${index}`);
   if (!body?.colonizable) {
     tip(`${body?.name ?? "This planet"} has no mappable surface`, false, "error");
@@ -638,7 +643,8 @@ function closeSystemEditor(): void {
   if (ensureEl("systemRelocate").classList.contains("pressed")) toggleRelocateSystem();
   selectedId = null;
   Dialog.destroy("astralSystemEditor");
-  ensureEl("astralSystemEditor").remove();
+  const editor = findEl("astralSystemEditor");
+  if (editor) editor.remove();
 }
 
 export const AstralSystemEditor = { open };

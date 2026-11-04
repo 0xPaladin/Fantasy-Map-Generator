@@ -59,6 +59,8 @@ class SolarSystemModule {
   activeBodyId: string | null = null;
   seed: string | null = null;
   star: System["star"] | null = null;
+  /** the FMG world the session started from, parked before the first body materialization */
+  private originSnapshot: WorldSnapshot | null = null;
   /** view refresh hook; the app binds Layers.drawAll here so the model stays renderer-free */
   redrawHook: (() => void) | null = null;
 
@@ -72,6 +74,18 @@ class SolarSystemModule {
 
   getBody(bodyId: string): CelestialBody | null {
     return this.bodies.find(body => body.id === bodyId) ?? null;
+  }
+
+  /** Restore the world the session started from: the map under the Sector View. */
+  returnToOrigin(): void {
+    if (!this.originSnapshot) return; // no body switch happened yet; the origin is what is on screen
+    this.restoreGlobals(this.originSnapshot);
+    this.activeBodyId = null;
+  }
+
+  /** Drop the parked origin world: for tests, or when the session's base map is regenerated */
+  forgetOrigin(): void {
+    this.originSnapshot = null;
   }
 
   /** Build a system from a procedural astral-system roll. Colonized systems center on a
@@ -204,6 +218,9 @@ class SolarSystemModule {
     if (!target.colonizable) throw new Error(`${target.name} has no mappable surface`);
     if (target.id === this.activeBodyId) return;
 
+    // park the session's origin world once, before the first materialization replaces the globals
+    if (!this.originSnapshot) this.originSnapshot = this.captureGlobals();
+
     const current = this.activeBody;
     if (current) current.snapshot = this.captureGlobals();
 
@@ -220,8 +237,10 @@ class SolarSystemModule {
   /** park the ambient world on the (about to be replaced) globals */
   private captureGlobals(): WorldSnapshot {
     return {
-      grid,
-      pack,
+      // property access rather than bare identifiers: headless test envs may not have
+      // initialized the world globals yet
+      grid: globalThis.grid ?? ({} as GridGraph),
+      pack: globalThis.pack ?? ({} as PackedGraph),
       options: structuredClone(options),
       styles: structuredClone(globalThis.styles ?? ({} as StylesData)),
       seed: options.map.seed
