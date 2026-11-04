@@ -139,6 +139,8 @@ export interface ArmyBlock {
   hp: number;
   /** Veteran rank 0..9 (replaces Civ promotions). */
   exp: number;
+  /** Trouble-resolution fatigue carried over from `ArmyUnit` (0..3). */
+  disruption?: number;
 }
 ```
 
@@ -213,10 +215,17 @@ export function chooseOrder(side: ArmyBlock[], types: Record<string, UnitType>, 
 
 /** Bridge — the only place `hp` and `count` meet. */
 export const BATTLE_STRENGTH = 1000; // one full block is 1,000 abstract strength in battle.ts
-export function toBattleUnits(units: ArmyBlock[]): ArmyUnit[];
+export function toBattleUnits(units: ArmyBlock[]): ArmyUnit[];       // block-vs-block sessions
 export function fromBattleUnits(units: ArmyUnit[]): ArmyBlock[];
+export function toBattleUnitsMen(units: ArmyBlock[], types: Record<string, UnitType>): ArmyUnit[]; // mixed sessions
+export function fromBattleUnitsMen(units: ArmyUnit[], types: Record<string, UnitType>): ArmyBlock[];
 export function toBattleTypes(types: Record<string, UnitType>): Record<string, UnitType>;
 ```
+
+**Two bridges, because the map already fights mixed battles.** `battle.ts` is not only the Living World's engine — the map's lair assaults, burg sieges and raid defence already call it with count-based garrisons (`garrisonUnits`, `lair.defenders`). Those sessions must keep real men on both sides:
+
+- `toBattleUnits` / `fromBattleUnits` — **block vs block** (army battles, Phase C). Every block becomes `BATTLE_STRENGTH` abstract men so `fill = hp` exactly, independent of `quantity`.
+- `toBattleUnitsMen` / `fromBattleUnitsMen` — **blocks vs counted units** (Phase A's map battles). `count = round(hp × quantity)`, so the counted side needs no rescaling and `fill = hp` still holds. Mixing the two scales in one session inflates the bridged side by `BATTLE_STRENGTH / quantity` — the exact bug Phase A had to fix.
 
 **The bridge is deliberately trivial.** `battle.ts` needs `count` relative to `men`, and `fill = count / men`. So every block is handed to it as `count = round(hp × BATTLE_STRENGTH)` against a **shallow copy of the type table with `men = BATTLE_STRENGTH`**:
 
@@ -252,9 +261,11 @@ Mapping every block onto 1,000 abstract men gives every block 0.1% resolution re
 Consequences, all desirable:
 
 - `fill = hp` **exactly**, for every unit type, including `quantity: 1` monsters. No rounding loss on small units.
-- `quantity` never reaches the battle engine, so `battle.ts` is untouched. `battle-screen.ts` is the only other direct reader of `Regiment.units`; it gets a three-line edge conversion at `:154-159` (read) and `:185` (write-back) and otherwise keeps working entirely in `count`.
+- `quantity` never reaches a block-vs-block session, so in Phase C it has no mechanical effect at all. Mixed sessions use it only to leave the counted side unchanged.
 - Every block is one tactical element, so losses split by block; a 10-priest block and a 150-axemen block lose approximately the same fraction of `hp` per round. Only the absolute `…Men` numbers in `BattleOutcome` differ, and the Living World never displays those.
 - `BattleOutcome`'s `attackerLossMen` / `defenderLossMen` / `…RemainingMen` are in that same abstract strength. Never show them as a headcount: use `lossesHp` for the report and `armyMen(reg)` for the map.
+
+`battle.ts` and `battle-screen.ts` therefore stay on absolute `count`; the only changes at their edges are the bridge calls (`battle-screen.ts:154-159`, `:185`, `regiment-editor.ts:429`, and the map battle sites listed in §15/Phase A).
 
 ### 5.4. Invariants
 
@@ -595,12 +606,12 @@ The Living World prices a block in **Production** (to raise) and **Gold per tick
 
 | Block | `quantity` | `cost` (Production) | `upkeep` (Gold/tick) |
 | :--- | ---: | ---: | ---: |
-| Baseline swordsman | 100 | **25** | **0.1** |
-| Dwarf Axemen | 150 | ~18 | 0.072 |
-| Gromril Ironwardens | 120 | ~32 | 0.128 |
-| Slann Star Priest | 10 | ~52 | 0.208 |
+| Baseline (median block) | 100 | **25** | **0.1** |
+| Dwarf Axemen | 150 | 17 | 0.069 |
+| Gromril Ironwardens | 120 | 31 | 0.123 |
+| Slann Star Priest | 10 | 50 | 0.2 |
 
-The figures are *illustrative*: they assume the measured median roster upkeep is ≈62.5 (the sample mean across 347 units), giving `UPKEEP_SCALE ≈ 0.0016`. §10.1 measures the real median and replaces that number.
+**Measured, shipped** (§10.1): median roster upkeep 65 → `UPKEEP_SCALE = 0.001538`, `PRODUCTION_PER_UPKEEP = 250`. After migration across 32 rosters / 347 units: `quantity` 10–240 (median 100), `upkeep` 0.009–0.223 (median 0.1), `cost` 5–56 (median 25).
 
 Both values are authored in the roster JSON by the migration:
 
@@ -622,6 +633,8 @@ No divisor is guessed. Phase A measures, and the measured constants ship with th
 5. Confirm the median state can field ~10 baseline blocks for ≤35% of its income. If not, move `UPKEEP_SCALE`, not the formula.
 
 The measurement table (map, median income, median production, resulting constants) is committed alongside the data migration so the numbers are reproducible.
+
+**Phase A result:** the roster half is done — median unit upkeep 65 ⇒ `UPKEEP_SCALE = 0.001538`, and `PRODUCTION_PER_UPKEEP = 250` puts the median block at 25 Production. The *income* cross-check (step 5) needs a generated map and is carried by the Phase E upkeep test; if it fails, move `UPKEEP_SCALE`, not the formula.
 
 ### 10.2. Upkeep
 
@@ -817,12 +830,12 @@ Saves carry **counts**, not `hp`, so every path below ends in the same conversio
 
 ### 13.2. Roster data migration
 
-One mechanical script, one commit, no hand edits across 32 files:
+One mechanical script, one commit, no hand edits across 32 files (`scripts/migrate-roster-quantity.mjs`). **Shipped** with `UPKEEP_SCALE = 0.001538` (median upkeep 65) and `PRODUCTION_PER_UPKEEP = 250`:
 
 1. `quantity = round(blocks × MEN_PER_BLOCK)` — exactly today's derived `men`, so the capacity model and `reconcileRegimentBlocks` see identical numbers.
 2. `men` and `blocks` become derived at parse time; delete both keys from the JSON.
 3. `upkeep *= UPKEEP_SCALE` (§10.1 measurement), rounded to 3 decimals.
-4. `cost = round(upkeep * PRODUCTION_PER_UPKEEP)` — the Conquest Gold `cost` (50–1250) is **not** migrated; it priced instant Gold recruitment and has no meaning here.
+4. `cost = max(5, round(upkeep * PRODUCTION_PER_UPKEEP))` — the Conquest Gold `cost` (50–1250) is **not** migrated; it priced instant Gold recruitment and has no meaning here.
 5. `capacityCost` is left untouched: the legacy capacity model only.
 
 Acceptance check on the migrated directory: median `quantity` ≈ 100, `upkeep` ∈ [0.01, 0.25], `cost` ∈ [10, 60], and every roster still parses with zero warnings.
@@ -866,22 +879,29 @@ Remove the flag in Phase F one release after it ships on by default.
 
 Each phase is independently shippable and testable. No phase may leave the map in a state where `reg.units` and `living.armies` disagree.
 
-### Phase A — Foundations (no behavior change)
+### Phase A — Foundations (no behavior change) — **DONE**
 
-- [ ] `src/conquest/engine/common/types.ts`: add `ArmyBlock { type, hp, exp }`; `ArmyUnit` unchanged; `Regiment.units: ArmyBlock[]`.
-- [ ] `src/controllers/political/military/battle-screen.ts`: convert `Regiment.units` through `toBattleUnits`/`fromBattleUnits` at `:154-159` and `:185` (the only direct consumer).
-- [ ] `src/controllers/political/military/regiment-editor.ts`: push `{ type, hp: 1, exp: 0 }` at `:429`; the counts it displays still come from `reg.u`.
-- [ ] `src/conquest/engine/common/content.ts`: `UnitType.quantity`, `cost`/`upkeep` docs, `requiredTech`/`upgradesTo`/`era`; parser reads `quantity` and derives `men`/`blocks`; `allowedUnitKeys`.
-- [ ] Roster data migration (§13.2) in one scripted commit.
-- [ ] Update exact-value campaign expectations (`engine.test.ts`, `capacity.test.ts`, `purse.test.ts`, `phase6.test.ts`) for the rescaled `upkeep`/`cost`.
-- [ ] `src/types/living.ts`: add `ArmySimState`, `ArmyStance`, `ArmyBattleRecord`; add `armies?` to `LivingWorldState`; re-document `units?` as utility-only.
-- [ ] `src/conquest/engine/game/config.ts`: `battle.terrainDefenseBonus = 0.25` + `military.armies = true` (reuse the existing `military.maxUnitsPerArmy = 20`).
-- [ ] `src/conquest/engine/game/battle.ts`: optional `BattleModifiers.defenderTerrain`; fold `terrainDefenseBonus` into `defenderMult`; export `categoryShares`. No change to the damage or loss maths.
-- [ ] `src/model/physical/living-armies.ts` (**new**): helpers and bridge from §5.3, plus `requiredTechFor`, `nextRosterUnitInCategory`, `pickRosterUnit`, `matchRosterUnitByCategory`, `chooseOrder`.
-- [ ] Calibration measurement (§10.1) and the committed measurement table.
-- [ ] Tests: bridge round-trip (`hp 0.37 → count 370 → hp 0.37`), helpers against `default` + `dwarf` rosters, parser equivalence (`quantity` vs legacy `blocks`), `computeBattleSetup` terrain, `requiredTechFor` ladder.
+- [x] `src/conquest/engine/common/types.ts`: `ArmyBlock { type, hp, exp, disruption? }`; `ArmyUnit` unchanged; `Regiment.units: ArmyBlock[]`.
+- [x] `src/controllers/political/military/battle-screen.ts`: edge conversion through the mixed bridge.
+- [x] `src/controllers/political/military/regiment-editor.ts`: pushes `{ type, hp: 1, exp: 0 }`; counts still come from `reg.u`.
+- [x] `src/conquest/engine/common/content.ts`: `UnitType.quantity`, `cost`/`upkeep` re-documented, `requiredTech`/`upgradesTo`/`era`; parser reads `quantity` (legacy `blocks` accepted silently), derives `men`/`blocks`; `allowedUnitKeys` extended.
+- [x] Roster data migration (§13.2) in one scripted commit (`scripts/migrate-roster-quantity.mjs`).
+- [x] `src/types/living.ts`: `ArmySimState`, `ArmyStance`, `ArmyBattleRecord`, `LivingWorldState.armies`; `units` documented as utility-only.
+- [x] `src/conquest/engine/game/config.ts` + `game.json`: `battle.terrainDefenseBonus = 0.25`, `military.armies = true`.
+- [x] `src/conquest/engine/game/battle.ts`: `defenderTerrain`, `terrainDefenseBonus` folded into `defenderMult`, `categoryShares` exported. No damage-maths change.
+- [x] `src/model/physical/living-armies.ts` (**new**): helpers, both bridges, tech gating, `chooseOrder`.
+- [x] Calibration: `UPKEEP_SCALE = 0.001538`, `PRODUCTION_PER_UPKEEP = 250`.
+- [x] Map battle sites converted to the mixed bridge (`living-generator.ts`: lair assault, siege, raid defenders, emergent hosts, `applyArmySurvivors`); `syncRegimentTotals` also converts legacy count blocks in place.
+- [x] Tests: `living-armies.test.ts` (bridge round-trip, helpers, ladder, orders, terrain), parser equivalence and faction-override re-derivation (`content.test.ts`), fixture updates.
 
-**Exit:** all existing tests pass unchanged; no gameplay change; nothing imports `living-armies.ts` except its test.
+**Exit:** met — full suite green (245 files / 3,431 tests), `tsc` clean, no gameplay change, nothing imports `living-armies.ts` outside the bridge call sites yet.
+
+**Deviations from the original sketch, deliberate:**
+
+1. `ArmyBlock` keeps `disruption?` — the trouble-resolution system already stores fatigue on map blocks.
+2. `blocks` remains accepted as a silent legacy alias (the migration removes it from shipped rosters); only `men` still warns.
+3. A **second bridge** (`toBattleUnitsMen`) was required because the map already runs `battle.ts` against counted garrisons. Using the 1,000-strength scale there inflated attackers ~6×.
+4. `syncRegimentTotals` converts count-based blocks in place, so pre-migration `.map` saves load instead of producing `NaN` totals.
 
 ### Phase B — Army sync, movement, stacking
 
@@ -987,7 +1007,7 @@ Each phase is independently shippable and testable. No phase may leave the map i
 - Replenishment: `+0.25 hp` in a city, `+0.125` in friendly territory, `+0` neutral, `+0.5` encamped, nothing after fighting.
 - Migration: old `living.units` combat entry → `hp: 1` block via `sim.combatClass`; old `count` blocks → `count / quantity`.
 - Inventory guard: a test asserts no `src/**` module imports `CIV_UNIT_BY_ID`, `CIV_ALL_UNITS`, `CIV_PROMOTIONS`, `bestUnitForCategory` or `UNIT_CHAINS`.
-- Untouched suite: `battle.test.ts` passes without edits, because `ArmyUnit` is unchanged. Campaign economy suites (`engine.test.ts`, `capacity.test.ts`, `purse.test.ts`, `phase6.test.ts`) get their expected upkeep/recruit numbers updated to the rescaled roster values in Phase A; the campaign itself is not rebalanced, since it is being retired.
+- Untouched suite: `battle.test.ts` and the campaign suites (`engine.test.ts`, `capacity.test.ts`, `purse.test.ts`, `phase6.test.ts`) passed **unchanged** — they use inline fixtures, so the roster rescale never reached them.
 
 ### UI
 
@@ -1054,7 +1074,8 @@ Nothing remains open. Any new question discovered during implementation should b
 | `src/conquest/engine/game/battle.ts` | A, C, D | `defenderTerrain`; export `categoryShares`; otherwise **untouched** |
 | `src/conquest/engine/game/config.ts` | A | `battle.terrainDefenseBonus`, `military.armies` flag; reuses existing `military.maxUnitsPerArmy` |
 | `src/conquest/engine/game/units.ts` | D | optional sorted `garrisonUnits` for stable block order |
-| `src/model/physical/living-armies.ts` | A | **new** pure army helpers + `hp ↔ count` bridge |
+| `src/model/physical/living-armies.ts` | A | **new** pure army helpers + both `hp ↔ count` bridges |
+| `scripts/migrate-roster-quantity.mjs` | A | **new** one-shot roster migration (`blocks → quantity`, price rescale) |
 | `src/model/physical/living-generator.ts` | B–E | `syncArmies`, `armyOccupancy`, movement, `resolveArmyBattle`, siege, economy on `hp`, spawn/upgrade/replenish |
 | `src/model/political/military-generator.ts` | A–B | `generate`/`reconcileRegimentBlocks` map their count slots to `{ type, hp: count / quantity, exp }`; `syncRegimentTotals` computes `Σ round(hp × quantity)` |
 | `src/data/living-civ-units.ts` → `living-civ-civilians.ts` | E | keep 8 utility defs; export `CIV_CIVILIANS` / `CIV_CIVILIAN_BY_ID` |

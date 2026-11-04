@@ -8,7 +8,7 @@ import {
   type ResolvedRoster,
   type UnitType
 } from "@/conquest/engine/common/content";
-import type { ArmyUnit, CapacityPoints } from "@/conquest/engine/common/types";
+import type { ArmyBlock, ArmyUnit, CapacityPoints } from "@/conquest/engine/common/types";
 import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/conquest/engine/compiler";
 import {
   type BattleModifiers,
@@ -54,8 +54,8 @@ import {
 } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
-import { CIV_PROMOTIONS, CIV_PROMOTION_BY_ID } from "@/data/living-civ-promotions";
-import { CIV_TECHS, CIV_TECH_BY_ID } from "@/data/living-civ-techs";
+import { CIV_PROMOTION_BY_ID, CIV_PROMOTIONS } from "@/data/living-civ-promotions";
+import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { CIV_ALL_UNITS, CIV_UNIT_BY_ID } from "@/data/living-civ-units";
 import {
@@ -101,18 +101,19 @@ import {
 import { buildMissionPhases, type MissionPhaseInput, phasesForParty } from "@/data/mission-phases";
 import { excavationMissionTags, lairMissionTags, PACIFY_MISSION_TAGS, troubleMissionTags } from "@/data/mission-tags";
 import type { Good } from "@/model/economy/goods-generator";
+import { Routes } from "@/model/economy/routes-generator";
+import { armyMen, fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import {
   getCategoryForUnit,
-  type MilitaryCategory,
   Military,
+  type MilitaryCategory,
   type Regiment,
   reconcileRegimentBlocks,
   syncRegimentTotals
 } from "@/model/political/military-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import { type State, States } from "@/model/political/states-generator";
-import { Routes } from "@/model/economy/routes-generator";
 import { Names } from "@/model/society/names-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { isAstralView } from "@/renderers/view-mode";
@@ -150,11 +151,11 @@ import {
   type MissionOutcome,
   type MissionPhase,
   type MissionTag,
+  type ProductionItem,
   type ProvinceLair,
   type ProvinceSimState,
   type ProvinceTrouble,
   type RelicCategory,
-  type ProductionItem,
   type ReligionBeliefState,
   SEASON_NAMES,
   type SeasonId,
@@ -1167,11 +1168,7 @@ export function hurryGoldCost(remainingProduction: number, isUnit: boolean, hasB
 }
 
 /** A tech is selectable when its era is unlocked and every prerequisite is known. */
-export function isTechSelectable(
-  tech: CivTechDef,
-  researched: ReadonlySet<string>,
-  theme: CivThemeId
-): boolean {
+export function isTechSelectable(tech: CivTechDef, researched: ReadonlySet<string>, theme: CivThemeId): boolean {
   if (researched.has(tech.id)) return false;
   if (!isCivEraAvailable(theme, tech.era)) return false;
   return tech.prerequisites.every(id => researched.has(id));
@@ -1215,19 +1212,14 @@ export function bestUnitForCategory(category: MilitaryCategory, techs: ReadonlyS
 }
 
 /** OpenCiv exponential damage: stronger side multiplies, wounded defenders take less. */
-export function combatDamage(
-  attackStrength: number,
-  defendStrength: number,
-  defenderHp: number,
-  roll: number
-): number {
+export function combatDamage(attackStrength: number, defendStrength: number, defenderHp: number, roll: number): number {
   const attack = Math.max(1, attackStrength);
   const defend = Math.max(1, defendStrength);
   const stronger = Math.max(attack, defend);
   const weaker = Math.min(attack, defend);
   const ratio = stronger / weaker;
   const multiplier = (((ratio + 3) / 4) ** 4 + 1) / 2;
-  const wounded = 1 - 0.5 * (UNIT_MAX_HP - minmax(defenderHp, 0, UNIT_MAX_HP)) / UNIT_MAX_HP;
+  const wounded = 1 - (0.5 * (UNIT_MAX_HP - minmax(defenderHp, 0, UNIT_MAX_HP))) / UNIT_MAX_HP;
   const base = (24 + 12 * minmax(roll, 0, 0.999)) * wounded;
   const applied = attack >= defend ? base * multiplier : base / multiplier;
   return Math.max(1, Math.floor(applied));
@@ -2534,7 +2526,7 @@ class LivingModel {
         reconcileRegimentBlocks(reg, unitTypes);
       }
       for (const unit of reg.units ?? []) {
-        if (unit.count <= 0) continue;
+        if (unit.hp <= 0) continue;
         if (waivedUnits < freeGarrisonWaiver) {
           waivedUnits += 1;
           continue;
@@ -2542,7 +2534,7 @@ class LivingModel {
         const uType = unitTypes[unit.type];
         const cost = uType?.capacityCost;
         if (!cost) continue;
-        const blocks = unit.count / MEN_PER_BLOCK;
+        const blocks = unit.hp * (uType.quantity / MEN_PER_BLOCK);
         ledger.m.load += (cost.m ?? 0) * blocks;
         ledger.w.load += (cost.w ?? 0) * blocks;
         ledger.s.load += (cost.s ?? 0) * blocks;
@@ -4486,12 +4478,7 @@ class LivingModel {
    * §4.1: assign citizens to worked cells (centre free, then Food floor, then
    * ruler-weighted total yield) and sum the OpenCiv city yields.
    */
-  private updateWorkedCells(
-    burg: Burg,
-    bSim: BurgSimState,
-    state: State,
-    living: LivingWorldState
-  ): YieldValues {
+  private updateWorkedCells(burg: Burg, bSim: BurgSimState, state: State, living: LivingWorldState): YieldValues {
     const citizens = Math.max(1, Math.floor(bSim.citizens ?? citizensFromPopulation(burg.population ?? 0)));
     bSim.citizens = citizens;
 
@@ -4530,9 +4517,7 @@ class LivingModel {
     }
 
     // Phase 1: Food floor, highest Food first, then nearest, then lowest id.
-    const byFood = [...candidates].sort(
-      (a, b) => b.yields.food - a.yields.food || a.hops - b.hops || a.cell - b.cell
-    );
+    const byFood = [...candidates].sort((a, b) => b.yields.food - a.yields.food || a.hops - b.hops || a.cell - b.cell);
     for (const candidate of byFood) {
       if (worked.length >= citizens || foodFloorReached()) break;
       if (assigned.has(candidate.cell) || candidate.yields.food <= 0) continue;
@@ -4719,12 +4704,7 @@ class LivingModel {
   }
 
   /** Border growth reaching a Free Burg triggers the kinship/faith check. */
-  private handleFreeBurgEncounter(
-    state: State,
-    burg: Burg,
-    previousOwner: number,
-    living: LivingWorldState
-  ): void {
+  private handleFreeBurgEncounter(state: State, burg: Burg, previousOwner: number, living: LivingWorldState): void {
     if (previousOwner) return;
     const bSim = living.burgs[burg.i];
     const kin = this.sharesKinshipOrFaith(state.i, burg.i);
@@ -5440,9 +5420,7 @@ class LivingModel {
   }
 
   /** Current occupant registry for 1UPT checks. */
-  private unitOccupancy(
-    living: LivingWorldState
-  ): Map<number, { stateId: number; isUtility: boolean; key: string }[]> {
+  private unitOccupancy(living: LivingWorldState): Map<number, { stateId: number; isUtility: boolean; key: string }[]> {
     const map = new Map<number, { stateId: number; isUtility: boolean; key: string }[]>();
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
@@ -5726,11 +5704,7 @@ class LivingModel {
   }
 
   /** A hostile Major Burg within range (for ranged bombardment). */
-  private findCityInRange(
-    stateId: number,
-    cell: number,
-    range: number
-  ): { burg: Burg; bSim: BurgSimState } | null {
+  private findCityInRange(stateId: number, cell: number, range: number): { burg: Burg; bSim: BurgSimState } | null {
     const living = this.getState();
     const distances = this.cellHopDistances(cell, Math.max(1, range));
     for (const [candidate, hops] of distances) {
@@ -6070,14 +6044,7 @@ class LivingModel {
 
     const target = this.pickSettlerTarget(state, regiment.cell, living);
     if (target === null) return false;
-    return this.moveUnitToward(
-      regiment,
-      unit,
-      target,
-      state.i,
-      this.unitKey(state.i, regiment.i),
-      occupancy
-    );
+    return this.moveUnitToward(regiment, unit, target, state.i, this.unitKey(state.i, regiment.i), occupancy);
   }
 
   private canFoundBurg(cell: number, state: State): boolean {
@@ -6256,13 +6223,7 @@ class LivingModel {
     if (cell === null) return null;
 
     const regiment = this.createRegiment(state);
-    this.moveRegimentTo(
-      regiment,
-      cell,
-      state.i,
-      this.unitKey(state.i, regiment.i),
-      this.unitOccupancy(living)
-    );
+    this.moveRegimentTo(regiment, cell, state.i, this.unitKey(state.i, regiment.i), this.unitOccupancy(living));
 
     const unit: UnitSimState = {
       unitTypeId: def.id,
@@ -6502,12 +6463,7 @@ class LivingModel {
   }
 
   /** The first Great Prophet links or founds a faith and picks Founder + Follower beliefs. */
-  private foundReligion(
-    state: State,
-    sSim: StatePolitySim,
-    capital: Burg,
-    living: LivingWorldState
-  ): void {
+  private foundReligion(state: State, sSim: StatePolitySim, capital: Burg, living: LivingWorldState): void {
     living.religions ??= {};
     const used = this.usedBeliefs(living);
 
@@ -6572,7 +6528,11 @@ class LivingModel {
   /** The second Great Prophet adds a Follower and an Enhancer belief. */
   private enhanceReligion(state: State, record: ReligionBeliefState, capital: Burg, living: LivingWorldState): void {
     const used = this.usedBeliefs(living);
-    const follower = this.chooseBelief(CIV_FOLLOWER_BELIEFS, used, record.religionId + record.followerBeliefIds.length + 1);
+    const follower = this.chooseBelief(
+      CIV_FOLLOWER_BELIEFS,
+      used,
+      record.religionId + record.followerBeliefIds.length + 1
+    );
     if (follower) record.followerBeliefIds.push(follower);
     const enhancer = this.chooseBelief(CIV_ENHANCER_BELIEFS, used, record.religionId);
     if (enhancer) record.enhancerBeliefId = enhancer;
@@ -6700,7 +6660,14 @@ class LivingModel {
     if (!target) return false;
 
     if (target.cell !== regiment.cell) {
-      const moved = this.moveUnitToward(regiment, unit, target.cell, state.i, this.unitKey(state.i, regiment.i), occupancy);
+      const moved = this.moveUnitToward(
+        regiment,
+        unit,
+        target.cell,
+        state.i,
+        this.unitKey(state.i, regiment.i),
+        occupancy
+      );
       if (moved) return true;
     }
 
@@ -6885,8 +6852,9 @@ class LivingModel {
   /** How many relics of a category are leased to this state. */
   private stateRelicCount(stateId: number, category: RelicCategory): number {
     const relics = pack.history?.living?.guild?.relics ?? [];
-    return relics.filter(relic => relic.holder.kind === "state" && relic.holder.id === stateId && relic.category === category)
-      .length;
+    return relics.filter(
+      relic => relic.holder.kind === "state" && relic.holder.id === stateId && relic.category === category
+    ).length;
   }
 
   /** Step post-conquest occupation unrest on burgs and apply unravel pressure to owning states */
@@ -7051,7 +7019,7 @@ class LivingModel {
 
     const regiment = choice.regiment ?? this.createRegiment(state);
     regiment.units ??= [];
-    regiment.units.push({ type: choice.unit.id, count: choice.unit.men, exp: 0 });
+    regiment.units.push({ type: choice.unit.id, hp: 1, exp: 0 });
     syncRegimentTotals(regiment, Military.getUnitTypes());
     if (choice.unit.troubleRole) this.commanderFor(state, regiment, choice.unit.troubleRole);
 
@@ -7304,14 +7272,14 @@ class LivingModel {
     const troubleDef = getTroubleDef(pSim.trouble.id);
     const unitTypes = Military.getUnitTypes();
 
-    let bestUnit: ArmyUnit | null = null;
+    let bestUnit: ArmyBlock | null = null;
     let bestReg: Regiment | null = null;
     let bestMult = 3;
     let bestDisruption = 999;
 
     for (const reg of state.military ?? []) {
       for (const unit of reg.units ?? []) {
-        if (unit.count <= 0) continue;
+        if (unit.hp <= 0) continue;
         const uType = unitTypes[unit.type];
         const role: TroubleUnitRole = uType?.troubleRole ?? "military";
         const mult = troubleUnitMatchMultiplier(troubleDef, role);
@@ -7546,7 +7514,7 @@ class LivingModel {
 
     const lair = pSim.lair;
     const { config } = currentContent();
-    const attackerUnits = (army.units ?? []).filter(u => u.count > 0).map(u => ({ ...u }));
+    const attackerUnits = toBattleUnitsMen(army.units ?? [], Military.getUnitTypes());
     const defenderUnits = lair.defenders.filter(u => u.count > 0).map(u => ({ ...u }));
 
     if (attackerUnits.length === 0) return false;
@@ -8074,7 +8042,7 @@ class LivingModel {
     const regiment = this.createRegiment(newState);
     regiment.name = `1st Host of ${newState.name}`;
     this.moveArmy(regiment, capital);
-    regiment.units = opts.units.map(u => ({ ...u }));
+    regiment.units = fromBattleUnitsMen(opts.units, unitTypes);
     syncRegimentTotals(regiment, unitTypes);
     this.ensureCommanders();
 
@@ -8497,7 +8465,7 @@ class LivingModel {
     for (const regiment of state.military ?? []) {
       if (regiment.n) continue;
       if (!regiment.units?.length) reconcileRegimentBlocks(regiment, unitTypes);
-      const men = (regiment.units ?? []).reduce((sum, unit) => sum + Math.max(0, unit.count), 0);
+      const men = armyMen(regiment, unitTypes);
       if (men > bestMen) {
         best = regiment;
         bestMen = men;
@@ -8560,7 +8528,11 @@ class LivingModel {
     const session = initBattleSession({
       config,
       unitTypes: Military.getUnitTypes(),
-      attacker: { factionId: stateId, armyId: null, units: army.units ?? [] },
+      attacker: {
+        factionId: stateId,
+        armyId: null,
+        units: toBattleUnitsMen(army.units ?? [], Military.getUnitTypes())
+      },
       defender: { factionId: burg.state ?? 0, armyId: null, units: defenders },
       cell: burg.cell,
       regionId: pack.cells.province?.[burg.cell] ?? 0,
@@ -8576,9 +8548,7 @@ class LivingModel {
 
   private assaultModifiers(burg: Burg, attackerStateId?: number): BattleModifiers {
     const living = pack.history?.living;
-    const attackerMult = attackerStateId
-      ? happinessCombatMultiplier(living?.states?.[attackerStateId]?.happiness)
-      : 1;
+    const attackerMult = attackerStateId ? happinessCombatMultiplier(living?.states?.[attackerStateId]?.happiness) : 1;
     const defenderMult = happinessCombatMultiplier(living?.states?.[burg.state ?? 0]?.happiness);
 
     return {
@@ -8608,7 +8578,7 @@ class LivingModel {
     if (defenders.length === 0) return 100;
     return estimateOdds(
       currentContent().config,
-      { factionId: stateId, armyId: null, units: army.units ?? [] },
+      { factionId: stateId, armyId: null, units: toBattleUnitsMen(army.units ?? [], Military.getUnitTypes()) },
       { factionId: burg.state ?? 0, armyId: null, units: defenders },
       this.assaultModifiers(burg, stateId),
       Military.getUnitTypes()
@@ -8637,7 +8607,7 @@ class LivingModel {
   }
 
   private applyArmySurvivors(state: State, regiment: Regiment, units: ArmyUnit[]): void {
-    regiment.units = units.filter(unit => unit.count > 0).map(unit => ({ ...unit }));
+    regiment.units = fromBattleUnitsMen(units, Military.getUnitTypes());
     syncRegimentTotals(regiment, Military.getUnitTypes());
     if (regiment.a <= 0) state.military = (state.military ?? []).filter(entry => entry !== regiment);
   }
@@ -8926,11 +8896,11 @@ class LivingModel {
     if (!unit) return null;
 
     const tier = settlementTierFromPop(burg.population ?? 0);
-    const count = Math.max(unit.men, Math.round(unit.men * (1 + tier * 0.5)));
+    const blocks = Math.min(20, 1 + Math.floor(tier / 2));
     const regiment = this.createRegiment(state);
     regiment.name = `Rebels of ${burg.name ?? "the wilds"}`;
     this.moveArmy(regiment, burg);
-    regiment.units = [{ type: unitId, count, exp: 0 }];
+    regiment.units = Array.from({ length: blocks }, () => ({ type: unitId, hp: 1, exp: 0 }));
     syncRegimentTotals(regiment, unitTypes);
     return regiment;
   }
@@ -9505,9 +9475,9 @@ class LivingModel {
 
     if (lairProvince) {
       const army = this.fieldArmy(state);
-      const armyMen = army ? (army.units ?? []).reduce((s, u) => s + u.count, 0) : 0;
+      const armyMenValue = army ? armyMen(army, Military.getUnitTypes()) : 0;
       const defMen = lairProvince.lair.defenders.reduce((s, u) => s + u.count, 0);
-      if (army && (armyMen >= defMen * 0.85 || sSim.warExhaustion < 40)) {
+      if (army && (armyMenValue >= defMen * 0.85 || sSim.warExhaustion < 40)) {
         return {
           kind: "clear_lair",
           label: `Marching against ${lairProvince.lair.name} in ${lairProvince.province.name}`,
@@ -10006,8 +9976,8 @@ class LivingModel {
     const ownerState = pack.states[target.state ?? 0];
     const stationedReg = (ownerState?.military ?? []).find(r => r.cell === target.cell && r.a > 0);
     const unitTypes = Military.getUnitTypes();
-    const stationedBlocks = (stationedReg?.units ?? []).filter(u => u.count > 0 && unitTypes[u.type]);
-    for (const u of stationedBlocks) defenders.push({ ...u });
+    const stationedBlocks = (stationedReg?.units ?? []).filter(u => u.hp > 0 && unitTypes[u.type]);
+    for (const u of toBattleUnitsMen(stationedBlocks, unitTypes)) defenders.push(u);
 
     const session = initBattleSession({
       config,

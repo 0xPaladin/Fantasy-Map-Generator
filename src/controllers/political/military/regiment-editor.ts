@@ -416,9 +416,6 @@ function stepBlock(this: HTMLElement): void {
   const dir = +(this.dataset.dir || 0);
   const reg = getRegiment();
   if (!reg || !selectedRegiment) return;
-  const unitTypes = Military.getUnitTypes();
-  const ut = unitTypes[u];
-  const blockSize = ut?.men || 100;
 
   reg.units ??= [];
   if (dir > 0) {
@@ -426,7 +423,7 @@ function stepBlock(this: HTMLElement): void {
       tip("Army cannot exceed 20 unit slots", false, "error");
       return;
     }
-    reg.units.push({ type: u, count: blockSize, exp: 0 });
+    reg.units.push({ type: u, hp: 1, exp: 0 });
   } else if (dir < 0) {
     const idx = reg.units.map(s => s.type).lastIndexOf(u);
     if (idx >= 0) {

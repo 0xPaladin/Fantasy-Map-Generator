@@ -140,6 +140,7 @@ describe("the shipped ruleset (total-war/content/docs)", () => {
     // disagree, whatever the roster or state patch did to them.
     expect(MEN_PER_BLOCK).toBe(1000);
     for (const [id, u] of Object.entries(content.unitTypes)) {
+      expect(u.quantity, id).toBe(u.men); // quantity is the authored size; men mirrors it
       expect(u.blocks, id).toBeGreaterThanOrEqual(1 / MEN_PER_BLOCK);
       expect(u.men, id).toBeCloseTo(u.blocks * MEN_PER_BLOCK, 9);
     }
@@ -637,9 +638,82 @@ describe("validation with human errors (§6 principle 4)", () => {
     });
     const { content, errors, warnings } = validateAndResolve(bad);
     expect(content).toBeNull();
-    expect(errors.some(e => e.includes("'men' was retired") && e.includes("blocks: 0.15"))).toBe(true);
+    expect(errors.some(e => e.includes("'men' was retired") && e.includes("quantity: 150"))).toBe(true);
     // Reported once, as an error — not also buried as an unknown-key warning.
     expect(warnings.some(w => w.includes("unknown key 'men'"))).toBe(false);
+  });
+
+  describe("unit size: authored quantity, derived men/blocks", () => {
+    test("accepts the legacy blocks alias and derives all three size fields", () => {
+      const { content, errors } = validateAndResolve(docs());
+      expect(errors).toEqual([]);
+      const sword = content!.unitTypes.sword!;
+      expect(sword.quantity).toBe(150);
+      expect(sword.men).toBe(150);
+      expect(sword.blocks).toBeCloseTo(0.15, 10);
+    });
+
+    test("prefers authored quantity over a legacy blocks value", () => {
+      const drafted = docs({
+        rosterDocs: [
+          {
+            file: "rosters/base.json",
+            doc: y({
+              roster: {
+                id: "commonBase",
+                units: {
+                  sword: {
+                    name: "Swordsmen",
+                    category: "melee",
+                    quantity: 200,
+                    blocks: 0.15,
+                    attack: 8,
+                    defense: 11,
+                    charge: 4,
+                    missile: 0,
+                    cost: 300,
+                    upkeep: 40
+                  }
+                },
+                garrison: { melee: "sword", ranged: "sword" },
+                regimentMap: { infantry: "sword", archers: "sword", cavalry: "sword", artillery: "sword" }
+              }
+            })
+          }
+        ]
+      });
+      const { content, errors } = validateAndResolve(drafted);
+      expect(errors).toEqual([]);
+      expect(content!.unitTypes.sword!.quantity).toBe(200);
+      expect(content!.unitTypes.sword!.men).toBe(200);
+      expect(content!.unitTypes.sword!.blocks).toBeCloseTo(0.2, 10);
+    });
+
+    test("re-derives men/blocks when a faction override patches quantity", () => {
+      const { content, errors } = validateAndResolve(
+        docs({
+          factionDocs: [
+            {
+              file: "states.json",
+              doc: y({
+                factions: [
+                  {
+                    bind: { stateId: 1 },
+                    rosterId: "commonBase",
+                    roster: { units: { sword: { quantity: 60 } } }
+                  }
+                ]
+              })
+            }
+          ]
+        })
+      );
+      expect(errors).toEqual([]);
+      const patch = resolveForPack(pack, content!).factions["1"]!.roster.units.sword!;
+      expect(patch.quantity).toBe(60);
+      expect(patch.men).toBe(60);
+      expect(patch.blocks).toBeCloseTo(0.06, 10);
+    });
   });
 
   describe("magic: spellcaster / monster categories, powers, resistArcane", () => {

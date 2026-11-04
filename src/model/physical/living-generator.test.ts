@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { valueModifier } from "@/conquest/engine/game/saves";
+import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
-import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
@@ -12,10 +12,14 @@ import type { HistoricalFigure } from "@/types/history";
 import type { HistoricalRelic } from "@/types/living";
 import { createRng } from "@/utils/rng";
 import {
+  activeCivThemeId,
+  BASE_EMPIRE_HAPPINESS,
+  bestUnitForCategory,
   borderCultureNeeded,
   borderInfluenceScore,
   citizensFromPopulation,
   classifyGood,
+  combatDamage,
   figureBias,
   figureCheckRoll,
   figureLevel,
@@ -25,35 +29,31 @@ import {
   getCellYieldSources,
   getCellYields,
   guildTierForRenown,
+  happinessCombatMultiplier,
   happinessGrowthFactor,
+  hasStackingConflict,
+  hurryGoldCost,
   isMajorBurg,
   isMinorBurg,
+  isTechSelectable,
   Living,
+  LUXURY_HAPPINESS,
   maxHeroesForTier,
   maxPartyForTier,
   populationFromCitizens,
+  rangedLineOfSightBlocked,
   regionTierFromPop,
   settlementTierFromPop,
   syncBurgBuildingsFromFlags,
   syncBurgFlagsFromBuildings,
   syncCivBuildingsFromFlags,
   syncCivFlagsFromBuildings,
-  activeCivThemeId,
-  bestUnitForCategory,
-  combatDamage,
-  happinessCombatMultiplier,
-  hasStackingConflict,
-  hurryGoldCost,
-  isTechSelectable,
   terrainDefenseMultiplier,
-  rangedLineOfSightBlocked,
+  UNIT_MAX_HP,
+  UNIT_UPKEEP_FREE,
   unitIsRanged,
   unitMovementCost,
-  xpForLevel,
-  BASE_EMPIRE_HAPPINESS,
-  LUXURY_HAPPINESS,
-  UNIT_MAX_HP,
-  UNIT_UPKEEP_FREE
+  xpForLevel
 } from "./living-generator";
 
 function makeGuildFigure(i: number, overrides: Partial<HistoricalFigure> = {}): HistoricalFigure {
@@ -213,8 +213,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
               by: 10,
               u: { spear: 300 },
               units: [
-                { type: "spear", count: 150, exp: 0 },
-                { type: "spear", count: 150, exp: 0 }
+                { type: "spear", hp: 1, exp: 0 },
+                { type: "spear", hp: 1, exp: 0 }
               ],
               n: 0,
               name: "1st Aeloria Regiment",
@@ -437,7 +437,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   it("storms a resisting Free Burg and applies occupation unrest", () => {
     const living = Living.init();
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 2000, exp: 0 }];
+    army.units = Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 }));
     army.a = 2000;
     pack.cells.province[5] = 1;
     living.provinces[1].order = 80;
@@ -457,7 +457,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   it("repulses a weak assault and records a grudge", () => {
     const living = Living.init();
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 10, exp: 0 }];
+    army.units = [{ type: "spear", hp: 0.07, exp: 0 }];
     army.a = 10;
 
     expect(Living.colonize(1, 4)).toBe(false);
@@ -474,7 +474,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     const living = Living.init();
     pack.burgs[2].capital = 0;
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 2000, exp: 0 }];
+    army.units = Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 }));
     army.a = 2000;
 
     expect(Living.conquerBurg(1, 2)).toBe(true);
@@ -499,7 +499,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         bx: 30,
         by: 30,
         u: { spear: 2000 },
-        units: [{ type: "spear", count: 2000, exp: 0 }],
+        units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
         n: 0,
         name: "2nd Khazadia Regiment",
         state: 2,
@@ -551,7 +551,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         bx: 30,
         by: 30,
         u: { balbenGuard: 1000 },
-        units: [{ type: "balbenGuard", count: 1000, exp: 0 }],
+        units: Array.from({ length: 10 }, () => ({ type: "balbenGuard", hp: 1, exp: 0 })),
         n: 0,
         name: "Khazad Guard",
         state: 2,
@@ -576,7 +576,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   it("raises a rebel and restores a Free Burg when unravel fills", () => {
     const living = Living.init();
     const army = pack.states[1].military![0];
-    army.units = [{ type: "spear", count: 2000, exp: 0 }];
+    army.units = Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 }));
     army.a = 2000;
 
     expect(Living.colonize(1, 4)).toBe(true);
@@ -987,9 +987,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     // Give state 1 a strong field army to ensure victory
     const army = pack.states[1].military![0];
     army.units = [
-      { type: "cavalry", count: 300, exp: 5 },
-      { type: "spear", count: 400, exp: 3 },
-      { type: "archers", count: 300, exp: 3 }
+      ...Array.from({ length: 4 }, () => ({ type: "cavalry", hp: 1, exp: 5 })),
+      ...Array.from({ length: 3 }, () => ({ type: "spear", hp: 1, exp: 3 })),
+      ...Array.from({ length: 3 }, () => ({ type: "archers", hp: 1, exp: 3 }))
     ];
 
     const result = Living.assaultLair(1, 1);
@@ -2044,7 +2044,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         capital: 0
       });
       const army = pack.states[1].military![0];
-      army.units = [{ type: "cavalry", count: 2000, exp: 5 }];
+      army.units = Array.from({ length: 25 }, () => ({ type: "cavalry", hp: 1, exp: 5 }));
       expect(Living.conquerBurg(1, 5)).toBe(true);
       expect(Living.getEschaton()).toBe(3);
     });
@@ -2551,11 +2551,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           military: []
         }
       ],
-      provinces: [
-        { i: 0 },
-        { i: 1, state: 1, burg: 1, center: 5 },
-        { i: 2, state: 2, burg: 2, center: 11 }
-      ],
+      provinces: [{ i: 0 }, { i: 1, state: 1, burg: 1, center: 5 }, { i: 2, state: 2, burg: 2, center: 11 }],
       history: {
         events: [],
         realms: [],
@@ -2820,7 +2816,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       bx: 50,
       by: 50,
       u: { spear: 100 },
-      units: [{ type: "spear", count: 100, exp: 0 }],
+      units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
       n: 0,
       icon: "⚔️",
       state: 1
@@ -2867,9 +2863,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(Living.grantTech(1, "pottery")).toBe(false);
       expect(isTechSelectable(CIV_TECH_BY_ID.pottery!, new Set(), "fantasy")).toBe(true);
       expect(isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(), "fantasy")).toBe(false);
-      expect(
-        isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(["gunpowder", "printing_press"]), "fantasy")
-      ).toBe(true);
+      expect(isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(["gunpowder", "printing_press"]), "fantasy")).toBe(
+        true
+      );
       expect(isTechSelectable(CIV_TECH_BY_ID.refrigeration!, new Set(), "fantasy")).toBe(false);
     });
 
@@ -3054,7 +3050,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       bx: 0,
       by: 0,
       u: { spear: 100 },
-      units: [{ type: "spear", count: 100, exp: 0 }],
+      units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
       n: 0,
       icon: "⚔️",
       state
@@ -3337,17 +3333,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       bx: 0,
       by: 0,
       u: { spear: 100 },
-      units: [{ type: "spear", count: 100, exp: 0 }],
+      units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
       n: 0,
       icon: "⚔️",
       state
     });
 
-    const makeRelic = (
-      id: number,
-      category: HistoricalRelic["category"],
-      stateId = 1
-    ): HistoricalRelic => ({
+    const makeRelic = (id: number, category: HistoricalRelic["category"], stateId = 1): HistoricalRelic => ({
       id,
       name: `${category} relic`,
       category,
@@ -3560,8 +3552,8 @@ describe("Unified Figures slice 1: specialist commanders", () => {
               by: 10,
               u: { spear: 300 },
               units: [
-                { type: "spear", count: 150, exp: 0 },
-                { type: "sage_coven", count: 8, exp: 0 }
+                { type: "spear", hp: 1, exp: 0 },
+                { type: "sage_coven", hp: 1, exp: 0 }
               ],
               n: 0,
               name: "1st Aeloria Regiment",
@@ -3599,7 +3591,7 @@ describe("Unified Figures slice 1: specialist commanders", () => {
     const figures = pack.history.figures!;
     const regiment = pack.states[1].military![0];
     regiment.crew = [];
-    regiment.units!.push({ type: "magistrates", count: 5, exp: 0 });
+    regiment.units!.push({ type: "magistrates", hp: 1, exp: 0 });
     Living.ensureCommanders();
     const crew = (regiment.crew ?? []).map(id => figures[id]!);
     expect(crew.some(f => f.roles.some(r => r.type === "specialist" && r.specialty === "magistrate"))).toBe(true);
@@ -3682,8 +3674,8 @@ describe("Unified Figures slice 2: named dispatch", () => {
               by: 10,
               u: { spear: 300 },
               units: [
-                { type: "spear", count: 150, exp: 0 },
-                { type: "sage_coven", count: 8, exp: 0 }
+                { type: "spear", hp: 1, exp: 0 },
+                { type: "sage_coven", hp: 1, exp: 0 }
               ],
               n: 0,
               name: "1st Aeloria Regiment",

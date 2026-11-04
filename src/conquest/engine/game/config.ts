@@ -21,6 +21,11 @@ export interface CampaignConfig {
     encampBonus: number;
     ambushBonus: number;
     riverDefenderBonus: number;
+    /**
+     * Defender on hill/forest/jungle/marsh (living-openciv-armies.md §8.3).
+     * Binary — the map has no per-terrain tiers, so one bonus covers them all.
+     */
+    terrainDefenseBonus: number;
     /** Ceilings on the summed per-side `UnitType.powers` / `resistArcane`. */
     magic: {
       wardCap: number;
@@ -173,6 +178,12 @@ export interface CampaignConfig {
     maxUnitsPerArmy: number;
     replenishFraction: number;
     encampReplenishBonus: number;
+    /**
+     * Living World combined-arms battle model (living-openciv-armies.md §13.4).
+     * `false` runs the interim lead-block duel; it cannot restore the retired
+     * 1UPT model. Removed one release after shipping on by default.
+     */
+    armies: boolean;
   };
   saves: {
     /**
@@ -281,6 +292,7 @@ export const DEFAULT_CONFIG: CampaignConfig = {
     encampBonus: 0.1,
     ambushBonus: 0.3,
     riverDefenderBonus: 0.15,
+    terrainDefenseBonus: 0.25,
     magic: { wardCap: 0.3, hexCap: 0.3, healCap: 40, terrorCap: 0.15, arcaneSiegeCap: 2, resistCap: 0.5 }
   },
   economy: {
@@ -315,7 +327,7 @@ export const DEFAULT_CONFIG: CampaignConfig = {
     startOrder: 75,
     occupiedOrder: 25
   },
-  military: { maxUnitsPerArmy: 20, replenishFraction: 0.25, encampReplenishBonus: 2 },
+  military: { maxUnitsPerArmy: 20, replenishFraction: 0.25, encampReplenishBonus: 2, armies: true },
   saves: { enabled: false, defaultDc: 12, bands: [6, 11, 16, 21], bandStep: 5 },
   capacity: {
     attritionPerTurn: 0.1,

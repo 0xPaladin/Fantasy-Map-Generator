@@ -469,8 +469,14 @@ export interface LivingWorldState {
   guild?: GuildState;
   /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
   worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
-  /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5 */
+  /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5.
+   *  After the armies migration this holds **utility regiments only**
+   *  (Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor,
+   *  Great Prophet) — combat regiments are blocks + `armies` below. */
   units?: Record<string, UnitSimState>;
+  /** Per-tick combat-army state, keyed by `${stateId}-${regimentId}` (living-openciv-armies.md §5.2).
+   *  Composition itself lives on `Regiment.units`; lazily initialized in `syncArmies`. */
+  armies?: Record<string, ArmySimState>;
   /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
   religions?: Record<number, ReligionBeliefState>;
   /** danger-marker lairs/troubles tracked across the map (master PR #21) */
@@ -862,4 +868,34 @@ export interface UnitSimState {
   spreadCharges?: number;
   conversionStrength?: number;
   workOrder?: { improvementId: string; turnsLeft: number } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Combined-arms armies (living-openciv-armies.md). Composition lives on
+// `Regiment.units: ArmyBlock[]`; these are the per-tick state around it.
+// ---------------------------------------------------------------------------
+
+/** Per-tick state for one combat army. */
+export interface ArmySimState {
+  movement: number;
+  maxMovement: number;
+  stance: ArmyStance;
+  hasFought: boolean;
+  lastBattle?: ArmyBattleRecord;
+}
+
+export type ArmyStance = "march" | "encamp" | "fortify" | "raid" | "ambush";
+
+export interface ArmyBattleRecord {
+  tick: number;
+  cell: number;
+  role: "attacker" | "defender";
+  winner: "attacker" | "defender";
+  rounds: number;
+  /** Σ hp this army lost. */
+  lossesHp: number;
+  /** Blocks reduced to 0 hp and removed. */
+  blocksLost: number;
+  /** Remaining hp / full-strength hp, 0..1. */
+  survivorsHp: number;
 }

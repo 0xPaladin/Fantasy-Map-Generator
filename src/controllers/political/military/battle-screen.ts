@@ -14,6 +14,7 @@ import {
 } from "@/conquest/engine/game/battle";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
+import { fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";
 import {
   getCategoryForUnit,
   Military,
@@ -151,12 +152,14 @@ function createRegimentEntry(r: Regiment, bx: number, by: number, unitTypes: Rec
   if (!r.units || r.units.length === 0) {
     reconcileRegimentBlocks(r, unitTypes);
   }
-  const startingUnits = (r.units ?? [])
-    .filter(u => u.count > 0)
-    .map(u => ({ type: u.type, count: u.count, exp: u.exp ?? 0 }));
-  const currentUnits = (r.units ?? [])
-    .filter(u => u.count > 0)
-    .map(u => ({ type: u.type, count: u.count, exp: u.exp ?? 0 }));
+  const startingUnits = toBattleUnitsMen(
+    (r.units ?? []).filter(u => u.hp > 0),
+    unitTypes
+  );
+  const currentUnits = toBattleUnitsMen(
+    (r.units ?? []).filter(u => u.hp > 0),
+    unitTypes
+  );
   const state = pack.states[r.state];
   const distance = Math.round(Math.hypot(by - r.by, bx - r.bx) * options.map.units.distance.scale);
 
@@ -816,7 +819,7 @@ function applyResults(): void {
 
 function applyEntryResults(entry: RegimentEntry, isWinner: boolean, isAttacker: boolean, b: ActiveBattle): void {
   const reg = entry.regiment;
-  reg.units = entry.currentUnits.map(u => ({ ...u })).filter(u => u.count > 0);
+  reg.units = fromBattleUnitsMen(entry.currentUnits, b.unitTypes);
   syncRegimentTotals(reg, b.unitTypes);
 
   // If wiped out, remove regiment
