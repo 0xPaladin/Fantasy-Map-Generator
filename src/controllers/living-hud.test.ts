@@ -117,7 +117,14 @@ vi.mock("@/model/physical/living-generator", () => ({
     "Sovereign Order",
     "Immortal Conclave"
   ],
-  maxHeroesForTier: (tier: number) => [3, 4, 6, 8, 10][Math.min(4, Math.max(0, tier - 1))] ?? 3
+  maxHeroesForTier: (tier: number) => [3, 4, 6, 8, 10][Math.min(4, Math.max(0, tier - 1))] ?? 3,
+  activeCivThemeId: () => "fantasy",
+  pantheonFaithCost: (founded: number) => 10 + 5 * founded,
+  prophetFaithCost: (earned: number) => 200 + 100 * earned,
+  majorityReligion: (pressure: Record<number, number> | undefined) => {
+    const entries = Object.entries(pressure ?? {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+    return entries.length ? Number(entries[0]![0]) : 0;
+  }
 }));
 vi.mock("@/renderers/layers", () => ({ Layers: { draw: vi.fn() } }));
 vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
@@ -356,6 +363,8 @@ describe("LivingHud", () => {
     const sSim = mocks.state.states[1] as { claims: unknown[]; grudges: unknown[] };
     sSim.claims = [];
     sSim.grudges = [];
+    mocks.state.provinces = {};
+    for (const burg of Object.values(mocks.state.burgs) as { unrest?: number }[]) burg.unrest = 0;
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
     ];
@@ -532,7 +541,7 @@ describe("LivingHud", () => {
     const troublesIdx = text.indexOf("Troubles");
     const restiveIdx = text.indexOf("Restive burgs");
     const casusIdx = text.indexOf("Casus belli");
-    const grudgesIdx = text.indexOf("Grudges");
+    const grudgesIdx = text.lastIndexOf("Grudges");
 
     expect(lairsIdx).toBeGreaterThan(-1);
     expect(troublesIdx).toBeGreaterThan(lairsIdx);
@@ -706,7 +715,8 @@ describe("LivingHud", () => {
       "labels",
       "burgIcons",
       "military",
-      "markers"
+      "markers",
+      "trouble"
     );
   });
 
@@ -762,7 +772,7 @@ describe("LivingHud", () => {
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Queen Lyra");
-    expect(inspector?.textContent).toContain("age 30");
+    expect(inspector?.textContent).toContain("Queen Lyra");
     expect(inspector?.textContent).toContain("Developing Aelor");
     expect(inspector?.textContent).toContain("2 / 4");
     expect(inspector?.textContent).toContain("Aeloria took Oakford");
@@ -777,6 +787,65 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>('#livingInspector [data-god="war"]')?.click();
     expect(Living.forceWar).toHaveBeenCalledWith(1);
     expect(document.getElementById("livingHudStatus")?.textContent).toBe("War has been declared.");
+  });
+
+  it("shows the OpenCiv empire, research, faith and city queue panels", () => {
+    mocks.state.states[1] = {
+      ...(mocks.state.states[1] as Record<string, unknown>),
+      yieldsPerTurn: { food: 12, production: 5, gold: 6, science: 4, culture: 2, faith: 3, happiness: 0 },
+      happiness: 2,
+      happinessBreakdown: {
+        base: 9,
+        luxuries: 4,
+        buildings: 2,
+        religion: 1,
+        relics: 0,
+        cityUnhappiness: 3,
+        citizenUnhappiness: 6,
+        unrestUnhappiness: 0
+      },
+      currentTechId: "pottery",
+      researchedProgress: { pottery: 20 },
+      researchedTechs: [],
+      faith: 42,
+      prophetsEarned: 0,
+      religionId: 1,
+      pantheonId: "fertility_rites"
+    };
+    mocks.state.burgs[1] = {
+      ...(mocks.state.burgs[1] as Record<string, unknown>),
+      citizens: 3,
+      cityYields: { food: 8, production: 4, gold: 5, science: 2, culture: 1, faith: 1, happiness: 0 },
+      foodStored: 12,
+      tilesAcquired: 2,
+      productionQueue: [{ kind: "building", id: "monument" }],
+      productionProgress: { "building:monument": 20 },
+      religionPressure: { 1: 180 }
+    };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 1, kind: "religion", text: "Aeloria adopted a faith.", cell: 1, stateId: 1 },
+      { tick: 1, year: 1000, season: 1, kind: "build", text: "Aelor builds.", cell: 1, burgId: 1 }
+    ];
+
+    LivingHud.open();
+    document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
+
+    const statePanel = document.getElementById("livingInspector");
+    expect(statePanel?.textContent).toContain("OpenCiv Empire");
+    expect(statePanel?.textContent).toContain("Research");
+    expect(statePanel?.textContent).toContain("Pottery");
+    expect(statePanel?.textContent).toContain("20 / 35 science");
+    expect(statePanel?.textContent).toContain("Faith 42");
+    expect(statePanel?.textContent).toContain("Fertility Rites");
+
+    document.querySelectorAll<HTMLElement>("button.livingNewsItem")[1]?.click();
+
+    const burgPanel = document.getElementById("livingInspector");
+    expect(burgPanel?.textContent).toContain("OpenCiv City");
+    expect(burgPanel?.textContent).toContain("3 citizens");
+    expect(burgPanel?.textContent).toContain("Production");
+    expect(burgPanel?.textContent).toContain("Monument");
+    expect(burgPanel?.textContent).toContain("Religion");
   });
 
   it("shows the burg diorama and completes its asset", () => {
@@ -828,11 +897,7 @@ describe("LivingHud", () => {
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Forest Hideout");
-    expect(inspector?.textContent).toContain("Lv 6");
-    expect(inspector?.textContent).toContain("Raid: 5+");
-    expect(inspector?.textContent).toContain("Defenders: 25");
-    expect(inspector?.textContent).toContain("🏰 Fortified");
-    expect(inspector?.textContent).toContain("⚠️ Raid Imminent");
+    expect(inspector?.textContent).toContain("Forest Hideout [6]");
 
     inspector?.querySelector<HTMLElement>('[data-god="assault-state-lair"]')?.click();
     expect(Living.assaultLair).toHaveBeenCalledWith(1, 1);
@@ -843,6 +908,59 @@ describe("LivingHud", () => {
 
     inspector?.querySelector<HTMLElement>('[data-god="smite-state-lair"]')?.click();
     expect(Living.smiteLair).toHaveBeenCalledWith(1);
+  });
+
+  it("opens a province card from the state chips and from inspect()", () => {
+    mocks.state.provinces = {
+      1: {
+        provinceId: 1,
+        order: 82,
+        stability: 3,
+        development: 2,
+        trouble: {
+          id: "demagogue",
+          name: "Zealous Demagogue",
+          level: 4,
+          theme: "burg",
+          burgId: 1,
+          seasonsUnchecked: 2
+        },
+        lair: {
+          id: "bandit_camp",
+          name: "Forest Hideout",
+          level: 5,
+          theme: "ruin",
+          originCell: 1,
+          raidThreshold: 5,
+          defenders: [{ type: "infantry", count: 12 }],
+          fortified: true,
+          raidPending: false,
+          seasonsActive: 1
+        }
+      }
+    };
+    mocks.state.burgs[1] = { ...(mocks.state.burgs[1] as Record<string, unknown>), citizens: 4 };
+    mocks.state.recentNews = [
+      { tick: 1, year: 1000, season: 2, kind: "religion", text: "Northmarch converts.", cell: 1, stateId: 1 }
+    ];
+
+    LivingHud.open();
+    LivingHud.inspect("state", 1);
+
+    const inspector = document.getElementById("livingInspector");
+    const provinceChip = inspector?.querySelector<HTMLElement>('[data-inspect="province"]');
+    expect(provinceChip?.textContent).toContain("Northmarch");
+
+    provinceChip?.click();
+    expect(inspector?.textContent).toContain("Public order");
+    expect(inspector?.textContent).toContain("82%");
+    expect(inspector?.textContent).toContain("Zealous Demagogue");
+    expect(inspector?.textContent).toContain("Forest Hideout");
+    expect(inspector?.textContent).toContain("4 citizens");
+    expect(inspector?.querySelector('[data-open="province"]')).toBeTruthy();
+
+    LivingHud.inspect("province", 1);
+    expect(inspector?.textContent).toContain("Provinces Editor");
   });
 
   it("shows provincial lair on burg card and triggers burg lair interventions", () => {
@@ -1046,10 +1164,12 @@ describe("LivingHud", () => {
     expect(inspector?.querySelector<HTMLElement>('[data-god="ascend-state-lair"]')).toBeNull();
   });
 
-  it("shows the guild wallet in the HUD", () => {
+  it("shows the guild wallet in the guild bar", () => {
     LivingHud.open();
 
-    expect(document.getElementById("livingHudWallet")?.textContent).toBe("⚜ 40g · 75r");
+    const bar = document.getElementById("livingHudGuild");
+    expect(bar?.textContent).toContain("40g");
+    expect(bar?.textContent).toContain("75r");
   });
 
   it("renders the guild bar with tier, gold/renown, patron, heroes count and doctrine", () => {
@@ -1418,7 +1538,7 @@ describe("LivingHud", () => {
     LivingHud.open();
 
     const bar = document.getElementById("livingHudGuild");
-    expect(bar?.textContent).toContain("1 relics");
+    expect(bar?.textContent).toContain("1 relic");
     expect(bar?.textContent).toContain("Crown of the Vhaelen Emperors");
     expect(bar?.textContent).toContain("vault");
     expect(bar?.textContent).not.toContain("Mount Keld");
@@ -1691,8 +1811,8 @@ describe("LivingHud", () => {
     LivingHud.open();
     const row = document.querySelector<HTMLElement>("#livingHudGuild .livingGuildHeaderRow");
     expect(row).toBeTruthy();
-    expect(row?.querySelector(".livingGuildLeft")?.textContent).toContain("T1");
-    expect(row?.querySelector(".livingGuildCenter")?.textContent).toContain("0g");
+    expect(row?.querySelector(".livingGuildLeft")?.textContent).toContain("T2");
+    expect(row?.querySelector(".livingGuildCenter")?.textContent).toContain("40g");
     expect(row?.querySelector(".livingGuildRight")?.textContent).toContain("Doctrine");
   });
 

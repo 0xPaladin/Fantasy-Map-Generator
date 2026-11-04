@@ -33,9 +33,9 @@ describe("draw-trouble", () => {
     globalThis.pack = {
       cells: {
         p: [
-          [100, 100],
-          [200, 200],
-          [300, 300]
+          [0, 0],
+          [20, 20],
+          [40, 40]
         ]
       },
       provinces: [
@@ -157,13 +157,14 @@ describe("draw-trouble", () => {
     const lair = pack.history!.living!.provinces[2].lair!;
 
     expect(getTroubleIcon(trouble)).toBe("🐺");
-    expect(getLairIcon(lair)).toBe("⛺");
+    expect(getLairIcon(lair)).toBe("🗡️");
   });
 
   it("draws markers when trouble layer is on", () => {
     Layers.show("trouble");
     drawTrouble();
 
+    console.log("IDS", [...document.querySelectorAll("#trouble [id]")].map(e => e.id));
     const troubleMarker = document.getElementById("trouble-marker-1");
     const lairMarker = document.getElementById("lair-marker-10");
     const seaLairMarker = document.getElementById("lair-marker-2");

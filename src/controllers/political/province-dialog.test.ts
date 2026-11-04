@@ -25,6 +25,7 @@ describe("openProvinceDetailsDialog", () => {
     globalThis.options = {
       map: {
         units: {
+          distance: { scale: 1, unit: "mi" },
           area: { scale: 1, unit: "sq mi" },
           population: { scale: 1000, urbanization: { rate: 0.25 } }
         }

@@ -1,6 +1,6 @@
 // Transient on-map juice for the Living HUD: army/raid vectors, floating outcome
 // badges and clickable bounty popups. See docs/plans/living-idle-guild.md (slice 1).
-import { Living } from "@/model/physical/living-generator";
+import { Living, UNIT_MAX_HP } from "@/model/physical/living-generator";
 import { viewport } from "@/renderers/viewport/viewport";
 import type { LivingNewsItem, LivingPopup, LivingPopupKind, LivingWorldState } from "@/types/living";
 import { escapeHtml } from "@/utils";
@@ -33,7 +33,9 @@ const NEWS_ICONS: Partial<Record<LivingNewsItem["kind"], string>> = {
   colonize: "🏳️",
   pacify: "🕊️",
   trouble: "🎲",
-  lair: "💀"
+  lair: "💀",
+  tech: "📜",
+  religion: "🕊️"
 };
 
 const NEWS_COLORS: Partial<Record<LivingNewsItem["kind"], string>> = {
@@ -42,7 +44,8 @@ const NEWS_COLORS: Partial<Record<LivingNewsItem["kind"], string>> = {
   revolt: "#a33d3d",
   lair: "#8b0000",
   trouble: "#b8860b",
-  succession: "#6a4c93"
+  succession: "#6a4c93",
+  religion: "#6a4c93"
 };
 
 const OVERLAY_CSS = /* css */ `
@@ -188,7 +191,7 @@ function badgeIcon(item: LivingNewsItem): string {
 
 /** The outcome badges for the season that just resolved, excluding popups/bounties. */
 export function collectLivingBadges(living: LivingWorldState): LivingBadge[] {
-  const popupCells = new Set((living.guild?.popups ?? []).map(p => p.cell));
+  const popupCells = new Set((living.guild?.popups ?? []).map(popup => popup.cell));
   const news = (living.recentNews ?? [])
     .filter(item => item.tick === living.tick && item.cell !== undefined)
     .filter(
@@ -197,15 +200,43 @@ export function collectLivingBadges(living: LivingWorldState): LivingBadge[] {
         item.kind !== "lair" &&
         !popupCells.has(item.cell!) &&
         !/bounty claimed/i.test(item.text)
-    )
-    .slice(0, MAX_BADGES);
+    );
 
-  return news.map((item, index) => ({
+  const badges: LivingBadge[] = news.map((item, index) => ({
     id: `${item.tick}-${index}`,
     cell: item.cell!,
     text: `${badgeIcon(item)} ${item.text}`,
     color: NEWS_COLORS[item.kind] ?? "#5e4fa2"
   }));
+
+  // Tactical status: wounded 1UPT regiments and besieged cities.
+  for (const state of pack.states ?? []) {
+    if (!state?.i || state.removed) continue;
+    for (const regiment of state.military ?? []) {
+      const unit = living.units?.[`${state.i}-${regiment.i}`];
+      if (!unit || unit.hp >= UNIT_MAX_HP) continue;
+      badges.push({
+        id: `unit-${state.i}-${regiment.i}`,
+        cell: regiment.cell,
+        text: `❤️ ${Math.round(unit.hp)} HP`,
+        color: unit.hp <= 30 ? "#a33d3d" : "#5e4fa2"
+      });
+    }
+  }
+
+  for (const burg of pack.burgs ?? []) {
+    if (!burg?.i || burg.removed) continue;
+    const bSim = living.burgs?.[burg.i];
+    if (bSim?.hp === undefined || bSim.maxHp === undefined || bSim.hp >= bSim.maxHp) continue;
+    badges.push({
+      id: `city-${burg.i}`,
+      cell: burg.cell,
+      text: `🏰 ${Math.round(bSim.hp)} / ${Math.round(bSim.maxHp)}`,
+      color: "#8b0000"
+    });
+  }
+
+  return badges.slice(0, MAX_BADGES);
 }
 
 function vectorMarkup(vector: LivingVector): string {

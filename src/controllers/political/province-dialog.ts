@@ -44,6 +44,7 @@ const PROVINCE_FORMS = [
   "Dependency",
   "Diaconate",
   "District",
+  "Duchy",
   "Earldom",
   "Governorate",
   "Island",
@@ -68,12 +69,15 @@ const PROVINCE_FORMS = [
 ] as const;
 
 function getLivingState(): LivingWorldState | undefined {
+  // Fixtures and older maps may expose the simulation directly on `pack.living`;
+  // prefer it so the dialog also works without initializing the world.
+  const direct = (globalThis as unknown as { pack?: { living?: LivingWorldState } }).pack?.living;
+  if (direct) return direct;
+
   try {
-    return typeof Living !== "undefined" && Living.getState
-      ? Living.getState()
-      : (globalThis as unknown as { pack?: { living?: LivingWorldState } }).pack?.living;
+    return typeof Living !== "undefined" && Living.getState ? Living.getState() : undefined;
   } catch {
-    return (globalThis as unknown as { pack?: { living?: LivingWorldState } }).pack?.living;
+    return undefined;
   }
 }
 
@@ -308,12 +312,13 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
   if (pSim?.trouble) {
     const tDef = getTroubleDef(pSim.trouble.id);
     const isPromotable = isTroubleStatePromotable(pSim.trouble.id);
+    const troubleName = pSim.trouble.name || tDef?.name || pSim.trouble.id;
     troubleHtml = `<span>
-      <strong>${escapeHtml(tDef.name)}</strong>
+      <strong>${escapeHtml(troubleName)}</strong>
       <span style="font-size:0.88em; color:#666;">(Lv ${pSim.trouble.level}, ${escapeHtml(pSim.trouble.theme)})</span>
       ${isPromotable ? '<span class="provBadge" style="background:#8b2635">State-Capable</span>' : ""}
       <button type="button" class="icon-target pointer" data-zoom-cell="${pSim.trouble.cell}" data-tip="${t("Zoom to trouble")}" style="background:none; border:none; padding:0; cursor:pointer; font-size:1.05em; vertical-align:middle;"></button>
-      <span style="font-size:0.85em; color:#666; margin-left:0.3em;">(${SAVE_KIND_LABELS[tDef.save]} · ${UNIT_ROLE_LABELS[tDef.requiredRole]} · ${pSim.trouble.seasonsUnchecked ?? 0}s unchecked)</span>
+      <span style="font-size:0.85em; color:#666; margin-left:0.3em;">(${tDef ? SAVE_KIND_LABELS[tDef.save] : ""} · ${tDef ? UNIT_ROLE_LABELS[tDef.requiredRole] : ""} · ${pSim.trouble.seasonsUnchecked ?? 0}s unchecked)</span>
     </span>`;
   }
 

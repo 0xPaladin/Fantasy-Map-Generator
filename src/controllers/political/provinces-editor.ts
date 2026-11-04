@@ -111,6 +111,14 @@ const columns: EditorColumn<Province>[] = [
     sortType: "alpha"
   },
   {
+    key: "living",
+    label: t("Living"),
+    width: "5.5em",
+    mobileHidden: true,
+    tip: t("Living World public order, active trouble and lair. Click to inspect"),
+    sortBy: province => pack.history?.living?.provinces?.[province.i]?.order ?? 0
+  },
+  {
     key: "burgs",
     label: t("Burgs"),
     width: "5em",
@@ -287,6 +295,7 @@ function renderDialog(): void {
     else if (cl.contains("icon-star-empty")) capitalZoomIn(p);
     else if (cl.contains("icon-flag-empty")) triggerIndependencePromps(p);
     else if (cl.contains("icon-dot-circled")) void Controllers.BurgsOverview.open({ stateId });
+    else if (el.closest("[data-col='living']")) void Controllers.LivingHud.inspect("province", p);
     else if (cl.contains("culturePopulation")) changePopulation(p);
     else if (cl.contains("icon-target"))
       highlightElement(select<SVGGElement, unknown>("#provs").select(`#province${p}`).node() as Element, 8);
@@ -368,6 +377,27 @@ function getProvincesData(): Province[] {
   return sortDataByColumns(dialogId, filtered, columns);
 }
 
+/** The Living World column: public order plus active trouble/lair flags. */
+function renderLivingProvince(province: Province): string {
+  const pSim = pack.history?.living?.provinces?.[province.i];
+  if (!pSim) return `<span class="placeholder">—</span>`;
+
+  const order = Math.round(pSim.order);
+  const tip = sentences(
+    `${t("Public order")}: ${order}%`,
+    `${t("Stability")}: ${pSim.stability}`,
+    `${t("Development")}: ${pSim.development}`,
+    t("Click to open the Living World inspector")
+  );
+  const trouble = pSim.trouble
+    ? `<span data-tip="${t("Active trouble: {{name}}", { name: pSim.trouble.name })}">⚠️</span>`
+    : "";
+  const lair = pSim.lair
+    ? `<span data-tip="${t("Active lair: {{name}}", { name: pSim.lair.name })}">💀</span>`
+    : "";
+  return `<span class="pointer" data-tip="${tip}">${order}%</span>${trouble}${lair}`;
+}
+
 function renderProvincesPage(view: TableView<Province>): void {
   const body = ensureEl("provincesBodySection");
   const unit = ` ${getAreaUnit()}`;
@@ -405,6 +435,9 @@ function renderProvincesPage(view: TableView<Province>): void {
         <select data-tip="${sentences(t("Province capital"), t("Click to select from burgs within the state"), t("No capital means the province is governed from the state capital"))}" class="cultureBase ${p.burgs!.length ? "" : "placeholder"}">${p.burgs!.length ? getCapitalOptions(p.burgs!, p.burg) : ""}</select>
       </div>
       <input data-col="state" data-tip="${t("Province owner")}" class="provinceOwner" value="${stateName}" disabled>
+      <div data-col="living" class="provinceLiving">
+        ${renderLivingProvince(p)}
+      </div>
       <div data-col="burgs">
         <span data-tip="${t("Click to overview province burgs")}" class="icon-dot-circled pointer"></span>
         <span data-tip="${t("Number of burgs")}" class="provinceBurgs">${percentage ? `${rn(totals.burgs ? (p.burgs!.length / totals.burgs) * 100 : 0)}%` : p.burgs!.length}</span>
