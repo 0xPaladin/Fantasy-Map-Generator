@@ -91,7 +91,7 @@ class SolarSystemModule {
   /** Build a system from a procedural astral-system roll. Colonized systems center on a
    * habitable star by default — without it some seeds roll giant-poor primaries with no worlds */
   initFromSeed(seed: string, opts: GenerateSystemOptions = {}): void {
-    this.adopt(generateSystem(seed, { forceHabitable: true, ...opts }));
+    this.adopt(generateSystem(seed, { forceHabitable: true, ...opts }), opts.systemName);
   }
 
   /** Build the canonical near-future Sol system preset */
@@ -112,13 +112,14 @@ class SolarSystemModule {
     this.star = null;
   }
 
-  private adopt(system: System): void {
+  private adopt(system: System, customName?: string): void {
     this.reset();
     this.seed = system.seed;
     this.star = system.star;
+    if (customName && this.star) this.star.primary.name = customName;
 
     const rng = createRng(`${system.seed}/designations`);
-    const designation = `${rng.choice(DESIGNATION_PREFIXES)}-${rng.int(1000, 9999)}`;
+    const designation = customName || `${rng.choice(DESIGNATION_PREFIXES)}-${rng.int(1000, 9999)}`;
 
     for (const [planetIndex, planet] of system.planets.entries()) {
       const planetId = `planet-${planetIndex}`;
@@ -184,10 +185,16 @@ class SolarSystemModule {
     };
   }
 
-  /** the terran planet is the homeworld; otherwise the first colonizable one */
+  /** the terran planet or moon is the homeworld; otherwise the first colonizable one */
   private pickHomeworld(): string | null {
-    const terran = this.bodies.find(body => body.kind === "planet" && body.archetype === "terran");
-    return (terran ?? this.bodies.find(body => body.kind === "planet" && body.colonizable))?.id ?? null;
+    const terranPlanet = this.bodies.find(body => body.kind === "planet" && body.archetype === "terran");
+    if (terranPlanet) return terranPlanet.id;
+    const terranMoon = this.bodies.find(body => body.kind === "moon" && body.archetype === "terran");
+    if (terranMoon) return terranMoon.id;
+    return (
+      this.bodies.find(body => body.kind === "planet" && body.colonizable) ??
+      this.bodies.find(body => body.colonizable)
+    )?.id ?? null;
   }
 
   /** Kepler's third law around the primary, mirroring generateSystem */

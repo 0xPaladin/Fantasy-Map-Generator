@@ -1,2 +1,2 @@
-export type { PlanetRow, StarRow, SystemDetails, SystemDetailsInput } from "./details";
+export type { MoonRow, PlanetRow, StarRow, SystemDetails, SystemDetailsInput } from "./details";
 export { generateSystemDetails, systemDetailsFor } from "./details";

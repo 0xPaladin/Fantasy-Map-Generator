@@ -4,7 +4,7 @@
 import { ASTRAL_WORLD_TYPE_KEYS, ASTRAL_WORLD_TYPES, type AstralWorldType } from "@/data/astral-goods";
 import { Tags } from "@/model/tags";
 import { createRng } from "./astral-system/rng";
-import { SPECTRAL_TABLE } from "./astral-system/stars";
+import { generateStar, SPECTRAL_TABLE } from "./astral-system/stars";
 import { pickWeighted } from "./astral-system/util";
 
 export {
@@ -38,8 +38,6 @@ const CLASS_NAMES: Record<string, string> = {
 
 /** From this population up, the roll narrows to the habitable F/G/K band */
 const CORE_POPULATION = 10_000;
-/** The astro layer's own habitable pick */
-const CORE_WEIGHTS = [25, 45, 30];
 
 /**
  * The star's class, rolled from the standard astro spectral distribution.
@@ -50,26 +48,62 @@ const CORE_WEIGHTS = [25, 45, 30];
  * F/G/K pick. Crossing the threshold rerolls the star; an edit within a band changes nothing.
  * The chart styles no O group, so the fringe roll is the table minus O.
  */
-export function starClassFor(burg: { i: number; population?: number }): StarClass {
-  const people = peopleOf(burg);
-  const band = people < CORE_POPULATION ? "fringe" : "core";
-  const rng = createRng(`${options.map.seed}/astral/class/${burg.i}/${band}`);
+/**
+ * Whether a burg is a capital: state capital (burg.capital or state.capital)
+ * or province capital (province.burg).
+ */
+export function isCapital(burg: { i: number; capital?: number; state?: number }): boolean {
+  if (burg.capital) return true;
+  if (typeof pack !== "undefined" && pack) {
+    if (burg.state && pack.states?.[burg.state]?.capital === burg.i) return true;
+    if (pack.states?.some(s => s?.i && !s.removed && s.capital === burg.i)) return true;
+    if (pack.provinces?.some(p => p?.i && !p.removed && p.burg === burg.i && p.i > 0)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a burg is considered a core world or a capital (state or province).
+ * Core worlds have population >= 10,000; capitals are polities' seats of government.
+ */
+export function isCoreOrCapital(burg: { i: number; population?: number; capital?: number; state?: number }): boolean {
+  return peopleOf(burg) >= CORE_POPULATION || isCapital(burg);
+}
+
+/**
+ * The star's class, rolled from the standard astro spectral distribution.
+ *
+ * The roll is seeded by the map seed and the burg id, so a system keeps its star across opens,
+ * edits and save/load. For core worlds and state/province capitals, the system generation uses
+ * forceHabitable: true without forcing a star type, rolling an F, G, or K star from the system seed.
+ * Fringe worlds roll from the standard spectral distribution (minus O group).
+ */
+export function starClassFor(burg: { i: number; population?: number; capital?: number; state?: number }): StarClass {
+  if (isCoreOrCapital(burg)) {
+    const star = generateStar(createRng(`${options?.map?.seed ?? ""}/astral/system/${burg.i}/star`), {
+      forceHabitable: true,
+      forcedLumClass: "V"
+    });
+    const cls = star.primary.spectral;
+    return { class: cls, name: CLASS_NAMES[cls] };
+  }
+
+  const rng = createRng(`${options?.map?.seed ?? ""}/astral/class/${burg.i}/fringe`);
   const fringe = SPECTRAL_TABLE.filter(star => star.type !== "O");
-  const cls =
-    people < CORE_POPULATION
-      ? pickWeighted(
-          rng,
-          fringe.map(star => star.type),
-          fringe.map(star => star.weight)
-        )
-      : pickWeighted(rng, ["F", "G", "K"], CORE_WEIGHTS);
+  const cls = pickWeighted(
+    rng,
+    fringe.map(star => star.type),
+    fringe.map(star => star.weight)
+  );
   return { class: cls, name: CLASS_NAMES[cls] };
 }
 
 /** How many people live in a system, in people */
 export function peopleOf(burg: { population?: number }): number {
-  const { scale, urbanization } = options.map.units.population;
-  return Math.round((burg.population ?? 0) * scale * urbanization.rate);
+  const popUnits = options?.map?.units?.population;
+  const scale = popUnits?.scale ?? 1000;
+  const rate = popUnits?.urbanization?.rate ?? 0.1;
+  return Math.round((burg.population ?? 0) * scale * rate);
 }
 
 /** The installations, in FMG's words and in ours */

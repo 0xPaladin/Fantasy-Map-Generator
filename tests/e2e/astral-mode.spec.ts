@@ -84,7 +84,7 @@ test.describe("Astral view mode", () => {
     await expect(page.locator("#viewStandard")).not.toHaveClass(/pressed/);
 
     // the Astral list replaces the standard one
-    for (const id of ["coreRim", "texture", "composition", "nebulae", "starDensity", "dustDensity", "systems", "remnants", "states", "markers"])
+    for (const id of ["coreRim", "texture", "composition", "nebulae", "starDensity", "dustDensity", "systems", "states", "markers"])
       await expect(page.locator(layerItem(id))).toBeVisible();
     for (const id of ["heightmap", "rivers", "religions", "temperature"])
       await expect(page.locator(layerItem(id))).toHaveCount(0);
@@ -116,7 +116,6 @@ test.describe("Astral view mode", () => {
     expect(await page.evaluate(() => Layers.isOn("nebulae"))).toBe(false);
     expect(await page.evaluate(() => Layers.isOn("starDensity"))).toBe(false);
     expect(await page.evaluate(() => Layers.isOn("dustDensity"))).toBe(false);
-    expect(await page.evaluate(() => Layers.isOn("remnants"))).toBe(false);
     for (const id of ["texture", "nebulae", "starDensity"])
       await expect(page.locator(layerItem(id))).toBeVisible();
 
@@ -254,40 +253,6 @@ test.describe("Astral view mode", () => {
           Node.DOCUMENT_POSITION_FOLLOWING) !== 0
     );
     expect(washUnderDust).toBe(true);
-  });
-
-  test("Remnants mark the mountains, cull to the viewport and share the chart with Anomalies", async ({
-    page
-  }) => {
-    await enterAstral(page);
-    const remnants = page.locator("#remnants [data-id]");
-
-    expect(await page.evaluate(() => Layers.isOn("remnants"))).toBe(false);
-    expect(await remnants.count()).toBe(0);
-
-    await page.locator(layerItem("remnants")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("remnants"))).toBe(true);
-    await expect(remnants.first()).toBeAttached();
-
-    // one remnant per mount-family relief icon at the full view, split across the three classes
-    const before = await remnantStats(page);
-    expect(before.total).toBe(before.family);
-    expect(before.perClass).toBe(before.total);
-
-    // zoom culls to the viewport, like the star markers do
-    await page.evaluate(() => window.closeDialogs?.()); // the version popup eats the wheel
-    await page.mouse.move(640, 360);
-    for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -240);
-    await page.waitForTimeout(800);
-    const after = await remnantStats(page);
-    expect(after.total).toBeLessThan(before.total);
-
-    // Anomalies and Remnants coexist: one being on never empties the other
-    await page.locator(layerItem("markers")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("markers"))).toBe(true);
-    expect(await page.evaluate(() => Layers.isOn("remnants"))).toBe(true);
-    expect(await remnants.count()).toBeGreaterThan(0);
-    expect(await page.evaluate(() => document.querySelector("#markers")?.childElementCount ?? 0)).toBeGreaterThan(0);
   });
 
   test("leaving restores the previous list, preset, layers and style", async ({ page }) => {
