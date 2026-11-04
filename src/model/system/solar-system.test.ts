@@ -9,6 +9,7 @@ describe("SolarSystem registry", () => {
   beforeEach(() => {
     globalThis.options = Options.getDefaultOptions();
     SolarSystem.reset();
+    SolarSystem.forgetOrigin();
   });
 
   it("initFromSeed creates planets and moons from astral-system", () => {
@@ -114,6 +115,7 @@ describe("SolarSystem.switchBody", () => {
     options.map.graph = { width: 1000, height: 500, points: 2000, sampling: "square", jitter: 0.9 };
     SolarSystem.redrawHook = () => {};
     SolarSystem.reset();
+    SolarSystem.forgetOrigin();
   });
 
   it("swaps the world to a second globe and restores the homeworld exactly", async () => {
@@ -159,5 +161,34 @@ describe("SolarSystem.switchBody", () => {
     await SolarSystem.switchBody(homeworld.id);
     expect(grid).toBe(world);
     expect(SolarSystem.activeBodyId).toBe(homeworld.id);
+  });
+
+  it("returnToOrigin restores the world the session started from", async () => {
+    // a distinctive origin world, standing in for the FMG map before any body switch
+    const originGrid = {
+      cells: { h: Uint8Array.from([5, 6, 7, 8]) }
+    } as unknown as typeof grid;
+    globalThis.grid = originGrid;
+
+    SolarSystem.initFromSeed("42");
+    await SolarSystem.switchBody(SolarSystem.homeworld!.id); // first switch parks the origin
+    const planetWorld = grid;
+    expect(planetWorld).not.toBe(originGrid);
+
+    await SolarSystem.switchBody(
+      SolarSystem.bodies.find(body => body.colonizable && body.id !== SolarSystem.homeworld!.id)!.id
+    );
+
+    SolarSystem.returnToOrigin();
+
+    expect(grid).toBe(originGrid); // the exact origin world objects come back
+    expect(Array.from(grid.cells.h)).toEqual([5, 6, 7, 8]);
+    expect(SolarSystem.activeBodyId).toBeNull();
+
+    // and body switching still works from the origin
+    const target = SolarSystem.bodies.find(body => body.colonizable && body.id !== SolarSystem.homeworld!.id)!;
+    await SolarSystem.switchBody(target.id);
+    expect(grid).not.toBe(originGrid);
+    expect(SolarSystem.activeBodyId).toBe(target.id);
   });
 });

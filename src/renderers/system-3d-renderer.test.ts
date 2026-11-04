@@ -4,7 +4,6 @@ import {
   controllingStates,
   ellipsePoint,
   gasGiantBandColors,
-  moonOrbitRadius,
   orbitRadius,
   rockyBaseColor
 } from "./system-3d-renderer";
@@ -20,15 +19,6 @@ describe("orrery scene math", () => {
     expect(neptune).toBeGreaterThan(earth);
     // compression: 77x the distance must not be 77x the scene radius
     expect(neptune / mercury).toBeLessThan(6);
-  });
-
-  it("keeps moon orbits between 1.8x and 4x the planet radius", () => {
-    for (const index of [0, 1, 2, 5, 20]) {
-      const orbit = moonOrbitRadius(index, 0.5);
-      expect(orbit).toBeGreaterThanOrEqual(0.5 * 1.8 - 1e-9);
-      expect(orbit).toBeLessThanOrEqual(0.5 * 4 + 1e-9);
-    }
-    expect(moonOrbitRadius(0, 0.5)).toBeLessThan(moonOrbitRadius(1, 0.5));
   });
 
   it("places the Kepler ellipse focus on the star", () => {

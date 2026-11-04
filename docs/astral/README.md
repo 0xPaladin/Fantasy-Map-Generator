@@ -149,23 +149,51 @@ test list are in [`docs/plans/astral-system-details.md`](../plans/astral-system-
 
 #### Opening worlds
 
-The readout is not just a table. The dialog footer carries an orrery button, and every planet row
-carries a smaller one beside it — both roll the generated system into a place you can map.
+The readout is not just a table. The dialog footer carries a **3D System** button, and every planet
+row carries a smaller globe button of its own — both roll the generated system into a place you
+can map.
 
-- **The orrery button** opens the whole system in a Three.js view: the star, every planet on its
-  orbit line, the moons circling their parents, and sprite labels with archetype badges and
-  controlling-state colours. A click focuses a body and opens an inspector — classification,
-  gravity, temperature, atmosphere, hydrographics, habitability, and for a settled world its
-  population, settlements, spaceports and states; a double-click generates that world and lands
-  in globe view.
+- **The 3D System button** opens the whole system in a Three.js orrery: the star tinted by its
+  spectral class, every planet on its Kepler orbit line with sprite labels carrying archetype
+  badges and controlling-state colours, and rings on the gas giants. A click focuses a body and
+  opens an inspector — classification, gravity, temperature, atmosphere, hydrographics,
+  habitability, and for a settled world its population, settlements, spaceports and states.
+  A double-click generates that world and lands on its surface.
 - **A planet's own globe button** materializes just that world — the full generation pipeline runs
   off the planet's seed with its archetype's climate — and leaves its surface as the active FMG
-  map, ready to edit, label and save like any other.
+  map, ready to edit, label and save like any other. Gas giants are refused with a tip, having no
+  surface to map.
 
 Both buttons roll the registry from the same seed as the readout (`${map
 seed}/astral/system/${burg id}`, the burg's spectral class forced onto the primary), so the table
 and the worlds agree one to one. Re-rolling the same system keeps every already materialized
-world; gas giants are refused with a tip, having no surface to map.
+world.
+
+#### Moving between views
+
+The Astral view is a three-level hierarchy, and every level has a way back:
+
+1. **Sector View** — the Astral star chart itself. The top of the hierarchy: entering the Astral
+   view always lands here, and the chart always draws over the **origin map** — the FMG world the
+   session started from, no matter how many planets were visited since.
+2. **System View** — the 3D orrery, opened from the System Editor's **3D System** button.
+3. **Planet View** — a single world's surface as the standard, editable FMG flat map. Both ways
+   down (the orrery's double-click and its **Open globe** button, and the dialog's planet row
+   button) land in the standard view so the world is immediately editable. Moons are listed in
+   the readout but not drawn in the orrery.
+
+While a system or planet view is open, the view-mode area under the layers panel shows two back
+buttons:
+
+- **Back to Sector** — restores the origin map and returns to the star chart. Available at every
+  level below the Sector View; there is always a way home.
+- **Back to System** — from a planet, re-opens the orrery for its system without regenerating
+  anything (already materialized worlds come back as they were).
+
+The **Astral** button hides itself while the chart is on — the **Standard** button is the exit
+back to the flat map, and it brings the Astral button back with it. Leaving the chart in any way
+resets the hierarchy to the Sector View, and `FMG.SolarSystem.returnToOrigin()` does the same
+restore from the console.
 
 #### The colonized solar system
 
@@ -201,6 +229,10 @@ polar hydrocarbon lakes) and `volcanicWorld` (flood basalts and calderas). A new
 template tool composes a raised ejecta rim, an excavated bowl and — for deep impacts — a central
 rebound peak, and `smoothSeam` blends the map edges so dry globes stay continuous across the
 antimeridian. All five carry probability 0: standard fantasy rolls never pick them.
+
+**What the orrery draws.** The star, the planets, their orbit lines and rings; moons stay in the
+readout table and out of the 3D scene, keeping the system view readable at compressed orbital
+scales. The scene is presentation-only — the one mutation is the switch you asked for.
 
 The full design is in [`docs/plans/solar-system-colonization.md`](../plans/solar-system-colonization.md).
 
@@ -268,6 +300,11 @@ As detailed in [`docs/plans/mod-merge-plan.md`](../plans/mod-merge-plan.md):
   `SolarSystem` multi-body registry with `switchBody` and the Sol preset, and the 3D orrery —
   opened from the System Editor, with per-planet FMG access and a pure-FMG compatibility
   guarantee on every world. The design is in
+  [`docs/plans/solar-system-colonization.md`](../plans/solar-system-colonization.md).
+- **Shipped (view hierarchy)**: the Astral view is a three-level hierarchy — Sector (star chart,
+  always over the origin map) → System (orrery) → Planet (standard editable flat map) — with
+  Back to Sector / Back to System buttons under the layers panel, the Astral button hiding while
+  the chart is on, and every planet view landing in the standard editable map. The design is in
   [`docs/plans/solar-system-colonization.md`](../plans/solar-system-colonization.md).
 
 ---

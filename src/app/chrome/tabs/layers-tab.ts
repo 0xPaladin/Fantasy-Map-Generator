@@ -5,9 +5,16 @@ import { isConquestEnabled, subscribeConquestView } from "@/controllers/conquest
 import { ASTRAL_LAYER_TOGGLES } from "@/data/astral-layer-labels";
 import { ASTRAL_DEFAULT_PRESET, ASTRAL_PRESETS } from "@/data/astral-layers";
 import { LAYER_TOGGLES, type LayerButton, underlineHotkey } from "@/data/layer-labels";
+import { SolarSystem } from "@/model/system/solar-system";
 import type { LayerId } from "@/renderers/layers";
 import { Layers } from "@/renderers/layers";
-import { isAstralView, subscribeAstralView } from "@/renderers/view-mode";
+import {
+  getAstralNavLevel,
+  is3dView,
+  isAstralView,
+  returnToAstralSystem,
+  subscribeAstralView
+} from "@/renderers/view-mode";
 import { ViewportLayers } from "@/renderers/viewport/viewport-renderer";
 import { isCtrlClick } from "@/utils/common-utils";
 import { sentences, t } from "@/utils/i18n";
@@ -78,10 +85,58 @@ const TEMPLATE = /* html */ `
     </button>
     <button data-tip="${sentences(t("Project map on globe"), t("Cannot be used for editing"))}" id="viewGlobe">${t("Globe")}</button>
     <button data-tip="${t("Astral view: star chart layers, nebulae and systems")}" id="viewAstral">${t("Astral")}</button>
+    <button data-tip="${t("Return to the Sector View (star chart)")}" id="viewAstralBackSector" class="astral-nav-btn">
+      ${t("Back to Sector")}
+    </button>
+    <button data-tip="${t("Return to the System View (orrery) for this system")}" id="viewAstralBackSystem" class="astral-nav-btn">
+      ${t("Back to System")}
+    </button>
   </div>
 `;
 
 ensureEl("layersContent").innerHTML = TEMPLATE;
+
+// --- Astral view navigation back buttons ---
+function refreshAstralNavButtons(): void {
+  const level = getAstralNavLevel();
+  const sectorBtn = findEl<HTMLButtonElement>("viewAstralBackSector");
+  const systemBtn = findEl<HTMLButtonElement>("viewAstralBackSystem");
+  if (!sectorBtn || !systemBtn) return;
+  sectorBtn.style.display = level !== "sector" ? "" : "none";
+  systemBtn.style.display = level === "planet" ? "" : "none";
+}
+
+ensureEl("viewMode").addEventListener("click", event => {
+  const button = event.target as HTMLElement;
+  if (button.id === "viewAstralBackSector") {
+    event.stopPropagation();
+    // the Sector View draws over the origin map: undo every body switch, then bring the chart back
+    SolarSystem.returnToOrigin();
+    void Controllers.AstralMode.enter(); // enters Astral, tears down 3D, resets nav to sector
+    return;
+  }
+  if (button.id === "viewAstralBackSystem") {
+    event.stopPropagation();
+    if (is3dView()) void Controllers.View3d.enterStandard();
+    void Controllers.View3d.open("viewSystem");
+    returnToAstralSystem(); // dispatches astralnav:change, refreshing the back buttons
+    return;
+  }
+});
+
+window.addEventListener("astralnav:change", refreshAstralNavButtons);
+refreshAstralNavButtons();
+
+// the Astral button is the chart's entry point: once the chart is on it leaves the UI,
+// and the Standard button is the exit back to the flat map (which brings the button back)
+function refreshAstralModeButton(): void {
+  const astralButton = findEl<HTMLButtonElement>("viewAstral");
+  if (!astralButton) return;
+  astralButton.style.display = isAstralView() ? "none" : "";
+}
+
+subscribeAstralView(refreshAstralModeButton);
+refreshAstralModeButton();
 
 function renderPresetOptions(): void {
   const select = ensureEl<HTMLSelectElement>("layersPreset");
