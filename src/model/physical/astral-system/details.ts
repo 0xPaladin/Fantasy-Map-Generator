@@ -17,6 +17,23 @@ export interface StarRow {
   massRatio: number | null;
 }
 
+export interface MoonRow {
+  name: string;
+  type: string;
+  orbitAU: number;
+  radiusEarth: number;
+  gravity: string;
+  temperature: string;
+  temperatureC: string;
+  atmosphere: string;
+  water: number;
+  habitability: string;
+  hi: number;
+  color: string;
+  periodDays: number;
+  bodyId: string;
+}
+
 export interface PlanetRow {
   name: string;
   type: string;
@@ -32,6 +49,8 @@ export interface PlanetRow {
   moons: string[];
   color: string;
   periodDays: number;
+  bodyId?: string;
+  moonRows?: MoonRow[];
 }
 
 export interface SystemDetails {
@@ -118,6 +137,32 @@ export function generateSystemDetails({ seed, systemName, spectral, forceHabitab
 
   const planets: PlanetRow[] = system.planets.map((planet, index) => {
     const planetName = `${name} ${toRoman(index + 1)}`;
+    const moonRows: MoonRow[] = planet.moons
+      .map((moon, moonIndex) => ({ moon, moonIndex }))
+      .filter(({ moon }) => moon.HI === 1)
+      .map(({ moon, moonIndex }) => {
+        const moonName = `${planetName} ${toLetter(moonIndex)}`;
+        const massSolar = (planet.density / 5.51) * (planet.radius / 6.371) ** 3 / 332946;
+        const orbitAU = Math.max((moon.orbit * planet.radius) / 149598, 1e-8);
+        const periodDays = +Math.max(365.25 * Math.sqrt(orbitAU ** 3 / Math.max(massSolar, 1e-12)), 0.01).toFixed(1);
+        return {
+          name: moonName,
+          type: moon.type,
+          orbitAU: planet.orbit,
+          radiusEarth: +(moon.radius / 6371).toFixed(2),
+          gravity: moon.g,
+          temperature: moon.temp,
+          temperatureC: moon.tempC,
+          atmosphere: moon.atmosphere,
+          water: moon.hydrographics,
+          habitability: moon.description,
+          hi: moon.HI,
+          color: moon.color,
+          periodDays,
+          bodyId: `planet-${index}-moon-${moonIndex}`
+        };
+      });
+
     return {
       name: planetName,
       type: planet.subtype ?? planet.type,
@@ -132,7 +177,9 @@ export function generateSystemDetails({ seed, systemName, spectral, forceHabitab
       hi: planet.HI,
       moons: planet.moons.map((_, moonIndex) => `${planetName} ${toLetter(moonIndex)}`),
       color: Array.isArray(planet.color) ? planet.color[0] : planet.color,
-      periodDays: planet.periodDays ?? 0
+      periodDays: planet.periodDays ?? 0,
+      bodyId: `planet-${index}`,
+      moonRows: moonRows.length ? moonRows : undefined
     };
   });
 

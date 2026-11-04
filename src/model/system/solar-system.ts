@@ -184,10 +184,16 @@ class SolarSystemModule {
     };
   }
 
-  /** the terran planet is the homeworld; otherwise the first colonizable one */
+  /** the terran planet or moon is the homeworld; otherwise the first colonizable one */
   private pickHomeworld(): string | null {
-    const terran = this.bodies.find(body => body.kind === "planet" && body.archetype === "terran");
-    return (terran ?? this.bodies.find(body => body.kind === "planet" && body.colonizable))?.id ?? null;
+    const terranPlanet = this.bodies.find(body => body.kind === "planet" && body.archetype === "terran");
+    if (terranPlanet) return terranPlanet.id;
+    const terranMoon = this.bodies.find(body => body.kind === "moon" && body.archetype === "terran");
+    if (terranMoon) return terranMoon.id;
+    return (
+      this.bodies.find(body => body.kind === "planet" && body.colonizable) ??
+      this.bodies.find(body => body.colonizable)
+    )?.id ?? null;
   }
 
   /** Kepler's third law around the primary, mirroring generateSystem */

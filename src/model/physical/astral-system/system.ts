@@ -1,9 +1,10 @@
 // Ported from VerseEras game/js/world/generators/feral-system/astro/system.js (2026-10-25).
+import { HI as calcHI } from "./astrophysics";
 import { layoutPosition } from "./layout";
-import { generatePlanet, type Planet } from "./planet";
+import { generatePlanet, type Moon, type Planet } from "./planet";
 import { createRng } from "./rng";
 import { type GenerateStarOptions, generateStar, type StarSummary } from "./stars";
-import { rollDice } from "./util";
+import { clamp, rollDice } from "./util";
 
 export interface PlanetarySummary {
   type: string;
@@ -72,6 +73,10 @@ export function generateSystem(seed: string, opts: GenerateSystemOptions = {}): 
 
     return planet;
   });
+
+  if (opts.forceHabitable) {
+    ensureHabitableWorld(seed, star, planets, HI);
+  }
 
   // Layout: primary (au 0), companions, then planets sorted by orbit.
   let index = 0;
@@ -157,4 +162,155 @@ export function generateSystemPlanets(seed: string, star: StarSummary): Planetar
   }
 
   return planets;
+}
+
+/**
+ * When forceHabitable is active, guarantee there is at least one HI 1 ('earthlike') world:
+ * - If a gas giant naturally sits closest to the habitable zone, give it an earthlike moon.
+ * - Otherwise, configure the closest rocky planet as an earthlike world.
+ */
+function ensureHabitableWorld(
+  seed: string,
+  star: StarSummary,
+  planets: Planet[],
+  HI: (number | number[])[][]
+): void {
+  if (HI[0].length > 0) return; // already has an earthlike planet or moon
+
+  const rng = createRng(`${seed}/earthlike`);
+  const targetInsolation = +rng.range(1.15, 1.35).toFixed(2);
+  const targetAU = +Math.sqrt(star.luminosity / targetInsolation).toFixed(3);
+
+  if (planets.length === 0) {
+    const base = generatePlanet(
+      { seed, star, orbits: [targetAU] },
+      { i: 0, classification: "rocky", orbit: targetAU, radius: 6.371 }
+    );
+    base.subtype = "rocky";
+    base.orbit = targetAU;
+    base.insolation = targetInsolation;
+    base.radius = 6371;
+    base.density = 5.51;
+    base.hydrographics = 71;
+    base.atmosphere = "Breathable";
+    base.color = "#3a75a4";
+    const hab = calcHI(base.insolation, base.radius, base.density, base.hydrographics, base.atmosphere);
+    Object.assign(base, hab);
+    base.HI = 1;
+    base.description = "earthlike";
+    const periodYears = Math.sqrt(base.orbit ** 3 / Math.max(star.totalMass, 1e-6));
+    base.periodDays = +(periodYears * 365.25).toFixed(1);
+    planets.push(base);
+    HI[0].push(0);
+    return;
+  }
+
+  // Find the planet closest to the habitable orbit
+  let closestIndex = 0;
+  let closestDist = Math.abs(planets[0].orbit - targetAU);
+  for (let i = 1; i < planets.length; i += 1) {
+    const dist = Math.abs(planets[i].orbit - targetAU);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closestIndex = i;
+    }
+  }
+
+  const closest = planets[closestIndex];
+
+  // Nudge orbit safely within neighbor bounds to align insolation with the habitable zone
+  const prevOrbit = closestIndex > 0 ? planets[closestIndex - 1].orbit : 0;
+  const nextOrbit = closestIndex < planets.length - 1 ? planets[closestIndex + 1].orbit : Infinity;
+  const minBound = prevOrbit > 0 ? prevOrbit * 1.15 : targetAU * 0.7;
+  const maxBound = Number.isFinite(nextOrbit) ? nextOrbit * 0.85 : targetAU * 1.4;
+  closest.orbit = +clamp(targetAU, minBound, maxBound).toFixed(3);
+  closest.insolation = +(star.luminosity / Math.max(closest.orbit, 1e-6) ** 2).toFixed(3);
+  closest.minorAxis = +Math.sqrt(closest.orbit ** 2 * (1 - closest.eccentricity ** 2)).toFixed(3);
+  const periodYears = Math.sqrt(closest.orbit ** 3 / Math.max(star.totalMass, 1e-6));
+  closest.periodDays = +(periodYears * 365.25).toFixed(1);
+
+  // Clear existing HI entries for this planet and its moons
+  for (let h = 0; h < 5; h += 1) {
+    HI[h] = HI[h].filter(entry => (typeof entry === "number" ? entry !== closestIndex : entry[0] !== closestIndex));
+  }
+
+  if (closest.type === "gas giant") {
+    // Gas giant closest to habitable zone -> Earthlike Moon!
+    let moon: Moon;
+    if (closest.moons.length === 0) {
+      const moonOrbit = 15;
+      moon = {
+        parentSeed: closest.seed,
+        seed: `${closest.seed}/0`,
+        i: 0,
+        orbit: moonOrbit,
+        eccentricity: 0.01,
+        minorAxis: moonOrbit,
+        insolation: closest.insolation,
+        rmin: 10,
+        rmax: 30,
+        kind: "moon",
+        type: "rocky",
+        color: "#45739c",
+        radius: 5800,
+        density: 5.4,
+        hydrographics: 65,
+        atmosphere: "Breathable",
+        pos: layoutPosition(moonOrbit, 0),
+        HI: 1,
+        description: "earthlike",
+        g: "0.93",
+        albedo: 0.2,
+        tempC: "14.2",
+        temp: "temperate"
+      };
+      closest.moons.push(moon);
+      closest.orbits.push(moonOrbit);
+    } else {
+      moon = closest.moons[0];
+    }
+
+    moon.type = "rocky";
+    moon.insolation = closest.insolation;
+    moon.radius = 5800;
+    moon.density = 5.4;
+    moon.hydrographics = 65;
+    moon.atmosphere = "Breathable";
+    moon.color = "#45739c";
+    const hab = calcHI(moon.insolation, moon.radius, moon.density, moon.hydrographics, moon.atmosphere);
+    Object.assign(moon, hab);
+    moon.HI = 1;
+    moon.description = "earthlike";
+
+    // Keep gas giant itself in its habitability bucket
+    if (closest.HI >= 1 && closest.HI <= 5) {
+      HI[closest.HI - 1].push(closestIndex);
+    }
+    // Rebuild moonHI and update system HI
+    closest.moonHI = [[], [], [], [], []];
+    closest.moons.forEach((m, mIdx) => {
+      closest.moonHI[m.HI - 1].push(mIdx);
+      HI[m.HI - 1].push([closestIndex, mIdx]);
+    });
+  } else {
+    // Rocky planet closest to habitable zone -> Earthlike Planet!
+    closest.type = "rocky";
+    closest.subtype = "rocky";
+    closest.radius = 6371;
+    closest.density = 5.51;
+    closest.hydrographics = 71;
+    closest.atmosphere = "Breathable";
+    closest.color = "#3a75a4";
+    const hab = calcHI(closest.insolation, closest.radius, closest.density, closest.hydrographics, closest.atmosphere);
+    Object.assign(closest, hab);
+    closest.HI = 1;
+    closest.description = "earthlike";
+
+    HI[0].push(closestIndex);
+    closest.moons.forEach((m, mIdx) => {
+      if (m.HI >= 1 && m.HI <= 5) {
+        HI[m.HI - 1].push([closestIndex, mIdx]);
+      }
+    });
+  }
 }

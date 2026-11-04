@@ -166,4 +166,21 @@ describe("the burg wrapper", () => {
   it("falls back to a plain system name", () => {
     expect(systemDetailsFor({ i: 8, population: 10 }).planets[0]?.name).toMatch(/^System /);
   });
+
+  it("exposes an earthlike world as a planet row or indented moonRow", () => {
+    for (let i = 1; i <= 30; i += 1) {
+      const details = generateSystemDetails({
+        seed: `map-seed/astral/system/${i}`,
+        systemName: `World-${i}`,
+        forceHabitable: true
+      });
+
+      const hasEarthlikePlanet = details.planets.some(p => p.hi === 1 && p.habitability === "earthlike");
+      const hasEarthlikeMoon = details.planets.some(p =>
+        (p.moonRows ?? []).some(m => m.hi === 1 && m.habitability === "earthlike" && m.bodyId.startsWith("planet-"))
+      );
+
+      expect(hasEarthlikePlanet || hasEarthlikeMoon).toBe(true);
+    }
+  });
 });

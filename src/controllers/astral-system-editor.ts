@@ -330,12 +330,12 @@ function renderSystemDetails(details: SystemDetails): void {
   const planets = details.planets
     .map((planet, index) => {
       const moons = planet.moons.length ? ` data-tip="${escapeHtml(planet.moons.join(", "))}"` : "";
-      return `<tr>
+      const planetRow = `<tr>
         <td style="${CELL_STYLE}">${escapeHtml(planet.name)}</td>
         <td style="${CELL_STYLE}; text-align: right">
           <button
             class="systemPlanetView icon-globe pointer"
-            data-planet="${index}"
+            data-body="${escapeHtml(planet.bodyId ?? `planet-${index}`)}"
             data-tip="Generate this planet and open its surface in FMG"
           ></button>
         </td>
@@ -352,6 +352,36 @@ function renderSystemDetails(details: SystemDetails): void {
         <td style="${CELL_STYLE}" data-tip="HI ${planet.hi}">${escapeHtml(planet.habitability)}</td>
         <td style="${CELL_STYLE}; text-align: right"${moons}>${planet.moons.length}</td>
       </tr>`;
+
+      const moonRows = (planet.moonRows ?? [])
+        .map(moon => `
+      <tr style="background: rgba(255, 255, 255, 0.035)">
+        <td style="${CELL_STYLE}; padding-left: 1.6em">
+          <span style="opacity: 0.6; margin-right: 0.3em">↳</span>${escapeHtml(moon.name)}
+        </td>
+        <td style="${CELL_STYLE}; text-align: right">
+          <button
+            class="systemPlanetView icon-globe pointer"
+            data-body="${escapeHtml(moon.bodyId)}"
+            data-tip="Generate ${escapeHtml(moon.name)} and open its surface in FMG"
+          ></button>
+        </td>
+        <td style="${CELL_STYLE}">${escapeHtml(moon.type)}</td>
+        <td style="${CELL_STYLE}; text-align: right" data-tip="Parent orbit ${rn(moon.orbitAU, 2)} AU · Moon period ${rn(moon.periodDays, 1)} days">${rn(
+          moon.orbitAU,
+          2
+        )}</td>
+        <td style="${CELL_STYLE}; text-align: right">${rn(moon.radiusEarth, 2)}</td>
+        <td style="${CELL_STYLE}; text-align: right">${escapeHtml(moon.gravity)}</td>
+        <td style="${CELL_STYLE}" data-tip="${escapeHtml(moon.temperatureC)} °C">${escapeHtml(moon.temperature)}</td>
+        <td style="${CELL_STYLE}">${escapeHtml(moon.atmosphere)}</td>
+        <td style="${CELL_STYLE}; text-align: right">${rn(moon.water)}%</td>
+        <td style="${CELL_STYLE}" data-tip="HI ${moon.hi}">${escapeHtml(moon.habitability)}</td>
+        <td style="${CELL_STYLE}; text-align: right">—</td>
+      </tr>`)
+        .join("");
+
+      return planetRow + moonRows;
     })
     .join("");
   ensureEl("systemPlanetsBody").innerHTML = planets
@@ -546,15 +576,16 @@ async function openSystemOrrery(): Promise<void> {
 }
 
 async function viewPlanetInFmg(event: Event): Promise<void> {
-  const button = event.target as HTMLElement;
-  const index = button.dataset?.planet;
-  if (index === undefined) return;
+  const button = (event.target as HTMLElement).closest<HTMLElement>(".systemPlanetView");
+  if (!button) return;
+  const bodyId = button.dataset?.body ?? (button.dataset?.planet !== undefined ? `planet-${button.dataset.planet}` : undefined);
+  if (!bodyId) return;
 
   ensureSolarSystem();
-  if (isAstralView()) await Controllers.AstralMode.exit(); // the planet's flat map needs the FMG profile
-  const body = SolarSystem.getBody(`planet-${index}`);
+  if (isAstralView()) await Controllers.AstralMode.exit(); // the flat map needs the FMG profile
+  const body = SolarSystem.getBody(bodyId);
   if (!body?.colonizable) {
-    tip(`${body?.name ?? "This planet"} has no mappable surface`, false, "error");
+    tip(`${body?.name ?? "This body"} has no mappable surface`, false, "error");
     return;
   }
 
@@ -562,7 +593,7 @@ async function viewPlanetInFmg(event: Event): Promise<void> {
   tip(`Generating ${body.name}...`, true);
   try {
     enterAstralPlanetView(String(getSelectedId()));
-    await SolarSystem.switchBody(body.id); // the planet's world becomes the active FMG map
+    await SolarSystem.switchBody(body.id); // the planet or moon's world becomes the active FMG map
     clearMainTip();
   } catch (error) {
     clearMainTip();

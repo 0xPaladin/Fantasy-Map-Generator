@@ -135,4 +135,33 @@ describe("the astro system port", () => {
     expect(first).toEqual(second);
     expect(first.length).toBe(system.planets.length);
   });
+
+  it("guarantees an earthlike world (planet or moon) when forceHabitable is true", () => {
+    for (let index = 0; index < 100; index += 1) {
+      const seed = `${SEED}/habitable-check/${index}`;
+      const system = generateSystem(seed, { forceHabitable: true });
+
+      // There must be at least one entry in HI[0] (HI 1: earthlike)
+      expect(system.HI[0].length).toBeGreaterThanOrEqual(1);
+
+      const firstHI1 = system.HI[0][0];
+      if (typeof firstHI1 === "number") {
+        // Planet
+        const planet = system.planets[firstHI1];
+        expect(planet.HI).toBe(1);
+        expect(planet.description).toBe("earthlike");
+        expect(planet.atmosphere).toBe("Breathable");
+        expect(planet.hydrographics).toBeGreaterThan(0);
+      } else {
+        // Moon around a gas giant or parent planet
+        const [planetIdx, moonIdx] = firstHI1;
+        const planet = system.planets[planetIdx];
+        const moon = planet.moons[moonIdx];
+        expect(moon.HI).toBe(1);
+        expect(moon.description).toBe("earthlike");
+        expect(moon.atmosphere).toBe("Breathable");
+        expect(moon.hydrographics).toBeGreaterThan(0);
+      }
+    }
+  });
 });
