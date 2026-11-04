@@ -22,10 +22,6 @@ const ORBIT_CURVE = 0.8; // flattens the AU spread before the log
 export const orbitRadius = (semiMajorAxisAU: number): number =>
   ORBIT_BASE + ORBIT_COMPRESSION * Math.log(1 + Math.max(semiMajorAxisAU, 0) * ORBIT_CURVE);
 
-/** moon orbits hug their parent: 1.8x .. 4.0x the planet's mesh radius */
-export const moonOrbitRadius = (index: number, planetRadius: number): number =>
-  planetRadius * Math.min(1.8 + index * 0.73, 4);
-
 /** point on the Kepler orbit ellipse, the star sitting in its focus */
 export const ellipsePoint = (semiMajor: number, eccentricity: number, angle: number): { x: number; z: number } => {
   const r = (semiMajor * (1 - eccentricity ** 2)) / (1 + eccentricity * Math.cos(angle));
@@ -245,9 +241,6 @@ function buildBodies(): void {
     const { group, orbitRing } = buildPlanet(body);
     scene.add(group);
     scene.add(orbitRing); // the orbit ellipse centers on the star, not the moving planet
-
-    const moons = SolarSystem.bodies.filter(moon => moon.parentId === body.id);
-    for (const [index, moon] of moons.entries()) buildMoon(group, moon, index, body);
   }
 }
 
@@ -270,27 +263,6 @@ function buildPlanet(body: CelestialBody): { group: THREE.Group; orbitRing: THRE
   group.add(buildLabel(body, radius));
 
   return { group, orbitRing: buildOrbitRing(orbit, body.orbit.eccentricity, false) };
-}
-
-function buildMoon(planetGroup: THREE.Group, body: CelestialBody, index: number, parent: CelestialBody): void {
-  const parentRadius = bodySceneRadius(kindRadius(parent), "planet");
-  const radius = bodySceneRadius(kindRadius(body), "moon");
-  const orbit = moonOrbitRadius(index, parentRadius);
-  const angle = body.orbit.angleRad;
-
-  const moonGroup = new THREE.Group();
-  moonGroup.position.set(Math.cos(angle) * orbit, 0, Math.sin(angle) * orbit);
-
-  const geometry = new THREE.SphereGeometry(radius, 32, 32);
-  const material = new THREE.MeshLambertMaterial({ map: bodyTexture(body) });
-  const sphere = new THREE.Mesh(geometry, material);
-  sphere.userData.bodyId = body.id;
-  moonGroup.add(sphere);
-  bodyMeshes.push(sphere);
-
-  moonGroup.add(buildLabel(body, radius));
-  planetGroup.add(buildOrbitRing(orbit, 0, true)); // the moon's orbit circles its parent planet
-  planetGroup.add(moonGroup);
 }
 
 function buildRings(radius: number, bodyId: string): THREE.Mesh {

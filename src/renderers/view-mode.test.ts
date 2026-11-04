@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  enterAstralPlanetView,
+  enterAstralSystemView,
+  getAstralNavLevel,
   getViewMode,
   is3dView,
+  isAstralNavBeyondSector,
+  isAstralNavPlanet,
   isAstralView,
   isGlobeView,
   isSystemView,
+  resetAstralNav,
+  returnToAstralSector,
+  returnToAstralSystem,
   setAstralView,
   setViewMode,
   subscribeAstralView
@@ -72,5 +80,45 @@ describe("view mode switching", () => {
     expect(getViewMode()).toBe("standard");
     expect(is3dView()).toBe(false);
     expect(isGlobeView()).toBe(false);
+  });
+});
+
+describe("Astral navigation hierarchy", () => {
+  it("walks sector -> system -> planet and back up", () => {
+    resetAstralNav();
+    expect(getAstralNavLevel()).toBe("sector");
+    expect(isAstralNavBeyondSector()).toBe(false);
+
+    enterAstralSystemView("planet-2");
+    expect(getAstralNavLevel()).toBe("system");
+    expect(isAstralNavBeyondSector()).toBe(true);
+    expect(isAstralNavPlanet()).toBe(false);
+
+    enterAstralPlanetView("planet-2");
+    expect(getAstralNavLevel()).toBe("planet");
+    expect(isAstralNavPlanet()).toBe(true);
+
+    returnToAstralSystem();
+    expect(getAstralNavLevel()).toBe("system");
+    expect(isAstralNavPlanet()).toBe(false);
+
+    returnToAstralSector();
+    expect(getAstralNavLevel()).toBe("sector");
+    expect(isAstralNavBeyondSector()).toBe(false);
+  });
+
+  it("returnToAstralSystem never leaves the sector level behind", () => {
+    resetAstralNav();
+    returnToAstralSystem();
+    expect(getAstralNavLevel()).toBe("sector");
+  });
+
+  it("resetAstralNav clears the stack from any depth", () => {
+    resetAstralNav();
+    enterAstralSystemView("planet-0");
+    enterAstralPlanetView("planet-0");
+    resetAstralNav();
+    expect(getAstralNavLevel()).toBe("sector");
+    expect(isAstralNavBeyondSector()).toBe(false);
   });
 });
