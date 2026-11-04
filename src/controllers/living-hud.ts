@@ -13,7 +13,7 @@ import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
-import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { describeRelicBonuses, RELIC_CATALOG, reserveRelics, vaultHasRoom, vaultRelics } from "@/data/living-relics";
@@ -1689,7 +1689,7 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
       }
       const unit = living.units?.[key];
       if (!unit) return "";
-      const def = CIV_UNIT_BY_ID[unit.unitTypeId];
+      const def = CIV_CIVILIAN_BY_ID[unit.unitTypeId];
       return `<li>${escapeHtml(def?.name ?? unit.unitTypeId)} · utility</li>`;
     })
     .filter(Boolean)
@@ -1742,7 +1742,10 @@ function renderCivCity(bSim: CitySimView, burgId: number): string {
   const queue = (bSim.productionQueue ?? [])
     .slice(0, 4)
     .map(item => {
-      const def = item.kind === "unit" ? CIV_UNIT_BY_ID[item.id] : CIV_BUILDING_BY_ID[item.id];
+      const def =
+        item.kind === "unit"
+          ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
+          : CIV_BUILDING_BY_ID[item.id];
       const cost = Math.max(1, Math.round(def?.cost ?? 1));
       const progress = Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
       return `<li>${escapeHtml(def?.name ?? item.id)} <span class="livingGuildChipStatus">${progress} / ${

@@ -980,21 +980,27 @@ Each phase is independently shippable and testable. No phase may leave the map i
 2. **City HP is a display/pace stat now.** Capture is decided by the battle; `bSim.hp` still regenerates, gates city strikes and is set to 0 on capture (then reset by `captureCity`).
 3. **Ranged bombardment stays a chip action.** `bombardCity` can still lower city HP, but it cannot capture: the garrison has to be beaten. Persistent blockade-style bombardment would need garrison HP to be stored, which it deliberately is not.
 4. **`toBattleTypes` is memoised by table identity.** Rebuilding 347 scaled types per odds query made the siege AI quadratic; the `WeakMap` fixed a 10× test slowdown.
-### Phase E — Economy on `hp` & Civ combat retirement
+### Phase E — Economy on `hp` & Civ combat retirement — **DONE**
 
-- [ ] Upkeep `Σ upkeep × hp` (§10.2) plus `CIVILIAN_UPKEEP`; `settleDebt` disbands one block.
-- [ ] `productionCost` + `chooseCityProduction` read the roster `cost` (Production) for combat, `CIV_CIVILIAN_BY_ID` for civilians.
-- [ ] `spawnArmyBlock` (§10.4) appends `hp: 1`; `spawnUtilityUnit` for civilians.
-- [ ] `upgradeArmyBlocks` + `autoUpgrade` on `UnitType.upgradesTo` / category ladder, preserving `hp`/`exp`.
-- [ ] `replenishArmies` in `hp`; remove combat `tickUnitHealing`.
-- [ ] `hurryProduction` price from roster `cost`.
-- [ ] **Rename** `src/data/living-civ-units.ts` → `living-civ-civilians.ts`, exporting `CIV_CIVILIANS` / `CIV_CIVILIAN_BY_ID`; keep only the 8 utility defs.
-- [ ] **Delete** every combat `CivUnitDef`, `CIV_CULTURE_UNIQUE_UNITS`, `CIV_CULTURE_UNIT_MAP`, `bestUnitForCategory`, `UNIT_CHAINS`, `createUnitSim` (combat branch), `grantPromotion`, and `src/data/living-civ-promotions.ts`.
-- [ ] Migrate the call sites listed in §6.5 (`living-generator.ts`, `living-hud.ts`, `political/burgs/burg-editor.ts`, `living-civ-themes.ts`).
-- [ ] Rewrite `living-civ-catalogs.test.ts` for civilians only; delete the `bestUnitForCategory` test block.
-- [ ] Tests: upkeep at `hp` 1 / 0.5, free allowance, civilian upkeep, bankruptcy, production cost scale, block spawn at cap, upgrade tech gate and `hp` preservation, replenishment per terrain/stance.
+- [x] Upkeep is `Σ UnitType.upkeep × block.hp` plus `CIVILIAN_UPKEEP` per civilian regiment, less `UPKEEP_FREE` (0.6 Gold). Rounding happens at the treasury boundary.
+- [x] `settleDebt` disbands **one block** from the newest regiment; the regiment is removed only when its last block dies.
+- [x] `productionCost` reads the roster `cost` for combat ids and `CIV_CIVILIAN_BY_ID` for civilians; `hurryProduction` inherits it.
+- [x] `chooseCityProduction` picks a roster melee via `pickRosterUnit` when a war has no field army; civilians still come from the civilian catalog.
+- [x] Block refits (`upgradeArmyBlocks`) follow `UnitType.upgradesTo` or the category ladder, gate on `requiredTechFor`, pay Gold, and preserve `hp`/`exp`. `autoUpgrade` refits one block per season while the treasury holds 50+.
+- [x] `replenishArmies` adds capability between ticks: `replenishFraction` in a friendly city, half in friendly land, none in neutral/enemy, ×`encampReplenishBonus` while encamped; no healing after fighting. Combat `tickUnitHealing` stays gone; utility keeps it.
+- [x] Combat catalog retired: `living-civ-units.ts` and `living-civ-promotions.ts` are deleted, replaced by **`living-civ-civilians.ts`** (`CIV_CIVILIANS`, `CIV_CIVILIAN_BY_ID`, `getCivCivilian`) with the eight utility defs. `CIV_UNIT_BY_ID`, `CIV_ALL_UNITS`, the culture uniques, `UNIT_CHAINS`, `bestUnitForCategory` and the promotion tree are gone.
+- [x] Call sites migrated: `living-generator.ts`, `living-hud.ts`, `political/burgs/burg-editor.ts` (production names fall back from civilians to `Military.getUnitTypes()`), and the catalog test.
+- [x] Tests: upkeep at `hp 1`/`0.5` with the free allowance and civilian rate, one-block bankruptcy, roster-driven production, block refit preserving `hp`/`exp`, replenishment by terrain and stance.
 
-**Exit:** the OpenCiv treasury prices armies by `Σ upkeep × hp`; the Civ combat catalog and promotion tree no longer exist; `reg.units` is the only combat composition.
+**Exit:** met — the treasury prices `Σ upkeep × hp`, production and upgrades are roster-driven, and the Civ combat catalog plus promotion tree no longer exist. Full suite green (246 files / 3,448 tests).
+
+**Notes / consequences:**
+
+1. **The free allowance (0.6 Gold) covers roughly three baseline blocks.** A small starting army therefore costs nothing, matching the old "three free regiments" feel, but the fourth block starts charging.
+2. **Upkeep is per block, not per 1,000 men.** A 10-man Slann block pays its own `upkeep`, so elites stay expensive even when the fiction says the unit is tiny.
+3. **`encamp` is now reachable**: a resting army below 60% in a friendly city entrenches, which doubles replenishment and feeds the siege/field defender bonus.
+4. **Civilian production names** resolve through the civilian catalog first, then the roster; combat ids are roster-only and no longer fall back to a Civ definition.
+5. **Legacy saves with Civ ids in a production queue** still work: `spawnUnit` maps an unknown id through `matchRosterUnitByCategory`, so an old "warrior" order becomes a roster melee block.
 
 ### Phase F — UI, rendering, balance, cleanup
 

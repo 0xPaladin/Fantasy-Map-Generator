@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { currentContent } from "@/conquest/content/store";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { valueModifier } from "@/conquest/engine/game/saves";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
 import type { Burg } from "@/model/political/burgs-generator";
-import { Military } from "@/model/political/military-generator";
+import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
+import { Military, syncRegimentTotals } from "@/model/political/military-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { HistoricalFigure } from "@/types/history";
@@ -16,7 +18,6 @@ import { createRng } from "@/utils/rng";
 import {
   activeCivThemeId,
   BASE_EMPIRE_HAPPINESS,
-  bestUnitForCategory,
   borderCultureNeeded,
   borderInfluenceScore,
   citizensFromPopulation,
@@ -38,6 +39,7 @@ import {
   isMajorBurg,
   isMinorBurg,
   isTechSelectable,
+  UPKEEP_FREE,
   Living,
   LUXURY_HAPPINESS,
   maxHeroesForTier,
@@ -52,7 +54,6 @@ import {
   syncCivFlagsFromBuildings,
   terrainDefenseMultiplier,
   UNIT_MAX_HP,
-  UNIT_UPKEEP_FREE,
   unitIsRanged,
   unitMovementCost,
   xpForLevel
@@ -2818,7 +2819,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       bx: 50,
       by: 50,
       u: { spear: 100 },
-      units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+      units: [{ type: "spear", hp: 1, exp: 0 }],
       n: 0,
       icon: "⚔️",
       state: 1
@@ -2950,21 +2951,54 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       // Monument maintenance 1 plus 4 regiments (1 above the free allowance).
       living.burgs[1].civBuildings = ["palace", "monument"];
-      pack.states[1].military = Array.from({ length: UNIT_UPKEEP_FREE + 1 }, (_, index) => makeRegiment(index));
+      pack.states[1].military = Array.from({ length: Math.ceil(UPKEEP_FREE / 0.2) + 1 }, (_, index) => makeRegiment(index));
       Living.tick(1);
-      expect(sSim.yieldsPerTurn?.gold).toBe(3);
+      // Five 100-man blocks cost less than the three-block free allowance; only maintenance bites.
+      expect(sSim.yieldsPerTurn?.gold).toBe(4);
     });
 
-    it("disbands the newest regiment when the treasury goes negative", () => {
+    it("disbands one block when the treasury goes negative", () => {
       const living = Living.init();
-      pack.states[1].military = [makeRegiment(0), makeRegiment(1)];
+      const first = makeRegiment(0);
+      const second = makeRegiment(1);
+      second.units = [
+        { type: "spear", hp: 1, exp: 0 },
+        { type: "spear", hp: 1, exp: 0 }
+      ];
+      pack.states[1].military = [first, second];
       pack.states[1].treasury = -10;
 
       Living.tick(1);
 
       expect(pack.states[1].treasury).toBe(0);
-      expect(pack.states[1].military).toHaveLength(1);
+      expect(pack.states[1].military).toHaveLength(2);
+      expect(second.units).toHaveLength(1);
       expect(living.recentNews.some(item => item.text.includes("disbanded"))).toBe(true);
+    });
+
+    it("charges upkeep per block scaled by hp, with the free allowance and civilian rate", () => {
+      const living = Living.init();
+      const types = Military.getUnitTypes();
+      const elite = Object.values(types).sort((a, b) => b.upkeep - a.upkeep)[0]!;
+      const count = Math.ceil((UPKEEP_FREE + elite.upkeep * 2) / elite.upkeep);
+      const full = { ...makeRegiment(0), units: Array.from({ length: count }, () => ({ type: elite.id, hp: 1, exp: 0 })) };
+      const half = {
+        ...makeRegiment(1),
+        units: Array.from({ length: count }, () => ({ type: elite.id, hp: 0.5, exp: 0 }))
+      };
+      const civilian = { ...makeRegiment(2), type: "builder", units: [] };
+      pack.states[1].military = [full, half, civilian];
+
+      Living.tick(1);
+
+      const b1 = living.burgs[1];
+      const gross = b1.cityYields?.gold ?? 0;
+      const maintenance = (b1.civBuildings ?? []).reduce(
+        (sum, id) => sum + (CIV_BUILDING_BY_ID[id]?.maintenance ?? 0),
+        0
+      );
+      const upkeep = Math.max(0, elite.upkeep * count * 1.5 + 0.1 - UPKEEP_FREE);
+      expect(living.states[1].yieldsPerTurn?.gold).toBeCloseTo(gross - maintenance - upkeep, 2);
     });
 
     it("derives Empire Happiness from luxuries, buildings and city costs", () => {
@@ -3132,17 +3166,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(hasStackingConflict(occupied, 1, false, "1-0")).toBe(false);
     });
 
-    it("maps native categories onto the strongest unlocked OpenCiv unit", () => {
-      expect(bestUnitForCategory("melee", new Set())).toMatchObject({ id: "warrior", combatStrength: 8 });
-      expect(bestUnitForCategory("melee", new Set(["bronze_working"]))).toMatchObject({ id: "spearman" });
-      expect(bestUnitForCategory("melee", new Set(["bronze_working", "iron_working"]))).toMatchObject({
-        id: "swordsman"
-      });
-      expect(bestUnitForCategory("ranged", new Set(["archery"]))).toMatchObject({ id: "archer", range: 2 });
-      expect(bestUnitForCategory("cavalry", new Set(["horseback_riding"]))).toMatchObject({ id: "horseman" });
-      expect(unitIsRanged({ range: 2, rangedStrength: 7 } as never)).toBe(true);
-    });
-
     it("seeds blocks and an army record for every native regiment", () => {
       pack.states[1].military = [makeRegiment(0, 5)];
       const living = Living.init();
@@ -3305,8 +3328,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     it("produces a combat unit into an army block", () => {
       const living = Living.init();
       const b1 = living.burgs[1];
-      b1.productionQueue = [{ kind: "unit", id: "warrior" }];
-      b1.productionProgress = { "unit:warrior": 0 };
+      const melee = Military.getRoster(pack.states[1]!)!.garrison.melee;
+      b1.productionQueue = [{ kind: "unit", id: melee }];
+      b1.productionProgress = { [`unit:${melee}`]: 0 };
 
       expect(Living.hurryProduction(1)).toBe(false); // treasury too thin
 
@@ -3415,9 +3439,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     it("prunes a block destroyed by a city strike", () => {
       const living = Living.init();
       Living.forceWar(1, 2);
-      const doomed = makeRegiment(0, 9);
+      const doomed = makeRegiment(0, 7); // in enemy land: no replenishment
       doomed.units = [{ type: doomed.units![0]!.type, hp: 0.05, exp: 0 }];
       pack.states[1].military = [doomed];
+      living.states[1].agenda = { kind: "muster", label: "Mustering", progress: 0, required: 999 };
 
       Living.tick(1);
 
@@ -3425,15 +3450,53 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.armies?.[unitKey(1, 0)]).toBeUndefined();
     });
 
-    it("defers combat upgrades until the block phase", () => {
-      Living.init();
+    it("refits army blocks for Gold, preserving hp and exp", () => {
       pack.states[1].military = [makeRegiment(0, 5)];
-      Living.tick(1);
-      pack.states[1].treasury = 1000;
-      const living = Living.getState();
+      const living = Living.init();
+      const types = Military.getUnitTypes();
+      const roster = Military.getRoster(pack.states[1]!)!;
+      const currentId = roster.garrison.melee;
+      const current = types[currentId]!;
+      const target = current.upgradesTo
+        ? types[current.upgradesTo]
+        : nextRosterUnitInCategory(roster, currentId);
+      expect(target).toBeDefined();
 
-      living.states[1]!.researchedTechs = ["iron_working"];
-      expect(Living.upgradeRegiment(1, 0)).toBe(false);
+      const regiment = pack.states[1].military![0]!;
+      regiment.units = [{ type: current.id, hp: 0.45, exp: 6 }];
+      syncRegimentTotals(regiment, types);
+      pack.states[1].treasury = 1000;
+      living.states[1]!.researchedTechs = [requiredTechFor(target!, roster)];
+
+      expect(Living.upgradeRegiment(1, 0)).toBe(true);
+
+      expect(regiment.units![0]!.type).toBe(target!.id);
+      expect(regiment.units![0]!.hp).toBe(0.45);
+      expect(regiment.units![0]!.exp).toBe(6);
+      expect(pack.states[1].treasury).toBeLessThan(1000);
+    });
+
+    it("replenishes damaged blocks in a city, half in friendly land, never in neutral land", () => {
+      const living = Living.init();
+      const types = Military.getUnitTypes();
+      const unitType = Object.keys(types)[0]!;
+      const cityReg = makeRegiment(0, 5);
+      cityReg.units = [{ type: unitType, hp: 0.4, exp: 0 }];
+      const fieldReg = makeRegiment(1, 1);
+      fieldReg.units = [{ type: unitType, hp: 0.4, exp: 0 }];
+      const neutralReg = makeRegiment(2, 2);
+      neutralReg.units = [{ type: unitType, hp: 0.4, exp: 0 }];
+      pack.states[1].military = [cityReg, fieldReg, neutralReg];
+      living.states[1].agenda = { kind: "muster", label: "Mustering", progress: 0, required: 999 };
+
+      Living.tick(1);
+
+      // City: 0.25 base × 2 encamp bonus = +0.5.
+      expect(cityReg.units![0]!.hp).toBeCloseTo(0.9, 5);
+      // Friendly land: half the base rate.
+      expect(fieldReg.units![0]!.hp).toBeCloseTo(0.525, 5);
+      // Neutral land: no replenishment.
+      expect(neutralReg.units![0]!.hp).toBeCloseTo(0.4, 5);
     });
 
     it("blocks bombardment over hills and canopy until Indirect Fire", () => {

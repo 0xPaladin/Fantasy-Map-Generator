@@ -4,7 +4,8 @@ import { Goods } from "@/model/economy/goods-generator";
 import type { Market } from "@/model/economy/markets-generator";
 import { Markets } from "@/model/economy/markets-generator";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_UNIT_BY_ID } from "@/data/living-civ-units";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
+import { Military } from "@/model/political/military-generator";
 import { Production } from "@/model/economy/production-generator";
 import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
@@ -414,7 +415,7 @@ function updateBurgLiving(burgId: number): void {
   const item = bSim.productionQueue?.[0];
   const itemDef = item
     ? item.kind === "unit"
-      ? CIV_UNIT_BY_ID[item.id]
+      ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
       : CIV_BUILDING_BY_ID[item.id]
     : undefined;
   const itemProgress = item ? Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0) : 0;

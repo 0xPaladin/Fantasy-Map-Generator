@@ -55,10 +55,10 @@ import {
   CIV_RELIGION_NAMES
 } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
 import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
-import { CIV_ALL_UNITS, CIV_UNIT_BY_ID } from "@/data/living-civ-units";
 import {
   createProvinceLair,
   getLairDef,
@@ -118,7 +118,10 @@ import {
   isCivilianUnit,
   matchRosterUnitByCategory,
   migrateArmyBlocks,
+  nextRosterUnitInCategory,
   normalizeArmy,
+  pickRosterUnit,
+  requiredTechFor,
   toBattleTypes,
   toBattleUnits,
   toBattleUnitsMen
@@ -126,7 +129,6 @@ import {
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import {
   Military,
-  type MilitaryCategory,
   type Regiment,
   reconcileRegimentBlocks,
   syncRegimentTotals
@@ -1157,7 +1159,12 @@ const CITY_ECONOMY_BUILDINGS: readonly string[] = [
 // ---------------------------------------------------------------------------
 
 /** Regiments beyond this count cost 1 Gold per tick of upkeep. */
-export const UNIT_UPKEEP_FREE = 3;
+/** Gold per tick for a median block at full capability (living-openciv-armies.md §10.2). */
+export const BASELINE_UPKEEP = 0.2;
+/** Three baseline blocks are free, so a starting army costs nothing. */
+export const UPKEEP_FREE = 3 * BASELINE_UPKEEP;
+/** A civilian regiment costs a flat tenth, independent of roster prices. */
+export const CIVILIAN_UPKEEP = 0.1;
 /** At or below this net happiness growth stops and combat suffers. */
 export const VERY_UNHAPPY_HAPPINESS = -10;
 /** Very unhappy empires fight at two thirds strength. */
@@ -1210,30 +1217,6 @@ export const BUILDER_RANGE = 8;
 export const CITY_MIN_RANGED_HP = 1;
 /** One city strike removes this much capability from a single block. */
 export const CITY_STRIKE_HP = 0.1;
-
-/** OpenCiv unit chains per native FMG category, weakest to strongest. */
-const UNIT_CHAINS: Readonly<Record<MilitaryCategory, readonly string[]>> = {
-  melee: ["warrior", "spearman", "swordsman", "pikeman", "longswordsman", "musketman", "rifleman", "infantry"],
-  ranged: ["archer", "composite_bowman", "crossbowman", "gatling_gun", "bazooka"],
-  cavalry: ["horseman", "knight", "lancer", "cavalry", "tank"],
-  artillery: ["catapult", "trebuchet", "cannon", "artillery", "rocket_artillery"],
-  naval: ["trireme", "galleass", "frigate", "ironclad", "destroyer"],
-  monster: ["warrior", "swordsman", "longswordsman", "musketman"],
-  spellcaster: ["archer", "crossbowman", "gatling_gun"]
-};
-
-/** The strongest OpenCiv unit a state can field in a native FMG category. */
-export function bestUnitForCategory(category: MilitaryCategory, techs: ReadonlySet<string>): CivUnitDef {
-  const chain = UNIT_CHAINS[category] ?? UNIT_CHAINS.melee;
-  let chosen = CIV_UNIT_BY_ID[chain[0]!] ?? CIV_ALL_UNITS[0]!;
-  for (const id of chain) {
-    const def = CIV_UNIT_BY_ID[id];
-    if (!def) continue;
-    if (def.requiredTech && !techs.has(def.requiredTech)) continue;
-    chosen = def;
-  }
-  return chosen;
-}
 
 /** OpenCiv exponential damage: stronger side multiplies, wounded defenders take less. */
 export function combatDamage(attackStrength: number, defendStrength: number, defenderHp: number, roll: number): number {
@@ -4817,7 +4800,7 @@ class LivingModel {
 
     // 3. Expansion: a Builder while owned tiles sit unimproved, then a Settler.
     const unitAvailable = (id: string): boolean => {
-      const def = CIV_UNIT_BY_ID[id];
+      const def = CIV_CIVILIAN_BY_ID[id];
       if (!def) return false;
       return !def.requiredTech || techs.has(def.requiredTech);
     };
@@ -4833,10 +4816,14 @@ class LivingModel {
       return { kind: "unit", id: "settler" };
     }
 
-    // 4. Military: a war without a field army raises the best melee unit available.
+    // 4. Military: a war without a field army raises the cheapest roster melee.
     if (this.stateAtWar(state)) {
-      const melee = bestUnitForCategory("melee", techs);
-      if (this.stateUnitCount(state.i, melee.id) === 0) return { kind: "unit", id: melee.id };
+      const roster = Military.getRoster(state);
+      const hasArmy = (state.military ?? []).some(regiment => living.armies?.[this.unitKey(state.i, regiment.i)]);
+      if (roster && !hasArmy) {
+        const melee = pickRosterUnit(roster, "melee", [...techs]);
+        if (melee) return { kind: "unit", id: melee.id };
+      }
     }
 
     // 5. National and World Wonders, cheapest first, deterministic on ties.
@@ -4847,8 +4834,14 @@ class LivingModel {
     return null;
   }
 
-  private productionCost(item: ProductionItem): number {
-    const cost = item.kind === "unit" ? CIV_UNIT_BY_ID[item.id]?.cost : CIV_BUILDING_BY_ID[item.id]?.cost;
+  /** Production price: civilians keep their Civ cost, combat blocks use the roster's. */
+  private productionCost(state: State, item: ProductionItem): number {
+    const cost =
+      item.kind === "unit"
+        ? isCivilianUnit(item.id)
+          ? CIV_CIVILIAN_BY_ID[item.id]?.cost
+          : Military.getRoster(state)?.units[item.id]?.cost
+        : CIV_BUILDING_BY_ID[item.id]?.cost;
     return Math.max(1, Math.floor(cost ?? 1));
   }
 
@@ -4875,7 +4868,7 @@ class LivingModel {
 
       const item = bSim.productionQueue[0]!;
       const key = `${item.kind}:${item.id}`;
-      const cost = this.productionCost(item);
+      const cost = this.productionCost(state, item);
       const total = (bSim.productionProgress[key] ?? 0) + production;
       if (total < cost) {
         bSim.productionProgress[key] = total;
@@ -5052,8 +5045,19 @@ class LivingModel {
     totals.faith += IDOL_FAITH * this.stateRelicCount(state.i, "idol");
     totals.culture += IDOL_CULTURE * this.stateRelicCount(state.i, "idol");
 
-    const regiments = (state.military ?? []).filter(reg => (reg.units?.length ?? 0) > 0 || reg.a > 0).length;
-    const upkeep = Math.max(0, regiments - UNIT_UPKEEP_FREE);
+    const unitTypes = Military.getUnitTypes();
+    let blockUpkeep = 0;
+    let civilianUpkeep = 0;
+    for (const regiment of state.military ?? []) {
+      if (isCivilianUnit((regiment.type ?? "").toLowerCase())) {
+        civilianUpkeep += CIVILIAN_UPKEEP;
+        continue;
+      }
+      for (const block of regiment.units ?? []) {
+        if (block.hp > 0) blockUpkeep += (unitTypes[block.type]?.upkeep ?? 0) * block.hp;
+      }
+    }
+    const upkeep = Math.max(0, blockUpkeep + civilianUpkeep - UPKEEP_FREE);
     const leasedRelics = (living.guild?.relics ?? []).filter(
       relic => relic.holder.kind === "state" && relic.holder.id === state.i
     ).length;
@@ -5247,16 +5251,29 @@ class LivingModel {
     if (state.treasury < 0) this.settleDebt(state, living);
   }
 
-  /** §7.1 Bankruptcy: reset the treasury and disband the newest regiment. */
+  /** §7.1 Bankruptcy: reset the treasury and disband the newest block, not the whole regiment. */
   private settleDebt(state: State, living: LivingWorldState): void {
     state.treasury = 0;
     const military = state.military ?? [];
     const newest = military[military.length - 1];
     if (!newest) return;
-    military.pop();
+
+    const blocks = newest.units ?? [];
+    if (blocks.length > 0) {
+      blocks.pop();
+      newest.units = blocks;
+      syncRegimentTotals(newest, Military.getUnitTypes());
+    }
+    if (blocks.length === 0) {
+      military.pop();
+      const key = this.unitKey(state.i, newest.i);
+      if (living.units) delete living.units[key];
+      if (living.armies) delete living.armies[key];
+    }
+
     this.pushNews(living, {
       kind: "muster",
-      text: `${state.name} could not pay its army; its newest regiment disbanded.`,
+      text: `${state.name} could not pay its army; its newest block was disbanded.`,
       cell: newest.cell,
       stateId: state.i
     });
@@ -5331,7 +5348,7 @@ class LivingModel {
 
     const item = bSim.productionQueue[0]!;
     const key = `${item.kind}:${item.id}`;
-    const remaining = Math.max(0, this.productionCost(item) - (bSim.productionProgress?.[key] ?? 0));
+    const remaining = Math.max(0, this.productionCost(state, item) - (bSim.productionProgress?.[key] ?? 0));
     if (remaining <= 0) return false;
 
     const price = hurryGoldCost(remaining, item.kind === "unit", (bSim.civBuildings ?? []).includes("big_ben"));
@@ -5388,7 +5405,7 @@ class LivingModel {
         // Utility regiment: its civilian type is authoritative (living-openciv-armies.md §11).
         const civilianType = (regiment.type ?? "").toLowerCase();
         if (isCivilianUnit(civilianType)) {
-          const def = this.unitDefinition(civilianType);
+          const def = this.civilianDefinition(civilianType);
           if (!def?.isUtility) continue;
           regiment.units = [];
           const unit = living.units[key] ?? this.createUtilitySim(regiment, def);
@@ -5459,8 +5476,8 @@ class LivingModel {
     return unit;
   }
 
-  private unitDefinition(unitTypeId: string): CivUnitDef | undefined {
-    return CIV_UNIT_BY_ID[unitTypeId];
+  private civilianDefinition(unitTypeId: string): CivUnitDef | undefined {
+    return CIV_CIVILIAN_BY_ID[unitTypeId];
   }
 
   /** Copy catalog stats onto a live unit sim, keeping its current HP/XP. */
@@ -5604,7 +5621,7 @@ class LivingModel {
         army.movement = army.maxMovement;
         army.hasFought = false;
         const acted = this.stepArmyOrders(state, regiment, army, living, occupancy);
-        army.stance = acted ? "march" : "fortify";
+        army.stance = acted ? "march" : this.restStance(state, regiment, army);
         syncRegimentTotals(regiment, Military.getUnitTypes());
       }
 
@@ -5612,7 +5629,17 @@ class LivingModel {
       this.autoUpgrade(state, living);
     }
 
+    this.replenishArmies(living);
     this.stepCityStrikes(living);
+  }
+
+  /** A resting army entrenches in a friendly city when badly hurt, otherwise fortifies. */
+  private restStance(state: State, regiment: Regiment, army: ArmySimState): ArmyStance {
+    const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
+    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const inCity = Boolean(burg?.i && !burg.removed && burg.state === state.i);
+    if (inCity && armyHp(regiment) < 0.6) return "encamp";
+    return army.stance === "encamp" && inCity ? "encamp" : "fortify";
   }
 
   /** Fortification-only healing: +25 in a friendly city, +20 in friendly lands, +10 elsewhere. */
@@ -6597,7 +6624,7 @@ class LivingModel {
   /** Produce one unit: civilians keep a 1UPT sim, combat units add an army block. */
   private spawnUnit(state: State, burg: Burg, unitTypeId: string): Regiment | null {
     const living = this.getState();
-    const def = this.unitDefinition(unitTypeId);
+    const def = this.civilianDefinition(unitTypeId);
 
     if (def?.isUtility || isCivilianUnit(unitTypeId)) {
       if (!def) return null;
@@ -6741,53 +6768,102 @@ class LivingModel {
     return this.spawnUnit(state, burg, unitTypeId);
   }
 
-  /** Gold upgrade of a regiment to its OpenCiv successor. */
+  /**
+   * Gold refit of up to `maxBlocks` blocks to their successor (living-openciv-armies.md §10.5).
+   * Preserves `hp` and `exp`: the block keeps its slot, its damage and its veterans.
+   */
   upgradeRegiment(stateId: number, regimentId: number): boolean {
+    return this.upgradeArmyBlocks(stateId, regimentId, Number.POSITIVE_INFINITY);
+  }
+
+  private upgradeArmyBlocks(stateId: number, regimentId: number, maxBlocks: number): boolean {
     const living = this.getState();
     const state = pack.states[stateId];
     const sSim = living.states[stateId];
     const regiment = (state?.military ?? []).find(entry => entry.i === regimentId);
-    const unit = living.units?.[this.unitKey(stateId, regimentId)];
-    if (!state?.i || state.removed || !sSim || !regiment || !unit) return false;
+    if (!state?.i || state.removed || !sSim || !regiment) return false;
+    if (isCivilianUnit((regiment.type ?? "").toLowerCase())) return false;
 
-    const current = this.unitDefinition(unit.unitTypeId);
-    const target = current?.upgradesTo ? this.unitDefinition(current.upgradesTo) : undefined;
-    if (!current || !target) return false;
-    if (target.requiredTech && !(sSim.researchedTechs ?? []).includes(target.requiredTech)) return false;
+    const types = Military.getUnitTypes();
+    const roster = Military.getRoster(state);
+    const techs = sSim.researchedTechs ?? [];
+    const renames: string[] = [];
+    let upgraded = 0;
 
-    const cost = Math.floor((10 + 2 * Math.max(0, (target.cost ?? 0) - (current.cost ?? 0))) / 5) * 5;
-    if (Number(state.treasury ?? 0) < cost) return false;
+    for (const block of regiment.units ?? []) {
+      if (upgraded >= maxBlocks) break;
+      const current = types[block.type];
+      if (!current) continue;
+      const authored = current.upgradesTo ? types[current.upgradesTo] : undefined;
+      const target = authored ?? (roster ? nextRosterUnitInCategory(roster, current.id) : undefined);
+      if (!target || target.id === current.id) continue;
+      const gate = roster ? requiredTechFor(target, roster) : "";
+      if (gate && !techs.includes(gate)) continue;
 
-    state.treasury = Math.round((Number(state.treasury ?? 0) - cost) * 100) / 100;
-    const hp = unit.hp;
-    const xp = unit.xp;
-    const promotions = [...unit.promotions];
-    this.applyUnitDefinition(unit, target);
-    unit.hp = hp;
-    unit.xp = xp;
-    unit.promotions = promotions;
-    regiment.a = Math.max(0, Math.round(unit.hp));
-    regiment.u = { [target.id]: regiment.a };
+      const cost = Math.max(5, Math.round((10 * target.upkeep) / BASELINE_UPKEEP));
+      if (Number(state.treasury ?? 0) < cost) break;
 
+      state.treasury = Math.round((Number(state.treasury ?? 0) - cost) * 100) / 100;
+      block.type = target.id;
+      renames.push(`${current.name} → ${target.name}`);
+      upgraded += 1;
+    }
+
+    if (upgraded === 0) return false;
+    normalizeArmy(regiment, currentContent().config.military.maxUnitsPerArmy, types);
+    syncRegimentTotals(regiment, types);
     this.pushNews(living, {
       kind: "muster",
-      text: `${state.name} upgraded a ${current.name} to a ${target.name}.`,
+      text: `${state.name} refitted ${renames.length === 1 ? renames[0] : `${renames.length} blocks`}.`,
       cell: regiment.cell,
       stateId
     });
     return true;
   }
 
-  /** Wealthy states upgrade one veteran regiment per season. */
+  /** Wealthy states refit one block per season. */
   private autoUpgrade(state: State, living: LivingWorldState): void {
-    if (Number(state.treasury ?? 0) < 200) return;
+    if (Number(state.treasury ?? 0) < 50) return;
     for (const regiment of state.military ?? []) {
-      const unit = living.units?.[this.unitKey(state.i, regiment.i)];
-      if (!unit) continue;
-      const def = this.unitDefinition(unit.unitTypeId);
-      const target = def?.upgradesTo ? this.unitDefinition(def.upgradesTo) : undefined;
-      if (!target) continue;
-      if (this.upgradeRegiment(state.i, regiment.i)) return;
+      if (isCivilianUnit((regiment.type ?? "").toLowerCase())) continue;
+      if (!living.armies?.[this.unitKey(state.i, regiment.i)]) continue;
+      if (this.upgradeArmyBlocks(state.i, regiment.i, 1)) return;
+    }
+  }
+
+  /**
+   * Between-tick replenishment in capability (living-openciv-armies.md §10.7):
+   * +replenishFraction in a city, half that in friendly land, encamp doubles it.
+   * A block that fought this tick does not heal.
+   */
+  private replenishArmies(living: LivingWorldState): void {
+    const { config } = currentContent();
+    const types = Military.getUnitTypes();
+    const base = config.military.replenishFraction;
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      for (const regiment of state.military ?? []) {
+        const key = this.unitKey(state.i, regiment.i);
+        const army = living.armies?.[key];
+        if (!army || army.hasFought) continue;
+
+        const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
+        const burg = burgId ? pack.burgs[burgId] : undefined;
+        const inCity = burg?.i && !burg.removed && burg.state === state.i;
+        const friendly = pack.cells.state?.[regiment.cell] === state.i;
+        if (!inCity && !friendly) continue;
+
+        const gain =
+          (army.stance === "encamp" ? base * config.military.encampReplenishBonus : base) * (inCity ? 1 : 0.5);
+        let healed = false;
+        for (const block of regiment.units ?? []) {
+          if (block.hp <= 0 || block.hp >= 1) continue;
+          block.hp = Math.min(1, block.hp + gain);
+          healed = true;
+        }
+        if (healed) syncRegimentTotals(regiment, types);
+      }
     }
   }
 
@@ -7074,7 +7150,7 @@ class LivingModel {
 
     const inquisitor = unit.unitTypeId === "inquisitor";
     if (unit.spreadCharges === undefined) {
-      unit.spreadCharges = CIV_UNIT_BY_ID[unit.unitTypeId]?.spreadCharges ?? 2;
+      unit.spreadCharges = CIV_CIVILIAN_BY_ID[unit.unitTypeId]?.spreadCharges ?? 2;
     }
 
     const target = this.nearestCity(state.i, regiment.cell, 6, inquisitor);
@@ -7265,7 +7341,7 @@ class LivingModel {
   private canEnterForeignCell(stateId: number, cell: number, unit: UnitSimState): boolean {
     const owner = pack.cells.state?.[cell] ?? 0;
     if (!owner || owner === stateId) return true;
-    const def = CIV_UNIT_BY_ID[unit.unitTypeId];
+    const def = CIV_CIVILIAN_BY_ID[unit.unitTypeId];
     if (def?.entersForeignLands) return true;
     return this.isAtWar(stateId, owner);
   }
