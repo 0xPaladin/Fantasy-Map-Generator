@@ -26,8 +26,17 @@ import {
   troubleMissionTags
 } from "@/data/mission-tags";
 import { estimateOdds, type BattleModifiers } from "@/conquest/engine/game/battle";
+import { valueModifier } from "@/conquest/engine/game/saves";
 import { Military } from "@/model/political/military-generator";
-import { armyHp, armyIsEmpty, armyLead, armyMen, armySlots, toBattleTypes, toBattleUnits } from "@/model/physical/living-armies";
+import {
+  armyHp,
+  armyIsEmpty,
+  armyLead,
+  armyMen,
+  armySlots,
+  toBattleTypes,
+  toBattleUnits
+} from "@/model/physical/living-armies";
 import { Pack } from "@/model/graph/pack-generator";
 import {
   activeCivThemeId,
@@ -652,8 +661,9 @@ function renderEschaton(): void {
   const tier = Living.getGuild?.()?.tier ?? 1;
   const wheelReady = eschaton >= 100 || tier >= 5;
   el.textContent = `⏳ ${eschaton}`;
-  el.title = `The eschaton clock: how close this age is to its finale (${eschaton}/100).${wheelReady ? " The Wheel of Ages may be turned!" : " Reach eschaton 100 or Guild tier 5 to turn it."
-    }`;
+  el.title = `The eschaton clock: how close this age is to its finale (${eschaton}/100).${
+    wheelReady ? " The Wheel of Ages may be turned!" : " Reach eschaton 100 or Guild tier 5 to turn it."
+  }`;
 }
 
 function heroStatus(guild: GuildState, figureId: number): { label: string; className: string } {
@@ -774,10 +784,11 @@ function renderGuildBar(): void {
         <label class="livingGuildDoctrine">Doctrine
           <select id="livingHudDoctrine">${doctrineOptions}</select>
         </label>
-        <button type="button" data-mode="sandbox" class="livingSandboxToggle${sandbox ? " pressed" : " strikethrough"}" title="${sandbox
-      ? "Sandbox Mode: interventions are free and instant. Click to toggle Guild Mode."
-      : "Guild Mode: operations cost gold and heroes. Click to toggle Sandbox Mode."
-    }">
+        <button type="button" data-mode="sandbox" class="livingSandboxToggle${sandbox ? " pressed" : " strikethrough"}" title="${
+          sandbox
+            ? "Sandbox Mode: interventions are free and instant. Click to toggle Guild Mode."
+            : "Guild Mode: operations cost gold and heroes. Click to toggle Sandbox Mode."
+        }">
           ${sandbox ? "Sandbox" : "<s>Sandbox</s>"}
         </button>
       </div>
@@ -794,29 +805,32 @@ function renderGuildBar(): void {
         </button>
       </div>
     </div>
-    ${relics.length > 0
-      ? `<div class="livingGuildRow">
+    ${
+      relics.length > 0
+        ? `<div class="livingGuildRow">
             <span class="livingGuildMuted">Vault (${vaultCount}/${tier})${reserveCount > 0 ? ` · Reserve (${reserveCount})` : ""}:</span>
             ${relics
-        .slice(0, MAX_GUILD_CHIPS)
-        .map(relic => renderRelicChip(relic))
-        .join("")}
+              .slice(0, MAX_GUILD_CHIPS)
+              .map(relic => renderRelicChip(relic))
+              .join("")}
             ${relics.length > MAX_GUILD_CHIPS ? `<span class="livingGuildMuted">+${relics.length - MAX_GUILD_CHIPS} more</span>` : ""}
           </div>`
-      : ""
+        : ""
     }
-    ${petitionChips
-      ? `<div class="livingGuildRow">
+    ${
+      petitionChips
+        ? `<div class="livingGuildRow">
             <span class="livingGuildMuted">Petitions:</span>
             ${petitionChips}
           </div>`
-      : ""
+        : ""
     }
-    ${wheelReady
-      ? `<div class="livingGuildRow livingGuildBottomRight">
+    ${
+      wheelReady
+        ? `<div class="livingGuildRow livingGuildBottomRight">
              <button type="button" class="livingWheelButton" data-wheel="turn">Turn the Wheel of Ages</button>
            </div>`
-      : ""
+        : ""
     }`;
 
   bar.querySelector<HTMLSelectElement>("#livingHudDoctrine")?.addEventListener("change", event => {
@@ -888,8 +902,9 @@ function renderGuildBar(): void {
       afterTick();
       setStatus(
         result
-          ? `${result.era} dawns — ${result.realms} ${result.realms === 1 ? "realm" : "realms"} fell, ${result.successorStates
-          } provinces broke away, and the Guild enters a new age.`
+          ? `${result.era} dawns — ${result.realms} ${result.realms === 1 ? "realm" : "realms"} fell, ${
+              result.successorStates
+            } provinces broke away, and the Guild enters a new age.`
           : "The Wheel refuses to turn."
       );
     });
@@ -1055,12 +1070,12 @@ function validateSelection(): void {
         : current.kind === "province"
           ? Boolean(pack.provinces?.[current.id] && !pack.provinces[current.id].removed)
           : current.kind === "marker"
-          ? (pack.markers ?? []).some(marker => marker?.i === current.id)
-          : current.kind === "relic"
-            ? (guild?.relics ?? []).some(relic => relic.id === current.id)
-            : current.kind === "petition"
-              ? (guild?.popups ?? []).some(popup => popup.id === current.id && popup.kind === "guild_petition")
-              : Boolean(pack.history?.figures?.some(figure => figure.i === current.id));
+            ? (pack.markers ?? []).some(marker => marker?.i === current.id)
+            : current.kind === "relic"
+              ? (guild?.relics ?? []).some(relic => relic.id === current.id)
+              : current.kind === "petition"
+                ? (guild?.popups ?? []).some(popup => popup.id === current.id && popup.kind === "guild_petition")
+                : Boolean(pack.history?.figures?.some(figure => figure.i === current.id));
   if (!alive) selected = null;
 }
 
@@ -1174,7 +1189,8 @@ function renderRelicCard(relicId: number): string {
 
   return /* html */ `
     <div class="livingInspectorTitle">${def.icon} ${escapeHtml(relic.name)}</div>
-    <div class="livingMuted">${def.label} · origin year ${relic.originYear}${origin ? ` · ${origin}` : ""}${relic.cursed ? " · 🩸 Cursed" : ""
+    <div class="livingMuted">${def.label} · origin year ${relic.originYear}${origin ? ` · ${origin}` : ""}${
+      relic.cursed ? " · 🩸 Cursed" : ""
     }</div>
     <div class="livingSection">
       <div class="livingSectionTitle">Powers</div>
@@ -1208,8 +1224,9 @@ function renderMarkerCard(markerId: number): string {
   if (excavated) {
     actions = `<div class="livingMuted">Already excavated by the Guild.</div>`;
   } else {
-    actions = `<button type="button" data-guild="dispatch-marker" data-marker="${markerId}"${targeted ? " disabled" : ""}>${targeted ? "Excavation Underway" : "Dispatch Hero"
-      }</button>`;
+    actions = `<button type="button" data-guild="dispatch-marker" data-marker="${markerId}"${targeted ? " disabled" : ""}>${
+      targeted ? "Excavation Underway" : "Dispatch Hero"
+    }</button>`;
     if (guild?.sandboxGodMode) {
       actions += `<button type="button" data-god="excavate-marker" data-marker="${markerId}">Excavate Now</button>`;
     }
@@ -1217,14 +1234,16 @@ function renderMarkerCard(markerId: number): string {
 
   return /* html */ `
     <div class="livingInspectorTitle">${escapeHtml(marker.name ?? "Landmark")}</div>
-    <div class="livingMuted">${escapeHtml(marker.type.replaceAll("-", " "))} · cell ${marker.cell}${marker.chronicle ? " · chronicle site" : ""
+    <div class="livingMuted">${escapeHtml(marker.type.replaceAll("-", " "))} · cell ${marker.cell}${
+      marker.chronicle ? " · chronicle site" : ""
     }</div>
     <div class="livingSection">
       <div class="livingSectionTitle">Excavation</div>
-      ${excavated
-      ? `<div class="livingMuted">Site dug</div>`
-      : `<div class="livingMuted">DC ${13 + (guild?.tier ?? 1)} · chronicle sites always yield a named relic</div>`
-    }
+      ${
+        excavated
+          ? `<div class="livingMuted">Site dug</div>`
+          : `<div class="livingMuted">DC ${13 + (guild?.tier ?? 1)} · chronicle sites always yield a named relic</div>`
+      }
       ${buriedChips ? `<div class="livingMuted">Buried relics:</div><div>${buriedChips}</div>` : ""}
     </div>
     <div class="livingButtons">${actions}</div>`;
@@ -1290,8 +1309,9 @@ function renderVitals(figureId: number, state: HeroGuildState | undefined, isHer
     .filter(injury => injuryIsActive(injury, Living.getState().tick))
     .map(injury => {
       const label = HERO_INJURY_LABELS[injury.kind];
-      return `<span class="livingDiscipline injury">${escapeHtml(label)}${injury.untilTick === undefined ? " · until treated" : ""
-        }</span>`;
+      return `<span class="livingDiscipline injury">${escapeHtml(label)}${
+        injury.untilTick === undefined ? " · until treated" : ""
+      }</span>`;
     })
     .join("");
   const down =
@@ -1300,13 +1320,13 @@ function renderVitals(figureId: number, state: HeroGuildState | undefined, isHer
       : "";
   const doctrineButtons = isHero
     ? `<div class="livingButtons">${(Object.keys(HERO_DOCTRINE_LABELS) as HeroDoctrine[])
-      .map(
-        doctrine =>
-          `<button type="button" class="livingDiscipline${state.doctrine === doctrine ? " pressed" : ""}" data-guild="hero-doctrine" data-figure="${figureId}" data-doctrine="${doctrine}" title="Set this hero's doctrine">${HERO_DOCTRINE_LABELS[doctrine]}</button>`
-      )
-      .join(
-        ""
-      )}<button type="button" class="livingDiscipline${state.push ? " pressed" : ""}" data-guild="toggle-push" data-figure="${figureId}" title="Spend Stamina on harder checks">Push: ${state.push ? "On" : "Off"}</button></div>`
+        .map(
+          doctrine =>
+            `<button type="button" class="livingDiscipline${state.doctrine === doctrine ? " pressed" : ""}" data-guild="hero-doctrine" data-figure="${figureId}" data-doctrine="${doctrine}" title="Set this hero's doctrine">${HERO_DOCTRINE_LABELS[doctrine]}</button>`
+        )
+        .join(
+          ""
+        )}<button type="button" class="livingDiscipline${state.push ? " pressed" : ""}" data-guild="toggle-push" data-figure="${figureId}" title="Spend Stamina on harder checks">Push: ${state.push ? "On" : "Off"}</button></div>`
     : "";
 
   return `<div class="livingSection">
@@ -1403,9 +1423,11 @@ function renderFigureCard(figureId: number): string {
     const fit = fitSummary(figure, mission.tags);
     const stamina = mission.staminaSpent ? ` · ${mission.staminaSpent} Stamina spent` : "";
     const phase = Math.min((mission.progress ?? 0) + 1, mission.required || 1);
-    status = `<div class="livingMuted">On expedition: Phase ${phase}/${mission.required || 1}${tags ? ` · ${escapeHtml(tags)}` : ""
-      }${stamina}</div><div class="livingChips">${missionPhaseChips(mission)}</div>${fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""
-      }`;
+    status = `<div class="livingMuted">On expedition: Phase ${phase}/${mission.required || 1}${
+      tags ? ` · ${escapeHtml(tags)}` : ""
+    }${stamina}</div><div class="livingChips">${missionPhaseChips(mission)}</div>${
+      fit ? `<div class="livingMuted">${escapeHtml(fit)}</div>` : ""
+    }`;
   } else if (isDown) status = `<div class="livingMuted dangerText">Downed until tick ${heroState!.downUntilTick}</div>`;
   else if (onCooldown) status = `<div class="livingMuted">Recovering until tick ${cooldownUntil}</div>`;
   else if (isHero) status = `<div class="livingMuted">At the Guild Hall</div>`;
@@ -1504,20 +1526,22 @@ function renderStateCard(stateId: number): string {
     </div>
     <div class="livingSection">
       <div class="livingSectionTitle">Claims & Grudges</div>
-      ${[
-      renderProvincesLairs(stateId),
-      renderProvincesTroubles(stateId),
-      renderRestiveBurgs(stateId),
-      renderClaims(sSim),
-      renderGrudges(sSim)
-    ]
-      .filter(Boolean)
-      .join("") || '<div class="livingMuted">None</div>'
-    }
+      ${
+        [
+          renderProvincesLairs(stateId),
+          renderProvincesTroubles(stateId),
+          renderRestiveBurgs(stateId),
+          renderClaims(sSim),
+          renderGrudges(sSim)
+        ]
+          .filter(Boolean)
+          .join("") || '<div class="livingMuted">None</div>'
+      }
     </div>
     ${renderStateRelics(stateId, guild)}
-    ${sandbox
-      ? `<div class="livingGodTitle">Sandbox God Mode</div>
+    ${
+      sandbox
+        ? `<div class="livingGodTitle">Sandbox God Mode</div>
            <div class="livingButtons">
              <button type="button" data-god="spark" data-state="${stateId}">Spark Rebellion</button>
              <button type="button" data-god="smite" data-state="${stateId}">Smite Ruler</button>
@@ -1530,7 +1554,7 @@ function renderStateCard(stateId: number): string {
              ${hasLairs ? `<button type="button" data-god="smite-state-lair" data-state="${stateId}">Smite Lair</button>` : ""}
              ${canSpawnStateLair ? `<button type="button" data-god="spawn-state-lair" data-state="${stateId}">Spawn Lair</button>` : ""}
            </div>`
-      : `<div class="livingGodTitle">Guild Operations</div>
+        : `<div class="livingGodTitle">Guild Operations</div>
            <div class="livingButtons">
              ${hasTroubled || hasLairs ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Party</button>` : ""}
              <button type="button" data-guild="patron" data-state="${stateId}" title="Restrict auto_patron contracts to this state">${isPatron ? "Current Patron State" : "Make Patron State"}</button>
@@ -1602,7 +1626,8 @@ const CIV_YIELD_CHIPS: readonly [keyof YieldValues, string, string][] = [
 function yieldChips(yields: YieldValues | undefined): string {
   if (!yields) return "";
   return CIV_YIELD_CHIPS.map(
-    ([key, icon, label]) => `<span class="livingCivChip" title="${label}">${icon} ${Math.round(yields[key] ?? 0)}</span>`
+    ([key, icon, label]) =>
+      `<span class="livingCivChip" title="${label}">${icon} ${Math.round(yields[key] ?? 0)}</span>`
   ).join("");
 }
 
@@ -1947,9 +1972,11 @@ function renderCapacity(sSim: StatePolitySim, stateId?: number): string {
       const pool = sSim.capacity[key];
       const over = pool.load > pool.gen;
       const ratio = pool.gen > 0 ? Math.min(100, Math.round((pool.load / pool.gen) * 100)) : 0;
-      const tip = `${label}: ${pool.gen} gen / ${pool.load} load${over ? " (over capacity)" : ""}`;
+      const mod = valueModifier(pool.gen);
+      const signMod = mod >= 0 ? `+${mod}` : `${mod}`;
+      const tip = `${label}: ${pool.gen} gen / ${pool.load} load (${signMod} check mod)${over ? " (over capacity)" : ""}`;
       return `<div class="livingCapacityRow${over ? " over" : ""}" title="${escapeHtml(tip)}" tabindex="0">
-        <span class="livingCapacityLabel">${label}</span>
+        <span class="livingCapacityLabel">${label} <small style="opacity:0.75; font-size:0.85em;">(${signMod})</small></span>
         <div class="livingBar${over ? " danger" : ""}"><i style="width:${ratio}%"></i></div>
       </div>`;
     })
@@ -2157,52 +2184,58 @@ function renderBurgCard(burgId: number): string {
       ${bSim.construction ? `<div class="livingMuted">${bSim.construction.turnsLeft} turns left</div>` : ""}
       <div class="livingMuted">${bSim.buildings.length} standing structures</div>
     </div>
-    ${province && pSim
-      ? `<div class="livingSection">
+    ${
+      province && pSim
+        ? `<div class="livingSection">
             <div class="livingSectionTitle">Province: ${escapeHtml(province.name ?? "Province")}</div>
             <div class="livingMuted">Order ${Math.round(pSim.order)}% · Stability ${pSim.stability} · Dev ${pSim.development}</div>
-            ${trouble && tDef
-        ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme}) ${troublePromotable ? `<span class="livingBadge" style="background:#8b2635">${escapeHtml(tDef.stateForm ?? "State-Capable")}</span>` : ""}</div>
+            ${
+              trouble && tDef
+                ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme}) ${troublePromotable ? `<span class="livingBadge" style="background:#8b2635">${escapeHtml(tDef.stateForm ?? "State-Capable")}</span>` : ""}</div>
                    <div class="livingMuted">Save: ${SAVE_KIND_LABELS[tDef.save]} · Specialist: ${UNIT_ROLE_LABELS[tDef.requiredRole]}</div>`
-        : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
-      }
-            ${lair
-        ? `<div style="margin-top:0.3em;color:#8b0000;"><strong>Lair:</strong> ${escapeHtml(lair.name)} (Lv ${lair.level}, ${lair.theme}) ${lairCapable ? `<span class="livingBadge" style="background:#5e3c6e">${escapeHtml(lairDef?.stateForm ?? "State-Capable")}</span>` : ""}</div>
+                : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
+            }
+            ${
+              lair
+                ? `<div style="margin-top:0.3em;color:#8b0000;"><strong>Lair:</strong> ${escapeHtml(lair.name)} (Lv ${lair.level}, ${lair.theme}) ${lairCapable ? `<span class="livingBadge" style="background:#5e3c6e">${escapeHtml(lairDef?.stateForm ?? "State-Capable")}</span>` : ""}</div>
                    <div class="livingMuted">Raid: ${lair.raidThreshold}+ · Defenders: ${lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0)} men${lair.fortified ? " · Fortified" : ""}${lair.raidPending ? " · Raid Imminent" : ""}</div>`
-        : `<div class="livingMuted" style="margin-top:0.2em;">No active lair</div>`
-      }
+                : `<div class="livingMuted" style="margin-top:0.2em;">No active lair</div>`
+            }
           </div>`
-      : ""
+        : ""
     }
     <div class="livingButtons">
       <button type="button" data-open="burg" data-id="${burgId}">Burg Editor</button>
       ${stateId ? `<button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>` : ""}
     </div>
-    ${sandbox
-      ? `<div class="livingGodTitle">Sandbox God Mode</div>
+    ${
+      sandbox
+        ? `<div class="livingGodTitle">Sandbox God Mode</div>
            <div class="livingButtons">
              ${stateId ? `<button type="button" data-god="spark" data-state="${stateId}" data-burg="${burgId}">Spark Rebellion</button>` : ""}
              <button type="button" data-god="pacify" data-burg="${burgId}">Pacify Unrest</button>
              <button type="button" data-god="complete" data-burg="${burgId}">Complete Asset</button>
-             ${provId && trouble
-        ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>
+             ${
+               provId && trouble
+                 ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>
                     ${stateId ? `<button type="button" data-god="resolve-trouble" data-state="${stateId}" data-province="${provId}">Resolve Trouble</button>` : ""}
                     ${troublePromotable ? `<button type="button" data-god="promote-trouble" data-province="${provId}" data-burg="${burgId}">Promote to State</button>` : ""}`
-        : provId && !lair
-          ? `<button type="button" data-god="spawn-trouble" data-province="${provId}">Spawn Trouble</button>`
-          : ""
-      }
-             ${provId && lair
-        ? `${stateId ? `<button type="button" data-god="assault-lair" data-state="${stateId}" data-province="${provId}">Assault Lair</button>` : ""}
+                 : provId && !lair
+                   ? `<button type="button" data-god="spawn-trouble" data-province="${provId}">Spawn Trouble</button>`
+                   : ""
+             }
+             ${
+               provId && lair
+                 ? `${stateId ? `<button type="button" data-god="assault-lair" data-state="${stateId}" data-province="${provId}">Assault Lair</button>` : ""}
                     ${stateId ? `<button type="button" data-god="delve-lair" data-state="${stateId}" data-province="${provId}">Send Adventurers</button>` : ""}
                     ${lairCapable ? `<button type="button" data-god="ascend-lair" data-province="${provId}" data-burg="${burgId}">Ascend Lair</button>` : ""}
                     <button type="button" data-god="smite-lair" data-province="${provId}">Smite Lair</button>`
-        : provId
-          ? `<button type="button" data-god="spawn-lair" data-province="${provId}">Spawn Lair</button>`
-          : ""
-      }
+                 : provId
+                   ? `<button type="button" data-god="spawn-lair" data-province="${provId}">Spawn Lair</button>`
+                   : ""
+             }
            </div>`
-      : `<div class="livingGodTitle">Guild Operations</div>
+        : `<div class="livingGodTitle">Guild Operations</div>
            ${canDispatch ? renderPartyPreview(provId) : ""}
            <div class="livingButtons">
              ${canDispatch ? `<button type="button" data-guild="dispatch" data-province="${provId}">Dispatch Auto-Fill</button>` : ""}

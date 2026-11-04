@@ -54,7 +54,7 @@ import {
   CIV_PANTHEONS,
   CIV_RELIGION_NAMES
 } from "@/data/living-civ-beliefs";
-import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
+import { CIV_BUILDING_BY_ID, CIV_BUILDINGS, civBuildingCapacity } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
 import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
@@ -2474,7 +2474,20 @@ class LivingModel {
         ledger.s.gen += bSim.development;
       }
 
-      for (const bid of bSim.buildings) {
+      for (const bid of bSim.civBuildings ?? []) {
+        const cap = civBuildingCapacity(bid);
+        ledger.m.gen += cap.m;
+        if (bSim.unrest <= 4) ledger.w.gen += cap.w;
+        ledger.s.gen += cap.s;
+        ledger.c.gen += cap.c;
+        if (bid === "barracks" || bid === "armory" || bid === "castle" || bid === "arsenal") {
+          freeGarrisonWaiver += 1;
+        } else if (bid === "military_base") {
+          freeGarrisonWaiver += 2;
+        }
+      }
+
+      for (const bid of bSim.buildings ?? []) {
         const bDef = buildingById.get(bid);
         if (!bDef) continue;
         const gen = bDef.effects.capacity;

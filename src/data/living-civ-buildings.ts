@@ -1346,3 +1346,149 @@ export const CIV_BUILDING_BY_ID: Record<string, CivBuildingDef> = Object.fromEnt
 export function getCivBuilding(id: string): CivBuildingDef | undefined {
   return CIV_BUILDING_BY_ID[id];
 }
+
+export interface CivCapacityBonus {
+  m: number;
+  w: number;
+  s: number;
+  c: number;
+}
+
+/**
+ * Maps an OpenCiv building to its domain capability contribution (M, W, S, C).
+ * Used by Living World and ProvinceDialog to compute state & province check ratings.
+ */
+export function civBuildingCapacity(bDefOrId: CivBuildingDef | string | undefined | null): CivCapacityBonus {
+  const cap: CivCapacityBonus = { m: 0, w: 0, s: 0, c: 0 };
+  if (!bDefOrId) return cap;
+  const bDef = typeof bDefOrId === "string" ? getCivBuilding(bDefOrId) : bDefOrId;
+  if (!bDef || bDef.id === "palace") return cap;
+
+  const id = bDef.id;
+  const stats = bDef.stats ?? {};
+
+  // 1. Military (M)
+  if ((stats.defense ?? 0) >= 7) cap.m += 2;
+  else if ((stats.defense ?? 0) >= 2) cap.m += 1;
+
+  if (
+    id === "barracks" ||
+    id === "armory" ||
+    id === "stables" ||
+    id === "forge" ||
+    Boolean(bDef.effects?.trainedUnitExperience)
+  ) {
+    cap.m += 1;
+  }
+  if (
+    id === "military_base" ||
+    id === "heroic_epic" ||
+    id === "statue_of_zeus" ||
+    id === "terracotta_army" ||
+    id === "himeji_castle" ||
+    id === "alhambra" ||
+    id === "brandenburg_gate" ||
+    id === "pentagon" ||
+    id === "great_wall"
+  ) {
+    cap.m += 2;
+  }
+
+  // 2. Wealth (W)
+  if ((stats.gold ?? 0) >= 4) cap.w += 2;
+  else if ((stats.gold ?? 0) >= 1) cap.w += 1;
+
+  if (
+    id === "market" ||
+    id === "bazaar" ||
+    id === "mint" ||
+    id === "caravansary" ||
+    id === "workshop" ||
+    id === "windmill" ||
+    id === "water_mill" ||
+    id === "granary" ||
+    id === "harbor" ||
+    id === "seaport"
+  ) {
+    cap.w += 1;
+  }
+  if (
+    id === "bank" ||
+    id === "stock_exchange" ||
+    id === "factory" ||
+    id === "ironworks" ||
+    id === "colossus" ||
+    id === "east_india_company" ||
+    id === "machu_picchu" ||
+    id === "petra" ||
+    id === "big_ben" ||
+    id === "great_pyramids"
+  ) {
+    cap.w += 2;
+  }
+
+  // 3. Social / Stability (S)
+  const cultOrFaithOrHap = (stats.culture ?? 0) + (stats.faith ?? 0) + (stats.happiness ?? 0);
+  if (cultOrFaithOrHap >= 6) cap.s += 2;
+  else if (cultOrFaithOrHap >= 1) cap.s += 1;
+
+  if (
+    id === "monument" ||
+    id === "amphitheater" ||
+    id === "shrine" ||
+    id === "circus" ||
+    id === "garden" ||
+    id === "artists_guild"
+  ) {
+    cap.s += 1;
+  }
+  if (
+    id === "temple" ||
+    id === "colosseum" ||
+    id === "theatre" ||
+    id === "opera_house" ||
+    id === "museum" ||
+    id === "stadium" ||
+    id === "broadcast_tower" ||
+    id === "courthouse" ||
+    id === "cathedral" ||
+    id === "monastery" ||
+    id === "mosque" ||
+    id === "pagoda" ||
+    id === "grand_temple" ||
+    id === "stonehenge" ||
+    id === "parthenon" ||
+    id === "oracle" ||
+    id === "borobudur" ||
+    id === "hagia_sophia" ||
+    id === "chichen_itza" ||
+    id === "notre_dame" ||
+    id === "sistine_chapel" ||
+    id === "taj_mahal"
+  ) {
+    cap.s += 2;
+  }
+
+  // 4. Cunning / Knowledge / Arcana (C)
+  if ((stats.science ?? 0) >= 4) cap.c += 2;
+  else if ((stats.science ?? 0) >= 1) cap.c += 1;
+
+  if (id === "library" || id === "observatory" || id === "constabulary") {
+    cap.c += 1;
+  }
+  if (
+    id === "university" ||
+    id === "public_school" ||
+    id === "research_lab" ||
+    id === "police_station" ||
+    id === "national_college" ||
+    id === "great_library" ||
+    id === "oxford_university" ||
+    id === "porcelain_tower" ||
+    id === "great_firewall"
+  ) {
+    cap.c += 2;
+  }
+
+  return cap;
+}

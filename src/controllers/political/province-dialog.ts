@@ -4,11 +4,12 @@ import type { BuildingDef } from "@/conquest/engine/common/content";
 import { poiCapacityType } from "@/conquest/engine/compiler";
 import { valueModifier } from "@/conquest/engine/game/saves";
 import { currentSession } from "@/conquest/store/session";
+import { civBuildingCapacity } from "@/data/living-civ-buildings";
 import { isLairStateCapable } from "@/data/living-lairs";
 import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import type { Province } from "@/model/political/provinces-generator";
 import { Provinces } from "@/model/political/provinces-generator";
-import { Living, regionTierFromPop } from "@/model/physical/living-generator";
+import { classifyGood, Living, regionTierFromPop } from "@/model/physical/living-generator";
 import { Names } from "@/model/society/names-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
 import { getArea, getAreaUnit } from "@/model/units";
@@ -102,7 +103,9 @@ function getProvinceBuildings(provinceId: number, living?: LivingWorldState): st
     }
   } catch {}
 
-  const pSim = living?.provinces?.[provinceId] as (ProvinceSimState & { buildings?: string[]; assets?: string[] }) | undefined;
+  const pSim = living?.provinces?.[provinceId] as
+    | (ProvinceSimState & { buildings?: string[]; assets?: string[] })
+    | undefined;
   if (pSim?.buildings?.length) {
     for (const b of pSim.buildings) {
       if (!result.includes(b)) result.push(b);
@@ -185,6 +188,19 @@ export function computeProvinceCapacity(
     }
   }
 
+  // Trade goods in this province's cells
+  if (pack.cells?.good) {
+    for (const cell of provCells) {
+      const goodId = pack.cells.good[cell];
+      if (!goodId) continue;
+      const good = pack.goods?.[goodId];
+      if (!good) continue;
+      const cl = classifyGood(good);
+      if (cl === "strategic") m++;
+      else if (cl === "luxury") w++;
+    }
+  }
+
   // Standing buildings
   let buildingDefs: BuildingDef[] = [];
   try {
@@ -210,6 +226,13 @@ export function computeProvinceCapacity(
   for (const bId of p.burgs ?? []) {
     const bSim = living?.burgs?.[bId];
     if (!bSim) continue;
+    for (const bid of bSim.civBuildings ?? []) {
+      const cap = civBuildingCapacity(bid);
+      m += cap.m;
+      w += cap.w;
+      s += cap.s;
+      c += cap.c;
+    }
     for (const bid of bSim.buildings ?? []) {
       const bDef = buildingById.get(bid);
       if (bDef?.effects?.capacity) {
@@ -556,11 +579,15 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
 
         ${devProgressHtml ? `<div style="font-size: 0.85em; color: #555; margin-top: 2px;">${devProgressHtml}</div>` : ""}
 
-        ${troubleHtml || lairHtml ? `
+        ${
+          troubleHtml || lairHtml
+            ? `
         <div class="provRow" style="flex-wrap: wrap; gap: 0.8em; margin-top: 0.25em; font-size: 0.88em;">
           ${troubleHtml ? `<div style="display:inline-flex; align-items:center; gap:0.3em;"><strong>Trouble:</strong> ${troubleHtml}</div>` : ""}
           ${lairHtml ? `<div style="display:inline-flex; align-items:center; gap:0.3em;"><strong>Lair:</strong> ${lairHtml}</div>` : ""}
-        </div>` : ""}
+        </div>`
+            : ""
+        }
       </div>
 
       <!-- Assets Table (Province Level Assets, moved above Burgs) -->
@@ -642,7 +669,14 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
   dialogEl.querySelectorAll<HTMLElement>("[data-burg-feature]").forEach(btn => {
     btn.addEventListener("click", () => {
       const burgId = Number(btn.dataset.burgId);
-      const feature = btn.dataset.burgFeature as "capital" | "port" | "citadel" | "walls" | "plaza" | "temple" | "shanty";
+      const feature = btn.dataset.burgFeature as
+        | "capital"
+        | "port"
+        | "citadel"
+        | "walls"
+        | "plaza"
+        | "temple"
+        | "shanty";
       const b = pack.burgs?.[burgId];
       if (!b) return;
 

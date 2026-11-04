@@ -7,7 +7,7 @@ import {
   CIV_PANTHEONS,
   CIV_RELIGION_NAMES
 } from "./living-civ-beliefs";
-import { CIV_BUILDING_BY_ID, CIV_BUILDINGS, getCivBuilding } from "./living-civ-buildings";
+import { CIV_BUILDING_BY_ID, CIV_BUILDINGS, civBuildingCapacity, getCivBuilding } from "./living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID, CIV_CIVILIANS, getCivCivilian } from "./living-civ-civilians";
 import {
   CIV_IMPROVEMENT_BY_ID,
@@ -344,6 +344,46 @@ describe("living-civ catalogs (Slice 1)", () => {
       expect(selectCivTheme({ historical: true })).toBe("historical");
       expect(selectCivTheme({ astral: true })).toBe("astral");
       expect(selectCivTheme({ astral: true, historical: true })).toBe("astral");
+    });
+  });
+
+  describe("civBuildingCapacity", () => {
+    it("maps military structures to M capacity", () => {
+      expect(civBuildingCapacity("walls").m).toBeGreaterThanOrEqual(1);
+      expect(civBuildingCapacity("barracks").m).toBeGreaterThanOrEqual(1);
+      expect(civBuildingCapacity("castle").m).toBeGreaterThanOrEqual(2);
+      expect(civBuildingCapacity("military_base").m).toBeGreaterThanOrEqual(2);
+    });
+
+    it("maps economic structures to W capacity", () => {
+      expect(civBuildingCapacity("market").w).toBeGreaterThanOrEqual(1);
+      expect(civBuildingCapacity("bank").w).toBeGreaterThanOrEqual(2);
+      expect(civBuildingCapacity("stock_exchange").w).toBeGreaterThanOrEqual(2);
+      expect(civBuildingCapacity("workshop").w).toBeGreaterThanOrEqual(1);
+    });
+
+    it("maps cultural and religious structures to S capacity", () => {
+      expect(civBuildingCapacity("monument").s).toBeGreaterThanOrEqual(1);
+      expect(civBuildingCapacity("temple").s).toBeGreaterThanOrEqual(2);
+      expect(civBuildingCapacity("colosseum").s).toBeGreaterThanOrEqual(2);
+      expect(civBuildingCapacity("museum").s).toBeGreaterThanOrEqual(2);
+    });
+
+    it("maps scientific and intrigue structures to C capacity", () => {
+      expect(civBuildingCapacity("library").c).toBeGreaterThanOrEqual(1);
+      expect(civBuildingCapacity("university").c).toBeGreaterThanOrEqual(2);
+      expect(civBuildingCapacity("public_school").c).toBeGreaterThanOrEqual(2);
+      expect(civBuildingCapacity("observatory").c).toBeGreaterThanOrEqual(1);
+    });
+
+    it("treats palace as inherent capital seat with 0 extra capacity (capital court bonus handled separately)", () => {
+      expect(civBuildingCapacity("palace")).toEqual({ m: 0, w: 0, s: 0, c: 0 });
+    });
+
+    it("returns zeros safely for unknown or empty input", () => {
+      expect(civBuildingCapacity(undefined)).toEqual({ m: 0, w: 0, s: 0, c: 0 });
+      expect(civBuildingCapacity(null)).toEqual({ m: 0, w: 0, s: 0, c: 0 });
+      expect(civBuildingCapacity("nonexistent_building")).toEqual({ m: 0, w: 0, s: 0, c: 0 });
     });
   });
 });

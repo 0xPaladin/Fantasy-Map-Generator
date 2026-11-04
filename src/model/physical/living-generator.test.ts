@@ -2946,7 +2946,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       // Monument maintenance 1 plus 4 regiments (1 above the free allowance).
       living.burgs[1].civBuildings = ["palace", "monument"];
-      pack.states[1].military = Array.from({ length: Math.ceil(UPKEEP_FREE / 0.2) + 1 }, (_, index) => makeRegiment(index));
+      pack.states[1].military = Array.from({ length: Math.ceil(UPKEEP_FREE / 0.2) + 1 }, (_, index) =>
+        makeRegiment(index)
+      );
       Living.tick(1);
       // Five 100-man blocks cost less than the three-block free allowance; only maintenance bites.
       expect(sSim.yieldsPerTurn?.gold).toBe(4);
@@ -2976,7 +2978,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const types = Military.getUnitTypes();
       const elite = Object.values(types).sort((a, b) => b.upkeep - a.upkeep)[0]!;
       const count = Math.ceil((UPKEEP_FREE + elite.upkeep * 2) / elite.upkeep);
-      const full = { ...makeRegiment(0), units: Array.from({ length: count }, () => ({ type: elite.id, hp: 1, exp: 0 })) };
+      const full = {
+        ...makeRegiment(0),
+        units: Array.from({ length: count }, () => ({ type: elite.id, hp: 1, exp: 0 }))
+      };
       const half = {
         ...makeRegiment(1),
         units: Array.from({ length: count }, () => ({ type: elite.id, hp: 0.5, exp: 0 }))
@@ -3440,9 +3445,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const roster = Military.getRoster(pack.states[1]!)!;
       const currentId = roster.garrison.melee;
       const current = types[currentId]!;
-      const target = current.upgradesTo
-        ? types[current.upgradesTo]
-        : nextRosterUnitInCategory(roster, currentId);
+      const target = current.upgradesTo ? types[current.upgradesTo] : nextRosterUnitInCategory(roster, currentId);
       expect(target).toBeDefined();
 
       const regiment = pack.states[1].military![0]!;
@@ -3653,6 +3656,49 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       const living = Living.init();
       expect(living.religions).toBeDefined();
+    });
+  });
+
+  describe("OpenCiv Capacity Calculation & Trouble Resolution", () => {
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    it("recomputes M W C S stats from live OpenCiv buildings", () => {
+      const living = Living.init();
+      const bSim = living.burgs[1];
+      bSim.civBuildings = ["barracks", "market", "temple", "library"];
+
+      const cap = Living.recomputeStateCapacity(1);
+      expect(cap.m.gen).toBeGreaterThanOrEqual(1); // barracks
+      expect(cap.w.gen).toBeGreaterThanOrEqual(1); // market
+      expect(cap.s.gen).toBeGreaterThanOrEqual(2); // temple
+      expect(cap.c.gen).toBeGreaterThanOrEqual(3); // library + capital court
+    });
+
+    it("boosts valueModifier for trouble saves as more OpenCiv buildings are constructed", () => {
+      const living = Living.init();
+      const bSim = living.burgs[1];
+      bSim.civBuildings = [];
+      const baseCap = Living.recomputeStateCapacity(1);
+      const baseMod = valueModifier(baseCap.m.gen);
+
+      bSim.civBuildings = ["barracks", "armory", "castle", "military_base"];
+      const boostedCap = Living.recomputeStateCapacity(1);
+      expect(boostedCap.m.gen).toBeGreaterThan(baseCap.m.gen);
+      expect(valueModifier(boostedCap.m.gen)).toBeGreaterThanOrEqual(baseMod);
+    });
+
+    it("suppresses Wealth generation from OpenCiv buildings when burg unrest exceeds 4", () => {
+      const living = Living.init();
+      const bSim = living.burgs[1];
+      bSim.civBuildings = ["market", "bank"];
+      bSim.unrest = 0;
+      const peacefulCap = Living.recomputeStateCapacity(1);
+
+      bSim.unrest = 5;
+      const unrestCap = Living.recomputeStateCapacity(1);
+      expect(unrestCap.w.gen).toBeLessThan(peacefulCap.w.gen);
     });
   });
 });
