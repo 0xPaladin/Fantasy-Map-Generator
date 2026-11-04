@@ -73,6 +73,7 @@ export interface StarBody {
   spectral: string;
   mass: number;
   pos?: LayoutPosition;
+  name?: string;
 }
 
 export interface PrimaryStar extends StarBody {

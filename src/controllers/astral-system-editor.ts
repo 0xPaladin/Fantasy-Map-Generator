@@ -559,10 +559,10 @@ function ensureSolarSystem(): void {
   if (SolarSystem.seed === seed && SolarSystem.bodies.length) return; // keep materialized snapshots
   const burg = pack.burgs[burgId];
   if (isCoreOrCapital(burg)) {
-    SolarSystem.initFromSeed(seed, { forceHabitable: true });
+    SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name });
   } else {
     const { class: spectral } = starClassFor(burg);
-    SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false });
+    SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false, systemName: burg.name });
   }
 }
 

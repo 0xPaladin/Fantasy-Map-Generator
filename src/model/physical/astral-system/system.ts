@@ -22,6 +22,7 @@ export interface System {
 export interface GenerateSystemOptions {
   forceHabitable?: boolean;
   primaryType?: string;
+  systemName?: string;
 }
 
 interface DiceRate {

@@ -1,7 +1,7 @@
 // The colonized solar system orrery: a Three.js scene built from the SolarSystem registry.
-// Presentation only - it never mutates grid or pack; the one user-driven mutation is the
-// explicit double-click switchBody. Pure math helpers are exported for unit tests; the DOM
-// and WebGL work stays inside create()/stop(). See docs/plans/solar-system-colonization.md §6.
+// Presentation only - it never mutates grid or pack; the user-driven mutations go through
+// switchBody() and the FMG controllers. To-scale orbits and planet/moon globe systems with
+// a bottom-bar vignette navigator and planet inspector. See docs/plans/solar-system-colonization.md §6.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { starTypeData } from "@/model/physical/astral-system/astrophysics";
@@ -11,16 +11,19 @@ import { type CelestialBody, SolarSystem } from "@/model/system/solar-system";
 import { setViewMode } from "@/renderers/view-mode";
 import { t } from "@/utils/i18n";
 import { log } from "@/utils/logger";
+import { escapeHtml } from "@/utils/string-utils";
+import { rn } from "@/utils/number-utils";
 
 // --- pure orrery math (unit-tested) ------------------------------------------
 
-const ORBIT_BASE = 6; // scene units at the innermost orbits
-const ORBIT_COMPRESSION = 6; // how quickly orbital radii spread out
-const ORBIT_CURVE = 0.8; // flattens the AU spread before the log
+export const AU_SCALE = 18; // scene units per astronomical unit (linear scale)
+export const STAR_RADIUS = 2.2; // visual radius of the primary star
 
-/** compressed orbital radius: `R_0 + k * ln(1 + a * c)` - real AU spans stay navigable */
-export const orbitRadius = (semiMajorAxisAU: number): number =>
-  ORBIT_BASE + ORBIT_COMPRESSION * Math.log(1 + Math.max(semiMajorAxisAU, 0) * ORBIT_CURVE);
+/** to-scale orbital radius: linear scale with AU, with a minimum clearance outside the star */
+export const orbitRadius = (semiMajorAxisAU: number, scaleAU = AU_SCALE): number => {
+  const clampedAU = Math.max(semiMajorAxisAU, 0);
+  return clampedAU <= 0 ? 0 : Math.max(STAR_RADIUS + 1.2, clampedAU * scaleAU);
+};
 
 /** point on the Kepler orbit ellipse, the star sitting in its focus */
 export const ellipsePoint = (semiMajor: number, eccentricity: number, angle: number): { x: number; z: number } => {
@@ -28,12 +31,14 @@ export const ellipsePoint = (semiMajor: number, eccentricity: number, angle: num
   return { x: r * Math.cos(angle), z: r * Math.sin(angle) };
 };
 
-/** scene-space body radius, log-compressed from the astro radius (Earth = 6.371 Mm) */
+/** scene-space body radius, scaled to Earth radius (Earth = 6.371 Mm) */
 export const bodySceneRadius = (radiusMegameters: number, kind: "planet" | "moon"): number => {
-  const earthRatio = radiusMegameters / 6.371;
-  return kind === "moon"
-    ? 0.1 + 0.12 * Math.log10(1 + radiusMegameters / 1.737)
-    : 0.3 + 0.35 * Math.log10(1 + earthRatio);
+  const rMm = radiusMegameters > 500 ? radiusMegameters / 1000 : radiusMegameters;
+  const earthRatio = Math.max(rMm / 6.371, 0.05);
+  if (kind === "moon") {
+    return Math.max(0.06, 0.09 * earthRatio);
+  }
+  return Math.max(0.18, 0.28 * earthRatio);
 };
 
 /** banded gas-giant palette: three palette colors per body, deterministic per body id */
@@ -78,11 +83,16 @@ let animationFrame = 0;
 const bodyMeshes: THREE.Mesh[] = [];
 const disposables: Array<{ dispose(): void }> = [];
 const listeners: Array<[EventTarget, string, EventListenerOrEventListenerObject]> = [];
-let focusTarget: THREE.Vector3 | null = null; // camera focus lerp destination
+
+let focusTarget: THREE.Vector3 | null = null; // camera controls target lerp destination
+let cameraTargetPos: THREE.Vector3 | null = null; // camera position lerp destination
+let currentViewMode: "system" | "planet" = "system";
+let selectedBodyId: string | null = null;
+let systemExtent = 50;
+
 let actions: Actions | null = null;
 let pointerStart: { x: number; y: number } | null = null;
 
-const STAR_RADIUS = 2.2;
 const CANVAS_TEXTURE_WIDTH = 256;
 const CANVAS_TEXTURE_HEIGHT = 128;
 
@@ -99,6 +109,8 @@ const ARCHETYPE_LABELS: Record<string, string> = {
 // --- entry points -------------------------------------------------------------
 
 export const isActive = (): boolean => active;
+export const getViewMode = (): "system" | "planet" => currentViewMode;
+export const getSelectedBodyId = (): string | null => selectedBodyId;
 
 export const setActions = (next: Actions | null): void => {
   actions = next;
@@ -110,6 +122,7 @@ export async function create(canvas: HTMLCanvasElement): Promise<boolean> {
     buildScene(canvas);
     active = true;
     bindEvents(canvas);
+    buildVignetteBar();
     animate();
     render();
     return true;
@@ -125,12 +138,18 @@ export function stop(): void {
   cancelAnimationFrame(animationFrame);
   animationFrame = 0;
   focusTarget = null;
+  cameraTargetPos = null;
   pointerStart = null;
+  currentViewMode = "system";
+  selectedBodyId = null;
 
   for (const [target, type, listener] of listeners) target.removeEventListener(type, listener);
   listeners.length = 0;
+
   document.getElementById("systemInspector")?.remove();
   document.getElementById("systemInspectorStyle")?.remove();
+  document.getElementById("systemVignetteBar")?.remove();
+  document.getElementById("systemVignetteStyle")?.remove();
 
   if (controls) controls.dispose();
   controls = null;
@@ -157,7 +176,7 @@ export function stop(): void {
   if (Renderer) {
     Renderer.renderLists.dispose();
     Renderer.dispose();
-    Renderer.forceContextLoss(); // dispose() only drops three's bookkeeping, the GL context survives it
+    Renderer.forceContextLoss();
     Renderer = null;
   }
   raycaster = null;
@@ -184,14 +203,24 @@ function buildScene(canvas: HTMLCanvasElement): void {
   Renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   Renderer.setSize(canvas.width, canvas.height);
 
-  camera = new THREE.PerspectiveCamera(50, canvas.width / canvas.height, 0.1, 600);
-  camera.position.set(0, 34, 58);
+  // Compute to-scale system extent to frame initial view
+  const planetBodies = SolarSystem.bodies.filter(b => b.kind === "planet");
+  let maxOrbit = 12;
+  for (const p of planetBodies) {
+    const r = orbitRadius(p.orbit.semiMajorAxisAU * (1 + p.orbit.eccentricity));
+    if (r > maxOrbit) maxOrbit = r;
+  }
+  systemExtent = maxOrbit;
+
+  const camDist = Math.max(40, maxOrbit * 1.3);
+  camera = new THREE.PerspectiveCamera(50, canvas.width / canvas.height, 0.1, Math.max(1600, maxOrbit * 6));
+  camera.position.set(0, camDist * 0.65, camDist * 1.15);
 
   controls = new OrbitControls(camera, Renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.minDistance = 3;
-  controls.maxDistance = 160;
+  controls.minDistance = 1;
+  controls.maxDistance = Math.max(600, maxOrbit * 4);
 
   raycaster = new THREE.Raycaster();
 
@@ -201,9 +230,9 @@ function buildScene(canvas: HTMLCanvasElement): void {
   buildStar(starColor);
   buildBodies();
 
-  const starLight = new THREE.PointLight(starColor, 2.5, 0, 0);
+  const starLight = new THREE.PointLight(starColor, 2.8, 0, 0);
   scene.add(starLight);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 }
 
 function buildStar(color: THREE.Color): void {
@@ -215,13 +244,13 @@ function buildStar(color: THREE.Color): void {
   scene.add(star);
   bodyMeshes.push(star);
 
-  // soft glow
+  // soft glow corona
   const glow = document.createElement("canvas");
   glow.width = glow.height = 256;
   const ctx = glow.getContext("2d")!;
   const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  gradient.addColorStop(0, "rgba(255,255,255,0.85)");
-  gradient.addColorStop(0.25, `rgba(${(color.r * 255) | 0},${(color.g * 255) | 0},${(color.b * 255) | 0},0.45)`);
+  gradient.addColorStop(0, "rgba(255,255,255,0.9)");
+  gradient.addColorStop(0.22, `rgba(${(color.r * 255) | 0},${(color.g * 255) | 0},${(color.b * 255) | 0},0.5)`);
   gradient.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 256, 256);
@@ -229,7 +258,7 @@ function buildStar(color: THREE.Color): void {
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: texture, blending: THREE.AdditiveBlending, depthWrite: false })
   );
-  sprite.scale.set(14, 14, 1);
+  sprite.scale.set(16, 16, 1);
   scene.add(sprite);
 }
 
@@ -240,7 +269,7 @@ function buildBodies(): void {
     if (body.kind !== "planet") continue;
     const { group, orbitRing } = buildPlanet(body);
     scene.add(group);
-    scene.add(orbitRing); // the orbit ellipse centers on the star, not the moving planet
+    scene.add(orbitRing); // the orbit ellipse centers on the star
   }
 }
 
@@ -259,8 +288,42 @@ function buildPlanet(body: CelestialBody): { group: THREE.Group; orbitRing: THRE
   group.add(sphere);
   bodyMeshes.push(sphere);
 
-  if (body.archetype === "gas_giant" && hasRings(body)) group.add(buildRings(radius, body.id));
+  const hasRingMesh = body.archetype === "gas_giant" && hasRings(body);
+  if (hasRingMesh) group.add(buildRings(radius, body.id));
   group.add(buildLabel(body, radius));
+
+  // Build moon sub-system around this planet in globe view
+  const moons = SolarSystem.bodies.filter(b => b.kind === "moon" && b.parentId === body.id);
+  const ringsOuter = hasRingMesh ? radius * 2.3 : radius;
+  const minMoonDist = Math.max(radius * 1.8, ringsOuter + 0.4);
+
+  for (let mIdx = 0; mIdx < moons.length; mIdx++) {
+    const moon = moons[mIdx];
+    const moonRadius = bodySceneRadius(kindRadius(moon), "moon");
+    const moonOrbitDist = minMoonDist + (mIdx + 1) * (radius * 0.7 + 0.5) + (moon.orbit.semiMajorAxisAU ? moon.orbit.semiMajorAxisAU * 0.2 : 0);
+    const mAngle = moon.orbit.angleRad;
+    const mx = Math.cos(mAngle) * moonOrbitDist;
+    const mz = Math.sin(mAngle) * moonOrbitDist;
+
+    const moonGeom = new THREE.SphereGeometry(moonRadius, 32, 32);
+    const moonMat = new THREE.MeshLambertMaterial({ map: bodyTexture(moon) });
+    const moonMesh = new THREE.Mesh(moonGeom, moonMat);
+    moonMesh.position.set(mx, 0, mz);
+    moonMesh.userData.bodyId = moon.id;
+    moonMesh.userData.parentId = body.id;
+    group.add(moonMesh);
+    bodyMeshes.push(moonMesh);
+
+    // Orbit ring around planet
+    const moonRing = buildOrbitRing(moonOrbitDist, moon.orbit.eccentricity, true);
+    group.add(moonRing);
+
+    // Label for moon
+    const moonLabel = buildLabel(moon, moonRadius);
+    moonLabel.position.x = mx;
+    moonLabel.position.z = mz;
+    group.add(moonLabel);
+  }
 
   return { group, orbitRing: buildOrbitRing(orbit, body.orbit.eccentricity, false) };
 }
@@ -270,7 +333,6 @@ function buildRings(radius: number, bodyId: string): THREE.Mesh {
   const outer = radius * 2.3;
   const geometry = new THREE.RingGeometry(inner, outer, 64);
 
-  // concentric alpha bands mapped over the ring's bounding square
   const textureCanvas = document.createElement("canvas");
   textureCanvas.width = textureCanvas.height = 128;
   const ctx = textureCanvas.getContext("2d")!;
@@ -308,7 +370,7 @@ function buildOrbitRing(orbit: number, eccentricity: number, isMoon: boolean): T
     points.push(new THREE.Vector3(point.x, 0, point.z));
   }
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({ color: 0x8b93a7, transparent: true, opacity: isMoon ? 0.18 : 0.3 });
+  const material = new THREE.LineBasicMaterial({ color: 0x8b93a7, transparent: true, opacity: isMoon ? 0.22 : 0.28 });
   return new THREE.LineLoop(geometry, material);
 }
 
@@ -454,9 +516,100 @@ function hasRings(body: CelestialBody): boolean {
   return Number.isInteger(index) && index % 2 === 1;
 }
 
-/** the astro radius the scene sizing reads: gas giants carry their own radius, others too */
+/** the astro radius the scene sizing reads */
 function kindRadius(body: CelestialBody): number {
   return typeof body.astro.radius === "number" ? body.astro.radius : 6.371;
+}
+
+// --- navigation & zoom --------------------------------------------------------
+
+function zoomToSystem(): void {
+  currentViewMode = "system";
+  selectedBodyId = null;
+
+  focusTarget = new THREE.Vector3(0, 0, 0);
+  const camDist = Math.max(40, systemExtent * 1.3);
+  cameraTargetPos = new THREE.Vector3(0, camDist * 0.65, camDist * 1.15);
+
+  if (controls) {
+    controls.minDistance = 2;
+    controls.maxDistance = Math.max(600, systemExtent * 4);
+  }
+
+  updateVignetteActive("::star");
+  document.getElementById("systemInspector")?.remove();
+}
+
+function zoomToPlanet(planetId: string): void {
+  const planet = SolarSystem.getBody(planetId);
+  if (!planet || !scene) return;
+  const anchor = bodyAnchor(planetId);
+  if (!anchor) return;
+
+  currentViewMode = "planet";
+  selectedBodyId = planetId;
+
+  const worldPos = new THREE.Vector3();
+  anchor.getWorldPosition(worldPos);
+
+  const planetRadius = bodySceneRadius(kindRadius(planet), "planet");
+  const moons = SolarSystem.bodies.filter(b => b.kind === "moon" && b.parentId === planetId);
+
+  let maxMoonDist = planetRadius * 3;
+  for (const m of moons) {
+    const mAnchor = bodyAnchor(m.id);
+    if (mAnchor) {
+      const mPos = new THREE.Vector3();
+      mAnchor.getWorldPosition(mPos);
+      const dist = worldPos.distanceTo(mPos);
+      if (dist > maxMoonDist) maxMoonDist = dist;
+    }
+  }
+
+  const frameDist = Math.max(planetRadius * 4.5, maxMoonDist * 2.2);
+  focusTarget = worldPos.clone();
+  cameraTargetPos = new THREE.Vector3(
+    worldPos.x,
+    worldPos.y + frameDist * 0.55,
+    worldPos.z + frameDist * 1.05
+  );
+
+  if (controls) {
+    controls.minDistance = Math.max(0.5, planetRadius * 1.2);
+    controls.maxDistance = frameDist * 5;
+  }
+
+  updateVignetteActive(planetId);
+  showInspector(planet);
+}
+
+function zoomToMoon(moonId: string): void {
+  const moon = SolarSystem.getBody(moonId);
+  if (!moon || !scene) return;
+  const anchor = bodyAnchor(moonId);
+  if (!anchor) return;
+
+  selectedBodyId = moonId;
+  const worldPos = new THREE.Vector3();
+  anchor.getWorldPosition(worldPos);
+
+  const moonRadius = bodySceneRadius(kindRadius(moon), "moon");
+  const frameDist = Math.max(1.5, moonRadius * 7);
+
+  focusTarget = worldPos.clone();
+  cameraTargetPos = new THREE.Vector3(
+    worldPos.x,
+    worldPos.y + frameDist * 0.5,
+    worldPos.z + frameDist * 1.1
+  );
+
+  if (controls) {
+    controls.minDistance = Math.max(0.1, moonRadius * 1.2);
+    controls.maxDistance = frameDist * 6;
+  }
+
+  if (moon.parentId) updateVignetteActive(moon.parentId);
+  showInspector(moon);
 }
 
 // --- interaction --------------------------------------------------------------
@@ -469,9 +622,16 @@ function bindEvents(canvas: HTMLCanvasElement): void {
     if (!pointerStart) return;
     const moved = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
     pointerStart = null;
-    if (moved > 5) return; // it was an orbit drag, not a pick
+    if (moved > 5) return; // orbit drag, not click
     const bodyId = pickBody(canvas, event.clientX, event.clientY);
-    if (bodyId && bodyId !== "::star") selectBody(bodyId);
+    if (!bodyId) return;
+    if (bodyId === "::star") {
+      zoomToSystem();
+    } else {
+      const body = SolarSystem.getBody(bodyId);
+      if (body?.kind === "moon") zoomToMoon(bodyId);
+      else if (body?.kind === "planet") zoomToPlanet(bodyId);
+    }
   };
   const onDoubleClick = (event: MouseEvent) => {
     const bodyId = pickBody(canvas, event.clientX, event.clientY);
@@ -504,18 +664,6 @@ function pickBody(canvas: HTMLCanvasElement, clientX: number, clientY: number): 
   return (hit?.object.userData.bodyId as string) ?? null;
 }
 
-/** focus the camera on the body and open the inspector */
-function selectBody(bodyId: string): void {
-  const body = SolarSystem.getBody(bodyId);
-  if (!body || !scene) return;
-  const anchor = bodyAnchor(bodyId);
-  if (!anchor) return;
-  const world = new THREE.Vector3();
-  anchor.getWorldPosition(world);
-  focusTarget = world.clone();
-  showInspector(body);
-}
-
 async function openWorld(bodyId: string): Promise<void> {
   if (actions?.openWorld) return actions.openWorld(bodyId);
   await SolarSystem.switchBody(bodyId);
@@ -529,6 +677,10 @@ function animate(): void {
       if (focusTarget) {
         controls.target.lerp(focusTarget, 0.08);
         if (controls.target.distanceTo(focusTarget) < 0.05) focusTarget = null;
+      }
+      if (cameraTargetPos && camera) {
+        camera.position.lerp(cameraTargetPos, 0.08);
+        if (camera.position.distanceTo(cameraTargetPos) < 0.1) cameraTargetPos = null;
       }
       controls.update();
     }
@@ -546,9 +698,193 @@ function canvasEl(): HTMLCanvasElement | null {
   return (Renderer?.domElement as HTMLCanvasElement) ?? null;
 }
 
+// --- vignette bar (bottom 10%) ------------------------------------------------
+
+function buildVignetteBar(): void {
+  ensureVignetteStyle();
+  document.getElementById("systemVignetteBar")?.remove();
+
+  const bar = document.createElement("div");
+  bar.id = "systemVignetteBar";
+
+  const spectral = SolarSystem.star?.primary.spectral ?? "G";
+  const starColor = starTypeData[spectral]?.color ?? starTypeData.G.color;
+  const starName = SolarSystem.star?.primary.name ?? (SolarSystem.star ? "Primary Star" : "Sol");
+
+  const starItem = document.createElement("div");
+  starItem.className = "systemVignetteItem active";
+  starItem.dataset.id = "::star";
+  starItem.innerHTML = `
+    <div class="systemVignetteThumbWrap">
+      <div class="systemVignetteStarSphere" style="background: ${starColor}; box-shadow: 0 0 12px ${starColor}, inset -2px -2px 5px rgba(0,0,0,0.35);"></div>
+    </div>
+    <div class="systemVignetteText">
+      <span class="systemVignetteName">${escapeHtml(starName)}</span>
+      <span class="systemVignetteSub">${spectral} V · ${t("Star")}</span>
+    </div>
+  `;
+  bar.appendChild(starItem);
+
+  const planets = SolarSystem.bodies.filter(b => b.kind === "planet");
+  for (const planet of planets) {
+    const moons = SolarSystem.bodies.filter(b => b.kind === "moon" && b.parentId === planet.id);
+    const texture = planet.textureUrl ?? (planet.snapshot ? bakeBodyTexture(planet) : proceduralBodyTexture(planet));
+    planet.textureUrl = texture;
+
+    const item = document.createElement("div");
+    item.className = "systemVignetteItem";
+    item.dataset.id = planet.id;
+    item.innerHTML = `
+      <div class="systemVignetteThumbWrap">
+        <img src="${texture}" class="systemVignetteGlobeImg" alt="${escapeHtml(planet.name)}" />
+        ${moons.length ? `<span class="systemMoonCountBadge" title="${moons.length} ${t("moons")}">${moons.length}</span>` : ""}
+      </div>
+      <div class="systemVignetteText">
+        <span class="systemVignetteName">${escapeHtml(planet.name)}</span>
+        <span class="systemVignetteSub">${rn(planet.orbit.semiMajorAxisAU, 2)} AU</span>
+      </div>
+    `;
+    bar.appendChild(item);
+  }
+
+  bar.addEventListener("click", event => {
+    const item = (event.target as HTMLElement).closest<HTMLElement>(".systemVignetteItem");
+    if (!item) return;
+    const id = item.dataset.id;
+    if (!id) return;
+    if (id === "::star") {
+      zoomToSystem();
+    } else {
+      zoomToPlanet(id);
+    }
+  });
+
+  document.body.appendChild(bar);
+}
+
+function updateVignetteActive(activeId: string): void {
+  const bar = document.getElementById("systemVignetteBar");
+  if (!bar) return;
+  for (const item of bar.querySelectorAll(".systemVignetteItem")) {
+    const htmlItem = item as HTMLElement;
+    if (htmlItem.dataset.id === activeId) {
+      htmlItem.classList.add("active");
+      htmlItem.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    } else {
+      htmlItem.classList.remove("active");
+    }
+  }
+}
+
+function ensureVignetteStyle(): void {
+  if (document.getElementById("systemVignetteStyle")) return;
+  const style = document.createElement("style");
+  style.id = "systemVignetteStyle";
+  style.textContent = /* css */ `
+    #systemVignetteBar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 10vh;
+      min-height: 64px;
+      max-height: 84px;
+      z-index: 100;
+      background: rgba(12, 14, 20, 0.88);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid #2a3142;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      box-sizing: border-box;
+    }
+    #systemVignetteBar::-webkit-scrollbar {
+      height: 4px;
+    }
+    #systemVignetteBar::-webkit-scrollbar-thumb {
+      background: #3b4255;
+      border-radius: 2px;
+    }
+    .systemVignetteItem {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.18s ease;
+      user-select: none;
+    }
+    .systemVignetteItem:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .systemVignetteItem.active {
+      background: rgba(60, 110, 200, 0.22);
+      border-color: #4f8aff;
+      box-shadow: 0 0 12px rgba(79, 138, 255, 0.35);
+    }
+    .systemVignetteThumbWrap {
+      position: relative;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .systemVignetteStarSphere {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+    }
+    .systemVignetteGlobeImg {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: inset -4px -3px 6px rgba(0, 0, 0, 0.75), inset 2px 2px 3px rgba(255, 255, 255, 0.2);
+    }
+    .systemMoonCountBadge {
+      position: absolute;
+      bottom: -2px;
+      right: -4px;
+      background: #1e2433;
+      color: #aab2c5;
+      border: 1px solid #3d465e;
+      border-radius: 10px;
+      font-size: 10px;
+      line-height: 1;
+      padding: 2px 4px;
+      font-weight: 600;
+    }
+    .systemVignetteText {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .systemVignetteName {
+      font-size: 12px;
+      font-weight: 600;
+      color: #f0f3fa;
+      white-space: nowrap;
+    }
+    .systemVignetteSub {
+      font-size: 11px;
+      color: #9aa2b5;
+      white-space: nowrap;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // --- inspector overlay --------------------------------------------------------
 
-/** the sphere mesh carrying a bodyId, whose world position the camera focuses on */
 function bodyAnchor(bodyId: string): THREE.Object3D | null {
   return bodyMeshes.find(mesh => mesh.userData.bodyId === bodyId) ?? null;
 }
@@ -573,21 +909,45 @@ function showInspector(body: CelestialBody): void {
   const subtype = body.astro.kind === "planet" ? body.astro.subtype : undefined;
   const colonies = colonySummary(body);
 
+  const isPlanet = body.kind === "planet";
+  const parentPlanet = body.parentId ? SolarSystem.getBody(body.parentId) : null;
+  const moons = isPlanet ? SolarSystem.bodies.filter(b => b.kind === "moon" && b.parentId === body.id) : [];
+
   const panel = document.createElement("div");
   panel.id = "systemInspector";
   panel.innerHTML = /* html */ `
     <header>
-      <b>${body.name}</b>
+      <b>${escapeHtml(body.name)}</b>
       <i id="systemInspectorClose" class="icon-cancel pointer"></i>
     </header>
     <div class="systemInspectorBody">
+      ${parentPlanet ? `<div class="systemInspectorParentLink" data-parent="${parentPlanet.id}">← Back to ${escapeHtml(parentPlanet.name)}</div>` : ""}
       <div class="systemInspectorRow"><span>${t("Archetype")}</span><b>${t(ARCHETYPE_LABELS[body.archetype] ?? body.archetype)}</b></div>
       <div class="systemInspectorRow"><span>${t("Classification")}</span><b>${type}${subtype && subtype !== type ? ` (${subtype})` : ""}</b></div>
+      ${isPlanet ? `<div class="systemInspectorRow"><span>${t("Orbit")}</span><b>${rn(body.orbit.semiMajorAxisAU, 2)} AU</b></div>` : ""}
+      <div class="systemInspectorRow"><span>${t("Period")}</span><b>${rn(body.orbit.periodDays, 1)} days</b></div>
       <div class="systemInspectorRow"><span>${t("Gravity")}</span><b>${body.astro.g} g</b></div>
       <div class="systemInspectorRow"><span>${t("Surface temperature")}</span><b>${body.astro.tempC} °C</b></div>
       <div class="systemInspectorRow"><span>${t("Atmosphere")}</span><b>${body.astro.atmosphere}</b></div>
       <div class="systemInspectorRow"><span>${t("Hydrographics")}</span><b>${body.astro.hydrographics}%</b></div>
       <div class="systemInspectorRow"><span>${t("Habitability")}</span><b>HI ${body.astro.HI}</b></div>
+      ${
+        moons.length
+          ? `<div class="systemInspectorSection">${t("Moons")} (${moons.length})</div>
+      <div class="systemInspectorMoonsList">
+        ${moons
+          .map(
+            m => `
+          <div class="systemInspectorMoonRow" data-moon="${m.id}">
+            <span class="systemInspectorMoonName">↳ ${escapeHtml(m.name)}</span>
+            <span class="systemInspectorMoonType">${escapeHtml(m.astro.type)}</span>
+            <span class="systemInspectorMoonHI hi-${m.astro.HI}">HI ${m.astro.HI}</span>
+          </div>`
+          )
+          .join("")}
+      </div>`
+          : ""
+      }
       ${
         colonies
           ? `<div class="systemInspectorSection">${t("Colonies")}</div>
@@ -607,6 +967,15 @@ function showInspector(body: CelestialBody): void {
   document.body.appendChild(panel);
 
   panel.querySelector("#systemInspectorClose")?.addEventListener("click", () => panel.remove());
+  panel.querySelector(".systemInspectorParentLink")?.addEventListener("click", () => {
+    if (parentPlanet) zoomToPlanet(parentPlanet.id);
+  });
+  for (const moonRow of panel.querySelectorAll(".systemInspectorMoonRow")) {
+    moonRow.addEventListener("click", () => {
+      const moonId = (moonRow as HTMLElement).dataset.moon;
+      if (moonId) zoomToMoon(moonId);
+    });
+  }
   panel.querySelector("#systemInspectorGlobe")?.addEventListener("click", () => void openWorld(body.id));
   panel
     .querySelector("#systemInspectorMap")
@@ -622,13 +991,16 @@ function ensureInspectorStyle(): void {
       position: absolute;
       top: 12px;
       right: 12px;
-      width: 280px;
+      width: 290px;
+      max-height: calc(88vh - 24px);
+      overflow-y: auto;
       z-index: 10;
-      background: rgba(15, 17, 24, 0.92);
+      background: rgba(15, 17, 24, 0.94);
       color: #e8eaf1;
       border: 1px solid #3a3f4d;
       border-radius: 8px;
       font: 13px/1.45 sans-serif;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     }
     #systemInspector header {
       display: flex;
@@ -653,6 +1025,59 @@ function ensureInspectorStyle(): void {
       color: #c8cede;
       font-weight: 600;
     }
+    #systemInspector .systemInspectorParentLink {
+      padding: 3px 6px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: #60a5fa;
+      cursor: pointer;
+      display: inline-block;
+      border-radius: 4px;
+      background: rgba(96, 165, 250, 0.1);
+    }
+    #systemInspector .systemInspectorParentLink:hover {
+      background: rgba(96, 165, 250, 0.2);
+      text-decoration: underline;
+    }
+    #systemInspector .systemInspectorMoonsList {
+      margin-top: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    #systemInspector .systemInspectorMoonRow {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.15s ease;
+    }
+    #systemInspector .systemInspectorMoonRow:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    #systemInspector .systemInspectorMoonName {
+      font-weight: 500;
+      color: #e2e6f0;
+    }
+    #systemInspector .systemInspectorMoonType {
+      color: #9aa2b5;
+      font-size: 11px;
+    }
+    #systemInspector .systemInspectorMoonHI {
+      font-weight: 600;
+      font-size: 11px;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    #systemInspector .hi-1 { color: #86efac; background: rgba(34, 197, 94, 0.15); }
+    #systemInspector .hi-2 { color: #93c5fd; background: rgba(59, 130, 246, 0.15); }
+    #systemInspector .hi-3 { color: #fde047; background: rgba(234, 179, 8, 0.15); }
+    #systemInspector .hi-4 { color: #f97316; background: rgba(249, 115, 22, 0.15); }
+    #systemInspector .hi-5 { color: #ef4444; background: rgba(239, 68, 68, 0.15); }
     #systemInspector footer {
       display: flex;
       gap: 6px;
@@ -674,4 +1099,15 @@ function ensureInspectorStyle(): void {
 }
 
 /** delegation surface for view-3d-renderer's create/stop/redraw router */
-export const SystemRenderer = { create, stop, redraw, isActive, setActions };
+export const SystemRenderer = {
+  create,
+  stop,
+  redraw,
+  isActive,
+  setActions,
+  getViewMode,
+  getSelectedBodyId,
+  zoomToSystem,
+  zoomToPlanet,
+  zoomToMoon
+};

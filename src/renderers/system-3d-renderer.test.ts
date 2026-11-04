@@ -9,7 +9,7 @@ import {
 } from "./system-3d-renderer";
 
 describe("orrery scene math", () => {
-  it("compresses orbital radii monotonically and keeps AU spans navigable", () => {
+  it("scales orbital radii linearly and keeps AU spans proportional", () => {
     const mercury = orbitRadius(0.39);
     const earth = orbitRadius(1);
     const neptune = orbitRadius(30.1);
@@ -17,8 +17,8 @@ describe("orrery scene math", () => {
     expect(mercury).toBeGreaterThan(0);
     expect(earth).toBeGreaterThan(mercury);
     expect(neptune).toBeGreaterThan(earth);
-    // compression: 77x the distance must not be 77x the scene radius
-    expect(neptune / mercury).toBeLessThan(6);
+    // to scale: 30.1 AU / 1.0 AU is ~30x distance
+    expect(neptune / earth).toBeCloseTo(30.1, 0);
   });
 
   it("places the Kepler ellipse focus on the star", () => {
@@ -32,7 +32,7 @@ describe("orrery scene math", () => {
     expect(Math.hypot(periapsis.x, periapsis.z)).toBeCloseTo(a * (1 - e), 6);
   });
 
-  it("sizes planets by log-compressed astro radius with gas giants above moons", () => {
+  it("sizes planets proportionally by astro radius with gas giants above moons", () => {
     const jupiter = bodySceneRadius(69.9, "planet");
     const earth = bodySceneRadius(6.371, "planet");
     const ceres = bodySceneRadius(0.47, "planet");
