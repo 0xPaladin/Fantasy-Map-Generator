@@ -65,6 +65,7 @@ describe("globeWorld template", () => {
     expect(heightmapTemplates.globeWorld.id).toBe(14);
     expect(heightmapTemplates.globeWorld.probability).toBe(5);
     expect(heightmapTemplates.globeWorld.template).toContain("Mask 2");
+    expect(heightmapTemplates.globeWorld.template).toContain("Range 3 70 15-85 20-80");
   });
 
   it("leaves edge columns as ocean across multiple seeds", async () => {
@@ -78,6 +79,39 @@ describe("globeWorld template", () => {
 
       const grid = Grid.generate("old");
       const heights = HeightmapGenerator.fromTemplate(grid, "globeWorld");
+
+      // All cells within 2% of left and right margins should be water (< 20)
+      for (let i = 0; i < grid.cells.i.length; i++) {
+        const [x] = grid.points[i];
+        if (x < 20 || x > 980) {
+          expect(heights[i]).toBeLessThan(20);
+        }
+      }
+    }
+  });
+});
+
+describe("fractiousWorld template", () => {
+  it("is registered with id 20 and expected attributes", async () => {
+    const { heightmapTemplates } = await import("@/data/heightmap-templates");
+    expect(heightmapTemplates.fractiousWorld).toBeDefined();
+    expect(heightmapTemplates.fractiousWorld.id).toBe(20);
+    expect(heightmapTemplates.fractiousWorld.probability).toBe(5);
+    expect(heightmapTemplates.fractiousWorld.template).toContain("Mask 2");
+    expect(heightmapTemplates.fractiousWorld.template).toContain("Hill 12-15 50-80 5-95 5-95");
+  });
+
+  it("leaves edge columns as ocean across multiple seeds", async () => {
+    const { Grid } = await import("@/model/graph/grid-generator");
+    const { Options } = await import("@/model/options/options-model");
+
+    for (const seed of ["1", "42", "9999", "globe-test"]) {
+      globalThis.options = Options.getDefaultOptions();
+      options.map.seed = seed;
+      options.map.graph = { width: 1000, height: 500, points: 2000, sampling: "square", jitter: 0.9 };
+
+      const grid = Grid.generate("old");
+      const heights = HeightmapGenerator.fromTemplate(grid, "fractiousWorld");
 
       // All cells within 2% of left and right margins should be water (< 20)
       for (let i = 0; i < grid.cells.i.length; i++) {
