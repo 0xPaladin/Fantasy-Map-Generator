@@ -8,6 +8,8 @@ import {
   pickFor,
   polityWordFor,
   sectorWordFor,
+  isCapital,
+  isCoreOrCapital,
   starClassFor,
   systemTip,
   systemTraits,
@@ -121,6 +123,26 @@ describe("the star classes", () => {
 
   it("keeps the big worlds in the habitable band", () => {
     for (let i = 0; i < 500; i += 1) expect(["F", "G", "K"]).toContain(core(i).class);
+  });
+
+  it("keeps state and province capitals in the habitable band even with low population", () => {
+    for (let i = 0; i < 200; i += 1) {
+      const stateCap = starClassFor({ i, population: 5, capital: 1 });
+      expect(isCoreOrCapital({ i, population: 5, capital: 1 })).toBe(true);
+      expect(["F", "G", "K"]).toContain(stateCap.class);
+    }
+  });
+
+  it("identifies province capitals as habitable", () => {
+    const provBurg = { i: 42, population: 5 };
+    vi.stubGlobal("pack", {
+      burgs: [0, provBurg],
+      states: [],
+      provinces: [0, { i: 1, burg: 42, removed: false }]
+    });
+    expect(isCapital(provBurg)).toBe(true);
+    expect(isCoreOrCapital(provBurg)).toBe(true);
+    expect(["F", "G", "K"]).toContain(starClassFor(provBurg).class);
   });
 
   it("rolls the standard distribution on the fringe", () => {

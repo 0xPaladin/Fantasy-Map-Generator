@@ -1,4 +1,4 @@
-﻿// Astral view profiles: which layers the star chart shows. See docs/plans/astral-ui-overhaul.md
+// Astral view profiles: which layers the star chart shows. See docs/plans/astral-ui-overhaul.md
 import type { LayerId } from "@/renderers/layers";
 
 export interface AstralPreset {
@@ -31,6 +31,6 @@ export const ASTRAL_PRESETS: Record<string, AstralPreset> = {
   },
   systems: {
     name: "Systems and lanes",
-    layers: ["texture", "nebulae", "systems", "remnants", "routes", "labels", "scaleBar"]
+    layers: ["texture", "nebulae", "systems", "routes", "labels", "scaleBar"]
   }
 };

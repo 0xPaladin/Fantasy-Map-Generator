@@ -102,6 +102,7 @@ function renderTemplateEditor(): void {
           <option value="oldWorld">${t("Old World")}</option>
           <option value="fractious">${t("Fractious")}</option>
           <option value="globeWorld">${t("Globe World")}</option>
+          <option value="fractiousWorld">${t("Fractious World")}</option>
           <option value="lunarWorld">${t("Lunar World")}</option>
           <option value="martianWorld">${t("Martian World")}</option>
           <option value="icyMoon">${t("Icy Moon")}</option>

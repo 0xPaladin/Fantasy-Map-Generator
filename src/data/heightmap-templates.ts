@@ -150,13 +150,25 @@ const fractious = `Hill 12-15 50-80 5-95 5-95
   Add -20 30-100 0 0
   Range 6-8 40-50 5-95 10-90`;
 
-const globeWorld = `Hill 1 60-70 22-38 20-80
-  Hill 1 60-70 62-78 20-80
-  Hill 4-5 15-25 20-80 15-85
+const globeWorld = `Range 3 70 15-85 20-80
+  Hill 2-3 50-70 15-45 20-80
+  Hill 2-3 50-70 65-85 20-80
+  Hill 4-6 20-25 15-85 20-80
+  Multiply 0.5 land 0 0
   Smooth 2 0 0 0
-  Multiply 0.35 land 0 0
-  Range 2-3 60-75 25-75 25-75
-  Smooth 2 0 0 0
+  Range 3-4 20-50 15-35 20-45
+  Range 2-4 20-50 65-85 45-80
+  Strait 3-7 vertical 0 0
+  Trough 6-8 20-50 15-85 45-65
+  Pit 5-6 20-30 10-90 10-90
+  Mask 2 0 0 0
+  Smooth 3 0 0 0`;
+
+const fractiousWorld = `Hill 12-15 50-80 5-95 5-95
+  Mask -1.5 0 0 0
+  Mask 3 0 0 0
+  Add -20 30-100 0 0
+  Range 6-8 40-50 5-95 10-90
   Mask 2 0 0 0
   Smooth 3 0 0 0`;
 
@@ -229,6 +241,7 @@ export const heightmapTemplates: Record<string, HeightmapTemplate> = {
   oldWorld: { id: 12, name: t("Old World"), template: oldWorld, probability: 8 },
   fractious: { id: 13, name: t("Fractious"), template: fractious, probability: 3 },
   globeWorld: { id: 14, name: t("Globe World"), template: globeWorld, probability: 5 },
+  fractiousWorld: { id: 20, name: t("Fractious World"), template: fractiousWorld, probability: 5 },
   lunarWorld: { id: 15, name: t("Lunar World"), template: lunarWorld, probability: 0 },
   martianWorld: { id: 16, name: t("Martian World"), template: martianWorld, probability: 0 },
   icyMoon: { id: 17, name: t("Icy Moon"), template: icyMoon, probability: 0 },

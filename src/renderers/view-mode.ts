@@ -13,7 +13,11 @@ let livingWorldEnabled = false;
 
 export const getViewMode = (): ViewMode => viewMode;
 export function setViewMode(mode: ViewMode): void {
+  if (viewMode === mode) return;
   viewMode = mode;
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent("viewmode:change", { detail: mode }));
+  }
 }
 
 export const is3dView = (): boolean => viewMode !== "standard";

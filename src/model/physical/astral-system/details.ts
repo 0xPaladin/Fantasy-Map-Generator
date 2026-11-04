@@ -1,9 +1,9 @@
 // The generated system readout: the astro port mapped to dialog rows.
 
-import { starClassFor } from "@/model/physical/astral-naming";
+import { isCoreOrCapital, starClassFor } from "@/model/physical/astral-naming";
 import type { Burg } from "@/model/political/burgs-generator";
 import { starTypeData } from "./astrophysics";
-import { generateSystem } from "./system";
+import { type GenerateSystemOptions, generateSystem } from "./system";
 
 export interface StarRow {
   role: string;
@@ -15,6 +15,23 @@ export interface StarRow {
   separationAU: number | null;
   periodYears: number | null;
   massRatio: number | null;
+}
+
+export interface MoonRow {
+  name: string;
+  type: string;
+  orbitAU: number;
+  radiusEarth: number;
+  gravity: string;
+  temperature: string;
+  temperatureC: string;
+  atmosphere: string;
+  water: number;
+  habitability: string;
+  hi: number;
+  color: string;
+  periodDays: number;
+  bodyId: string;
 }
 
 export interface PlanetRow {
@@ -32,6 +49,8 @@ export interface PlanetRow {
   moons: string[];
   color: string;
   periodDays: number;
+  bodyId?: string;
+  moonRows?: MoonRow[];
 }
 
 export interface SystemDetails {
@@ -46,7 +65,8 @@ export interface SystemDetails {
 export interface SystemDetailsInput {
   seed: string;
   systemName: string;
-  spectral: string;
+  spectral?: string;
+  forceHabitable?: boolean;
 }
 
 const ROMAN_TABLE: [number, string][] = [
@@ -82,9 +102,11 @@ function toLetter(index: number): string {
 }
 
 /** Generate and map one system, a pure function of its inputs. */
-export function generateSystemDetails({ seed, systemName, spectral }: SystemDetailsInput): SystemDetails {
-  const primaryType = starTypeData[spectral] ? spectral : "G";
-  const system = generateSystem(seed, { primaryType });
+export function generateSystemDetails({ seed, systemName, spectral, forceHabitable }: SystemDetailsInput): SystemDetails {
+  const options: GenerateSystemOptions = {};
+  if (forceHabitable) options.forceHabitable = true;
+  if (spectral) options.primaryType = starTypeData[spectral] ? spectral : "G";
+  const system = generateSystem(seed, options);
   const { star } = system;
   const name = systemName.trim() || "System";
 
@@ -115,6 +137,32 @@ export function generateSystemDetails({ seed, systemName, spectral }: SystemDeta
 
   const planets: PlanetRow[] = system.planets.map((planet, index) => {
     const planetName = `${name} ${toRoman(index + 1)}`;
+    const moonRows: MoonRow[] = planet.moons
+      .map((moon, moonIndex) => ({ moon, moonIndex }))
+      .filter(({ moon }) => moon.HI === 1)
+      .map(({ moon, moonIndex }) => {
+        const moonName = `${planetName} ${toLetter(moonIndex)}`;
+        const massSolar = (planet.density / 5.51) * (planet.radius / 6.371) ** 3 / 332946;
+        const orbitAU = Math.max((moon.orbit * planet.radius) / 149598, 1e-8);
+        const periodDays = +Math.max(365.25 * Math.sqrt(orbitAU ** 3 / Math.max(massSolar, 1e-12)), 0.01).toFixed(1);
+        return {
+          name: moonName,
+          type: moon.type,
+          orbitAU: planet.orbit,
+          radiusEarth: +(moon.radius / 6371).toFixed(2),
+          gravity: moon.g,
+          temperature: moon.temp,
+          temperatureC: moon.tempC,
+          atmosphere: moon.atmosphere,
+          water: moon.hydrographics,
+          habitability: moon.description,
+          hi: moon.HI,
+          color: moon.color,
+          periodDays,
+          bodyId: `planet-${index}-moon-${moonIndex}`
+        };
+      });
+
     return {
       name: planetName,
       type: planet.subtype ?? planet.type,
@@ -129,7 +177,9 @@ export function generateSystemDetails({ seed, systemName, spectral }: SystemDeta
       hi: planet.HI,
       moons: planet.moons.map((_, moonIndex) => `${planetName} ${toLetter(moonIndex)}`),
       color: Array.isArray(planet.color) ? planet.color[0] : planet.color,
-      periodDays: planet.periodDays ?? 0
+      periodDays: planet.periodDays ?? 0,
+      bodyId: `planet-${index}`,
+      moonRows: moonRows.length ? moonRows : undefined
     };
   });
 
@@ -144,11 +194,23 @@ export function generateSystemDetails({ seed, systemName, spectral }: SystemDeta
 }
 
 /** The readout for one burg, seeded by the map and the burg id. */
-export function systemDetailsFor(burg: Pick<Burg, "i" | "name" | "population">): SystemDetails {
+export function systemDetailsFor(
+  burg: Pick<Burg, "i" | "name" | "population"> & Partial<Pick<Burg, "capital" | "state">>
+): SystemDetails {
+  const seed = `${options.map.seed}/astral/system/${burg.i}`;
+  const systemName = burg.name ?? "";
+  if (isCoreOrCapital(burg)) {
+    return generateSystemDetails({
+      seed,
+      systemName,
+      forceHabitable: true
+    });
+  }
   const { class: spectral } = starClassFor(burg);
   return generateSystemDetails({
-    seed: `${options.map.seed}/astral/system/${burg.i}`,
-    systemName: burg.name ?? "",
-    spectral
+    seed,
+    systemName,
+    spectral,
+    forceHabitable: false
   });
 }

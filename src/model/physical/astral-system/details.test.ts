@@ -119,19 +119,68 @@ describe("generated system details", () => {
 });
 
 describe("the burg wrapper", () => {
-  it("seeds from the map and the burg id, with the burg's rolled class", () => {
+  it("generates core worlds with forceHabitable: true and matches starClassFor", () => {
     const burg = { i: 7, name: "Kessel", population: 500 };
 
-    expect(systemDetailsFor(burg)).toEqual(
+    const details = systemDetailsFor(burg);
+    expect(details).toEqual(
       generateSystemDetails({
         seed: "map-seed/astral/system/7",
         systemName: "Kessel",
-        spectral: starClassFor(burg).class
+        forceHabitable: true
+      })
+    );
+    expect(details.habitableCandidate).toBe(true);
+    expect(details.stars[0].spectral).toBe(starClassFor(burg).class);
+  });
+
+  it("generates capitals with forceHabitable: true even at low population", () => {
+    const burg = { i: 7, name: "Capital", population: 5, capital: 1 };
+
+    const details = systemDetailsFor(burg);
+    expect(details).toEqual(
+      generateSystemDetails({
+        seed: "map-seed/astral/system/7",
+        systemName: "Capital",
+        forceHabitable: true
+      })
+    );
+    expect(details.habitableCandidate).toBe(true);
+    expect(details.stars[0].spectral).toBe(starClassFor(burg).class);
+  });
+
+  it("generates fringe worlds with the rolled star class and forceHabitable: false", () => {
+    const burg = { i: 7, name: "Fringe", population: 5 };
+
+    const details = systemDetailsFor(burg);
+    expect(details).toEqual(
+      generateSystemDetails({
+        seed: "map-seed/astral/system/7",
+        systemName: "Fringe",
+        spectral: starClassFor(burg).class,
+        forceHabitable: false
       })
     );
   });
 
   it("falls back to a plain system name", () => {
     expect(systemDetailsFor({ i: 8, population: 10 }).planets[0]?.name).toMatch(/^System /);
+  });
+
+  it("exposes an earthlike world as a planet row or indented moonRow", () => {
+    for (let i = 1; i <= 30; i += 1) {
+      const details = generateSystemDetails({
+        seed: `map-seed/astral/system/${i}`,
+        systemName: `World-${i}`,
+        forceHabitable: true
+      });
+
+      const hasEarthlikePlanet = details.planets.some(p => p.hi === 1 && p.habitability === "earthlike");
+      const hasEarthlikeMoon = details.planets.some(p =>
+        (p.moonRows ?? []).some(m => m.hi === 1 && m.habitability === "earthlike" && m.bodyId.startsWith("planet-"))
+      );
+
+      expect(hasEarthlikePlanet || hasEarthlikeMoon).toBe(true);
+    }
   });
 });

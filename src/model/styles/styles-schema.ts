@@ -404,16 +404,6 @@ const starGroup = z.strictObject({
   })
 });
 
-const remnantGroup = z.strictObject({
-  attrs: z.strictObject({
-    opacity,
-    ...fillGroup,
-    stroke: strokeGroup.stroke,
-    "stroke-opacity": strokeGroup["stroke-opacity"],
-    filter
-  })
-});
-
 const padding = (side: string) =>
   number({
     group: t("Padding"),
@@ -989,17 +979,6 @@ export const stylesSchema = z.strictObject({
       band4: variant(densityBand, { label: "Band 4" }),
       band5: variant(densityBand, { label: "Band 5" }),
       band6: variant(densityBand, { label: "Band 6" })
-    })
-  }),
-  remnants: z.strictObject({
-    attrs: z.strictObject({ opacity, filter }),
-    options: z.strictObject({
-      glow: flag({ label: "Glow", tip: "Draw a soft halo around the remnants" })
-    }),
-    groups: z.strictObject({
-      blackHole: variant(remnantGroup, { label: "Black hole" }),
-      pulsar: variant(remnantGroup, { label: "Pulsar" }),
-      neutron: variant(remnantGroup, { label: "Neutron star" })
     })
   }),
   starDensity: z.strictObject({
