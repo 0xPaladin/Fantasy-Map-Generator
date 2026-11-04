@@ -184,9 +184,12 @@ test("viewport rendering leaves a disabled layer empty", async () => {
 });
 
 test("astral goods mode skips cell production polygons and anchors icons to burgs", async () => {
-  pack.cells.burg = [1, 0];
-  pack.cells.good = [1, 0];
-  pack.burgs = [{}, { i: 1, x: 55, y: 65, production: {} }];
+  pack.cells.burg = new Uint16Array([1, 0]);
+  pack.cells.good = new Uint16Array([1, 0]);
+  pack.burgs = [
+    { i: 0, cell: 0, x: 0, y: 0, production: [] },
+    { i: 1, cell: 1, x: 55, y: 65, production: [] },
+  ];
   Object.assign(Goods, { isAstralCatalogue: () => true });
 
   await drawGoods();
