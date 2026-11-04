@@ -3349,17 +3349,15 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.recentNews.some(item => item.kind === "colonize" && item.cell === 15)).toBe(true);
     });
 
-    it("captures a city once its HP is gone", () => {
+    it("captures a city once its garrison is beaten", () => {
       pack.burgs[2].capital = 0;
-      Living.forceWar(1, 2);
       pack.states[1].military = [makeRegiment(0, 7)];
       const living = Living.init();
-      const b2 = living.burgs[2];
-      b2.maxHp = 200;
-      b2.hp = 1; // one storm finishes the siege
+      Living.forceWar(1, 2);
 
       expect(Living.conquerBurg(1, 2)).toBe(true);
 
+      const b2 = living.burgs[2];
       expect(pack.burgs[2].state).toBe(1);
       expect(b2.hp).toBe(100);
       expect(b2.citizens).toBe(1);
@@ -3368,16 +3366,63 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(b2.unrest).toBeGreaterThanOrEqual(7);
     });
 
-    it("lets a city strike an enemy army within range two", () => {
+    it("builds the siege garrison from the roster and scales it with walls", () => {
+      Living.init();
+      pack.burgs[2].capital = 1;
+      const types = Military.getUnitTypes();
+      const noWalls = Living.cityGarrison(2).map(block => block.type);
+      pack.burgs[2].walls = 3;
+      const withWalls = Living.cityGarrison(2).map(block => block.type);
+
+      expect(noWalls.length).toBeGreaterThan(0);
+      expect(withWalls.length).toBeGreaterThan(noWalls.length);
+      for (const id of withWalls) expect(types[id]).toBeDefined();
+      // Every garrison block enters the fight at full capability.
+      expect(Living.cityGarrison(2).every(block => block.hp === 1)).toBe(true);
+    });
+
+    it("repels a weak assault and retreats the survivors", () => {
+      pack.burgs[2].capital = 0;
+      pack.burgs[2].walls = 3;
+      const weak = makeRegiment(0, 7);
+      weak.units = [{ type: weak.units![0]!.type, hp: 0.05, exp: 0 }];
+      pack.states[1].military = [weak];
       const living = Living.init();
       Living.forceWar(1, 2);
-      pack.states[1].military = [makeRegiment(0, 7)];
+
+      expect(Living.conquerBurg(1, 2)).toBe(false);
+
+      expect(pack.burgs[2].state).toBe(2);
+      const army = living.armies?.[unitKey(1, 0)];
+      if (army) expect(pack.states[1].military![0]!.cell).not.toBe(pack.burgs[2].cell);
+    });
+
+    it("lets a city strike one block of an enemy army within range two", () => {
+      const living = Living.init();
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 9)];
 
       Living.tick(1);
 
-      expect(Object.keys(living.armies ?? {}).length).toBeGreaterThan(0);
-      const total = (pack.states[1].military?.[0]?.units ?? []).reduce((sum, block) => sum + block.hp, 0);
-      expect(total).toBeLessThan(13);
+      const blocks = pack.states[1].military?.[0]?.units ?? [];
+      const damaged = blocks.filter(block => block.hp < 1);
+      expect(damaged).toHaveLength(1);
+      expect(1 - damaged[0]!.hp).toBeCloseTo(0.1, 5);
+      expect((pack.states[1].military?.[0]?.units ?? []).every(block => block.hp > 0)).toBe(true);
+      expect(living.armies?.[unitKey(1, 0)]).toBeDefined();
+    });
+
+    it("prunes a block destroyed by a city strike", () => {
+      const living = Living.init();
+      Living.forceWar(1, 2);
+      const doomed = makeRegiment(0, 9);
+      doomed.units = [{ type: doomed.units![0]!.type, hp: 0.05, exp: 0 }];
+      pack.states[1].military = [doomed];
+
+      Living.tick(1);
+
+      expect(pack.states[1].military ?? []).toHaveLength(0);
+      expect(living.armies?.[unitKey(1, 0)]).toBeUndefined();
     });
 
     it("defers combat upgrades until the block phase", () => {

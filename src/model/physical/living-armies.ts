@@ -306,7 +306,18 @@ export function fromBattleUnitsMen(units: ArmyUnit[], types: Record<string, Unit
     .filter(u => u.hp > 0);
 }
 
-/** Shallow type-table copy with `men = BATTLE_STRENGTH`, for block-vs-block sessions. */
+const scaledTypeCache = new WeakMap<Record<string, UnitType>, Record<string, UnitType>>();
+
+/**
+ * Shallow type-table copy with `men = BATTLE_STRENGTH`, for block-vs-block
+ * sessions. Memoised by table identity: `Military.getUnitTypes()` returns the
+ * content pack's stable object, and rebuilding 347 entries per odds query is
+ * what made siege AI quadratic in earlier drafts.
+ */
 export function toBattleTypes(types: Record<string, UnitType>): Record<string, UnitType> {
-  return Object.fromEntries(Object.entries(types).map(([id, t]) => [id, { ...t, men: BATTLE_STRENGTH }]));
+  const cached = scaledTypeCache.get(types);
+  if (cached) return cached;
+  const scaled = Object.fromEntries(Object.entries(types).map(([id, t]) => [id, { ...t, men: BATTLE_STRENGTH }]));
+  scaledTypeCache.set(types, scaled);
+  return scaled;
 }

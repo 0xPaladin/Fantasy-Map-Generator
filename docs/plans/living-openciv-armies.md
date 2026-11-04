@@ -963,16 +963,23 @@ Each phase is independently shippable and testable. No phase may leave the map i
 3. **The HUD is still a list, not the battle card.** Capability, blocks, stance and adjacent odds are in; the compact report card and the composition drill-down are Phase F.
 4. **City battles are still Phase B's one-shot siege** (`openCivAssault`), using `armyStrengthAt`; Phase D replaces them with a real garrison battle.
 
-### Phase D — Sieges & city strikes
+### Phase D — Sieges & city strikes — **DONE**
 
-- [ ] `bombardCity` → siege battle with `garrisonUnits` (hp blocks built from the roster, `hp: 1`).
-- [ ] Capture/retreat paths.
-- [ ] `stepCityStrikes` removes **one block step** of capability: deterministic target (highest `hp`, tie by `type`), `hp -= CITY_STRIKE_HP` (0.1).
-- [ ] `cityDefenseStrength` = garrison battle power via the bridge; keep `8 + 0.4×citizens + defense` as a floor.
-- [ ] Tests: garrison composition, walls tiers, capture, retreat, strike damage, `hp` pruning at 0.
+- [x] `openCivAssault` is a real siege: the burg's roster garrison becomes blocks (`fromBattleUnitsMen`), fights through `battle.ts` with `assault: true`, then the attacker is written back or retreats.
+- [x] Capture on an attacker win (existing `captureCity`); a repulsed army retreats to the nearest friendly/unowned adjacent cell (`retreatArmy`) and the city keeps its HP.
+- [x] `stepCityStrikes` picks the weakest hostile army in range 2, then one block (highest `hp`, tie by `type`), removes `CITY_STRIKE_HP`, prunes it at 0 and mirrors totals.
+- [x] `cityDefenseStrength` is the garrison's block power (plus a stationed army), with `8 + 0.4×citizens + defense` as the floor; `assaultOdds` now runs the same `estimateOdds` as the real siege.
+- [x] Public `cityGarrison(burgId)` for the HUD and tests.
+- [x] Tests: roster garrison composition and wall scaling, capture, repulse/retreat, one-block strike damage, 0-hp pruning.
 
-**Exit:** sieges are stack battles; cities can fall to a real army.
+**Exit:** met — cities fall to armies rather than HP grind, and city strikes are deterministic block damage. Full suite green.
 
+**Notes / consequences:**
+
+1. **The defending field army is not folded into the siege battle.** Decision 5 defers reinforcements; a stationed army fights in `stepTactical` and contributes to `cityDefenseStrength`, but the siege itself is attacker vs garrison. Folding both into one session needs index-partitioned write-back and is left to the reinforcement phase.
+2. **City HP is a display/pace stat now.** Capture is decided by the battle; `bSim.hp` still regenerates, gates city strikes and is set to 0 on capture (then reset by `captureCity`).
+3. **Ranged bombardment stays a chip action.** `bombardCity` can still lower city HP, but it cannot capture: the garrison has to be beaten. Persistent blockade-style bombardment would need garrison HP to be stored, which it deliberately is not.
+4. **`toBattleTypes` is memoised by table identity.** Rebuilding 347 scaled types per odds query made the siege AI quadratic; the `WeakMap` fixed a 10× test slowdown.
 ### Phase E — Economy on `hp` & Civ combat retirement
 
 - [ ] Upkeep `Σ upkeep × hp` (§10.2) plus `CIVILIAN_UPKEEP`; `settleDebt` disbands one block.

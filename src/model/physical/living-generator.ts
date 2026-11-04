@@ -6085,14 +6085,23 @@ class LivingModel {
     bSim.hp = maxHp;
   }
 
-  /** City defense strength for sieges and ranged strikes. */
+  /** City defense for display and odds: the roster garrison plus a stationed army, never below the civic floor. */
   private cityDefenseStrength(bSim: BurgSimState, burg: Burg): number {
     let defense = 0;
     for (const id of bSim.civBuildings ?? []) defense += CIV_BUILDING_BY_ID[id]?.stats.defense ?? 0;
-    const garrison = this.garrisonStrength(burg);
-    let strength = 8 + 0.4 * (bSim.citizens ?? 1) + defense + 0.2 * garrison;
+    const floor = 8 + 0.4 * (bSim.citizens ?? 1) + defense;
+    const garrison = this.cityGarrisonBlocks(burg).reduce(
+      (sum, block) => sum + blockPower(block, Military.getUnitTypes()),
+      0
+    );
+    let strength = Math.max(floor, garrison + this.garrisonStrength(burg));
     if (getCellTerrainInfo(burg.cell).isHill) strength *= 1.25;
     return Math.max(1, strength);
+  }
+
+  /** The burg's roster garrison as blocks at full capability (Phase D siege defender). */
+  private cityGarrisonBlocks(burg: Burg): ArmyBlock[] {
+    return fromBattleUnitsMen(this.burgDefenders(burg), Military.getUnitTypes());
   }
 
   /** Strongest friendly army stationed on the city cell (lead-block power). */
@@ -6142,11 +6151,20 @@ class LivingModel {
       }
       if (!target) continue;
 
-      const lead = armyLead(target.regiment);
-      if (!lead) continue;
-      lead.hp = Math.max(0, lead.hp - CITY_STRIKE_HP);
+      const types = Military.getUnitTypes();
+      let block: ArmyBlock | undefined;
+      for (const candidate of target.regiment.units ?? []) {
+        if (candidate.hp <= 0) continue;
+        if (!block || candidate.hp > block.hp || (candidate.hp === block.hp && candidate.type < block.type)) {
+          block = candidate;
+        }
+      }
+      if (!block) continue;
+      block.hp = Math.max(0, block.hp - CITY_STRIKE_HP);
       bSim.hasStruckThisTurn = true;
 
+      target.regiment.units = (target.regiment.units ?? []).filter(entry => entry.hp > 0);
+      syncRegimentTotals(target.regiment, types);
       if (armyIsEmpty(target.regiment)) this.removeRegiment(target.state, target.regiment, living);
     }
   }
@@ -6392,6 +6410,7 @@ class LivingModel {
   }
 
   /** OpenCiv city assault: march to the walls, then a 1UPT siege round. */
+  /** Storm a city: the garrison fights as blocks, the field army is the attacker (living-openciv-armies.md §9). */
   private openCivAssault(state: State, burg: Burg): boolean {
     const living = this.getState();
     const bSim = living.burgs[burg.i];
@@ -6410,36 +6429,123 @@ class LivingModel {
       if (!(pack.cells.c?.[burg.cell] ?? []).includes(army.cell)) return false;
     }
 
-    const lead = armyLead(army);
-    if (!lead) return false;
-    const ranged = armyIsRangedBlocks(army, Military.getUnitTypes());
-    const defense = this.cityDefenseStrength(bSim, burg);
-    const attack = this.armyStrengthAt(army, state.i, "attack", army.cell, burg.cell);
+    const { config } = currentContent();
+    const types = Military.getUnitTypes();
+    const maxSlots = config.military.maxUnitsPerArmy;
+    const attackerBlocks = (army.units ?? []).filter(block => block.hp > 0);
+    if (attackerBlocks.length === 0) return false;
+
+    const garrison = this.cityGarrisonBlocks(burg);
+    if (garrison.length === 0) {
+      // Undefended: walk in.
+      this.captureCity(state, burg, living);
+      if (army.cell !== burg.cell) {
+        this.moveRegimentTo(army, burg.cell, state.i, key, this.armyOccupancy(living));
+      }
+      return true;
+    }
+
+    const before = armyStrength(army);
+    const session = initBattleSession({
+      config,
+      unitTypes: toBattleTypes(types),
+      attacker: { factionId: state.i, armyId: `fm-${state.i}-${army.i}`, units: toBattleUnits(attackerBlocks) },
+      defender: { factionId: burg.state ?? 0, armyId: null, units: toBattleUnits(garrison) },
+      cell: burg.cell,
+      regionId: pack.cells.province?.[burg.cell] ?? 0,
+      assault: true,
+      modifiers: this.siegeModifiers(state, burg)
+    });
+
     const rng = this.rng("city:siege", state.i * 1000 + burg.i, living.tick);
-
-    const damage = combatDamage(attack, defense, bSim.hp ?? CITY_BASE_HP, rng.next());
-    const floor = ranged ? CITY_MIN_RANGED_HP : 0;
-    bSim.hp = Math.max(floor, (bSim.hp ?? CITY_BASE_HP) - damage);
-
-    if (!ranged) {
-      lead.hp = Math.max(0, lead.hp - combatDamage(defense, attack, lead.hp * 100, rng.next()) / 100);
+    while (session.status === "active" && session.round < config.battle.maxRounds) {
+      stepBattleRound(session, rng.next, {
+        attacker: this.battleOrder(session, "attacker", "march"),
+        defender: this.battleOrder(session, "defender", "fortify")
+      });
     }
+    const outcome = finalizeBattle(session, rng.next);
+
+    army.units = fromBattleUnits(outcome.attacker.units);
+    normalizeArmy(army, maxSlots, types);
+    syncRegimentTotals(army, types);
     armyState.hasFought = true;
-    this.awardBlockExp(lead, ranged ? 2 : 5);
-    syncRegimentTotals(army, Military.getUnitTypes());
+    const after = armyStrength(army);
+    armyState.lastBattle = {
+      tick: living.tick,
+      cell: burg.cell,
+      role: "attacker",
+      winner: outcome.winner,
+      rounds: session.round,
+      lossesHp: Math.max(0, before - after),
+      blocksLost: Math.max(0, attackerBlocks.length - (army.units?.length ?? 0)),
+      survivorsHp: before > 0 ? after / before : 0
+    };
 
-    if (armyIsEmpty(army)) {
-      this.removeRegiment(state, army, living);
-      return false;
+    if (outcome.winner === "attacker") {
+      bSim.hp = 0;
+      this.captureCity(state, burg, living);
+      if (armyIsEmpty(army)) {
+        this.removeRegiment(state, army, living);
+        return true;
+      }
+      for (const block of army.units ?? []) this.awardBlockExp(block, 5);
+      if (army.cell !== burg.cell) {
+        const occupancy = this.armyOccupancy(living);
+        this.moveRegimentTo(army, burg.cell, state.i, key, occupancy);
+      }
+      return true;
     }
-    if ((bSim.hp ?? 0) > 0) return false;
 
-    this.captureCity(state, burg, living);
-    if (army.cell !== burg.cell) {
-      const occupancy = this.armyOccupancy(living);
-      this.moveRegimentTo(army, burg.cell, state.i, this.unitKey(state.i, army.i), occupancy);
-    }
-    return true;
+    // Repulsed: survivors fall back one cell; the city keeps its HP.
+    if (armyIsEmpty(army)) this.removeRegiment(state, army, living);
+    else this.retreatArmy(state, army, burg.cell, living);
+    bSim.hp = Math.max(1, bSim.hp ?? 1);
+    return false;
+  }
+
+  /** Public view of a burg's siege garrison (HUD / tests). */
+  cityGarrison(burgId: number): ArmyBlock[] {
+    const burg = pack.burgs[burgId];
+    return burg?.i && !burg.removed ? this.cityGarrisonBlocks(burg) : [];
+  }
+
+  /** Modifiers for a city assault: walls, bracing garrison, terrain and lord multipliers. */
+  private siegeModifiers(state: State, burg: Burg): BattleModifiers {
+    const living = this.getState();
+    const defenderId = burg.state ?? 0;
+    const relicMult = (stateId: number) =>
+      this.stateRelicCount(stateId, "weapon") > 0 ? 1 + WEAPON_RELIC_COMBAT_PERCENT / 100 : 1;
+    const lord = (stateId: number) => happinessCombatMultiplier(living.states[stateId]?.happiness) * relicMult(stateId);
+    const attackerLordMult = lord(state.i);
+    const defenderLordMult = lord(defenderId);
+    return {
+      walls: Number(burg.walls ?? 0),
+      defenderEncamped: true,
+      defenderAmbushed: false,
+      attackerCrossedRiver: false,
+      defenderTerrain: terrainDefenseMultiplier(burg.cell) > 1,
+      labels: [],
+      ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
+      ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
+    };
+  }
+
+  /** Move a repulsed army to the nearest friendly or unowned adjacent cell. */
+  private retreatArmy(state: State, regiment: Regiment, fromCell: number, living: LivingWorldState): void {
+    const key = this.unitKey(state.i, regiment.i);
+    const occupancy = this.armyOccupancy(living);
+    const candidates = (pack.cells.c?.[fromCell] ?? [])
+      .filter(cell => {
+        const info = getCellTerrainInfo(cell);
+        if (regiment.n === 1 ? !info.isWater : info.isWater || info.isMountain) return false;
+        const owner = pack.cells.state?.[cell] ?? 0;
+        if (owner && owner !== state.i) return false;
+        return !hasStackingConflict(occupancy.get(cell) ?? [], state.i, false, key);
+      })
+      .sort((a, b) => a - b);
+    const target = candidates[0];
+    if (target !== undefined) this.moveRegimentTo(regiment, target, state.i, key, occupancy);
   }
 
   /** §5.3 city capture: half the citizens, reset HP, clear queue, destroy national wonders. */
@@ -8889,13 +8995,19 @@ class LivingModel {
 
   /** Win chance for the AI's war picking; 100 when the settlement is undefended. */
   private assaultOdds(stateId: number, burg: Burg, army: Regiment): number {
+    const living = this.getState();
+    if (!living.armies?.[this.unitKey(stateId, army.i)]) return 50;
     if (this.hasCityTerrain()) {
-      const living = this.getState();
-      const bSim = living.burgs[burg.i];
-      if (!bSim || !living.armies?.[this.unitKey(stateId, army.i)]) return 50;
-      const attack = this.armyStrengthAt(army, stateId, "attack", army.cell, burg.cell);
-      const defense = this.cityDefenseStrength(bSim, burg);
-      return minmax(Math.round(50 + (attack - defense) * 5), 5, 95);
+      const garrison = this.cityGarrisonBlocks(burg);
+      if (garrison.length === 0) return 100;
+      const state = pack.states[stateId]!;
+      return estimateOdds(
+        currentContent().config,
+        { factionId: stateId, armyId: null, units: toBattleUnits(army.units ?? []) },
+        { factionId: burg.state ?? 0, armyId: null, units: toBattleUnits(garrison) },
+        this.siegeModifiers(state, burg),
+        toBattleTypes(Military.getUnitTypes())
+      ).attackerWinPct;
     }
 
     const defenders = this.burgDefenders(burg);
