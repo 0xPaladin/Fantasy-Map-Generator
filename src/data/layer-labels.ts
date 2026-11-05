@@ -41,6 +41,7 @@ export const LAYER_TOGGLES = new Map<LayerId, LayerButton>([
   ["military", { label: t("Military"), shortcut: "KeyM" }],
   ["markers", { label: t("Markers"), shortcut: "KeyK" }],
   ["trouble", { label: t("Trouble") }],
+  ["factions", { label: t("Factions") }],
   ["journeys", { label: t("Journeys") }],
   ["rulers", { label: t("Rulers"), shortcut: "Equal", hint: `= (${t("equal sign")})` }],
   ["scaleBar", { label: t("Scale Bar"), shortcut: "Slash", hint: `/ (${t("slash sign")})` }],

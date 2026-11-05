@@ -1,4 +1,4 @@
-﻿import { assignStateRoster } from "@/conquest/engine/common/content";
+import { assignStateRoster } from "@/conquest/engine/common/content";
 import { Controllers } from "@/controllers";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
@@ -375,6 +375,10 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
     pack.relief = data[49] ? JSON.parse(data[49]) : [];
     pack.journeys = data[52] ? JSON.parse(data[52]) : [];
     pack.legends = data[53] ? JSON.parse(data[53]) : [];
+    if (data[54] && !data[54].startsWith("[")) {
+      data.splice(54, 0, JSON.stringify([{ i: 0 }]));
+    }
+    pack.factions = data[54] ? JSON.parse(data[54]) : ([{ i: 0 }] as unknown as typeof pack.factions);
     pack.history = parseHistory(
       data[HISTORY_RECORD],
       data.slice(FIRST_SNAPSHOT_RECORD),

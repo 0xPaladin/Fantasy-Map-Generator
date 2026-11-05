@@ -30,6 +30,7 @@ export const Controllers = createRegistry(
       import("@/controllers/economy/goods/goods-distribution-editor").then(m => m.DistributionEditor),
     ElevationProfile: () => import("@/controllers/physical/elevation-profile").then(m => m.ElevationProfile),
     EmblemsEditor: () => import("@/controllers/political/emblems/emblems-editor").then(m => m.EmblemsEditor),
+    FactionsEditor: () => import("@/controllers/political/factions-editor").then(m => m.FactionsEditor),
     GoodEditor: () => import("@/controllers/economy/goods/good-editor").then(m => m.GoodEditor),
     GoodsEditor: () => import("@/controllers/economy/goods/goods-editor").then(m => m.GoodsEditor),
     FeaturesOverview: () => import("@/controllers/physical/features-overview").then(m => m.FeaturesOverview),

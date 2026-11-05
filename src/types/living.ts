@@ -435,7 +435,8 @@ export type LivingNewsKind =
   | "trouble"
   | "lair"
   | "tech"
-  | "religion";
+  | "religion"
+  | "faction";
 
 export interface LivingNewsItem {
   tick: number;
@@ -467,6 +468,8 @@ export interface LivingWorldState {
   eschaton?: number;
   /** lazily initialized guild wallet, mission list and on-map popups */
   guild?: GuildState;
+  /** Active player-controlled faction ID in pack.factions */
+  playerFactionId?: number;
   /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
   worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
   /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5.

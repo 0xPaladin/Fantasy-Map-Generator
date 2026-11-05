@@ -1,16 +1,17 @@
 import { type Selection, select } from "d3";
 import { Controllers } from "@/controllers";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { Goods } from "@/model/economy/goods-generator";
 import type { Market } from "@/model/economy/markets-generator";
 import { Markets } from "@/model/economy/markets-generator";
-import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
-import { Military } from "@/model/political/military-generator";
 import { Production } from "@/model/economy/production-generator";
 import { Icons } from "@/model/icons";
+import { majorityReligion } from "@/model/physical/living-generator";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Burgs } from "@/model/political/burgs-generator";
-import { majorityReligion } from "@/model/physical/living-generator";
+import { Factions } from "@/model/political/factions-generator";
+import { Military } from "@/model/political/military-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
 import { convertTemperature, getHeight, getTemperatureLikeness } from "@/model/units";
@@ -282,7 +283,10 @@ function renderDialog(): void {
     </div>`;
   ensureEl("dialogs").insertAdjacentHTML("beforeend", editorHtml);
 
-  ensureEl("burgLivingOpen").addEventListener("click", () => void Controllers.LivingHud.inspect("burg", getSelectedId()));
+  ensureEl("burgLivingOpen").addEventListener(
+    "click",
+    () => void Controllers.LivingHud.inspect("burg", getSelectedId())
+  );
   ensureEl("burgName").addEventListener("input", changeName);
   ensureEl("burgNameSpeak").addEventListener("click", () => speak(ensureEl<HTMLInputElement>("burgName").value));
   ensureEl("burgNameReRandom").addEventListener("click", generateNameRandom);
@@ -403,9 +407,7 @@ function updateBurgLiving(burgId: number): void {
       )} · 🔬 ${Math.round(yields.science)} · 🎭 ${Math.round(yields.culture)} · ✨ ${Math.round(yields.faith)}`
     : "";
   const hpLine =
-    bSim.hp !== undefined && bSim.maxHp !== undefined
-      ? ` · HP ${Math.round(bSim.hp)}/${Math.round(bSim.maxHp)}`
-      : "";
+    bSim.hp !== undefined && bSim.maxHp !== undefined ? ` · HP ${Math.round(bSim.hp)}/${Math.round(bSim.maxHp)}` : "";
   const citizensLine = `${bSim.citizens ?? bSim.baseTier} citizens${yieldLine ? ` · ${yieldLine}` : ""}${hpLine}`;
 
   const religionId = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
@@ -425,7 +427,17 @@ function updateBurgLiving(burgId: number): void {
       )}</div>`
     : "";
 
-  ensureEl("burgLiving").innerHTML = `<div>${escapeHtml(citizensLine)}</div>${religionLine}${queueLine}`;
+  const outposts = Factions.atBurg(selectedId);
+  const outpostsLine = outposts.length
+    ? `<div style="margin-top: 2px;">${t("Outposts")}: ${outposts
+        .map(f => {
+          const op = f.outposts.find(o => o.burgId === selectedId);
+          return `<span style="color: ${f.color || "#38bdf8"}; font-weight: 500;">${escapeHtml(f.name)} (T${op?.tier ?? 1})</span>`;
+        })
+        .join(", ")}</div>`
+    : "";
+
+  ensureEl("burgLiving").innerHTML = `<div>${escapeHtml(citizensLine)}</div>${religionLine}${queueLine}${outpostsLine}`;
 }
 
 function changeName(): void {
