@@ -179,3 +179,25 @@ export interface FactionArchetypeDef {
   desiredTechs: readonly string[];
   defaultValues: readonly string[];
 }
+
+export interface FactionNodeYieldBreakdown {
+  node: FactionHq | FactionOutpost;
+  isHq: boolean;
+  yields: YieldValues;
+  grossGold: number;
+  maintenance: number;
+  science: number;
+  citizens: number;
+  workedCells: number;
+}
+
+export interface FactionYieldBreakdown {
+  total: YieldValues;
+  totalCitizens: number;
+  totalWorkedCells: number;
+  upkeep: number;
+  maintenance: number;
+  nodes: FactionNodeYieldBreakdown[];
+  hq: FactionNodeYieldBreakdown | null;
+  outposts: FactionNodeYieldBreakdown[];
+}

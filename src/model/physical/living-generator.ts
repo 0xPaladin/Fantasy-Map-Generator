@@ -1,25 +1,5 @@
 // Living World seasonal simulation engine. See docs/plans/living-world.md
-import { currentContent } from "@/data/roster-store";
-import {
-  assignStateRoster,
-  type BuildingDef,
-  inferRosterForCulture,
-  type ResolvedRoster,
-  type UnitType
-} from "@/data/roster-content";
-import type { ArmyBlock, ArmyUnit } from "@/types/battle";
-import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/data/tiers";
-import {
-  type BattleModifiers,
-  type BattleOutcome,
-  type BattleSession,
-  type BattleTacticalOrder,
-  estimateOdds,
-  finalizeBattle,
-  initBattleSession,
-  stepBattleRound
-} from "@/model/battle/battle";
-import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
+
 import type { Alignment } from "@/data/culture-traits";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import type { GuildOperationKind } from "@/data/guild-operations";
@@ -40,6 +20,26 @@ import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/li
 import { growLair, isLairStateCapable } from "@/data/living-lairs";
 import { RELIC_LEASE_TRIBUTE } from "@/data/living-relics";
 import { getTroubleDef, isTroubleStatePromotable } from "@/data/living-troubles";
+import {
+  assignStateRoster,
+  type BuildingDef,
+  inferRosterForCulture,
+  type ResolvedRoster,
+  type UnitType
+} from "@/data/roster-content";
+import { currentContent } from "@/data/roster-store";
+import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/data/tiers";
+import {
+  type BattleModifiers,
+  type BattleOutcome,
+  type BattleSession,
+  type BattleTacticalOrder,
+  estimateOdds,
+  finalizeBattle,
+  initBattleSession,
+  stepBattleRound
+} from "@/model/battle/battle";
+import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
 import type { Good } from "@/model/economy/goods-generator";
 import { Routes } from "@/model/economy/routes-generator";
 import {
@@ -76,8 +76,14 @@ import { type State, States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { isAstralView } from "@/renderers/view-mode";
-import type { Faction, FactionHq, FactionOutpost } from "@/types/factions";
-import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
+import type { ArmyBlock, ArmyUnit } from "@/types/battle";
+import type {
+  Faction,
+  FactionHq,
+  FactionNodeYieldBreakdown,
+  FactionOutpost,
+  FactionYieldBreakdown
+} from "@/types/factions";
 import {
   type ActiveGuildMission,
   type ArmyBattleRecord,
@@ -3474,8 +3480,6 @@ class LivingModel {
       const freeTechs = def?.effects?.freeTechs ?? 0;
       if (freeTechs > 0) faction.freeTechs = (faction.freeTechs ?? 0) + freeTechs;
 
-
-
       const name = def?.name ?? item.id;
       const locName = node.burgId ? (pack.burgs[node.burgId]?.name ?? faction.name) : faction.name;
       this.pushNews(living, {
@@ -3929,25 +3933,82 @@ class LivingModel {
     return nodes;
   }
 
-  /** Empire-wide yields for a faction: sum of city-node yields plus science multipliers minus upkeep. */
-  private recomputeFactionYields(faction: Faction): YieldValues {
+  /** Detailed breakdown of yields for a faction and each of its nodes. */
+  getFactionYieldBreakdown(faction: Faction): FactionYieldBreakdown {
+    const nodes: FactionNodeYieldBreakdown[] = [];
     const totals = emptyYields();
-    let science = 0;
-    let gold = 0;
-    let maintenance = 0;
+    let totalGrossGold = 0;
+    let totalMaintenance = 0;
+    let totalScience = 0;
+    let totalCitizens = 0;
+    let totalWorkedCells = 0;
+    let hqBreakdown: FactionNodeYieldBreakdown | null = null;
+    const outpostsBreakdown: FactionNodeYieldBreakdown[] = [];
 
     for (const { node, isHq } of this.factionEmpireNodes(faction)) {
       const sim = ensureFactionNodeSim(node, isHq);
-      const yields = sim.cityYields ?? emptyYields();
-      totals.food += yields.food;
-      totals.production += yields.production;
-      totals.culture += yields.culture;
-      totals.faith += yields.faith;
-      gold += yields.gold;
-      science += this.citySciencePerTick(sim);
+      let cityYields = sim.cityYields;
+      if (
+        !cityYields ||
+        (cityYields.food === 0 &&
+          cityYields.production === 0 &&
+          cityYields.gold === 0 &&
+          cityYields.science === 0 &&
+          cityYields.culture === 0 &&
+          cityYields.faith === 0)
+      ) {
+        cityYields = this.refreshFactionNodeYields(faction, node, isHq);
+      }
+
+      let maintenance = 0;
       for (const id of sim.civBuildings ?? []) {
         maintenance += CIV_BUILDING_BY_ID[id]?.maintenance ?? 0;
       }
+
+      const grossGold = cityYields.gold;
+      const nodeScience = this.citySciencePerTick(sim);
+      const netGold = Math.round((grossGold - maintenance) * 100) / 100;
+      const roundedScience = Math.round(nodeScience * 100) / 100;
+      const citizens = sim.citizens ?? (isHq ? 2 : 1);
+      const workedCells = sim.workedCells?.length ?? (node.cell >= 0 ? 1 : 0);
+
+      const nodeYields: YieldValues = {
+        food: cityYields.food,
+        production: cityYields.production,
+        gold: netGold,
+        science: roundedScience,
+        culture: cityYields.culture,
+        faith: cityYields.faith,
+        happiness: 0
+      };
+
+      const breakdown: FactionNodeYieldBreakdown = {
+        node,
+        isHq,
+        yields: nodeYields,
+        grossGold,
+        maintenance,
+        science: roundedScience,
+        citizens,
+        workedCells
+      };
+
+      nodes.push(breakdown);
+      if (isHq) {
+        hqBreakdown = breakdown;
+      } else {
+        outpostsBreakdown.push(breakdown);
+      }
+
+      totals.food += cityYields.food;
+      totals.production += cityYields.production;
+      totals.culture += cityYields.culture;
+      totals.faith += cityYields.faith;
+      totalGrossGold += grossGold;
+      totalMaintenance += maintenance;
+      totalScience += nodeScience;
+      totalCitizens += citizens;
+      totalWorkedCells += workedCells;
     }
 
     const unitTypes = Military.getUnitTypes();
@@ -3964,10 +4025,39 @@ class LivingModel {
     }
     const upkeep = Math.max(0, blockUpkeep + civilianUpkeep - UPKEEP_FREE);
 
-    totals.science = Math.round(science * 100) / 100;
-    totals.gold = Math.round((gold - maintenance - upkeep) * 100) / 100;
+    totals.science = Math.round(totalScience * 100) / 100;
+    totals.gold = Math.round((totalGrossGold - totalMaintenance - upkeep) * 100) / 100;
     totals.happiness = 0;
-    return totals;
+
+    return {
+      total: totals,
+      totalCitizens,
+      totalWorkedCells,
+      upkeep,
+      maintenance: totalMaintenance,
+      nodes,
+      hq: hqBreakdown,
+      outposts: outpostsBreakdown
+    };
+  }
+
+  /** Recalculate worked cells and cityYields for a single faction node. */
+  refreshFactionNodeYields(faction: Faction, node: FactionHq | FactionOutpost, isHq: boolean): YieldValues {
+    const sim = ensureFactionNodeSim(node, isHq);
+    if (!pack?.cells?.c || !pack?.cells?.state) {
+      sim.cityYields ??= emptyYields();
+      return sim.cityYields;
+    }
+    const living = this.getState();
+    const globalWorkedCells = new Set<number>();
+    const yields = this.updateFactionNodeWorkedCells(faction, node, sim, isHq, living, globalWorkedCells);
+    sim.cityYields = yields;
+    return yields;
+  }
+
+  /** Empire-wide yields for a faction: sum of city-node yields plus science multipliers minus upkeep. */
+  recomputeFactionYields(faction: Faction): YieldValues {
+    return this.getFactionYieldBreakdown(faction).total;
   }
 
   /** Unique luxury resources worked by any faction node, for Empire Happiness. */
@@ -4062,7 +4152,6 @@ class LivingModel {
       cell: faction.hq?.cell,
       ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
     });
-
   }
 
   /** Research with +25% spillover when the host state already knows the tech. */
@@ -4640,9 +4729,7 @@ class LivingModel {
         army.movement = army.maxMovement;
         army.hasFought = false;
         const acted = this.stepFactionArmyOrders(faction, regiment, army, living, occupancy);
-        army.stance = acted
-          ? "march"
-          : this.factionRestStance(faction, regiment, army);
+        army.stance = acted ? "march" : this.factionRestStance(faction, regiment, army);
         syncRegimentTotals(regiment, Military.getUnitTypes());
       }
     }
@@ -4702,7 +4789,9 @@ class LivingModel {
     const nearNode =
       inFriendlyCity ||
       Boolean(faction.hq && this.cellHopDistances(faction.hq.cell, MAX_WORK_DISTANCE).has(regiment.cell)) ||
-      (faction.outposts ?? []).some(outpost => this.cellHopDistances(outpost.cell, MAX_WORK_DISTANCE).has(regiment.cell));
+      (faction.outposts ?? []).some(outpost =>
+        this.cellHopDistances(outpost.cell, MAX_WORK_DISTANCE).has(regiment.cell)
+      );
     const heal = inFriendlyCity ? 25 : nearNode ? 20 : 10;
     unit.hp = Math.min(UNIT_MAX_HP, unit.hp + heal);
   }
@@ -4789,15 +4878,7 @@ class LivingModel {
   ): boolean {
     const enemy = this.findFactionEnemyInRange(faction, regiment.cell, regiment, living);
     if (enemy) {
-      this.resolveFactionBattle(
-        faction,
-        regiment,
-        enemy.kind,
-        enemy.id,
-        enemy.regiment,
-        living,
-        occupancy
-      );
+      this.resolveFactionBattle(faction, regiment, enemy.kind, enemy.id, enemy.regiment, living, occupancy);
       return true;
     }
 
@@ -4819,7 +4900,11 @@ class LivingModel {
   }
 
   private factionSiegeTarget(faction: Faction, fromCell: number): Burg | null {
-    if (faction.allegiance !== "hostile" && faction.allegiance !== "clandestine" && faction.allegiance !== "autonomous") {
+    if (
+      faction.allegiance !== "hostile" &&
+      faction.allegiance !== "clandestine" &&
+      faction.allegiance !== "autonomous"
+    ) {
       // only offensive allegiances wage sieges
       if (!faction.sovereignAmbition) return null;
     }
@@ -4931,10 +5016,9 @@ class LivingModel {
     }
     for (const other of Factions.active()) {
       if (!this.isFactionEnemyOfFaction(faction, other)) continue;
-      const cells = [
-        other.hq?.cell,
-        ...(other.outposts ?? []).map(outpost => outpost.cell)
-      ].filter((cell): cell is number => typeof cell === "number");
+      const cells = [other.hq?.cell, ...(other.outposts ?? []).map(outpost => outpost.cell)].filter(
+        (cell): cell is number => typeof cell === "number"
+      );
       for (const cell of cells) {
         const distance = distances.get(cell);
         if (distance === undefined) continue;
@@ -5204,7 +5288,9 @@ class LivingModel {
     const maxSlots = config.military.maxUnitsPerArmy;
     const attackerKey = this.factionUnitKey(attackerFaction.i, attackerRegiment.i);
     const defenderKey =
-      defenderKind === "state" ? this.unitKey(defenderId, defenderRegiment.i) : this.factionUnitKey(defenderId, defenderRegiment.i);
+      defenderKind === "state"
+        ? this.unitKey(defenderId, defenderRegiment.i)
+        : this.factionUnitKey(defenderId, defenderRegiment.i);
     const attackerArmy = living.armies?.[attackerKey];
     const defenderArmy = living.armies?.[defenderKey];
 
@@ -5213,9 +5299,13 @@ class LivingModel {
     if (attackerUnits.length === 0 || defenderUnits.length === 0) return;
 
     const defenderName =
-      defenderKind === "state" ? (pack.states[defenderId]?.name ?? `State ${defenderId}`) : (pack.factions?.[defenderId]?.name ?? `Faction ${defenderId}`);
+      defenderKind === "state"
+        ? (pack.states[defenderId]?.name ?? `State ${defenderId}`)
+        : (pack.factions?.[defenderId]?.name ?? `Faction ${defenderId}`);
     const defenderHappiness =
-      defenderKind === "state" ? (living.states[defenderId]?.happiness ?? 0) : (pack.factions?.[defenderId]?.happiness ?? 0);
+      defenderKind === "state"
+        ? (living.states[defenderId]?.happiness ?? 0)
+        : (pack.factions?.[defenderId]?.happiness ?? 0);
     const before = {
       attackerHp: armyStrength(attackerRegiment),
       defenderHp: armyStrength(defenderRegiment),
@@ -5233,13 +5323,23 @@ class LivingModel {
       },
       defender: {
         factionId: defenderKind === "state" ? defenderId : this.factionOwnerId(defenderId),
-        armyId: defenderKind === "state" ? `fm-${defenderId}-${defenderRegiment.i}` : `fm-f${defenderId}-${defenderRegiment.i}`,
+        armyId:
+          defenderKind === "state"
+            ? `fm-${defenderId}-${defenderRegiment.i}`
+            : `fm-f${defenderId}-${defenderRegiment.i}`,
         units: defenderUnits
       },
       cell: defenderRegiment.cell,
       regionId: pack.cells.province?.[defenderRegiment.cell] ?? 0,
       assault: false,
-      modifiers: this.factionBattleModifiers(attackerFaction, attackerRegiment, defenderRegiment, defenderKind, defenderId, defenderHappiness)
+      modifiers: this.factionBattleModifiers(
+        attackerFaction,
+        attackerRegiment,
+        defenderRegiment,
+        defenderKind,
+        defenderId,
+        defenderHappiness
+      )
     });
 
     const rng = this.rng("faction:army:battle", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
@@ -5278,7 +5378,12 @@ class LivingModel {
         outcome.winner,
         session.round,
         living.tick,
-        { before: before.attackerHp, after: after.attackerHp, beforeBlocks: before.attackerBlocks, afterBlocks: after.attackerBlocks }
+        {
+          before: before.attackerHp,
+          after: after.attackerHp,
+          beforeBlocks: before.attackerBlocks,
+          afterBlocks: after.attackerBlocks
+        }
       );
     }
     if (defenderArmy) {
@@ -5288,7 +5393,12 @@ class LivingModel {
         outcome.winner,
         session.round,
         living.tick,
-        { before: before.defenderHp, after: after.defenderHp, beforeBlocks: before.defenderBlocks, afterBlocks: after.defenderBlocks }
+        {
+          before: before.defenderHp,
+          after: after.defenderHp,
+          beforeBlocks: before.defenderBlocks,
+          afterBlocks: after.defenderBlocks
+        }
       );
     }
 
@@ -5304,7 +5414,13 @@ class LivingModel {
         if (defenderFaction) this.removeFactionRegiment(defenderFaction, defenderRegiment, living);
       }
       if (this.armyHasMelee(attackerRegiment, types)) {
-        this.moveRegimentTo(attackerRegiment, defenderRegiment.cell, this.factionOwnerId(attackerFaction.i), attackerKey, occupancy);
+        this.moveRegimentTo(
+          attackerRegiment,
+          defenderRegiment.cell,
+          this.factionOwnerId(attackerFaction.i),
+          attackerKey,
+          occupancy
+        );
       }
       if (defenderKind === "state") {
         const provId = pack.cells?.province?.[defenderRegiment.cell] ?? 0;
@@ -5336,7 +5452,9 @@ class LivingModel {
   ): BattleModifiers {
     const living = this.getState();
     const defenderKey =
-      defenderKind === "state" ? this.unitKey(defenderId, defenderRegiment.i) : this.factionUnitKey(defenderId, defenderRegiment.i);
+      defenderKind === "state"
+        ? this.unitKey(defenderId, defenderRegiment.i)
+        : this.factionUnitKey(defenderId, defenderRegiment.i);
     const defenderArmy = living.armies?.[defenderKey];
 
     const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
@@ -5399,7 +5517,11 @@ class LivingModel {
     const session = initBattleSession({
       config,
       unitTypes: toBattleTypes(types),
-      attacker: { factionId: this.factionOwnerId(faction.i), armyId: `fm-f${faction.i}-${army.i}`, units: toBattleUnits(attackerBlocks) },
+      attacker: {
+        factionId: this.factionOwnerId(faction.i),
+        armyId: `fm-f${faction.i}-${army.i}`,
+        units: toBattleUnits(attackerBlocks)
+      },
       defender: { factionId: burg.state ?? 0, armyId: null, units: toBattleUnits(garrison) },
       cell: burg.cell,
       regionId: pack.cells.province?.[burg.cell] ?? 0,
@@ -5470,7 +5592,11 @@ class LivingModel {
   }
 
   private captureFactionBurg(faction: Faction, burg: Burg, living: LivingWorldState): void {
-    if (faction.sovereignAmbition && !burg.capital && (faction.seasonsActive >= 4 || faction.researchedTechs.length >= 2)) {
+    if (
+      faction.sovereignAmbition &&
+      !burg.capital &&
+      (faction.seasonsActive >= 4 || faction.researchedTechs.length >= 2)
+    ) {
       const ascStateId = this.ascendFactionToState(faction.i, burg.i);
       if (ascStateId !== null) return;
     }
@@ -5482,7 +5608,7 @@ class LivingModel {
     const pSim = provId ? living.provinces?.[provId] : undefined;
     if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 8);
     if (pSim) pSim.order = Math.max(0, pSim.order - 5);
-    bSim && (bSim.hp = 1);
+    if (bSim) bSim.hp = 1;
     this.pushNews(living, {
       kind: "faction",
       text: `${faction.name} pillaged ${burg.name ?? "a settlement"} and seized ${loot} gold!`,
@@ -5516,7 +5642,8 @@ class LivingModel {
     const attackerArmy = living.armies?.[this.unitKey(attackerState.i, attackerRegiment.i)];
     const defenderArmy = living.armies?.[this.unitKey(defenderState.i, defenderRegiment.i)];
 
-    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
+    const burg = burgId ? pack.burgs[burgId] : undefined;
     const walls = burg?.i && !burg.removed && burg.state === defenderState.i ? Number(burg.walls ?? 0) : 0;
     const attackerCrossedRiver =
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
@@ -5650,7 +5777,11 @@ class LivingModel {
         }
       }
 
-      const target = targetFaction ? { faction: targetFaction.faction, regiment: targetFaction.regiment, isFaction: true as const } : targetState ? { state: targetState.state, regiment: targetState.regiment, isFaction: false as const } : null;
+      const target = targetFaction
+        ? { faction: targetFaction.faction, regiment: targetFaction.regiment, isFaction: true as const }
+        : targetState
+          ? { state: targetState.state, regiment: targetState.regiment, isFaction: false as const }
+          : null;
       if (!target) continue;
 
       let block: ArmyBlock | undefined;
@@ -5710,7 +5841,11 @@ class LivingModel {
           }
         }
       }
-      const target = targetFaction ? { faction: targetFaction.faction, regiment: targetFaction.regiment, isFaction: true as const } : targetState ? { state: targetState.state, regiment: targetState.regiment, isFaction: false as const } : null;
+      const target = targetFaction
+        ? { faction: targetFaction.faction, regiment: targetFaction.regiment, isFaction: true as const }
+        : targetState
+          ? { state: targetState.state, regiment: targetState.regiment, isFaction: false as const }
+          : null;
       if (!target) continue;
       let block: ArmyBlock | undefined;
       for (const candidate of target.regiment.units ?? []) {
@@ -6037,7 +6172,7 @@ class LivingModel {
     );
   }
 
-  private pickFactionSettlerTarget(faction: Faction, fromCell: number, living: LivingWorldState): number | null {
+  private pickFactionSettlerTarget(faction: Faction, fromCell: number, _living: LivingWorldState): number | null {
     const distances = this.cellHopDistances(fromCell, 40);
     const candidates: { cell: number; score: number; distance: number }[] = [];
     for (const burg of pack.burgs ?? []) {
@@ -6047,7 +6182,9 @@ class LivingModel {
       const occupiedByCombat = [...(pack.states ?? []), ...Factions.active()].some(polity => {
         if (polity.i === faction.i) return false;
         const military = (polity as { military?: Regiment[] }).military ?? [];
-        return military.some(reg => reg.cell === burg.cell && !armyIsEmpty(reg) && !isCivilianUnit((reg.type ?? "").toLowerCase()));
+        return military.some(
+          reg => reg.cell === burg.cell && !armyIsEmpty(reg) && !isCivilianUnit((reg.type ?? "").toLowerCase())
+        );
       });
       if (occupiedByCombat) continue;
       const distance = distances.get(burg.cell);
@@ -6315,7 +6452,13 @@ class LivingModel {
   }
 
   /** Estimate siege odds for the assault decision. */
-  private estimateSiegeOdds(state: State, army: Regiment, garrison: ArmyBlock[], types: Record<string, UnitType>, burg: Burg): number {
+  private estimateSiegeOdds(
+    state: State,
+    army: Regiment,
+    garrison: ArmyBlock[],
+    types: Record<string, UnitType>,
+    burg: Burg
+  ): number {
     try {
       const { config } = currentContent();
       const battleTypes = toBattleTypes(types);
@@ -7368,7 +7511,7 @@ class LivingModel {
 
     bSim.construction = {
       buildingId,
-      turnsLeft: building.turns ?? 1,
+      turnsLeft: building.turns ?? 1
     };
     sSim.agenda = {
       kind: "build",
@@ -8274,8 +8417,10 @@ class LivingModel {
     const floor = this.treatyFloor(kind);
     a.diplomacy ??= [];
     b.diplomacy ??= [];
-    if (!a.diplomacy[bId] || a.diplomacy[bId] === "Neutral" || a.diplomacy[bId] === "Unknown") a.diplomacy[bId] = "Friendly";
-    if (!b.diplomacy[aId] || b.diplomacy[aId] === "Neutral" || b.diplomacy[aId] === "Unknown") b.diplomacy[aId] = "Friendly";
+    if (!a.diplomacy[bId] || a.diplomacy[bId] === "Neutral" || a.diplomacy[bId] === "Unknown")
+      a.diplomacy[bId] = "Friendly";
+    if (!b.diplomacy[aId] || b.diplomacy[aId] === "Neutral" || b.diplomacy[aId] === "Unknown")
+      b.diplomacy[aId] = "Friendly";
     if (floor === "Ally" && a.diplomacy[bId] !== "Enemy") a.diplomacy[bId] = "Ally";
     if (floor === "Ally" && b.diplomacy[aId] !== "Enemy") b.diplomacy[aId] = "Ally";
   }
@@ -9236,8 +9381,12 @@ class LivingModel {
           stateId: state.i,
           burgId: burg.i
         });
-        this.pushHistory("conquest", [{ kind: "state", id: state.i }], burg.cell,
-          `${state.name} raided ${burg.name} and carried off ${booty} Gold${raidState ? ` from ${raidState.name}` : ""}.`);
+        this.pushHistory(
+          "conquest",
+          [{ kind: "state", id: state.i }],
+          burg.cell,
+          `${state.name} raided ${burg.name} and carried off ${booty} Gold${raidState ? ` from ${raidState.name}` : ""}.`
+        );
         agenda.progress += 1;
         if (agenda.progress >= agenda.required) sSim.agenda = null;
         return;
@@ -9800,4 +9949,3 @@ window.Living = Living;
 export { LivingGuild } from "./living-guild";
 export { LivingHeroes } from "./living-heroes";
 export { LivingThreats } from "./living-threats";
-

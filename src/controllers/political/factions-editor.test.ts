@@ -10,7 +10,8 @@ vi.mock("@/controllers", () => ({
   }
 }));
 
-import { Factions } from "@/model/political/factions-generator";
+import { Living } from "@/model/physical/living-generator";
+import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import type { Faction } from "@/types/factions";
 import { dialogState } from "@/ui/dialog/state";
 import { FactionsEditor, openOutpostsDialog } from "./factions-editor";
@@ -138,5 +139,73 @@ describe("FactionsEditor", () => {
     addOutpostBtn.click();
 
     expect(faction.outposts.some(o => o.burgId === 2)).toBe(true);
+
+    // Verify dialog was re-rendered with new outpost in the table
+    const tableBody = document.querySelector("#outpostsList tbody")!;
+    expect(tableBody.innerHTML).toContain("Oakhaven");
+    expect(tableBody.innerHTML).toContain("🌾");
+  });
+
+  it("computes faction yield breakdown and populates outpost table data", () => {
+    const faction = Factions.add({
+      name: "Iron Bank",
+      category: "commercial",
+      type: "merchant_consortium",
+      scale: "burg",
+      tier: 1,
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
+      treasury: 100
+    });
+
+    faction.outposts.push({
+      burgId: 2,
+      cell: 2,
+      tier: 2,
+      influence: 40,
+      secrecy: 0,
+      assets: ["vault"],
+      establishedYear: 1000
+    });
+    syncFactionState(faction);
+
+    // Provide node yields to simulate computed tick
+    faction.hq.sim!.cityYields = {
+      food: 4,
+      production: 3,
+      gold: 5,
+      science: 2,
+      culture: 1,
+      faith: 0,
+      happiness: 0
+    };
+    faction.outposts[0].sim!.cityYields = {
+      food: 3,
+      production: 2,
+      gold: 4,
+      science: 1,
+      culture: 0,
+      faith: 1,
+      happiness: 0
+    };
+
+    const breakdown = Living.getFactionYieldBreakdown(faction);
+    expect(breakdown.hq).not.toBeNull();
+    expect(breakdown.hq?.isHq).toBe(true);
+    expect(breakdown.hq?.yields.food).toBe(4);
+    expect(breakdown.outposts.length).toBe(1);
+    expect(breakdown.outposts[0].isHq).toBe(false);
+    expect(breakdown.outposts[0].yields.food).toBe(3);
+
+    expect(breakdown.total.food).toBe(7);
+    expect(breakdown.total.production).toBe(5);
+    expect(breakdown.totalCitizens).toBeGreaterThanOrEqual(3);
+
+    const recomputed = Living.recomputeFactionYields(faction);
+    expect(recomputed).toEqual(breakdown.total);
+
+    openOutpostsDialog(faction.i);
+    const dialog = document.querySelector("#factionOutpostsDialog")!;
+    expect(dialog.innerHTML).toContain("🌾 7 · 🔨 5");
+    expect(dialog.innerHTML).toContain("🌾 3 · 🔨 2");
   });
 });

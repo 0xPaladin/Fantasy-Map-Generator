@@ -3,13 +3,13 @@ import { ALIGNMENTS, type Alignment } from "@/data/culture-traits";
 import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
-import { Factions } from "@/model/political/factions-generator";
+import { Living } from "@/model/physical/living-generator";
+import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
-import type { Faction, FactionAllegiance, FactionCategory } from "@/types/factions";
+import type { Faction, FactionAllegiance, FactionCategory, FactionOutpost } from "@/types/factions";
 import type { YieldValues } from "@/types/living";
-import { emptyYields, FOOD_PER_CITIZEN } from "@/model/physical/living-generator";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -58,56 +58,9 @@ function formatYieldValue(value: number | undefined): string {
   return String(Math.round(value ?? 0));
 }
 
-function formatYields(faction: Faction): string {
-  const yields: YieldValues | undefined = faction.yieldsPerTurn;
+function formatYields(yields?: YieldValues): string {
   if (!yields) return "—";
-  return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)} · 😊 ${formatYieldValue(faction.happiness)}`;
-}
-
-/** Project yields one turn ahead: simulate food growth and citizen change. */
-function projectedYields(faction: Faction): YieldValues {
-  const base = { ...(faction.yieldsPerTurn ?? emptyYields()) };
-  let projectedCitizens = 0;
-
-  for (const node of factionNodes(faction)) {
-    const sim = node.sim;
-    if (!sim) continue;
-    const citizens = sim.citizens ?? 0;
-    const foodStored = sim.foodStored ?? 0;
-    const needed = 15 + 8 * Math.max(1, Math.floor(citizens));
-    const grows = foodStored >= needed;
-    projectedCitizens += grows ? citizens + 1 : citizens;
-  }
-
-  // More citizens = more food consumption
-  const currentCitizens = factionNodes(faction).reduce((sum, n) => sum + (n.sim?.citizens ?? 0), 0);
-  const deltaCitizens = projectedCitizens - currentCitizens;
-  base.food = Math.max(0, base.food - FOOD_PER_CITIZEN * deltaCitizens);
-
-  return base;
-}
-
-function formatProjectedYields(faction: Faction): string {
-  const y = projectedYields(faction);
-  return `🌾 ${formatYieldValue(y.food)} · 🔨 ${formatYieldValue(y.production)} · 🪙 ${formatYieldValue(y.gold)} · 🔬 ${formatYieldValue(y.science)} · 🎭 ${formatYieldValue(y.culture)} · ✨ ${formatYieldValue(y.faith)}`;
-}
-
-/** Project yields one turn ahead for a single node (HQ or outpost). */
-function projectedNodeYields(node: FactionHq | FactionOutpost): YieldValues {
-  const sim = node.sim;
-  if (!sim) return emptyYields();
-  const base = { ...(sim.cityYields ?? emptyYields()) };
-  const citizens = sim.citizens ?? 0;
-  const foodStored = sim.foodStored ?? 0;
-  const needed = 15 + 8 * Math.max(1, Math.floor(citizens));
-  const grows = foodStored >= needed;
-  if (grows) base.food = Math.max(0, base.food - FOOD_PER_CITIZEN);
-  return base;
-}
-
-function formatNodeProjectedYields(node: FactionHq | FactionOutpost): string {
-  const y = projectedNodeYields(node);
-  return `🌾 ${formatYieldValue(y.food)} · 🔨 ${formatYieldValue(y.production)} · 🪙 ${formatYieldValue(y.gold)} · 🔬 ${formatYieldValue(y.science)} · 🎭 ${formatYieldValue(y.culture)} · ✨ ${formatYieldValue(y.faith)}`;
+  return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)}`;
 }
 
 function factionNodes(faction: Faction) {
@@ -122,7 +75,7 @@ function totalWorkedCells(faction: Faction): number {
   return factionNodes(faction).reduce((sum, node) => sum + (node?.sim?.workedCells?.length ?? 0), 0);
 }
 
-function productionSummary(faction: Faction): string {
+function _productionSummary(faction: Faction): string {
   const sim = faction.hq?.sim;
   const item = sim?.productionQueue?.[0];
   if (!item) return "—";
@@ -135,14 +88,16 @@ function productionSummary(faction: Faction): string {
   return `${def?.name ?? item.id} ${progress}/${cost}`;
 }
 
-function nodeDetailsText(faction: Faction, node: NonNullable<Faction["hq"]> | Faction["outposts"][number], isHq: boolean): string {
+function _nodeDetailsText(
+  faction: Faction,
+  node: NonNullable<Faction["hq"]> | Faction["outposts"][number],
+  isHq: boolean
+): string {
   void faction;
   const sim = node.sim;
   if (!sim) return "—";
   const yields = sim.cityYields;
-  const yieldText = yields
-    ? `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)}`
-    : "—";
+  const yieldText = yields ? formatYields(yields) : "—";
   const queue = (sim.productionQueue ?? [])
     .map(item => {
       const def =
@@ -245,7 +200,12 @@ function open(focusId?: number): void {
   Dialog.closeAll("#factionsEditor, .stable");
   Layers.show("factions");
 
-  filterState = dialogState.get(dialogId, "filters", () => ({ search: "", category: "all", allegiance: "all", alignment: "all" }));
+  filterState = dialogState.get(dialogId, "filters", () => ({
+    search: "",
+    category: "all",
+    allegiance: "all",
+    alignment: "all"
+  }));
   filterState.search ??= "";
   filterState.category ??= "all";
   filterState.allegiance ??= "all";
@@ -442,8 +402,13 @@ function renderFactionsPage(view: TableView<Faction>): void {
   const validCount = pack.factions?.filter(f => f && f.i > 0 && !f.removed).length ?? view.all.length;
   const avgTreasury = view.all.length ? view.all.reduce((sum, f) => sum + (f.treasury ?? 0), 0) / view.all.length : 0;
   const avgCitizens = view.all.length ? view.all.reduce((sum, f) => sum + totalCitizens(f), 0) / view.all.length : 0;
-  const avgGold = view.all.length ? view.all.reduce((sum, f) => sum + (f.yieldsPerTurn?.gold ?? 0), 0) / view.all.length : 0;
-  ensureEl("factionsFooterCount").innerHTML = t("{{shown}} of {{total}}", { shown: view.all.length, total: validCount });
+  const avgGold = view.all.length
+    ? view.all.reduce((sum, f) => sum + (f.yieldsPerTurn?.gold ?? 0), 0) / view.all.length
+    : 0;
+  ensureEl("factionsFooterCount").innerHTML = t("{{shown}} of {{total}}", {
+    shown: view.all.length,
+    total: validCount
+  });
   ensureEl("factionsFooterTreasury").textContent = String(Math.round(avgTreasury * 100) / 100);
   ensureEl("factionsFooterCitizens").textContent = String(Math.round(avgCitizens * 100) / 100);
   ensureEl("factionsFooterGold").textContent = String(Math.round(avgGold * 100) / 100);
@@ -663,6 +628,9 @@ export function openOutpostsDialog(factionId: number): void {
   const faction = pack.factions?.[factionId];
   if (!faction) return;
 
+  const breakdown = Living.getFactionYieldBreakdown(faction);
+  faction.yieldsPerTurn = breakdown.total;
+
   const dialogDomId = "factionOutpostsDialog";
   Dialog.destroy(dialogDomId);
 
@@ -678,15 +646,15 @@ export function openOutpostsDialog(factionId: number): void {
 
   const outpostsHtml = faction.outposts.length
     ? faction.outposts
-      .map((op, idx) => {
-        const burg = pack.burgs?.[op.burgId];
-        const burgName = burg?.name ?? `Burg ${op.burgId}`;
-        const assetsText = op.assets.join(", ") || t("None");
-        const sim = op.sim;
-        const yields = formatNodeProjectedYields(op);
-        const citizens = sim?.citizens ?? 0;
-        const cells = sim?.workedCells?.length ?? 0;
-        return /* html */ `
+        .map((op, idx) => {
+          const burg = pack.burgs?.[op.burgId];
+          const burgName = burg?.name ?? `Burg ${op.burgId}`;
+          const assetsText = op.assets.join(", ") || t("None");
+          const nodeBreakdown = breakdown.outposts.find(b => b.node === op);
+          const yields = formatYields(nodeBreakdown?.yields ?? op.sim?.cityYields);
+          const citizens = nodeBreakdown?.citizens ?? op.sim?.citizens ?? 0;
+          const cells = nodeBreakdown?.workedCells ?? op.sim?.workedCells?.length ?? 0;
+          return /* html */ `
           <tr style="border-bottom: 1px solid #444;">
             <td style="padding: 4px;"><b>${escapeHtml(burgName)}</b></td>
             <td style="padding: 4px; text-align: center;">${op.tier}</td>
@@ -700,21 +668,21 @@ export function openOutpostsDialog(factionId: number): void {
             </td>
           </tr>
         `;
-      })
-      .join("")
+        })
+        .join("")
     : `<tr><td colspan="8" style="padding: 6px; opacity: 0.7; text-align: center;">${t("No outposts established yet.")}</td></tr>`;
 
   const hqAssetsHtml = faction.hq.assets.length
     ? faction.hq.assets
-      .map(
-        (aid, idx) => `
+        .map(
+          (aid, idx) => `
             <span class="badge" style="margin: 2px;">
               ${escapeHtml(getFactionAsset(aid)?.name ?? aid)}
               <span class="pointer removeHqAssetBtn" data-index="${idx}" style="margin-left: 4px; color: #f87171;">✕</span>
             </span>
           `
-      )
-      .join("")
+        )
+        .join("")
     : `<span style="opacity: 0.7;">${t("No assets constructed.")}</span>`;
 
   const markup = /* html */ `
@@ -727,8 +695,8 @@ export function openOutpostsDialog(factionId: number): void {
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.allegiance)}</span>
         <span class="badge">${capitalize(faction.alignment)}</span>
       </div>
-      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 4px;">${escapeHtml(formatProjectedYields(faction))}</div>
-      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${totalCitizens(faction)} citizens · ${totalWorkedCells(faction)} cells</div>
+      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 4px;">${escapeHtml(formatYields(breakdown.total))}</div>
+      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${breakdown.totalCitizens} citizens · ${breakdown.totalWorkedCells} cells</div>
 
       <div style="margin-bottom: 12px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
         <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ Assets")}:</div>
@@ -781,6 +749,8 @@ export function openOutpostsDialog(factionId: number): void {
     const sel = ensureEl<HTMLSelectElement>("newHqAssetSelect");
     if (sel.value) {
       faction.hq.assets.push(sel.value);
+      syncFactionState(faction);
+      Living.refreshFactionNodeYields(faction, faction.hq, true);
       Layers.draw("factions");
       openOutpostsDialog(factionId);
       factionsTable.refresh();
@@ -793,6 +763,11 @@ export function openOutpostsDialog(factionId: number): void {
       btn.addEventListener("click", function () {
         const idx = Number((this as HTMLElement).dataset.index);
         faction.hq.assets.splice(idx, 1);
+        if (faction.hq.sim) {
+          faction.hq.sim.civBuildings = [...faction.hq.assets];
+        }
+        syncFactionState(faction);
+        Living.refreshFactionNodeYields(faction, faction.hq, true);
         Layers.draw("factions");
         openOutpostsDialog(factionId);
         factionsTable.refresh();
@@ -804,7 +779,7 @@ export function openOutpostsDialog(factionId: number): void {
     const burgId = Number(sel.value);
     if (burgId && pack.burgs?.[burgId]) {
       const b = pack.burgs[burgId];
-      faction.outposts.push({
+      const newOutpost: FactionOutpost = {
         burgId,
         cell: b.cell,
         tier: 1,
@@ -812,7 +787,10 @@ export function openOutpostsDialog(factionId: number): void {
         secrecy: faction.allegiance === "clandestine" ? 50 : 0,
         assets: [],
         establishedYear: options?.map?.lore?.calendar?.year ?? 1000
-      });
+      };
+      faction.outposts.push(newOutpost);
+      syncFactionState(faction);
+      Living.refreshFactionNodeYields(faction, newOutpost, false);
       Layers.draw("factions");
       openOutpostsDialog(factionId);
       factionsTable.refresh();
@@ -825,6 +803,7 @@ export function openOutpostsDialog(factionId: number): void {
       btn.addEventListener("click", function () {
         const idx = Number((this as HTMLElement).dataset.index);
         faction.outposts.splice(idx, 1);
+        syncFactionState(faction);
         Layers.draw("factions");
         openOutpostsDialog(factionId);
         factionsTable.refresh();
