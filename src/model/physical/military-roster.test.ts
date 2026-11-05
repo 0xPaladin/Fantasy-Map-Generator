@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UnitType } from "@/conquest/engine/common/content";
+import type { UnitType } from "@/data/roster-content";
 import {
   getCategoryForUnit,
   Military,

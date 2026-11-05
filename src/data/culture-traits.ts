@@ -341,7 +341,7 @@ const WORD_DRAWS = 5;
 export function traitsRng(
   seed: string,
   kind: "culture" | "figure" | "adventurer" | "campaign" | "faction",
-  id: number
+  id: number | string
 ): Rng {
   return createRng(`${seed}:traits:${kind}:${id}`);
 }

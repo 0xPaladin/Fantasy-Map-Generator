@@ -42,6 +42,7 @@ export const LAYER_TOGGLES = new Map<LayerId, LayerButton>([
   ["markers", { label: t("Markers"), shortcut: "KeyK" }],
   ["trouble", { label: t("Trouble") }],
   ["factions", { label: t("Factions") }],
+  ["characters", { label: t("Characters") }],
   ["journeys", { label: t("Journeys") }],
   ["rulers", { label: t("Rulers"), shortcut: "Equal", hint: `= (${t("equal sign")})` }],
   ["scaleBar", { label: t("Scale Bar"), shortcut: "Slash", hint: `/ (${t("slash sign")})` }],
@@ -49,7 +50,7 @@ export const LAYER_TOGGLES = new Map<LayerId, LayerButton>([
 ]);
 
 declare global {
-  // biome-ignore lint/suspicious/noRedeclare: exposed on window for the conquest feature seam
+  // biome-ignore lint/suspicious/noRedeclare: exposed on window for external tooling
   var LAYER_TOGGLES: Map<LayerId, LayerButton>;
 }
 

@@ -1,8 +1,9 @@
 // The Living World HUD: a seasonal clock, a live news ticker and a god-mode inspector.
 // See docs/plans/living-world.md (slice 5)
 import { select } from "d3";
-import { currentContent } from "@/conquest/content/store";
+import { currentContent } from "@/data/roster-store";
 import { Controllers } from "@/controllers";
+import { ACTION_DEFS, DIE_SIDES } from "@/data/character-actions";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
 import { GUILD_OPERATIONS } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel } from "@/data/hero-archetypes";
@@ -11,9 +12,9 @@ import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { describeRelicBonuses, RELIC_CATALOG, reserveRelics, vaultHasRoom, vaultRelics } from "@/data/living-relics";
@@ -25,9 +26,8 @@ import {
   PACIFY_MISSION_TAGS,
   troubleMissionTags
 } from "@/data/mission-tags";
-import { estimateOdds, type BattleModifiers } from "@/conquest/engine/game/battle";
-import { valueModifier } from "@/conquest/engine/game/saves";
-import { Military } from "@/model/political/military-generator";
+import { estimateOdds, type BattleModifiers } from "@/model/battle/battle";
+import { Pack } from "@/model/graph/pack-generator";
 import {
   armyHp,
   armyIsEmpty,
@@ -37,7 +37,6 @@ import {
   toBattleTypes,
   toBattleUnits
 } from "@/model/physical/living-armies";
-import { Pack } from "@/model/graph/pack-generator";
 import {
   activeCivThemeId,
   figureLevel,
@@ -48,6 +47,8 @@ import {
   pantheonFaithCost,
   prophetFaithCost
 } from "@/model/physical/living-generator";
+import { ensureHeroSheet } from "@/model/physical/living-heroes";
+import { Military } from "@/model/political/military-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
 import {
   clearLivingToasts,
@@ -1249,12 +1250,14 @@ function renderMarkerCard(markerId: number): string {
     <div class="livingButtons">${actions}</div>`;
 }
 
-const SKILL_DICE = ["d4", "d6", "d8", "d10", "d12", "d12"] as const;
-
-function skillDice(figure: HistoricalFigure): string {
-  const skills = figure.skills ?? { m: 0, w: 0, s: 0, c: 0 };
-  const die = (rating: number) => SKILL_DICE[Math.max(0, Math.min(5, rating))]!;
-  return `M ${die(skills.m)} · W ${die(skills.w)} · S ${die(skills.s)} · C ${die(skills.c)}`;
+function actionDice(figure: HistoricalFigure): string {
+  const hero = ensureHeroSheet(figure);
+  return Object.values(ACTION_DEFS)
+    .map(def => ({ label: def.label, die: hero.actions[def.id] }))
+    .sort((a, b) => DIE_SIDES[b.die] - DIE_SIDES[a.die])
+    .slice(0, 3)
+    .map(entry => `${entry.label} ${entry.die}`)
+    .join(" · ");
 }
 
 function disciplineChips(figure: HistoricalFigure): string {
@@ -1343,7 +1346,7 @@ function renderVitals(figureId: number, state: HeroGuildState | undefined, isHer
 }
 
 function missionPhaseChips(mission: {
-  phases?: { id: string; label: string; pool: string }[];
+  phases?: { id: string; label: string; action: string }[];
   phaseResults?: { phaseId: string; heroId: number; success: boolean; untrained?: boolean }[];
   progress: number;
 }): string {
@@ -1355,7 +1358,8 @@ function missionPhaseChips(mission: {
       const result = results.find(entry => entry.phaseId === phase.id);
       const status = result ? (result.success ? "✓" : "✗") : index === mission.progress ? "next" : "·";
       const untrained = result?.untrained ? " ⚠" : "";
-      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()} ${status}${untrained}</span>`;
+      const action = ACTION_DEFS[phase.action as keyof typeof ACTION_DEFS]?.label ?? phase.action;
+      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${action} ${status}${untrained}</span>`;
     })
     .join("");
 }
@@ -1365,7 +1369,10 @@ function renderPartyPreview(provinceId: number): string {
   if (!preview || preview.party.length === 0) return "";
   const names = preview.members.map(member => escapeHtml(member.name)).join(", ");
   const phases = preview.phases
-    .map(phase => `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()}</span>`)
+    .map(phase => {
+      const action = ACTION_DEFS[phase.action as keyof typeof ACTION_DEFS]?.label ?? phase.action;
+      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${action}</span>`;
+    })
     .join("");
   const buttons = preview.members
     .map(
@@ -1414,7 +1421,7 @@ function renderFigureCard(figureId: number): string {
     .filter((note): note is string => Boolean(note))
     .map(note => `<div class="livingMuted">${escapeHtml(note)}</div>`)
     .join("");
-  const skills = `<div class="livingMuted">Skills: ${skillDice(figure)}</div>`;
+  const skills = `<div class="livingMuted">Top actions: ${actionDice(figure)}</div>`;
 
   let status = `<div class="livingMuted">Free agent</div>`;
   if (figure.death !== undefined) status = `<div class="livingMuted">Died ${figure.death}</div>`;
@@ -1517,7 +1524,7 @@ function renderStateCard(stateId: number): string {
     ${renderRuler(ruler, age)}
     ${renderCivState(sSim, stateId)}
     ${renderStateProvinces(stateId)}
-    ${renderCapacity(sSim, stateId)}
+    ${renderEconomy(sSim, stateId)}
     ${renderAgenda(sSim)}
     <div class="livingSection">
       <div class="livingSectionTitle">Stability</div>
@@ -1791,7 +1798,7 @@ interface CitySimView {
   foodStored?: number;
   cultureStored?: number;
   tilesAcquired?: number;
-  productionQueue?: { kind: "unit" | "building" | "wonder"; id: string }[];
+  productionQueue?: { kind: "unit" | "building" | "wonder" | "trouble"; id: string }[];
   productionProgress?: Record<string, number>;
   hp?: number;
   maxHp?: number;
@@ -1959,27 +1966,22 @@ function renderProvinceCard(provinceId: number): string {
   </div>`;
 }
 
-function renderCapacity(sSim: StatePolitySim, stateId?: number): string {
-  const pools = [
-    ["m", "Military"],
-    ["w", "Wealth"],
-    ["s", "Social"],
-    ["c", "Cunning"]
-  ] as const;
-
-  const rows = pools
-    .map(([key, label]) => {
-      const pool = sSim.capacity[key];
-      const over = pool.load > pool.gen;
-      const ratio = pool.gen > 0 ? Math.min(100, Math.round((pool.load / pool.gen) * 100)) : 0;
-      const mod = valueModifier(pool.gen);
-      const signMod = mod >= 0 ? `+${mod}` : `${mod}`;
-      const tip = `${label}: ${pool.gen} gen / ${pool.load} load (${signMod} check mod)${over ? " (over capacity)" : ""}`;
-      return `<div class="livingCapacityRow${over ? " over" : ""}" title="${escapeHtml(tip)}" tabindex="0">
-        <span class="livingCapacityLabel">${label} <small style="opacity:0.75; font-size:0.85em;">(${signMod})</small></span>
-        <div class="livingBar${over ? " danger" : ""}"><i style="width:${ratio}%"></i></div>
-      </div>`;
-    })
+function renderEconomy(sSim: StatePolitySim, stateId?: number): string {
+  const yields = sSim.yieldsPerTurn;
+  const treasury = stateId ? (pack.states[stateId]?.treasury ?? 0) : 0;
+  const num = (value: number): string => String(Math.round(value * 10) / 10);
+  const rows: [string, string][] = [
+    ["Gold", `${num(yields?.gold ?? 0)}/season · ${num(treasury)} banked`],
+    ["Production", `${num(yields?.production ?? 0)}/season`],
+    ["Science", `${num(yields?.science ?? 0)}/season`],
+    ["Culture", `${num(yields?.culture ?? 0)}/season`],
+    ["Faith", `${num(yields?.faith ?? 0)}/season`]
+  ];
+  const list = rows
+    .map(
+      ([label, value]) =>
+        `<div class="livingMeterRow"><span class="livingCapacityLabel">${label}</span><span class="livingMuted">${value}</span></div>`
+    )
     .join("");
 
   const buttons = stateId
@@ -1990,7 +1992,7 @@ function renderCapacity(sSim: StatePolitySim, stateId?: number): string {
       </div>`
     : "";
 
-  return `<div class="livingSection"><div class="livingSectionTitle">Capacity</div>${rows}${buttons}</div>`;
+  return `<div class="livingSection"><div class="livingSectionTitle">Economy</div>${list}${buttons}</div>`;
 }
 
 function renderAgenda(sSim: StatePolitySim): string {
@@ -2771,7 +2773,7 @@ function renderHeroDialogItem(guild: GuildState, figureId: number, isSeeker: boo
   const archetype = figureArchetype(figure);
   const heroState = Living.getHeroState?.(figureId);
   const status = heroStatus(guild, figureId);
-  const skills = skillDice(figure);
+  const skills = actionDice(figure);
   const disciplines = figureDisciplines(figure)
     .map(id => `<span class="livingDiscipline">${escapeHtml(HERO_DISCIPLINES[id]?.name ?? id)}</span>`)
     .join(" ");

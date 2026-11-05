@@ -1,6 +1,5 @@
 // The 2d / 3d / globe buttons under the options panel, and the Astral and Living World modes
 import { Controllers } from "@/controllers";
-import { isConquestEnabled } from "@/controllers/conquest-mode";
 import { is3dView, isAstralView, isLivingWorldEnabled, setLivingWorld } from "@/renderers/view-mode";
 import { findEl } from "@/utils/node-utils";
 
@@ -19,8 +18,6 @@ export async function changeViewMode(event: Event): Promise<void> {
 
   if (isAstralView()) await Controllers.AstralMode.exit();
 
-  if (isConquestEnabled()) await Controllers.ConquestMode.exit();
-
   const isPressed = button.classList.contains("pressed");
   if (!isPressed && button.id !== "viewStandard") await Controllers.View3d.open(button.id);
   else void Controllers.View3d.enterStandard();
@@ -30,7 +27,6 @@ async function enterLivingWorld(): Promise<void> {
   if (isLivingWorldEnabled()) return;
   if (isAstralView()) await Controllers.AstralMode.exit();
   if (is3dView()) await Controllers.View3d.enterStandard();
-  if (isConquestEnabled()) await Controllers.ConquestMode.exit();
 
   setLivingWorld(true);
   applyLivingWorldButtonState(true);

@@ -1,15 +1,14 @@
 // Living World seasonal simulation engine. See docs/plans/living-world.md
-import { currentContent } from "@/conquest/content/store";
+import { currentContent } from "@/data/roster-store";
 import {
   assignStateRoster,
   type BuildingDef,
   inferRosterForCulture,
-  MEN_PER_BLOCK,
   type ResolvedRoster,
   type UnitType
-} from "@/conquest/engine/common/content";
-import type { ArmyBlock, ArmyUnit, CapacityPoints } from "@/conquest/engine/common/types";
-import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/conquest/engine/compiler";
+} from "@/data/roster-content";
+import type { ArmyBlock, ArmyUnit } from "@/types/battle";
+import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/data/tiers";
 import {
   type BattleModifiers,
   type BattleOutcome,
@@ -19,9 +18,8 @@ import {
   finalizeBattle,
   initBattleSession,
   stepBattleRound
-} from "@/conquest/engine/game/battle";
-import { assetCheckDifficulties, valueModifier } from "@/conquest/engine/game/saves";
-import { garrisonUnits, minorGarrisonUnits } from "@/conquest/engine/game/units";
+} from "@/model/battle/battle";
+import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
 import type { Alignment } from "@/data/culture-traits";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import type { GuildOperationKind } from "@/data/guild-operations";
@@ -34,7 +32,7 @@ import {
   CIV_PANTHEONS,
   CIV_RELIGION_NAMES
 } from "@/data/living-civ-beliefs";
-import { CIV_BUILDING_BY_ID, CIV_BUILDINGS, civBuildingCapacity } from "@/data/living-civ-buildings";
+import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
 import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
@@ -86,7 +84,6 @@ import {
   type ArmySimState,
   type ArmyStance,
   type BurgSimState,
-  type CapacityLedger,
   type CellResourceInfo,
   type CellSimState,
   type CellTerrainInfo,
@@ -122,6 +119,7 @@ import {
   type SeasonId,
   type StateAgenda,
   type StatePolitySim,
+  type TreatyKind,
   type TroubleTheme,
   type TroubleUnitRole,
   type UnitSimState,
@@ -296,16 +294,13 @@ export function regionTierFromPop(populationThousands: number): number {
   return tier;
 }
 
-export function emptyCapacityLedger(): CapacityLedger {
-  return {
-    m: { gen: 0, load: 0 },
-    w: { gen: 0, load: 0 },
-    s: { gen: 0, load: 0 },
-    c: { gen: 0, load: 0 }
-  };
+export interface FigureBias {
+  martial: number;
+  civic: number;
+  pious: number;
+  cruel: number;
 }
 
-/** how much each remembered humiliation weighs on the casus belli ledger */
 const GRUDGE_WEIGHTS: Record<GrudgeReason, number> = {
   conquest: 40,
   sacked: 30,
@@ -313,13 +308,6 @@ const GRUDGE_WEIGHTS: Record<GrudgeReason, number> = {
   slain_general: 35,
   repulsed: 20
 };
-
-export interface FigureBias {
-  martial: number;
-  civic: number;
-  pious: number;
-  cruel: number;
-}
 
 const MARTIAL_TRAITS = ["brave", "daring", "decisive", "wrathful", "vengeful", "boastful", "reckless"];
 const CIVIC_TRAITS = ["just", "diligent", "temperate", "thrifty", "methodical", "prudent"];
@@ -363,7 +351,7 @@ export function figureBias(
   return bias;
 }
 
-/** Reconcile Conquest building IDs from FMG Burg feature flags (walls, plaza, temple, citadel) */
+/** Reconcile roster building IDs from FMG Burg feature flags (walls, plaza, temple, citadel) */
 export function syncBurgBuildingsFromFlags(burg: Burg, existing: string[]): string[] {
   const set = new Set(existing);
   const wallTier = Number(burg.walls ?? 0);
@@ -394,7 +382,7 @@ export function syncBurgBuildingsFromFlags(burg: Burg, existing: string[]): stri
   return Array.from(set);
 }
 
-/** Push completed Conquest buildings back onto FMG Burg flags */
+/** Push completed roster buildings back onto FMG Burg flags */
 export function syncBurgFlagsFromBuildings(burg: Burg, buildings: string[]): void {
   if (buildings.includes("walls3")) {
     burg.walls = 3;
@@ -1664,7 +1652,6 @@ class LivingModel {
       this.stepStates(living);
       this.stepDiplomacy(living);
       this.stepRebellions(living);
-      this.recomputeAllCapacities(living);
       this.stepRelics(living);
       this.stepEschaton(living);
       this.refreshPopups(living);
@@ -1693,7 +1680,6 @@ class LivingModel {
     this.syncArmies(living);
     this.syncDangerMarkers(living);
     this.ensureCommanders();
-    this.recomputeAllCapacities(living);
   }
 
   /** Synchronize active lairs with all danger markers on the map */
@@ -1720,176 +1706,6 @@ class LivingModel {
     const capitalCell = state.capital ? pack.burgs[state.capital]?.cell : undefined;
     const cell = capitalCell ?? state.center ?? 0;
     return pack.cells.religion[cell] ?? 0;
-  }
-
-  /** Recompute a single state's M / W / S / C capacity pools from live pack holdings, buildings, and regiments */
-  recomputeStateCapacity(stateId: number): CapacityLedger {
-    const ledger = emptyCapacityLedger();
-    const state = pack.states[stateId];
-    if (!state?.i || state.removed) return ledger;
-
-    const living = pack.history?.living;
-    const sSim = living?.states?.[stateId];
-    const { content, config } = currentContent();
-    const capacityConfig = config.capacity;
-    const buildingById = new Map<string, BuildingDef>(content.buildings.map(b => [b.id, b]));
-    const unitTypes: Record<string, UnitType> = Military.getUnitTypes();
-
-    // 1. Group owned cells and population by province (or state fallback if no provinces)
-    const provincePop = new Map<number, number>();
-    const cellCount = pack.cells.i.length;
-
-    for (let c = 0; c < cellCount; c++) {
-      if (pack.cells.state[c] !== stateId) continue;
-      const provId = pack.cells.province?.[c] || -stateId;
-      const pop = pack.cells.pop?.[c] ?? 0;
-      provincePop.set(provId, (provincePop.get(provId) ?? 0) + pop);
-    }
-
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || burg.state !== stateId) continue;
-      const provId = pack.cells.province?.[burg.cell] || -stateId;
-      const pop = burg.population ?? 0;
-      provincePop.set(provId, (provincePop.get(provId) ?? 0) + pop);
-    }
-
-    // Every held province/region grants +1 M levy base and +regionTier W & S
-    provincePop.forEach(popThousands => {
-      ledger.m.gen += 1;
-      const rTier = regionTierFromPop(popThousands);
-      ledger.w.gen += rTier;
-      ledger.s.gen += rTier;
-    });
-
-    // Earned province development adds +1 W and +1 S per point; a running
-    // development commits `developWPerTurn` Wealth until it completes.
-    for (const provId of provincePop.keys()) {
-      if (provId <= 0) continue;
-      const pSim = living?.provinces?.[provId];
-      if (!pSim) continue;
-      if (pSim.development > 0) {
-        ledger.w.gen += pSim.development;
-        ledger.s.gen += pSim.development;
-      }
-      if (pSim.developmentProgress) ledger.w.load += capacityConfig.developWPerTurn;
-      if (pSim.trouble) {
-        const troubleLoad = Math.ceil(pSim.trouble.level / 2);
-        ledger.m.load += troubleLoad;
-        ledger.w.load += troubleLoad;
-        ledger.s.load += troubleLoad;
-      }
-      if (pSim.lair) {
-        const lairLoad = Math.ceil(pSim.lair.level / 2);
-        ledger.m.load += lairLoad;
-        ledger.w.load += lairLoad;
-        ledger.s.load += lairLoad;
-      }
-    }
-
-    // Capital court grants +2 C
-    if (state.capital && pack.burgs[state.capital]?.state === stateId) {
-      ledger.c.gen += 2;
-    }
-
-    // Active adventurer contract commits +1 Wealth load
-    if (sSim?.agenda?.kind === "hire_adventurers") {
-      ledger.w.load += 1;
-    }
-
-    // 2. Burgs: earned development, standing buildings, and occupation unrest
-    let freeGarrisonWaiver = 0;
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || burg.state !== stateId) continue;
-      const bSim = living?.burgs[burg.i];
-      if (!bSim) continue;
-
-      // A running construction commits Wealth until it completes.
-      if (bSim.construction) ledger.w.load += capacityConfig.constructionWPerTurn;
-
-      // Occupation unrest drains -1 S and suppresses earned W bonus while unrest > 4
-      if (bSim.unrest > 0) {
-        ledger.s.load += 1;
-      }
-      if (bSim.development > 0) {
-        if (bSim.unrest <= 4) ledger.w.gen += bSim.development;
-        ledger.s.gen += bSim.development;
-      }
-
-      for (const bid of bSim.civBuildings ?? []) {
-        const cap = civBuildingCapacity(bid);
-        ledger.m.gen += cap.m;
-        if (bSim.unrest <= 4) ledger.w.gen += cap.w;
-        ledger.s.gen += cap.s;
-        ledger.c.gen += cap.c;
-        if (bid === "barracks" || bid === "armory" || bid === "castle" || bid === "arsenal") {
-          freeGarrisonWaiver += 1;
-        } else if (bid === "military_base") {
-          freeGarrisonWaiver += 2;
-        }
-      }
-
-      for (const bid of bSim.buildings ?? []) {
-        const bDef = buildingById.get(bid);
-        if (!bDef) continue;
-        const gen = bDef.effects.capacity;
-        if (gen) {
-          ledger.m.gen += gen.m ?? 0;
-          if (bSim.unrest <= 4) ledger.w.gen += gen.w ?? 0;
-          ledger.s.gen += gen.s ?? 0;
-          ledger.c.gen += gen.c ?? 0;
-        }
-        const up = bDef.effects.upkeep;
-        if (up) {
-          ledger.m.load += up.m ?? 0;
-          ledger.w.load += up.w ?? 0;
-          ledger.s.load += up.s ?? 0;
-          ledger.c.load += up.c ?? 0;
-        }
-        if (bDef.effects.freeGarrisonUnits) {
-          freeGarrisonWaiver += bDef.effects.freeGarrisonUnits;
-        }
-      }
-    }
-
-    // 3. Regiments: load capacity per unit block, waiving up to `freeGarrisonWaiver` units
-    let waivedUnits = 0;
-    for (const reg of state.military ?? []) {
-      if (!reg.units || reg.units.length === 0) {
-        reconcileRegimentBlocks(reg, unitTypes);
-      }
-      for (const unit of reg.units ?? []) {
-        if (unit.hp <= 0) continue;
-        if (waivedUnits < freeGarrisonWaiver) {
-          waivedUnits += 1;
-          continue;
-        }
-        const uType = unitTypes[unit.type];
-        const cost = uType?.capacityCost;
-        if (!cost) continue;
-        const blocks = unit.hp * (uType.quantity / MEN_PER_BLOCK);
-        ledger.m.load += (cost.m ?? 0) * blocks;
-        ledger.w.load += (cost.w ?? 0) * blocks;
-        ledger.s.load += (cost.s ?? 0) * blocks;
-        ledger.c.load += (cost.c ?? 0) * blocks;
-      }
-    }
-
-    // 4. Relics leased to this state add straight to generation
-    for (const relic of living?.guild?.relics ?? []) {
-      if (relic.holder.kind !== "state" || relic.holder.id !== stateId) continue;
-      ledger.m.gen += relic.bonuses.m ?? 0;
-      ledger.w.gen += relic.bonuses.w ?? 0;
-      ledger.s.gen += relic.bonuses.s ?? 0;
-      ledger.c.gen += relic.bonuses.c ?? 0;
-    }
-
-    // Round to 2 decimal places for clean display and deterministic comparisons
-    for (const pool of ["m", "w", "s", "c"] as const) {
-      ledger[pool].gen = Math.round(ledger[pool].gen * 100) / 100;
-      ledger[pool].load = Math.round(ledger[pool].load * 100) / 100;
-    }
-
-    return ledger;
   }
 
   /** Append a headline to the seasonal news ticker */
@@ -2086,7 +1902,6 @@ class LivingModel {
           agenda: null,
           unravel: 0,
           warExhaustion: 0,
-          capacity: emptyCapacityLedger(),
           claims: [],
           grudges: [],
           currentTechId: null,
@@ -2259,7 +2074,7 @@ class LivingModel {
   }
 
   private successionCrisis(sSim: StatePolitySim, successor: HistoricalFigure | undefined): boolean {
-    if (sSim.capacity.s.load > sSim.capacity.s.gen) return true;
+    if (sSim.warExhaustion >= 50) return true;
     const vices = new Set(successor?.vices ?? []);
     return ["cruel", "greedy", "slothful", "cowardly", "vengeful", "wrathful", "paranoid"].some(vice =>
       vices.has(vice)
@@ -2310,16 +2125,6 @@ class LivingModel {
       snapshot: history.snapshots.length - 1
     });
     living.lastSnapshotTick = living.tick;
-  }
-
-  private recomputeAllCapacities(living: LivingWorldState): void {
-    for (const key of Object.keys(living.states)) {
-      const stateId = Number(key);
-      const sSim = living.states[stateId];
-      if (sSim) {
-        sSim.capacity = this.recomputeStateCapacity(stateId);
-      }
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -2762,6 +2567,10 @@ class LivingModel {
 
   /** Production price: civilians keep their Civ cost, combat blocks use the roster's. */
   private productionCost(state: State, item: ProductionItem): number {
+    if (item.kind === "trouble") {
+      // Environmental-trouble work order (Phase E): progress like a building.
+      return 80;
+    }
     const cost =
       item.kind === "unit"
         ? isCivilianUnit(item.id)
@@ -2818,6 +2627,34 @@ class LivingModel {
   ): void {
     const year = options.map?.lore?.calendar?.year ?? 1000;
     bSim.civBuildings ??= [];
+
+    if (item.kind === "trouble") {
+      // Phase E: the burg worked off an environmental affliction.
+      const provinceId = pack.cells.province?.[burg.cell] ?? 0;
+      const province = pack.provinces?.[provinceId];
+      const pSim = provinceId ? living.provinces[provinceId] : undefined;
+      if (pSim?.trouble) {
+        const troubleName = pSim.trouble.name ?? "trouble";
+        pSim.trouble = null;
+        pSim.order = Math.min(100, pSim.order + 10);
+        pSim.stability += 1;
+        const name = province?.name ?? "the province";
+        this.pushNews(living, {
+          kind: "trouble",
+          text: `${burg.name ?? state.name} worked through ${name}'s afflictions.`,
+          cell: burg.cell,
+          stateId: state.i,
+          burgId: burg.i
+        });
+        this.pushHistory(
+          "deed",
+          [{ kind: "state", id: state.i }],
+          burg.cell,
+          `${burg.name ?? state.name} cleared the ${troubleName} afflicting ${name}.`
+        );
+      }
+      return;
+    }
 
     if (item.kind === "building" || item.kind === "wonder") {
       if (!bSim.civBuildings.includes(item.id)) bSim.civBuildings.push(item.id);
@@ -4660,6 +4497,14 @@ class LivingModel {
     const key = this.unitKey(state.i, regiment.i);
     if (living.units) delete living.units[key];
     if (living.armies) delete living.armies[key];
+    // Lift any siege this regiment was conducting.
+    for (const bSim of Object.values(living.burgs ?? {})) {
+      if (bSim.siegeStateId === state.i) {
+        bSim.siegeStateId = 0;
+        bSim.siegeProgress = 0;
+        bSim.siegeSupplies = 0;
+      }
+    }
   }
 
   /** Faction owner id for occupancy / borders: negated so it never collides with a State id. */
@@ -4749,7 +4594,9 @@ class LivingModel {
           this.removeRegiment(state, regiment, living);
           continue;
         }
-        army.movement = army.maxMovement;
+        // The stance carries from the previous tick: a forced march covers more
+        // ground but cannot open a fight; an army lying in wait is concealed.
+        army.movement = army.maxMovement * this.stanceMovementMultiplier(army.stance);
         army.hasFought = false;
         const acted = this.stepArmyOrders(state, regiment, army, living, occupancy);
         army.stance = acted ? "march" : this.restStance(state, regiment, army);
@@ -4804,12 +4651,23 @@ class LivingModel {
     this.stepCityStrikes(living);
   }
 
+  /** Movement points a stance grants: march 1.5x, encamp/ambush 0.7x, everything else 1x. */
+  private stanceMovementMultiplier(stance: ArmyStance): number {
+    return currentContent().config.movement.stanceMultipliers[stance] ?? 1;
+  }
+
   /** A resting army entrenches in a friendly city when badly hurt, otherwise fortifies. */
   private restStance(state: State, regiment: Regiment, army: ArmySimState): ArmyStance {
     const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
     const burg = burgId ? pack.burgs[burgId] : undefined;
     const inCity = Boolean(burg?.i && !burg.removed && burg.state === state.i);
     if (inCity && armyHp(regiment) < 0.6) return "encamp";
+
+    // A war army resting in the open outside its own land is a concealed force:
+    // the attack it opens next tick gets the ambush bonus (§F).
+    const inFriendlyLand = pack.cells.state?.[regiment.cell] === state.i;
+    if (!inCity && !inFriendlyLand && this.stateAtWar(state)) return "ambush";
+
     return army.stance === "encamp" && inCity ? "encamp" : "fortify";
   }
 
@@ -4902,10 +4760,18 @@ class LivingModel {
     living: LivingWorldState,
     occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
   ): boolean {
-    const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
-    if (enemy) {
-      this.resolveArmyBattle(state, regiment, enemy.state, enemy.regiment, living);
-      return true;
+    // A forced march cannot open a fight (§F).
+    if (army.stance !== "march") {
+      const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
+      if (enemy) {
+        // No heroic suicides (absorbs the campaign AI): a badly outmatched army
+        // holds position unless its goal orders the attack anyway.
+        const agenda = living.states[state.i]?.agenda;
+        const ordered = agenda?.kind === "conquer" || agenda?.kind === "raid" || agenda?.kind === "defend";
+        if (!ordered && this.armyOutmatched(regiment, enemy.regiment)) return false;
+        this.resolveArmyBattle(state, regiment, enemy.state, enemy.regiment, living);
+        return true;
+      }
     }
 
     const target = this.tacticalTarget(state, living, regiment.cell);
@@ -5099,11 +4965,12 @@ class LivingModel {
     return target.movementCost;
   }
 
-  /** Closed borders: an army may only enter foreign land when at war. Factions ignore borders. */
+  /** Closed borders: an army may enter foreign land when at war or under a military-access treaty. Factions ignore borders. */
   private canEnterForeignCellFor(stateId: number, cell: number): boolean {
     if (stateId < 0) return true;
     const owner = pack.cells.state?.[cell] ?? 0;
     if (!owner || owner === stateId) return true;
+    if (this.hasTreaty(stateId, owner, "militaryAccess")) return true;
     return this.isAtWar(stateId, owner);
   }
 
@@ -5154,6 +5021,13 @@ class LivingModel {
   }
 
   /** Nearest at-war enemy **army** within melee reach or the army's firing range. */
+  /** No heroic suicides: true when this army is under 30% of the enemy's strength. */
+  private armyOutmatched(regiment: Regiment, enemy: Regiment): boolean {
+    const mine = armyStrength(regiment);
+    const theirs = armyStrength(enemy);
+    return theirs > 0 && mine < theirs * 0.3;
+  }
+
   private findEnemyArmyInRange(
     stateId: number,
     cell: number,
@@ -5181,7 +5055,7 @@ class LivingModel {
   }
 
   /**
-   * Combined-arms battle through OpenConquest's battle.ts
+   * Combined-arms battle through the shared battle engine
    * (living-openciv-armies.md §8). Both sides are blocks, so the 1,000-strength
    * bridge keeps `fill = hp` exactly; the outcome converts back to hp before
    * anything else reads it.
@@ -5639,10 +5513,10 @@ class LivingModel {
     defenderRegiment: Regiment
   ): BattleModifiers {
     const living = this.getState();
+    const attackerArmy = living.armies?.[this.unitKey(attackerState.i, attackerRegiment.i)];
     const defenderArmy = living.armies?.[this.unitKey(defenderState.i, defenderRegiment.i)];
 
-    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
-    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);    const burg = burgId ? pack.burgs[burgId] : undefined;
     const walls = burg?.i && !burg.removed && burg.state === defenderState.i ? Number(burg.walls ?? 0) : 0;
     const attackerCrossedRiver =
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
@@ -5658,7 +5532,8 @@ class LivingModel {
     return {
       walls,
       defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
-      defenderAmbushed: defenderArmy?.stance === "ambush",
+      // battle.ts reads this as "the attacker is ambushing": +30% on contact.
+      defenderAmbushed: attackerArmy?.stance === "ambush",
       attackerCrossedRiver,
       defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
       labels: [],
@@ -5857,6 +5732,12 @@ class LivingModel {
   }
 
   /** The cell a regiment should march toward this tick. */
+  /**
+   * Goal-driven army targeting (Phase C of the army integration): the
+   * state's agenda IS the goal — its burg/province target decides where this
+   * army marches. With no goal, an at-war army hunts the nearest enemy
+   * regiment inside the aggro radius.
+   */
   private tacticalTarget(state: State, living: LivingWorldState, fromCell: number): number | null {
     const agenda = living.states[state.i]?.agenda;
     const burgId = agenda?.targetBurgId;
@@ -6162,6 +6043,13 @@ class LivingModel {
     for (const burg of pack.burgs ?? []) {
       if (!burg?.i || burg.removed) continue;
       if (this.factionNodesAtBurg(faction.i, burg.i)) continue;
+      // Skip burgs holding a foreign combat army: the settler cannot share the cell (1UPT).
+      const occupiedByCombat = [...(pack.states ?? []), ...Factions.active()].some(polity => {
+        if (polity.i === faction.i) return false;
+        const military = (polity as { military?: Regiment[] }).military ?? [];
+        return military.some(reg => reg.cell === burg.cell && !armyIsEmpty(reg) && !isCivilianUnit((reg.type ?? "").toLowerCase()));
+      });
+      if (occupiedByCombat) continue;
       const distance = distances.get(burg.cell);
       if (distance === undefined) continue;
       let score = (burg.population ?? 0) - distance * 2;
@@ -6306,10 +6194,35 @@ class LivingModel {
     const garrison = this.cityGarrisonBlocks(burg);
     if (garrison.length === 0) {
       // Undefended: walk in.
-      this.captureCity(state, burg, living);
+      this.captureCity(state, burg, living, "occupy");
       if (army.cell !== burg.cell) {
         this.moveRegimentTo(army, burg.cell, state.i, key, this.armyOccupancy(living));
       }
+      return true;
+    }
+
+    // Siege progression: track ongoing siege for this state.
+    const siegeStateId = bSim.siegeStateId ?? 0;
+    if (siegeStateId !== state.i) {
+      bSim.siegeStateId = state.i;
+      bSim.siegeProgress = 0;
+      bSim.siegeSupplies = Number(burg.walls ?? 0) * 20;
+    }
+    bSim.siegeProgress = (bSim.siegeProgress ?? 0) + 1;
+
+    // Apply garrison weakening (15% per season, floor 40%).
+    const weakenFactor = this.siegeWeakenFactor(bSim);
+    if (weakenFactor < 1) {
+      for (const block of garrison) {
+        block.hp = Math.max(0.4, block.hp * weakenFactor);
+      }
+    }
+
+    // Decide: assault or continue besieging.
+    const odds = this.estimateSiegeOdds(state, army, garrison, types, burg);
+    const shouldAssault = (bSim.siegeProgress ?? 0) >= 2 || odds >= 40;
+    if (!shouldAssault) {
+      bSim.hp = Math.max(1, bSim.hp ?? 1);
       return true;
     }
 
@@ -6352,7 +6265,8 @@ class LivingModel {
 
     if (outcome.winner === "attacker") {
       bSim.hp = 0;
-      this.captureCity(state, burg, living);
+      const policy = this.chooseCapturePolicy(state, burg, living);
+      this.captureCity(state, burg, living, policy);
       if (armyIsEmpty(army)) {
         this.removeRegiment(state, army, living);
         return true;
@@ -6367,7 +6281,16 @@ class LivingModel {
 
     // Repulsed: survivors fall back one cell; the city keeps its HP.
     if (armyIsEmpty(army)) this.removeRegiment(state, army, living);
-    else this.retreatArmy(state, army, burg.cell, living);
+    else {
+      this.retreatArmy(state, army, burg.cell, living);
+      // Lift siege if the army is no longer adjacent.
+      const stillAdjacent = (pack.cells.c?.[burg.cell] ?? []).includes(army.cell);
+      if (!stillAdjacent) {
+        bSim.siegeStateId = 0;
+        bSim.siegeProgress = 0;
+        bSim.siegeSupplies = 0;
+      }
+    }
     bSim.hp = Math.max(1, bSim.hp ?? 1);
     return false;
   }
@@ -6376,6 +6299,49 @@ class LivingModel {
   cityGarrison(burgId: number): ArmyBlock[] {
     const burg = pack.burgs[burgId];
     return burg?.i && !burg.removed ? this.cityGarrisonBlocks(burg) : [];
+  }
+
+  /** Garrison weaken factor for an ongoing siege: 15% per season, floor 40%. */
+  private siegeWeakenFactor(bSim: BurgSimState): number {
+    const progress = bSim.siegeProgress ?? 0;
+    const supplies = bSim.siegeSupplies ?? 0;
+    // Siege supplies buffer: each 20 HD blocks one season of attrition.
+    if (supplies > 0) {
+      bSim.siegeSupplies = Math.max(0, supplies - 10);
+      return 1;
+    }
+    const factor = 1 - progress * 0.15;
+    return Math.max(0.4, factor);
+  }
+
+  /** Estimate siege odds for the assault decision. */
+  private estimateSiegeOdds(state: State, army: Regiment, garrison: ArmyBlock[], types: Record<string, UnitType>, burg: Burg): number {
+    try {
+      const { config } = currentContent();
+      const battleTypes = toBattleTypes(types);
+      const odds = estimateOdds(
+        config,
+        { factionId: state.i, armyId: null, units: toBattleUnits(army.units ?? []) },
+        { factionId: burg.state ?? 0, armyId: null, units: toBattleUnits(garrison) },
+        this.siegeModifiers(state, burg),
+        battleTypes
+      );
+      return odds.attackerWinPct;
+    } catch {
+      return 50;
+    }
+  }
+
+  /** Choose a capture policy based on ruler personality and war state. */
+  private chooseCapturePolicy(state: State, burg: Burg, living: LivingWorldState): string {
+    const sSim = living.states[state.i];
+    const warExhaustion = sSim?.warExhaustion ?? 0;
+    const happiness = sSim?.happiness ?? 0;
+    const wasCapital = Boolean(burg.capital);
+    if (wasCapital && warExhaustion > 30) return "sack";
+    if (happiness < -5) return "sack";
+    if (warExhaustion > 20) return "loot";
+    return "occupy";
   }
 
   /** Modifiers for a city assault: walls, bracing garrison, terrain and lord multipliers. */
@@ -6417,7 +6383,7 @@ class LivingModel {
   }
 
   /** §5.3 city capture: half the citizens, reset HP, clear queue, destroy national wonders. */
-  private captureCity(state: State, burg: Burg, living: LivingWorldState): void {
+  private captureCity(state: State, burg: Burg, living: LivingWorldState, policy: string = "occupy"): void {
     const previousStateId = burg.state ?? 0;
     const wasCapital = Boolean(burg.capital);
     this.annexBurg(state.i, burg, true);
@@ -6428,19 +6394,59 @@ class LivingModel {
 
     if (wasCapital) this.relocateCapital(previousStateId, burg);
 
+    // Base booty from city population.
+    const baseBooty = (bSim.citizens ?? 1) * 10;
+
     bSim.citizens = Math.max(1, Math.floor((bSim.citizens ?? 1) / 2));
     burg.population = populationFromCitizens(bSim.citizens);
     bSim.maxHp = CITY_BASE_HP;
     bSim.hp = 100;
     bSim.productionQueue = [];
     bSim.productionProgress = {};
-    bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
-      const def = CIV_BUILDING_BY_ID[id];
-      return !def?.nationalWonder && !def?.isWonder;
-    });
-    syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+
+    // Apply capture policy effects.
+    switch (policy) {
+      case "raze":
+        bSim.civBuildings = [];
+        syncCivFlagsFromBuildings(burg, []);
+        bSim.unrest = 5;
+        state.treasury = (state.treasury ?? 0) + baseBooty * 3;
+        break;
+      case "sack":
+        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
+          const def = CIV_BUILDING_BY_ID[id];
+          return !def?.nationalWonder && !def?.isWonder;
+        });
+        // Destroy one additional building.
+        if (bSim.civBuildings.length > 0) bSim.civBuildings.pop();
+        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+        bSim.unrest = 15;
+        state.treasury = (state.treasury ?? 0) + baseBooty * 4;
+        break;
+      case "loot":
+        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
+          const def = CIV_BUILDING_BY_ID[id];
+          return !def?.nationalWonder && !def?.isWonder;
+        });
+        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+        bSim.unrest = 20;
+        state.treasury = (state.treasury ?? 0) + baseBooty * 2;
+        break;
+      default: // occupy
+        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
+          const def = CIV_BUILDING_BY_ID[id];
+          return !def?.nationalWonder && !def?.isWonder;
+        });
+        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+        bSim.unrest = 6 + bSim.citizens;
+        break;
+    }
     bSim.cityYields = undefined;
-    bSim.unrest = 6 + bSim.citizens;
+
+    // Clear siege state.
+    bSim.siegeStateId = 0;
+    bSim.siegeProgress = 0;
+    bSim.siegeSupplies = 0;
 
     const captures = living.states[state.i];
     if (captures?.agenda?.kind === "conquer") captures.agenda = null;
@@ -7118,6 +7124,9 @@ class LivingModel {
         if (this.signPeace(state.i, otherId)) break;
       }
     }
+
+    // Treaties: AI states occasionally offer pacts to their neighbours (Phase D).
+    this.stepTreaties(living);
   }
 
   /** Sign a peace treaty once the war has lasted the minimum number of seasons. */
@@ -7280,7 +7289,7 @@ class LivingModel {
       if (!sSim) continue;
 
       const restiveCount = restiveCountByState.get(sSim.stateId) ?? 0;
-      const sDeficit = sSim.capacity.s.load > sSim.capacity.s.gen;
+      const sDeficit = (sSim.happiness ?? 0) <= VERY_UNHAPPY_HAPPINESS;
 
       let delta = 0;
       if (restiveCount > 0) delta += restiveCount * 4;
@@ -7327,7 +7336,6 @@ class LivingModel {
 
     const settlementId = this.pickProvinceSettlement(provinceId, stateId);
     if (!settlementId) return false;
-    if (this.freeCapacity(sSim).w < capacityConfig.developWPerTurn) return false;
 
     pSim.stability -= capacityConfig.developStabilityCost;
     pSim.developmentProgress = { settlementId, turnsLeft: capacityConfig.developTurns };
@@ -7361,8 +7369,6 @@ class LivingModel {
     bSim.construction = {
       buildingId,
       turnsLeft: building.turns ?? 1,
-      checks: { m: false, w: false, s: false },
-      pityBonus: 0
     };
     sSim.agenda = {
       kind: "build",
@@ -7833,7 +7839,7 @@ class LivingModel {
     ).attackerWinPct;
   }
 
-  /** The burg's roster and its Conquest militia garrison. */
+  /** The burg's roster and its militia garrison. */
   private burgDefenders(burg: Burg): ArmyUnit[] {
     const roster = this.burgDefenderRoster(burg);
     const unitTypes = Military.getUnitTypes();
@@ -8178,10 +8184,19 @@ class LivingModel {
     if (!subject?.i || subject.removed || !object?.i || object.removed) return;
     if ((pack.history?.living?.states?.[stateId]?.peaceTreatyTurns?.[otherId] ?? 0) > 0) return;
 
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    // A non-aggression pact binds (Phase D): the war cannot start while it stands.
+    if (this.hasTreaty(stateId, otherId, "nonAggression")) return;
+
     subject.diplomacy ??= [];
     object.diplomacy ??= [];
     subject.diplomacy[otherId] = "Enemy";
     object.diplomacy[stateId] = "Enemy";
+    // War voids every treaty between the pair.
+    if (sSim?.treaties) delete sSim.treaties[otherId];
+    const oSim = living.states[otherId];
+    if (oSim?.treaties) delete oSim.treaties[stateId];
 
     const text = `${subject.name} declared war on ${object.name}.`;
     this.pushNews(this.getState(), {
@@ -8200,6 +8215,237 @@ class LivingModel {
       object.center,
       text
     );
+
+    // Defensive call-to-arms (Phase D): allies of the defender join the war.
+    for (const other of pack.states) {
+      if (!other?.i || other.removed || other.i === stateId || other.i === otherId) continue;
+      if (!this.hasTreaty(otherId, other.i, "defensiveAlliance")) continue;
+      if (this.isAtWar(stateId, other.i)) continue;
+      other.diplomacy ??= [];
+      subject.diplomacy ??= [];
+      other.diplomacy[stateId] = "Enemy";
+      subject.diplomacy[other.i] = "Enemy";
+      this.pushNews(living, {
+        kind: "war",
+        text: `${other.name} answered ${object.name}'s call to arms against ${subject.name}.`,
+        cell: object.center,
+        stateId: other.i
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Diplomacy: treaties on top of FMG's native matrix (Phase D)
+  // ---------------------------------------------------------------------------
+
+  /** Does an active treaty of this kind bind the pair? */
+  hasTreaty(stateId: number, otherId: number, kind: TreatyKind): boolean {
+    const treaties = pack.history?.living?.states?.[stateId]?.treaties?.[otherId];
+    return Array.isArray(treaties) && treaties.includes(kind);
+  }
+
+  private recordTreaty(aId: number, bId: number, kind: TreatyKind): void {
+    const living = this.getState();
+    for (const id of [aId, bId]) {
+      const sSim = living.states[id];
+      if (!sSim) continue;
+      sSim.treaties ??= {};
+      const list = sSim.treaties[id === aId ? bId : aId] ?? [];
+      if (!list.includes(kind)) sSim.treaties[id === aId ? bId : aId] = [...list, kind];
+    }
+  }
+
+  /**
+   * FMG matrix floor for a treaty: positive treaties can't coexist with cold
+   * relations, so signing lifts the matrix to at least the treaty's floor.
+   * (Builds on FMG's native diplomacy rather than a parallel numeric relation.)
+   */
+  private treatyFloor(kind: TreatyKind): string {
+    if (kind === "defensiveAlliance" || kind === "militaryAccess") return "Ally";
+    return "Friendly";
+  }
+
+  private applyTreaty(aId: number, bId: number, kind: TreatyKind): void {
+    const a = pack.states[aId];
+    const b = pack.states[bId];
+    if (!a?.i || !b?.i) return;
+    this.recordTreaty(aId, bId, kind);
+
+    const floor = this.treatyFloor(kind);
+    a.diplomacy ??= [];
+    b.diplomacy ??= [];
+    if (!a.diplomacy[bId] || a.diplomacy[bId] === "Neutral" || a.diplomacy[bId] === "Unknown") a.diplomacy[bId] = "Friendly";
+    if (!b.diplomacy[aId] || b.diplomacy[aId] === "Neutral" || b.diplomacy[aId] === "Unknown") b.diplomacy[aId] = "Friendly";
+    if (floor === "Ally" && a.diplomacy[bId] !== "Enemy") a.diplomacy[bId] = "Ally";
+    if (floor === "Ally" && b.diplomacy[aId] !== "Enemy") b.diplomacy[aId] = "Ally";
+  }
+
+  /**
+   * Offer a treaty. AI targets answer instantly via their utility; the offer is
+   * idempotent — a rejected offer just sours the FMG relation one step.
+   */
+  offerTreaty(fromId: number, toId: number, kind: TreatyKind): boolean {
+    const from = pack.states[fromId];
+    const to = pack.states[toId];
+    if (!from?.i || from.removed || !to?.i || to.removed || fromId === toId) return false;
+    if (this.isAtWar(fromId, toId) && kind !== "nonAggression") return false;
+    if (this.hasTreaty(fromId, toId, kind)) return true; // already in force
+
+    const verdict = this.aiAcceptsTreaty(toId, fromId, kind);
+    if (verdict.accept) {
+      this.applyTreaty(fromId, toId, kind);
+      const living = this.getState();
+      this.pushNews(living, {
+        kind: "war",
+        text: `${from.name} and ${to.name} signed a ${kind === "defensiveAlliance" ? "defensive alliance" : kind.replace(/([A-Z])/g, " $1").toLowerCase()} pact.`,
+        cell: to.center,
+        stateId: fromId
+      });
+      this.pushHistory(
+        "war",
+        [
+          { kind: "state", id: fromId },
+          { kind: "state", id: toId }
+        ],
+        to.center,
+        `${from.name} and ${to.name} signed a ${kind} pact.`
+      );
+      return true;
+    }
+
+    // Pushy envoys cost goodwill: step the FMG relation one rung colder.
+    from.diplomacy ??= [];
+    to.diplomacy ??= [];
+    if (from.diplomacy[toId] === "Friendly") {
+      from.diplomacy[toId] = "Neutral";
+      to.diplomacy[fromId] = "Neutral";
+    } else if (from.diplomacy[toId] === "Neutral") {
+      from.diplomacy[toId] = "Suspicion";
+      to.diplomacy[fromId] = "Suspicion";
+    }
+    return false;
+  }
+
+  /**
+   * AI treaty acceptance, ported from the campaign AI and re-expressed over
+   * FMG's native relation strings + living's own war-exhaustion bookkeeping.
+   */
+  private aiAcceptsTreaty(aiId: number, fromId: number, kind: TreatyKind): { accept: boolean; reason: string } {
+    const ai = pack.states[aiId];
+    const from = pack.states[fromId];
+    if (!ai?.i || ai.removed || !from?.i || from.removed) return { accept: false, reason: "not alive" };
+    const relation = ai.diplomacy?.[fromId] ?? "Unknown";
+    const atWar = this.isAtWar(aiId, fromId);
+    const myStrength = this.stateStrength(aiId);
+    const theirStrength = Math.max(1, this.stateStrength(fromId));
+    const ratio = myStrength / theirStrength;
+
+    switch (kind) {
+      case "nonAggression":
+        if (atWar) return { accept: false, reason: "we are at war" };
+        return {
+          accept: relation === "Neutral" || relation === "Friendly" || relation === "Ally",
+          reason: relation === "Friendly" || relation === "Ally" ? "a cautious calm" : "we do not trust them"
+        };
+      case "trade":
+        return {
+          accept: !atWar && relation !== "Enemy" && relation !== "Rival" && relation !== "Suspicion",
+          reason: "coin is coin"
+        };
+      case "defensiveAlliance":
+      case "militaryAccess":
+        if (atWar) return { accept: false, reason: "we are at war" };
+        if (relation !== "Ally" && relation !== "Friendly") return { accept: false, reason: "alliances need trust" };
+        if (ratio < 0.5) return { accept: false, reason: "you cannot shield us" };
+        return { accept: true, reason: "shared interests" };
+      default:
+        return { accept: false, reason: "unknown treaty" };
+    }
+  }
+
+  /** Total army strength of a state (men under arms). */
+  private stateStrength(stateId: number): number {
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed) return 0;
+    return (state.military ?? []).reduce((sum, regiment) => sum + armyMen(regiment, Military.getUnitTypes()), 0);
+  }
+
+  /**
+   * Confederation: a dying or devoted culture-mate peacefully merges into a
+   * stronger cousin (ported from the campaign AI).
+   */
+  offerConfederation(byId: number, targetId: number): boolean {
+    const by = pack.states[byId];
+    const target = pack.states[targetId];
+    if (!by?.i || by.removed || !target?.i || target.removed || byId === targetId) return false;
+    if (target.culture !== by.culture) return false;
+
+    const provinces = this.ownedProvinces(targetId).length;
+    const living = this.getState();
+    const tSim = living.states[targetId];
+    const relation = target.diplomacy?.[byId] ?? "Unknown";
+    const dying = provinces <= 2;
+    const devoted = relation === "Ally" && this.stateStrength(targetId) * 2 <= this.stateStrength(byId);
+    if (!dying && !devoted) return false;
+
+    // Peaceful annexation of every target burg.
+    for (const province of this.ownedProvinces(targetId)) {
+      for (const burg of pack.burgs) {
+        if (!burg?.i || burg.removed || burg.state !== targetId) continue;
+        if (pack.cells.province?.[burg.cell] !== province.i) continue;
+        this.annexBurg(byId, burg, false);
+      }
+    }
+    if (tSim) tSim.agenda = null;
+    this.pushNews(living, {
+      kind: "conquest",
+      text: `${target.name} confederated into ${by.name}.`,
+      cell: by.center,
+      stateId: byId
+    });
+    this.pushHistory(
+      "conquest",
+      [
+        { kind: "state", id: byId },
+        { kind: "state", id: targetId }
+      ],
+      by.center,
+      `${target.name} joined ${by.name} in confederation.`
+    );
+    return true;
+  }
+
+  /**
+   * AI states occasionally offer treaties to their neighbours (Phase D).
+   * Deterministic per pair per season through the living PRNG.
+   */
+  private stepTreaties(living: LivingWorldState): void {
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const neighbours = this.neighbourStates(state.i);
+      for (const otherId of neighbours) {
+        if (otherId <= state.i) continue; // one roll per pair
+        const roll = this.rng(`treaty:${state.i}:${otherId}`, living.tick);
+        if (!roll.chance(0.06)) continue;
+        const kind = roll.choice<TreatyKind>(["nonAggression", "trade", "defensiveAlliance", "militaryAccess"]);
+        if (this.hasTreaty(state.i, otherId, kind)) continue;
+        if (this.isAtWar(state.i, otherId)) continue;
+        this.offerTreaty(state.i, otherId, kind);
+      }
+    }
+  }
+
+  /** Directly adjacent states (shared border), neighbours only. */
+  private neighbourStates(stateId: number): number[] {
+    const out = new Set<number>();
+    for (let cell = 0; cell < pack.cells.state.length; cell++) {
+      if ((pack.cells.state[cell] ?? 0) !== stateId) continue;
+      for (const neighbour of pack.cells.c?.[cell] ?? []) {
+        const owner = pack.cells.state[neighbour] ?? 0;
+        if (owner && owner !== stateId) out.add(owner);
+      }
+    }
+    return [...out].filter(id => id > 0 && pack.states[id] && !pack.states[id].removed);
   }
 
   private logConquest(state: State, burg: Burg, forced: boolean): void {
@@ -8317,7 +8563,7 @@ class LivingModel {
       const biomeId = pack.cells.biome?.[cell];
       total += (biomeId !== undefined ? pack.biomes?.[biomeId]?.habitability : undefined) ?? 50;
     }
-    const perPoint = Math.max(1, currentContent().config.capacity.growthPerHabitability);
+    const perPoint = 20; // Civ economy: shipped growthPerHabitability, kept as a constant
     return Math.floor(total / cells.length / perPoint);
   }
 
@@ -8357,23 +8603,6 @@ class LivingModel {
     return undefined;
   }
 
-  private freeCapacity(sSim: { capacity: CapacityLedger }): CapacityPoints {
-    const out = { m: 0, w: 0, s: 0, c: 0 };
-    for (const pool of ["m", "w", "s", "c"] as const) {
-      out[pool] = sSim.capacity[pool].gen - sSim.capacity[pool].load;
-    }
-    return out;
-  }
-
-  private hasFreeCapacity(sSim: { capacity: CapacityLedger }, load?: CapacityPoints): boolean {
-    if (!load) return true;
-    const free = this.freeCapacity(sSim);
-    for (const pool of ["m", "w", "s", "c"] as const) {
-      if (free[pool] - (load[pool] ?? 0) < 0) return false;
-    }
-    return true;
-  }
-
   private pickMusterUnit(state: State): { unit: UnitType; regiment: Regiment | null } | null {
     const roster = Military.getRoster(state);
     const unitTypes = Military.getUnitTypes();
@@ -8385,7 +8614,6 @@ class LivingModel {
 
     const { content, config } = currentContent();
     const maxUnits = config.military.maxUnitsPerArmy;
-    const free = this.freeCapacity(sSim);
     const heldBuildings = this.heldBuildings(state.i);
     const unlockSources = new Map<string, string[]>();
     for (const building of content.buildings) {
@@ -8406,19 +8634,9 @@ class LivingModel {
       if (unit.requiresGood !== undefined && !heldGoods.has(unit.requiresGood)) continue;
       if (unit.requiresWallTier !== undefined && maxWalls < unit.requiresWallTier) continue;
 
-      const cost = unit.capacityCost;
-      if (cost) {
-        let refused = false;
-        for (const pool of ["m", "w", "s", "c"] as const) {
-          if (free[pool] - (cost[pool] ?? 0) * unit.blocks < 0) {
-            refused = true;
-            break;
-          }
-        }
-        if (refused) continue;
-      }
-
       const regiment = this.findRegimentForUnit(state, unitId, maxUnits, roster.caps[unitId]);
+      // Civ economy owns army size via upkeep (Σ upkeep × hp, treasury,
+      // settleDebt) — no per-muster fee (army integration).
       return { unit, regiment };
     }
     return null;
@@ -8501,7 +8719,7 @@ class LivingModel {
   }
 
   private canBuild(state: State, burg: Burg, bSim: BurgSimState, building: BuildingDef): boolean {
-    const { content, config } = currentContent();
+    const { content } = currentContent();
     if (building.kind && building.kind !== "structure") return false;
     if (building.group && building.group !== state.rosterId) return false;
 
@@ -8519,8 +8737,7 @@ class LivingModel {
 
     const sSim = pack.history?.living?.states[state.i];
     if (!sSim) return false;
-    if (!this.hasFreeCapacity(sSim, building.effects.upkeep)) return false;
-    return this.freeCapacity(sSim).w >= config.capacity.constructionWPerTurn;
+    return true;
   }
 
   private pickBuildTarget(state: State): { burgId: number; buildingId: string } | null {
@@ -8548,7 +8765,7 @@ class LivingModel {
     return false;
   }
 
-  private pickDevelopProvince(stateId: number, sSim: StatePolitySim, living: LivingWorldState): number | undefined {
+  private pickDevelopProvince(stateId: number, living: LivingWorldState): number | undefined {
     const capacityConfig = currentContent().config.capacity;
     for (const province of this.ownedProvinces(stateId)) {
       const pSim = living.provinces[province.i];
@@ -8556,7 +8773,6 @@ class LivingModel {
       if (pSim.stability < capacityConfig.developStabilityCost) continue;
       if (pSim.development >= this.provinceDevelopmentCap(province.i)) continue;
       if (!this.pickProvinceSettlement(province.i, stateId)) continue;
-      if (this.freeCapacity(sSim).w < capacityConfig.developWPerTurn) continue;
       return province.i;
     }
     return undefined;
@@ -8566,6 +8782,22 @@ class LivingModel {
   private warAgenda(state: State, sSim: StatePolitySim): StateAgenda | null {
     const army = this.fieldArmy(state);
     const bias = this.traitBias(state, sSim);
+
+    // Defend: an at-war enemy regiment within aggro range of home territory
+    // (absorbs the campaign AI threat evaluation + defensive interception).
+    const threat = this.pickDefendTarget(state);
+    if (threat) {
+      const burg = pack.burgs[threat.nearBurgId];
+      return {
+        kind: "defend",
+        label: `Defending ${burg?.name ?? "the border"} against ${threat.enemyState.name}`,
+        targetBurgId: threat.nearBurgId,
+        targetStateId: threat.enemyState.i,
+        progress: 0,
+        required: 1
+      };
+    }
+
     const target = army ? this.pickWarTarget(state, army) : null;
     if (target) return this.conquerAgenda(target);
 
@@ -8597,6 +8829,19 @@ class LivingModel {
         kind: "colonize",
         label: `Colonizing ${free.name ?? "a free town"}`,
         targetBurgId: free.i,
+        progress: 0,
+        required: 1
+      };
+    }
+
+    // Raid: a martial ruler plunders an enemy border town for Gold + unrest.
+    const raidTarget = army ? this.pickRaidTarget(state, army) : null;
+    if (raidTarget && this.rng("agenda:raid", state.i).chance(0.08 + bias.martial * 0.35)) {
+      return {
+        kind: "raid",
+        label: `Raiding ${raidTarget.name ?? "enemy lands"}`,
+        targetBurgId: raidTarget.i,
+        targetStateId: raidTarget.state,
         progress: 0,
         required: 1
       };
@@ -8637,6 +8882,49 @@ class LivingModel {
   }
 
   /** Best defended border burg of a state already at war. */
+  /**
+   * Defend target: the nearest at-war enemy army within aggro range of any home
+   * major burg (absorbs the campaign AI threat evaluation). Returns the enemy
+   * state and the home burg being threatened, or null when nothing threatens.
+   */
+  private pickDefendTarget(state: State): { enemyState: State; enemyCell: number; nearBurgId: number } | null {
+    const living = this.getState();
+    let best: { enemyState: State; enemyCell: number; nearBurgId: number; distance: number } | null = null;
+
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || burg.state !== state.i || !burg.capital) continue;
+      const reach = this.cellHopDistances(burg.cell, UNIT_AGGRO_RANGE);
+      for (const other of pack.states) {
+        if (!other?.i || other.removed || other.i === state.i) continue;
+        if (!this.isAtWar(state.i, other.i)) continue;
+        for (const regiment of other.military ?? []) {
+          const distance = reach.get(regiment.cell);
+          if (distance === undefined) continue;
+          if (!living.armies?.[this.unitKey(other.i, regiment.i)] || armyIsEmpty(regiment)) continue;
+          if (!best || distance < best.distance) {
+            best = { enemyState: other, enemyCell: regiment.cell, nearBurgId: burg.i, distance };
+          }
+        }
+      }
+      if (best && best.distance <= 2) break; // close threat wins immediately
+    }
+    return best;
+  }
+
+  /** Weakest enemy border burg for a raid: plunder Gold, seed unrest. */
+  private pickRaidTarget(state: State, army: Regiment): Burg | null {
+    return this.pickAssaultTarget(
+      state,
+      army,
+      burg => {
+        const defenders = this.cityGarrisonBlocks(burg);
+        const totalHp = defenders.reduce((sum, block) => sum + block.hp, 0);
+        return totalHp <= 2; // weakly held: a raid, not a siege
+      },
+      55
+    );
+  }
+
   private pickWarTarget(state: State, army: Regiment): Burg | null {
     return this.pickAssaultTarget(
       state,
@@ -8732,7 +9020,7 @@ class LivingModel {
           required: 1
         };
       }
-      if (sSim.capacity.w.gen >= sSim.capacity.w.load || sSim.capacity.c.gen >= 4) {
+      if ((state.treasury ?? 0) >= 40) {
         return {
           kind: "hire_adventurers",
           label: `Hiring adventurers against ${lairProvince.lair.name} in ${lairProvince.province.name}`,
@@ -8762,7 +9050,7 @@ class LivingModel {
     const war = this.warAgenda(state, sSim);
     if (war) return war;
 
-    const provinceId = this.pickDevelopProvince(state.i, sSim, living);
+    const provinceId = this.pickDevelopProvince(state.i, living);
     if (provinceId !== undefined) {
       const province = pack.provinces?.[provinceId];
       return {
@@ -8854,7 +9142,7 @@ class LivingModel {
       }
       case "develop": {
         if (this.hasDevelopment(living, state.i)) return;
-        const provinceId = agenda.targetProvinceId ?? this.pickDevelopProvince(state.i, sSim, living);
+        const provinceId = agenda.targetProvinceId ?? this.pickDevelopProvince(state.i, living);
         if (provinceId === undefined || !this.startDevelop(state.i, provinceId)) sSim.agenda = null;
         return;
       }
@@ -8908,6 +9196,50 @@ class LivingModel {
         const burg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
         const unrest = burg ? (living.burgs[burg.i]?.unrest ?? 0) : 0;
         if (!burg || burg.removed || burg.state !== state.i || unrest <= 0) sSim.agenda = null;
+        return;
+      }
+      case "defend": {
+        // The army marches home via tacticalTarget; the goal clears when the
+        // threat is gone (enemy destroyed or moved out of aggro range).
+        if (!this.pickDefendTarget(state)) sSim.agenda = null;
+        return;
+      }
+      case "raid": {
+        const burg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
+        if (!burg || burg.removed || !burg.state || burg.state === state.i) {
+          sSim.agenda = null;
+          return;
+        }
+        const army = this.fieldArmy(state);
+        if (!army) {
+          agenda.progress += 1;
+          if (agenda.progress >= 6) sSim.agenda = null; // no field army: call off
+          return;
+        }
+        const adjacent = (pack.cells.c?.[burg.cell] ?? []).includes(army.cell) || army.cell === burg.cell;
+        if (!adjacent) {
+          agenda.progress += 1;
+          if (agenda.progress >= 6) sSim.agenda = null; // marching for a few seasons
+          return;
+        }
+        // Plunder: Gold to the treasury, unrest to the burg.
+        const bSim = living.burgs[burg.i];
+        const booty = Math.round((bSim?.citizens ?? 1) * 2 + 10);
+        state.treasury = (state.treasury ?? 0) + booty;
+        if (bSim) bSim.unrest = (bSim.unrest ?? 0) + 8;
+        this.declareWar(state.i, burg.state);
+        const raidState = pack.states[burg.state];
+        this.pushNews(living, {
+          kind: "raid",
+          text: `${state.name} raided ${burg.name}, plundering ${booty} Gold.`,
+          cell: burg.cell,
+          stateId: state.i,
+          burgId: burg.i
+        });
+        this.pushHistory("conquest", [{ kind: "state", id: state.i }], burg.cell,
+          `${state.name} raided ${burg.name} and carried off ${booty} Gold${raidState ? ` from ${raidState.name}` : ""}.`);
+        agenda.progress += 1;
+        if (agenda.progress >= agenda.required) sSim.agenda = null;
         return;
       }
       default:
@@ -8967,29 +9299,10 @@ class LivingModel {
       }
 
       construction.turnsLeft = Math.max(0, construction.turnsLeft - 1);
-      const checks = construction.checks;
-      // One value check per season: pass the next unfinished pool.
-      const pool = (["m", "w", "s"] as const).find(entry => !checks[entry]);
-      if (pool) {
-        const dcs = assetCheckDifficulties(building, construction.pityBonus);
-        const modifier = valueModifier(sSim.capacity[pool].gen);
-        const roll = this.rng(
-          "build-check",
-          state.i * 10000 + burg.i * 10 + (pool === "m" ? 1 : pool === "w" ? 2 : 3)
-        ).d(20);
 
-        if (roll + modifier >= dcs[pool]) {
-          checks[pool] = true;
-          if (sSim.agenda?.kind === "build" && sSim.agenda.targetBurgId === burg.i) {
-            sSim.agenda.progress = Math.min(sSim.agenda.required, sSim.agenda.progress + 1);
-          }
-        } else {
-          construction.pityBonus += 1;
-        }
-      }
-
-      // Building time is a floor: all three saves and the advertised turns must pass.
-      if (checks.m && checks.w && checks.s && construction.turnsLeft === 0) {
+      // Building time is the whole gate now: the Civ economy owns construction
+      // (Phase E retired the 3-check value rolls).
+      if (construction.turnsLeft === 0) {
         this.completeConstruction(state, sSim, living, burg, bSim, building);
       }
     }
@@ -9079,7 +9392,7 @@ class LivingModel {
       }
 
       if (this.isProvinceGarrisoned(province.state, province.i)) {
-        if (!pSim.trouble && !pSim.lair) pSim.stability += config.capacity.stabilityPerGarrison;
+        if (!pSim.trouble && !pSim.lair) pSim.stability += 1;
         pSim.order = Math.min(100, pSim.order + 2);
       } else if (pSim.order < config.economy.startOrder) {
         pSim.order = Math.min(config.economy.startOrder, pSim.order + 1);
@@ -9386,7 +9699,6 @@ class LivingModel {
       const bName = bDef?.name ?? destroyed;
       pSim.order = Math.max(0, pSim.order - 6);
       if (target.state && living.states[target.state]) {
-        living.states[target.state].capacity = this.recomputeStateCapacity(target.state);
       }
       this.pushNews(living, {
         kind: "lair",
@@ -9412,7 +9724,6 @@ class LivingModel {
       pSim.development = Math.max(0, pSim.development - 1);
       pSim.order = Math.max(0, pSim.order - 10);
       if (target.state && living.states[target.state]) {
-        living.states[target.state].capacity = this.recomputeStateCapacity(target.state);
       }
       this.pushNews(living, {
         kind: "lair",
@@ -9440,7 +9751,6 @@ class LivingModel {
     const marker = lair.markerId !== undefined ? pack.markers?.[lair.markerId] : undefined;
     if (marker) marker.name = `${lair.name} (Lair Lvl ${lair.level})`;
     if (province.state && living.states[province.state]) {
-      living.states[province.state].capacity = this.recomputeStateCapacity(province.state);
     }
     this.pushNews(living, {
       kind: "lair",
@@ -9490,3 +9800,4 @@ window.Living = Living;
 export { LivingGuild } from "./living-guild";
 export { LivingHeroes } from "./living-heroes";
 export { LivingThreats } from "./living-threats";
+

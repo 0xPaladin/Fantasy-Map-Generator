@@ -39,13 +39,7 @@ describe("living-threats", () => {
           stateId: 1,
           unravel: 10,
           warExhaustion: 0,
-          treasury: 100,
-          capacity: {
-            m: { gen: 30, load: 15 },
-            w: { gen: 30, load: 15 },
-            c: { gen: 30, load: 15 },
-            s: { gen: 30, load: 15 }
-          }
+          treasury: 100
         }
       },
       burgs: {}
@@ -53,13 +47,7 @@ describe("living-threats", () => {
 
     setThreatHost({
       getState: () => mockLiving,
-      pushNews: () => {},
-      recomputeStateCapacity: () => ({
-        m: { gen: 30, load: 15 },
-        w: { gen: 30, load: 15 },
-        c: { gen: 30, load: 15 },
-        s: { gen: 30, load: 15 }
-      })
+      pushNews: () => {}
     });
 
     globalThis.options = {

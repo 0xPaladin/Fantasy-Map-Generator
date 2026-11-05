@@ -1,5 +1,6 @@
-// Party mission phases. Each phase is one unified check with its own pool and tags.
-// See docs/plans/hero-diversity.md.
+// Party mission phases. Each phase is one action check with its own tags.
+// See docs/plans/characters.md.
+import type { ActionId } from "@/types/character-actions";
 import type { GuildMissionKind, MissionPhase, MissionTag } from "@/types/living";
 
 export interface MissionPhaseInput {
@@ -21,11 +22,11 @@ export function buildMissionPhases(input: MissionPhaseInput): MissionPhase[] {
   const threePhase = kind === "excavate" ? Boolean(chronicle) : kind === "lair" ? level >= 5 : level >= 5;
 
   const phases: MissionPhase[] = [];
-  const add = (id: string, label: string, pool: MissionPhase["pool"], phaseTags: MissionTag[], offset: number) => {
+  const add = (id: string, label: string, action: ActionId, phaseTags: MissionTag[], offset: number) => {
     phases.push({
       id: `${kind}_${id}`,
       label,
-      pool,
+      action,
       tags: phaseTags,
       dc: dc + offset,
       required: true
@@ -33,21 +34,21 @@ export function buildMissionPhases(input: MissionPhaseInput): MissionPhase[] {
   };
 
   if (kind === "lair") {
-    add("approach", "Approach", "c", tagsFor(["wild", "ruin", "lair"], tags), -1);
-    add("breach", "Breach", "m", tagsFor(["combat", "lair"], tags), 0);
-    if (threePhase) add("decapitation", "Decapitation", "c", tagsFor(["lair", "combat"], tags), 1);
+    add("approach", "Approach", "scout", tagsFor(["wild", "ruin", "lair"], tags), -1);
+    add("breach", "Breach", "strike", tagsFor(["combat", "lair"], tags), 0);
+    if (threePhase) add("decapitation", "Decapitation", "infiltrate", tagsFor(["lair", "combat"], tags), 1);
   } else if (kind === "excavate") {
-    add("survey", "Survey", "w", tagsFor(["ruin", "arcane"], tags), -1);
-    add("delve", "Delve", "c", tagsFor(["trap", "arcane", "ruin"], tags), 0);
-    if (threePhase) add("extraction", "Extraction", "c", tagsFor(["ruin"], tags), 1);
+    add("survey", "Survey", "investigate", tagsFor(["ruin", "arcane"], tags), -1);
+    add("delve", "Delve", "scout", tagsFor(["trap", "arcane", "ruin"], tags), 0);
+    if (threePhase) add("extraction", "Extraction", "survive", tagsFor(["ruin"], tags), 1);
   } else if (kind === "pacify") {
-    add("parley", "Parley", "s", tagsFor(["social", "order"], tags), -1);
-    add("enforce", "Enforce", "m", tagsFor(["order", "social"], tags), 0);
-    if (threePhase) add("reconcile", "Reconcile", "s", tagsFor(["social", "order"], tags), 1);
+    add("parley", "Parley", "persuade", tagsFor(["social", "order"], tags), -1);
+    add("enforce", "Enforce", "command", tagsFor(["order", "social"], tags), 0);
+    if (threePhase) add("reconcile", "Reconcile", "persuade", tagsFor(["social", "order"], tags), 1);
   } else {
-    add("investigate", "Investigate", "c", tagsFor(["intrigue", "arcane", "trouble"], tags), -1);
-    add("confront", "Confront", "m", tagsFor(["combat", "social", "trouble"], tags), 0);
-    if (threePhase) add("settle", "Settle", "s", tagsFor(["social", "order", "trouble"], tags), 1);
+    add("investigate", "Investigate", "investigate", tagsFor(["intrigue", "arcane", "trouble"], tags), -1);
+    add("confront", "Confront", "strike", tagsFor(["combat", "social", "trouble"], tags), 0);
+    if (threePhase) add("settle", "Settle", "persuade", tagsFor(["social", "order", "trouble"], tags), 1);
   }
 
   return phases;

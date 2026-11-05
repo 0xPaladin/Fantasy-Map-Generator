@@ -25,7 +25,6 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/renderers/layers", () => ({ Layers: mocks.layers }));
 vi.mock("@/renderers/draw-legend", () => mocks.legend);
-vi.mock("@/conquest/ui/layers", () => ({ twLayerIds: () => ["twArmies", "twFronts"] }));
 
 import { mapHistory } from "@/model/map-history";
 import { drawLegend, hasLegend } from "@/renderers/draw-legend";

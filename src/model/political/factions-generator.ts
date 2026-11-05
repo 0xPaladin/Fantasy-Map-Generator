@@ -1,5 +1,5 @@
 import { hcl } from "d3";
-import { assignStateRoster } from "@/conquest/engine/common/content";
+import { assignStateRoster } from "@/data/roster-content";
 import { rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
 import { FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";

@@ -1,7 +1,6 @@
 // Layers tab: a projection of the Layers registry. Renders the layer buttons and wires them up.
 
 import { Controllers } from "@/controllers";
-import { isConquestEnabled, subscribeConquestView } from "@/controllers/conquest-mode";
 import { ASTRAL_LAYER_TOGGLES } from "@/data/astral-layer-labels";
 import { ASTRAL_DEFAULT_PRESET, ASTRAL_PRESETS } from "@/data/astral-layers";
 import { LAYER_TOGGLES, type LayerButton, underlineHotkey } from "@/data/layer-labels";
@@ -43,11 +42,7 @@ export { LAYER_TOGGLES } from "@/data/layer-labels";
 const toggles = (): Map<LayerId, LayerButton> => (isAstralView() ? ASTRAL_LAYER_TOGGLES : LAYER_TOGGLES);
 
 export const getLayerByShortcut = (code: string): LayerId | undefined => {
-  const conquestActive = isConquestEnabled();
-  return [...toggles()].find(([id, button]) => {
-    if (!conquestActive && id.startsWith("tw")) return false;
-    return button.shortcut === code;
-  })?.[0];
+  return [...toggles()].find(([, button]) => button.shortcut === code)?.[0];
 };
 
 const ASTRAL_PRESET_IDS = new Set(Object.keys(ASTRAL_PRESETS));
@@ -154,10 +149,8 @@ function renderPresetOptions(): void {
 function render(): void {
   renderPresetOptions();
   const activeToggles = toggles();
-  const conquestActive = isConquestEnabled();
   ensureEl("mapLayers").replaceChildren(
     ...Layers.all.flatMap(layer => {
-      if (!conquestActive && layer.id.startsWith("tw")) return [];
       const button = activeToggles.get(layer.id);
       if (!button) return [];
 
@@ -187,7 +180,6 @@ ensureEl("layersOrderButton").addEventListener("click", () => void Controllers.L
 
 Layers.subscribe(render);
 subscribeAstralView(render);
-subscribeConquestView(render);
 
 // Astral view hides the 3D scene and Globe view mode buttons
 function syncViewModeVisibility(): void {

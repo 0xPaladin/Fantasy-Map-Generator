@@ -1,6 +1,12 @@
 # Plan — Unified Figures: One Roster, Many Views
 
-Updated: 2026-10-29. Status: **planned**. Decisions taken in brainstorming:
+Updated: 2026-10-29. Status: **partly superseded (2026-11-05)**.
+
+> **Superseded in part by [characters.md](characters.md).** The one-roster decision, named
+> commanders and map positions remain. The character **M/W/S/C** stat block, `FigureSkills` and
+> the `1d20 + pool` check are retired: characters use the hero sheet and action dice.
+
+Decisions taken in brainstorming:
 
 1. **One roster** — `pack.history.figures` is the single registry of people, serving both the
    OpenConquest campaign and the Living World diorama.
@@ -48,6 +54,9 @@ The only bridge today is `UnitType.troubleRole`: `resolveTrouble()` scans regime
   not a second person.
 
 ## Data Model
+
+> **Superseded fields:** `FigureSkills`, top-level `xp`/`skills`/`archetype`/`disciplines` and the
+> pool check are historical. The current character shape is in [characters.md](characters.md).
 
 ### `src/types/history.ts` — additive
 

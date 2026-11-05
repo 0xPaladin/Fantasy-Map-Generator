@@ -139,6 +139,13 @@ export const MAP_COMMANDS: MapCommand[] = [
     run: () => Controllers.FactionsEditor.open()
   },
   {
+    id: "editCharactersButton",
+    name: t("Characters Editor"),
+    link: true,
+    aliases: "people heroes figures adventurers roster",
+    run: () => Controllers.CharactersEditor.open()
+  },
+  {
     id: "overviewBurgsButton",
     name: t("Burgs Overview"),
     link: true,
@@ -847,7 +854,7 @@ export const MAP_COMMANDS: MapCommand[] = [
 ];
 
 declare global {
-  // biome-ignore lint/suspicious/noRedeclare: exposed on window for the conquest feature seam
+  // biome-ignore lint/suspicious/noRedeclare: exposed on window for external tooling
   var MAP_COMMANDS: MapCommand[];
 }
 

@@ -1,5 +1,5 @@
 // Living World Guild Engine: manages guild state, operations, missions, relics, petitions, and player faction bridging.
-import { valueModifier } from "@/conquest/engine/game/saves";
+import { ACTION_DEFS, type ActionId, actionCheck, DIE_SIDES, legacyActionForPool } from "@/data/character-actions";
 import { GUILD_OPERATIONS, type GuildOperationKind } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines } from "@/data/hero-archetypes";
 import { aspectBonus } from "@/data/hero-aspects";
@@ -35,6 +35,7 @@ import {
   applyHeroLevels,
   autoPickPendingPaths,
   ensureHeroGuildState,
+  ensureHeroSheet,
   figureLevel,
   findFigure,
   GUILD_MAX_HEROES,
@@ -51,7 +52,6 @@ import type { Faction } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import type {
   ActiveGuildMission,
-  CapacityLedger,
   DisciplineId,
   GuildMissionKind,
   GuildState,
@@ -76,6 +76,7 @@ import type { Province } from "@/types/subdivided-pack";
 import { minmax } from "@/utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
+import { valueModifier } from "@/data/saves-helpers";
 
 export const GUILD_RENOWN_THRESHOLDS = [0, 50, 150, 350, 700] as const;
 export const GUILD_TIER_TITLES = [
@@ -141,7 +142,6 @@ export interface GuildHost {
   sparkRebellion?(stateId: number, burgId?: number): boolean;
   promoteTroubleToState?(provinceId: number, capitalBurgId?: number): number | null;
   smiteRuler?(stateId: number): boolean;
-  recomputeStateCapacity?(stateId: number): CapacityLedger;
   relieveEschaton?(living: LivingWorldState, amount?: number): void;
   addRuinMarker?(cell: number, name: string): number;
   spawnProtege?(living: LivingWorldState, veteran: HistoricalFigure): HistoricalFigure | undefined;
@@ -194,17 +194,18 @@ export function heroAlignmentModifier(figure: HistoricalFigure): number {
 }
 
 export function heroMissionFit(figure: HistoricalFigure, tags: readonly MissionTag[] = []): HeroMissionFit {
-  const matchedDisciplines = matchingDisciplines(figure.disciplines, tags);
+  const disciplines = figureDisciplines(figure);
+  const matchedDisciplines = matchingDisciplines(disciplines, tags);
   return {
     matchedDisciplines,
     discipline: Math.min(2, matchedDisciplines.length),
     aspect: aspectBonus(figure, tags),
     alignment: heroAlignmentModifier(figure),
-    total: disciplineBonus(figure.disciplines, tags) + aspectBonus(figure, tags)
+    total: disciplineBonus(disciplines, tags) + aspectBonus(figure, tags)
   };
 }
 
-/** Unified figure roll: 1d20 + pool skill + domain modifier + clamped traits + aspects + disciplines + guild + relic */
+/** @deprecated legacy d20 adapter for guild operations and trouble resolution. */
 export function figureCheckRoll(
   rng: Rng,
   figure: HistoricalFigure,
@@ -320,7 +321,6 @@ export function getGuild(): GuildState {
   guild.chapterBurgIds ??= [];
   guild.roster ??= [];
   guild.candidates ??= [];
-  guild.heroes ??= {};
   guild.missions ??= [];
   guild.relics ??= [];
   guild.cooldowns ??= {};
@@ -465,7 +465,8 @@ export function guildOperationCost(kind: GuildOperationKind): number {
 
 function isHeroIdle(guild: GuildState, figureId: number): boolean {
   if (guild.missions.some(mission => mission.figureId === figureId || mission.party?.includes(figureId))) return false;
-  const state = guild.heroes?.[figureId];
+  const figure = findFigure(figureId);
+  const state = figure ? ensureHeroGuildState(guild, figure) : undefined;
   const tick = getHost().getState().tick;
   if (state?.downUntilTick !== undefined && state.downUntilTick > tick) return false;
   return (guild.cooldowns[figureId] ?? 0) <= tick;
@@ -603,7 +604,7 @@ export function guildAssassinateRuler(stateId: number): boolean {
   if (sSim.rulerId === undefined || findFigure(sSim.rulerId)?.death !== undefined) return false;
   if (!chargeOperation(living, guild, operator, kind)) return false;
 
-  const poolGen = sSim.capacity?.c?.gen ?? 0;
+  const poolGen = sSim.yieldsPerTurn?.gold ?? 0;
   const rng = getRng("guild:operation", stateId * 1000 + operator.i);
   const check = figureCheckRoll(
     rng,
@@ -653,7 +654,7 @@ export function guildBrokerWar(stateId: number, otherId?: number): boolean {
       ? otherId
       : state.diplomacy?.findIndex((relation, index) => relation === "Enemy" && index !== stateId);
   const pool = checkPool(operator, def.check!.pool);
-  const poolGen = living.states?.[stateId]?.capacity[pool]?.gen ?? 0;
+  const poolGen = living.states?.[stateId]?.yieldsPerTurn?.gold ?? 0;
   const rng = getRng("guild:operation", stateId * 1000 + operator.i);
   const check = figureCheckRoll(
     rng,
@@ -809,8 +810,6 @@ export function dropStateRelicsToRuin(stateId: number, burg: Burg): HistoricalRe
     : 0;
   for (const relic of dropped) relic.holder = { kind: "ruin", markerId, cell: burg.cell };
 
-  const sSim = living.states?.[stateId];
-  if (sSim && host.recomputeStateCapacity) sSim.capacity = host.recomputeStateCapacity(stateId);
 
   pushNews(living, {
     kind: "develop",
@@ -876,8 +875,6 @@ export function leaseRelic(relicId: number, stateId: number): boolean {
   if (relic?.holder.kind !== "vault") return false;
 
   relic.holder = { kind: "state", id: stateId };
-  const sSim = host.getState().states?.[stateId];
-  if (sSim && host.recomputeStateCapacity) sSim.capacity = host.recomputeStateCapacity(stateId);
   return true;
 }
 
@@ -892,7 +889,6 @@ export function recallRelic(relicId: number): boolean {
   relic.holder = vaultHasRoom(guild) ? { kind: "vault" } : { kind: "reserve" };
   if (previous.kind === "state") {
     const sSim = host.getState().states?.[previous.id];
-    if (sSim && host.recomputeStateCapacity) sSim.capacity = host.recomputeStateCapacity(previous.id);
   }
   return true;
 }
@@ -919,6 +915,7 @@ export function excavateMarker(markerId: number): boolean {
   return true;
 }
 
+/** @deprecated legacy pool score for guild operations and trouble resolution. */
 export function heroScore(
   figure: HistoricalFigure,
   pool: "m" | "w" | "s" | "c",
@@ -928,6 +925,32 @@ export function heroScore(
   return (figure.skills?.[pool] ?? 0) + fit.alignment + fit.aspect + fit.discipline;
 }
 
+/** Old mission DCs were d20-shaped; action checks use the 4/6/8/10 ladder. */
+export function actionDcForMission(dc: number): number {
+  return Math.max(4, Math.min(10, dc - 8));
+}
+
+/** Old saves carry a pool on phases; turns it into the action that replaced it. */
+function phaseAction(phase: MissionPhase & { pool?: "m" | "w" | "s" | "c" }): ActionId {
+  return phase.action ?? legacyActionForPool(phase.pool ?? "m");
+}
+
+function poolForAction(action: ActionId): "m" | "w" | "s" | "c" {
+  if (action === "strike" || action === "guard" || action === "maneuver") return "m";
+  if (action === "investigate" || action === "craft" || action === "treat") return "w";
+  if (action === "persuade" || action === "deceive" || action === "command") return "s";
+  return "c";
+}
+
+function actionScore(figure: HistoricalFigure, phase: MissionPhase): number {
+  const hero = ensureHeroSheet(figure);
+  const action = phaseAction(phase);
+  const sides = DIE_SIDES[hero.actions[action] ?? "d4"];
+  const attribute = hero.attributes[ACTION_DEFS[action].attribute] ?? 0;
+  const fit = heroMissionFit(figure, phase.tags);
+  return sides + attribute + fit.alignment + fit.aspect + fit.discipline;
+}
+
 export function missionPhaseInput(target: GuildTarget): MissionPhaseInput {
   const chronicle =
     target.kind === "excavate" &&
@@ -935,7 +958,7 @@ export function missionPhaseInput(target: GuildTarget): MissionPhaseInput {
     Boolean((pack.markers ?? []).find(marker => marker?.i === target.markerId)?.chronicle);
   return {
     kind: target.kind,
-    dc: target.dc,
+    dc: actionDcForMission(target.dc),
     tags: target.tags,
     level: target.level,
     chronicle
@@ -956,7 +979,7 @@ export function idlePartyCandidates(guild: GuildState): HistoricalFigure[] {
 }
 
 export function phaseScore(figure: HistoricalFigure, phase: MissionPhase): number {
-  return heroScore(figure, phase.pool, phase.tags) + (figure.skills?.[phase.pool] ?? 0) * 5;
+  return actionScore(figure, phase);
 }
 
 /** Leader first, then the best coverage companions up to the tier's party limit. */
@@ -1007,7 +1030,7 @@ export function pickPhaseHero(
 ): { figure: HistoricalFigure; untrained: boolean } | undefined {
   const eligible = party.filter(figure => (contributions.get(figure.i) ?? 0) < 2);
   if (eligible.length === 0) return undefined;
-  const trained = eligible.filter(figure => (figure.skills?.[phase.pool] ?? 0) > 0);
+  const trained = eligible.filter(figure => ensureHeroSheet(figure).actions[phaseAction(phase)] !== "d4");
   const pool = trained.length > 0 ? trained : eligible;
   const figure = [...pool].sort((a, b) => phaseScore(b, phase) - phaseScore(a, phase) || a.i - b.i)[0];
   return figure ? { figure, untrained: trained.length === 0 } : undefined;
@@ -1031,31 +1054,31 @@ export function partySynergy(guild: GuildState, party: readonly HistoricalFigure
   return Math.max(-1, Math.min(1, synergy));
 }
 
-/** Chance that a hero succeeds at a target with the current state and guild bonuses. */
+/** Chance that a hero succeeds at a phase with the current state and guild bonuses. */
 export function missionChance(
   living: LivingWorldState,
   guild: GuildState,
   figure: HistoricalFigure,
-  target: Pick<GuildTarget, "provinceId" | "pool" | "dc"> & { tags?: MissionTag[] }
+  phase: Pick<MissionPhase, "action" | "dc" | "tags">
 ): number {
-  const province = target.provinceId !== undefined ? pack.provinces?.[target.provinceId] : undefined;
-  const sSim = province?.state ? living.states?.[province.state] : undefined;
-  const poolGen = sSim?.capacity[target.pool]?.gen ?? 0;
+  const hero = ensureHeroSheet(figure);
+  const action = phaseAction(phase as MissionPhase);
+  const sides = DIE_SIDES[hero.actions[action] ?? "d4"];
+  const attribute = hero.attributes[ACTION_DEFS[action].attribute] ?? 0;
   const carried = equippedRelic(guild.relics ?? [], figure.i);
-  const tags = target.tags ?? [];
+  const tags = phase.tags ?? [];
   const fit = heroMissionFit(figure, tags);
   const state = ensureHeroGuildState(guild, figure);
   const injuries = injuryPenalty(state.injuries, tags, living.tick);
   const modifier =
-    (figure.skills?.[target.pool] ?? 0) +
-    valueModifier(poolGen) +
+    attribute +
     fit.alignment +
     fit.aspect +
     fit.discipline +
     guildCheckBonus(guild.tier) +
-    (carried?.bonuses[target.pool] ?? 0) -
+    (carried?.bonuses[poolForAction(action)] ?? 0) -
     injuries;
-  return minmax((21 - target.dc + modifier) / 20, 0, 1);
+  return minmax((sides - phase.dc + 1 + modifier) / sides, 0, 1);
 }
 
 export function partyChance(
@@ -1299,8 +1322,8 @@ export function createMission(
     provinceId: target.provinceId,
     burgId: target.burgId,
     markerId: target.markerId,
-    pool: finalPhase?.pool ?? target.pool,
-    dc: finalPhase?.dc ?? target.dc,
+    action: finalPhase?.action ?? "strike",
+    dc: finalPhase?.dc ?? actionDcForMission(target.dc),
     progress: 0,
     required: phases.length || 1,
     rewardGold: target.rewardGold,
@@ -1695,9 +1718,7 @@ export function finalizeMission(
       if (state.resolve === 0) markHeroDown(living, state);
       guild.cooldowns[hero.i] = living.tick + rng.int(1, 2);
 
-      const worst = results
-        .filter(result => result.heroId === hero.i)
-        .find(result => result.roll === 1 || result.total <= (phaseById.get(result.phaseId)?.dc ?? mission.dc) - 8);
+      const worst = results.filter(result => result.heroId === hero.i).find(result => !result.success);
       if (worst) {
         const phase = phaseById.get(worst.phaseId);
         const aftermath = fumbleAftermath(
@@ -1723,9 +1744,6 @@ export function finalizeMission(
   }
 
   const host = getHost();
-  if (sSim && province?.state && host.recomputeStateCapacity) {
-    sSim.capacity = host.recomputeStateCapacity(province.state);
-  }
   syncGuildTier(living, guild);
 }
 
@@ -1750,11 +1768,14 @@ export function resolveMission(living: LivingWorldState, mission: ActiveGuildMis
   }
 
   const tags = mission.tags ?? missionTagsFor(living, mission);
+  const legacyMission = mission as ActiveGuildMission & { pool?: "m" | "w" | "s" | "c" };
+  const legacyAction = legacyMission.action ?? legacyActionForPool(legacyMission.pool ?? "m");
+  mission.action ??= legacyAction;
   mission.phases ??= [
     {
       id: `${mission.kind}_legacy`,
       label: mission.kind,
-      pool: mission.pool,
+      action: legacyAction,
       tags,
       dc: mission.dc,
       required: true
@@ -1787,35 +1808,40 @@ export function resolveMission(living: LivingWorldState, mission: ActiveGuildMis
   const state = ensureHeroGuildState(guild, choice.figure);
   const injuries = injuryPenalty(state.injuries, phase.tags, living.tick) + (choice.untrained ? 2 : 0);
   const synergy = partySynergy(guild, party);
-  const poolGen = province?.state ? (living.states?.[province.state]?.capacity[phase.pool]?.gen ?? 0) : 0;
+  const action = phaseAction(phase);
+  const pool = poolForAction(action);
+  const poolGen = province?.state ? (living.states?.[province.state]?.yieldsPerTurn?.gold ?? 0) : 0;
   const carried = equippedRelic(guild.relics ?? [], choice.figure.i);
+  const fit = heroMissionFit(choice.figure, phase.tags);
   const rng = getRng("guild:phase", mission.id * 1000 + phaseIndex * 100 + choice.figure.i);
-  const check = figureCheckRoll(
-    rng,
-    choice.figure,
-    phase.pool,
-    poolGen,
-    phase.dc,
-    guildCheckBonus(guild.tier),
-    carried?.bonuses[phase.pool] ?? 0,
-    phase.tags,
-    stamina,
-    injuries,
-    synergy,
-    choice.untrained
-  );
+  const check = actionCheck(rng, ensureHeroSheet(choice.figure), {
+    action,
+    dc: phase.dc,
+    modifiers:
+      valueModifier(poolGen) +
+      fit.alignment +
+      fit.aspect +
+      (choice.untrained ? 0 : fit.discipline) +
+      guildCheckBonus(guild.tier) +
+      (carried?.bonuses[pool] ?? 0) +
+      stamina +
+      synergy -
+      injuries
+  });
 
   mission.phaseResults.push({
     phaseId: phase.id,
     heroId: choice.figure.i,
     roll: check.roll,
     total: check.total,
-    success: check.success,
+    success: Boolean(check.success),
+    critical: check.critical,
+    complication: check.complication,
     ...(choice.untrained ? { untrained: true } : {})
   });
   mission.staminaSpent = Object.values(mission.staminaByHero).reduce((sum, value) => sum + value, 0);
 
-  const phaseText = `${choice.figure.name} ${check.success ? "passed" : "failed"} ${phase.label} (${check.total} vs DC ${phase.dc}).`;
+  const phaseText = `${choice.figure.name} ${check.success ? "passed" : "failed"} ${phase.label} (${check.die} ${check.roll} → ${check.total} vs DC ${phase.dc}).`;
   pushNews(living, {
     kind: missionNewsKind(mission.kind),
     text: phaseText,
@@ -2396,3 +2422,8 @@ export const LivingGuild = {
   applyPetitionEffects,
   resolvePetition
 };
+
+
+
+
+

@@ -253,9 +253,10 @@ Inside the two large role folders, `model/` and `controllers/`, files are groupe
 | Domain         | Covers                                                                      |
 | -------------- | --------------------------------------------------------------------------- |
 | `graph/`       | the grid and packed Voronoi graph, and the tools that rebuild it            |
-| `physical/`    | heightmap, climate, features, coastline, lakes, rivers, ice, biomes, relief |
+| `physical/`    | heightmap, climate, features, coastline, lakes, rivers, ice, biomes, relief, and the Living World / chronicle simulation |
 | `society/`     | population, cultures, religions, names                                      |
 | `political/`   | states, provinces, burgs, diplomacy, military, zones, emblems               |
+| `battle/`      | combined-arms battle resolution, garrisons and battle reporting             |
 | `economy/`     | goods, production, markets and trade, transports, routes                    |
 | `story/`       | markers, notes, lore, journeys                                              |
 | `annotations/` | labels, rulers, the legend: what the map adds on top of the world           |

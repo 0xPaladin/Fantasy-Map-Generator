@@ -1,7 +1,7 @@
 import { quadtree, sum } from "d3";
-import { currentContent } from "@/conquest/content/store";
-import type { ResolvedRoster, UnitType } from "@/conquest/engine/common/content";
-import type { ArmyBlock } from "@/conquest/engine/common/types";
+import { currentContent } from "@/data/roster-store";
+import type { ResolvedRoster, UnitType } from "@/data/roster-content";
+import type { ArmyBlock } from "@/types/battle";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import type { MilitaryUnit } from "@/types/military";

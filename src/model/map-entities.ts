@@ -26,7 +26,8 @@ export const ENTITY_TYPES = [
   "religion",
   "biome",
   "good",
-  "faction"
+  "faction",
+  "character"
 ] as const;
 
 export const RECORD_TYPES = ["cell", "ice", "relief", "measurer", "deal", "transport", "nameBase"] as const;
@@ -36,7 +37,13 @@ export type EntityType = (typeof ENTITY_TYPES)[number] | (typeof RECORD_TYPES)[n
 export const isEntityType = (value: string): value is EntityType =>
   (ENTITY_TYPES as readonly string[]).includes(value) || (RECORD_TYPES as readonly string[]).includes(value);
 
-type EntityEditor = "GoodsEditor" | "MeasurersEditor" | "TransportEditor" | "NamesbaseEditor" | "FactionsEditor";
+type EntityEditor =
+  | "GoodsEditor"
+  | "MeasurersEditor"
+  | "TransportEditor"
+  | "NamesbaseEditor"
+  | "FactionsEditor"
+  | "CharactersEditor";
 
 export interface EntityRef {
   type: EntityType;
@@ -111,7 +118,8 @@ const ELEMENT_PATTERNS: [RegExp, EntityType][] = [
   [/^culture(\d+)$/, "culture"],
   [/^religion(\d+)$/, "religion"],
   [/^biome(\d+)$/, "biome"],
-  [/^faction(\d+)$/, "faction"]
+  [/^faction(\d+)$/, "faction"],
+  [/^character(\d+)$/, "character"]
 ];
 /** Layers whose elements carry their entity's id in a data attribute */
 const DATA_TARGETS: [layer: string, attribute: string, type: EntityType][] = [
@@ -122,6 +130,7 @@ const DATA_TARGETS: [layer: string, attribute: string, type: EntityType][] = [
   ["#stateEmblems", "data-i", "state"],
   ["#goodsIcons", "data-i", "good"],
   ["#factions", "data-id", "faction"],
+  ["#characters", "data-id", "character"],
   ["#ice", "data-id", "ice"],
   ["#terrain", "data-id", "relief"],
   ["#lakes, #coastline", "data-f", "feature"]
@@ -508,6 +517,32 @@ class EntityLookup {
         return faction ? `${capitalize(faction.category)} • ${capitalize(faction.alignment)}` : "";
       },
       editor: "FactionsEditor"
+    },
+    character: {
+      label: t("Characters"),
+      kind: t("Character"),
+      icon: "icon-user",
+      scale: 10,
+      layers: ["characters"],
+      previewNote: true,
+      entity: id => pack.history?.figures?.find(figure => figure.i === id),
+      refs: () =>
+        (pack.history?.figures ?? [])
+          .filter(figure => !figure.removed)
+          .map(figure => ({ type: "character" as const, id: figure.i })),
+      name: id => pack.history?.figures?.find(figure => figure.i === id)?.name || "",
+      position: id => {
+        const figure = pack.history?.figures?.find(entry => entry.i === id);
+        return figure?.cell !== undefined ? this.cellPoint(figure.cell) : undefined;
+      },
+      highlight: id => `#character${id}`,
+      context: ref => {
+        const figure = pack.history?.figures?.find(entry => entry.i === ref.id);
+        if (!figure) return "";
+        const status = figure.removed ? "removed" : figure.death !== undefined ? "dead" : "active";
+        return [figure.hero ? t("Hero") : t("Background"), capitalize(status)].filter(Boolean).join(" · ");
+      },
+      editor: "CharactersEditor"
     },
     cell: {
       label: t("Cells"),

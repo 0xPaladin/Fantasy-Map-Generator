@@ -5,6 +5,7 @@ import type { State } from "@/types/subdivided-pack";
 import {
   ensureCommanders,
   ensureHeroGuildState,
+  ensureHeroSheet,
   getHeroState,
   recruitCandidate,
   recruitCost,
@@ -108,6 +109,18 @@ describe("living-heroes", () => {
     expect(state.doctrine).toBe("hunt_troubles");
     expect(setHeroPush(1, true)).toBe(true);
     expect(state.push).toBe(true);
+  });
+
+  it("stores vitals on the hero sheet instead of the guild", () => {
+    const fig = makeFigure(4);
+    pack.history.figures.push(fig);
+
+    const state = ensureHeroGuildState(mockGuild, fig);
+    expect(mockGuild.heroes).toEqual({});
+    expect(ensureHeroSheet(fig).condition?.resolve).toBe(state.resolve);
+
+    state.stamina = 3;
+    expect(ensureHeroSheet(fig).condition?.stamina).toBe(3);
   });
 
   it("recruits candidate when guild has gold and roster capacity", () => {

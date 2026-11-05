@@ -129,7 +129,7 @@ vi.mock("@/model/physical/living-generator", () => ({
 vi.mock("@/renderers/layers", () => ({ Layers: { draw: vi.fn() } }));
 vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
 vi.mock("@/model/story/journeys/journey-places", () => ({ getCellPoint: vi.fn(() => [10, 10]) }));
-vi.mock("@/conquest/content/store", () => ({
+vi.mock("@/data/roster-store", () => ({
   currentContent: () => ({ content: { buildings: [{ id: "market1", name: "Market" }] }, config: {} })
 }));
 vi.mock("@/controllers", () => ({
@@ -661,7 +661,7 @@ describe("LivingHud", () => {
     expect(inspector?.style.display).toBe("none");
   });
 
-  it("renders Capacity with Military, Wealth, Social, Cunning and inline Stability meters", () => {
+  it("renders the Economy strip and inline Stability meters", () => {
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
     ];
@@ -669,15 +669,9 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const inspector = document.getElementById("livingInspector");
-    expect(inspector?.textContent).toContain("Capacity");
-    expect(inspector?.textContent).toContain("Military");
-    expect(inspector?.textContent).toContain("Wealth");
-    expect(inspector?.textContent).toContain("Social");
-    expect(inspector?.textContent).toContain("Cunning");
-
-    const militaryRow = inspector?.querySelector<HTMLElement>(".livingCapacityRow[title*='Military']");
-    expect(militaryRow).toBeTruthy();
-    expect(militaryRow?.getAttribute("title")).toContain("10 gen / 4 load");
+    expect(inspector?.textContent).toContain("Economy");
+    expect(inspector?.textContent).toContain("Gold");
+    expect(inspector?.textContent).toContain("Production");
 
     const unravelRow = inspector?.querySelector<HTMLElement>(".livingMeterRow[title*='Unravel']");
     expect(unravelRow).toBeTruthy();
@@ -1331,8 +1325,8 @@ describe("LivingHud", () => {
     mocks.living.getPartyPreview.mockReturnValue({
       party: [1, 2],
       phases: [
-        { id: "lair_approach", label: "Approach", pool: "c", tags: ["ruin"], dc: 19, required: true },
-        { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 20, required: true }
+        { id: "lair_approach", label: "Approach", action: "scout", tags: ["ruin"], dc: 19, required: true },
+        { id: "lair_breach", label: "Breach", action: "strike", tags: ["combat"], dc: 20, required: true }
       ],
       members: [
         { figureId: 1, name: "Bran Quickfoot", score: 4, bestPhaseId: "lair_breach" },
@@ -1346,7 +1340,7 @@ describe("LivingHud", () => {
     expect(inspector?.querySelector<HTMLElement>("[data-god]")).toBeNull();
     expect(inspector?.textContent).toContain("Expedition Party");
     expect(inspector?.textContent).toContain("Bran Quickfoot");
-    expect(inspector?.textContent).toContain("Approach C");
+    expect(inspector?.textContent).toContain("Approach Scout");
     inspector?.querySelector<HTMLElement>('[data-guild="dispatch"]')?.click();
     expect(Living.dispatchBestHero).toHaveBeenCalledWith(1);
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("guild hero");
@@ -1369,7 +1363,7 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Scout");
     expect(inspector?.textContent).toContain("Survival");
     expect(inspector?.textContent).toContain("Archery");
-    expect(inspector?.textContent).toContain("M d10 · W d6 · S d4 · C d8");
+    expect(inspector?.textContent).toContain("Strike d10 · Guard d10 · Maneuver d10");
 
     inspector?.querySelector<HTMLElement>('[data-guild="retire"]')?.click();
     expect(Living.retireHero).toHaveBeenCalledWith(1);
@@ -1473,7 +1467,7 @@ describe("LivingHud", () => {
           kind: "lair",
           figureId: 1,
           targetCell: 1,
-          pool: "m",
+          action: "strike",
           dc: 15,
           progress: 1,
           required: 2,
@@ -1482,8 +1476,8 @@ describe("LivingHud", () => {
           party: [1, 2],
           tags: ["lair", "combat"],
           phases: [
-            { id: "lair_approach", label: "Approach", pool: "c", tags: ["lair"], dc: 14, required: true },
-            { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 15, required: true }
+            { id: "lair_approach", label: "Approach", action: "scout", tags: ["lair"], dc: 14, required: true },
+            { id: "lair_breach", label: "Breach", action: "strike", tags: ["combat"], dc: 15, required: true }
           ],
           phaseResults: [{ phaseId: "lair_approach", heroId: 1, roll: 12, total: 18, success: true }]
         }
@@ -1496,8 +1490,8 @@ describe("LivingHud", () => {
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("On expedition: Phase 2/2");
-    expect(inspector?.textContent).toContain("Approach C");
-    expect(inspector?.textContent).toContain("Breach M");
+    expect(inspector?.textContent).toContain("Approach Scout");
+    expect(inspector?.textContent).toContain("Breach Strike");
   });
 
   it("recruits a tavern candidate from the figure card", () => {

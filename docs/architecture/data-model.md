@@ -576,6 +576,73 @@ A journey segment is one leg: a stretch of travel, or a halt:
 - `custom`: `boolean` - optional. `true` when the user drew the path cell by cell; the pathfinder will not silently overwrite it
 - `visible`: `boolean` - optional. `false` hides the segment. Absent means visible
 
+## Living World
+
+The seasonal simulation is stored on `pack.history.living` (an optional `LivingWorldState`, created lazily). It is additive: maps without it load normally and initialize on the first Living World tick.
+
+Top level:
+
+- `enabled`: `boolean` - whether the simulation advances
+- `tick`: `number`, `season`: `0..3` - the current season
+- `seed`: `string` - deterministic seed for the simulation PRNG
+- `snapshotIntervalYears`: `number` - how often the political map is captured for the Legends browser
+- `lastSnapshotTick`: `number` - optional; absent on older saves
+- `states`, `provinces`, `burgs`: `Record<number, StatePolitySim | ProvinceSimState | BurgSimState>` - per-entity simulation state, keyed by the map entity id
+- `cells`: `Record<number, CellSimState>` - optional tile improvements and pillage state
+- `armies`: `Record<string, ArmySimState>` - optional per-tick combat-army state, keyed by `${stateId}-${regimentId}`
+- `units`: `Record<string, UnitSimState>` - optional utility-regiment state (settlers, builders, missionaries, ...)
+- `recentNews`, `eschaton`, `guild`, `playerFactionId`, `worldWonders` - optional presentation, Age Finale, guild and ownership state
+
+`StatePolitySim`:
+
+- `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `resolve_trouble`, `clear_lair`
+- `unravel`, `warExhaustion`, `claims`, `grudges` - the collapse clock, peace pressure and the memory of lost burgs and wrongs
+- `faith`, `happiness`, `yieldsPerTurn`, `currentTechId`, `researchQueue`, `researchedTechs` - optional OpenCiv empire fields
+- `warTurns`, `peaceTreatyTurns` - optional war/truce clocks
+- `treaties`: `Record<number, TreatyKind[]>` - optional positive agreements per other state (`nonAggression`, `trade`, `defensiveAlliance`, `militaryAccess`); symmetric
+
+A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` / `targetProvinceId` / `targetBurgId` / `targetCell` / `buildingId`, and `progress` / `required`.
+
+`BurgSimState` carries `development`, `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, the OpenCiv city fields (`citizens`, `foodStored`, worked/locked cells) and the `productionQueue` (`{ kind: "unit" | "building" | "wonder" | "trouble", id }`) with its per-item progress.
+
+`ProvinceSimState` carries `order`, `stability`, `development`, `developmentProgress`, and the active `trouble` / `lair`.
+
+`ArmySimState` carries `movement`, `maxMovement`, `stance` (`march`, `encamp`, `fortify`, `raid`, `ambush`), `hasFought` and the last `lastBattle` record.
+
+Map data that is **not** simulation state: `state.rosterId` (the culture roster) and `Regiment.units` (`ArmyBlock[]`) belong to the pack and survive save/load independently; `pack.history.living` reads them.
+
+## Characters
+
+Every person lives in `pack.history.figures`, the single character registry. There is no `pack.characters` and no separate hero store. `Characters` in [`characters.ts`](../../src/model/society/characters.ts) is the write path; generators and the Characters editor go through it. The registry serializes inside history record 55.
+
+A **background character** uses the base fields only; a **hero** adds `hero`:
+
+- `i`: `number` - character id, unique and never reused after soft delete
+- `name`: `string`
+- `culture`: `number` - culture id
+- `birth`, `death`: `number` - years; `death` marks a dead character
+- `gender`, `portrait`, `tags`, `note`: optional identity fields
+- `manual`, `lock`, `removed`: preservation flags; `removed` is the tombstone
+- `seedKey`: stable key for generated traits
+- `roles`: `HistoricalRole[]` - dated roles (`ruler`, `general`, `prophet`, `rebel`, `adventurer`, `specialist`, `agent`) with a `HistRef` target
+- `alignment`, `virtues`, `vices`: optional culture traits
+- `cell`: last known cell
+- `captor`: optional captor figure id
+- `relations`: optional relationship matrix toward `characters`, `factions` and `states`, using `FactionRelation` tiers
+- `hero`: optional **hero sheet**; absent on background characters
+
+A hero sheet (`HeroSheet`) holds the compact character stat block:
+
+- `archetype`: starting-package label, not a permanent class
+- `attributes`: `{ might, agility, wits, presence }`, each `-1..+2`
+- `actions`: all twelve action ids mapped to `d4 | d6 | d8 | d10 | d12`
+- `abilities`, `inventory`: string lists
+- `xp`, `progression`: lifetime experience and level/path choices
+- `condition`: optional `{ resolve, stamina, maxResolve, maxStamina, injuries, downUntilTick, push }`
+- `doctrine`, `temperament`, `cooldownUntil`: optional seasonal-play fields
+
+Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them. Mission phases also carry an `action`, not a pool.
+
 ## Legends
 
 The legend boxes shown on the map are stored in `pack.legends: Legend[]`, in display order. A generated map has none. Where a box sits on the canvas is the viewer's own (`legendPositions`), not map data. Object structure:

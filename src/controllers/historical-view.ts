@@ -4,7 +4,6 @@
 // political layers, and restoring the live pack exactly on the way back. The swap is wrapped:
 // leave through goToPresent() whatever happened. See docs/plans/history-epochs.md (slice 4)
 
-import { twLayerIds } from "@/conquest/ui/layers";
 import { mapHistory } from "@/model/map-history";
 import type { State } from "@/model/political/states-generator";
 import { clearLegend, drawLegend, getLegendData, hasLegend } from "@/renderers/draw-legend";
@@ -102,7 +101,7 @@ export function goToPresent(): void {
 
 /** everything present-day politics puts on the map that a past must not wear */
 function hidePresentOnlyLayers(): void {
-  const candidates = ["emblems", "military", ...twLayerIds()];
+  const candidates = ["emblems", "military"];
   for (const id of candidates) {
     if (!Layers.has(id) || !Layers.isOn(id)) continue;
     installation!.hidden.push(id);
