@@ -197,6 +197,9 @@ import { minmax } from "@/utils";
 import { SEA_LEVEL } from "@/utils/height-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
+import { LivingGuild } from "./living-guild";
+import { LivingHeroes } from "./living-heroes";
+import { LivingThreats } from "./living-threats";
 
 const MAX_RECENT_NEWS = 50;
 const MAX_LIVING_POPUPS = 6;
@@ -1321,6 +1324,10 @@ export function majorityReligion(pressure: Record<number, number> | undefined, c
 class LivingModel {
   /** Initialize or reconcile the Living World state on `pack.history.living` */
   init(opts?: { seed?: string; snapshotIntervalYears?: number }): LivingWorldState {
+    LivingThreats.setHost(this);
+    LivingHeroes.setHost(this);
+    LivingGuild.setHost(this);
+
     const history = Chronicle.sync();
     const seed = String(opts?.seed ?? history.living?.seed ?? options.map?.seed ?? "living-seed");
 
@@ -4872,7 +4879,7 @@ class LivingModel {
 
     // 1. Emergency defence: a war or restive city without walls raises them first.
     if ((this.stateAtWar(state) || (bSim.unrest ?? 0) > 0) && !held.has("walls")) {
-      const walls = CIV_BUILDING_BY_ID["walls"];
+      const walls = CIV_BUILDING_BY_ID.walls;
       if (canBuild(walls)) return { kind: "building", id: "walls" };
     }
 
@@ -5230,7 +5237,7 @@ class LivingModel {
     for (let cell = 0; cell < cells; cell++) {
       if (pack.cells.state?.[cell] !== state.i) continue;
       const resource = getCellResource(cell, state.i, living);
-      if (!resource || resource.class !== "luxury") continue;
+      if (resource?.class !== "luxury") continue;
 
       const cellSim = living.cells?.[cell];
       const improved = Boolean(cellSim?.improvement && !cellSim.pillaged);
@@ -11286,3 +11293,7 @@ declare global {
 // biome-ignore lint/suspicious/noRedeclare: legacy seam
 export const Living = new LivingModel();
 window.Living = Living;
+
+export { LivingGuild } from "./living-guild";
+export { LivingHeroes } from "./living-heroes";
+export { LivingThreats } from "./living-threats";
