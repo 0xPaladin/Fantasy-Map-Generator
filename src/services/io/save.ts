@@ -86,6 +86,7 @@ function prepareMapData(viewOnly = false): string {
   const journeys = JSON.stringify(pack.journeys ?? []);
   const { json: history, snapshotRecords } = serializeHistory(pack.history, pack.cells.i.length);
   const legends = JSON.stringify(pack.legends);
+  const factions = JSON.stringify(pack.factions ?? [{ i: 0 }]);
   const fonts = JSON.stringify(
     getUsedFonts(
       styles,
@@ -204,8 +205,9 @@ function prepareMapData(viewOnly = false): string {
     graphOverride,
     journeys,
     legends,
+    factions,
     history,
-    ...snapshotRecords // records 55 and up: one border snapshot per epoch
+    ...snapshotRecords // records 56 and up: one border snapshot per epoch
   ].join("\r\n");
   return mapData;
 }

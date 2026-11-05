@@ -47,6 +47,7 @@ import {
 } from "@/services/io/styles-legacy";
 import { StylePresetsService } from "@/services/style-presets";
 import { compareVersions } from "@/services/versioning";
+import type { Faction } from "@/types/factions";
 import type { LegendItem } from "@/types/legend";
 import type { StylesData } from "@/types/styles";
 import { Dialog } from "@/ui/dialog/dialog";
@@ -2150,6 +2151,8 @@ async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacyS
       items: (data || "").split("|").filter(Boolean).map(toItem)
     }));
   }
+
+  pack.factions ??= [{ i: 0 } as Faction];
 }
 
 // rendered for the geometry the steps measure, in a shadow root so its ids never meet the live map's

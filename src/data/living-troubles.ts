@@ -10,6 +10,8 @@ export interface TroubleDef {
   canPromoteToState: boolean;
   stateLairId?: string;
   stateForm?: string;
+  isHazard?: boolean;
+  attractsFactionTypes?: readonly string[];
 }
 
 export const UNIT_ROLE_POOLS: Record<TroubleUnitRole, TroublePool> = {
@@ -47,7 +49,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description: "A lingering sorcerous blight poisons luck, crops, and labor across the area.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["arcane_college", "dark_cabal", "sinister_cult"]
   },
   angry_dead: {
     id: "angry_dead",
@@ -65,7 +69,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description: "Crossed geomantic currents bring inexplicable misfortune, strange rot, and sudden fever.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["arcane_college", "dark_wizards"]
   },
   bad_reputation: {
     id: "bad_reputation",
@@ -85,7 +91,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Rocky, arid, infertile soil forces locals into a desperate struggle for bare survival.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["ranger_wardens", "bandit_camp"]
   },
   class_hatred: {
     id: "class_hatred",
@@ -116,7 +124,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Poisoned soil, saline runoffs, or toxic springs leave the population sick and crops sparse.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["ranger_wardens", "monastic_order"]
   },
   corrupt_leadership: {
     id: "corrupt_leadership",
@@ -147,7 +157,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "despair",
     requiredRole: "prophet",
     description: "Endless privation and oppression have stamped out all hope, initiative, and morale.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["demagogue", "rebel_front", "monastic_order"]
   },
   dark_wizards: {
     id: "dark_wizards",
@@ -177,7 +189,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description: "Entrenched ruinous traditions and superstitious taboos waste labor and cripple commerce.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["holy_order", "heretical_sect"]
   },
   disputed_possession: {
     id: "disputed_possession",
@@ -219,7 +233,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Crippling destitution and worn-out tools leave the region unable to provide for its basic needs.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["thieves_guild", "bandit_camp", "rebel_front"]
   },
   exiled_lord: {
     id: "exiled_lord",
@@ -239,7 +255,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "An abandoned ghost town needs seed capital, basic tools, and resettlement logistics.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["adventurer_guild", "bandit_camp"]
   },
   flooding: {
     id: "flooding",
@@ -248,7 +266,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Uncontrolled river surges and torrents repeatedly destroy earthworks and drown arable fields.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["monastic_order"]
   },
   harsh_conditions: {
     id: "harsh_conditions",
@@ -257,7 +277,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Ferocious weather, mountain slides, or toxic marsh fogs render daily labor punishingly grim.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["dwarven_outcasts", "marauder_warcamp"]
   },
   hazardous_resource: {
     id: "hazardous_resource",
@@ -267,7 +289,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     requiredRole: "sage",
     description:
       "Unstable deep tunnels, noxious vapors, or volatile minerals kill harvesters without specialized engineering.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["merchant_consortium", "dwarven_outcasts"]
   },
   brigand_raiders: {
     id: "brigand_raiders",
@@ -287,7 +311,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Treacherous cliffs, trackless mires, or lack of graded routes cut the region off from outside trade.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["bandit_camp", "smuggler_syndicate"]
   },
   mercenary_populace: {
     id: "mercenary_populace",
@@ -325,7 +351,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Rich timber, ores, or fields sit idle for total lack of a willing or able workforce.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["mercenary_company", "thieves_guild"]
   },
   pervasive_hunger: {
     id: "pervasive_hunger",
@@ -334,7 +362,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "Chronic malnutrition and barren harvests leave the populace emaciated and weary.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["rebel_front", "bandit_camp", "smuggler_syndicate"]
   },
   recalcitrant_locals: {
     id: "recalcitrant_locals",
@@ -355,7 +385,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     requiredRole: "sage",
     description:
       "Plague vapors, bad water, or foul miasmas periodically afflict the populace with fever and pestilence.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["doomsday_cult", "monastic_order"]
   },
   relic_golems: {
     id: "relic_golems",
@@ -397,7 +429,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     requiredRole: "merchant",
     description:
       "Tumbled arches, burnt foundations, and flooded delvings block all access until cleared by heavy engineering.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["trade_guild", "adventurer_guild"]
   },
   outland_raiders: {
     id: "outland_raiders",
@@ -428,7 +462,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description: "Dread prophecies and religious bans terrify laborers, who refuse to set foot on the accursed ground.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["sinister_cult", "holy_order"]
   },
   things_from_below: {
     id: "things_from_below",
@@ -466,7 +502,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description: "Smelting fumes or caustic alchemy poison the workers and foul the downstream waters.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["arcane_college"]
   },
   undeveloped: {
     id: "undeveloped",
@@ -475,7 +513,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description: "A remote site lacks mills, carts, docks, and basic infrastructure to harvest its natural bounty.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["merchant_consortium", "trade_guild"]
   },
   wasted_production: {
     id: "wasted_production",
@@ -484,7 +524,9 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description: "Pests, improper storage, or superstitious destruction waste the vast majority of extracted goods.",
-    canPromoteToState: false
+    canPromoteToState: false,
+    isHazard: true,
+    attractsFactionTypes: ["merchant_consortium", "trade_guild"]
   },
   xenophobia: {
     id: "xenophobia",

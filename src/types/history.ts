@@ -3,7 +3,7 @@ import type { Alignment } from "@/data/culture-traits";
 import type { Emblem } from "@/types/emblems";
 import type { DisciplineId, HeroArchetypeId, LivingWorldState } from "@/types/living";
 
-export type HistRefKind = "state" | "realm" | "burg" | "culture" | "religion" | "figure" | "polity";
+export type HistRefKind = "state" | "realm" | "burg" | "culture" | "religion" | "figure" | "polity" | "faction";
 
 export interface HistRef {
   kind: HistRefKind;

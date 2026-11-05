@@ -74,7 +74,8 @@ function getMinimalDataJson(): string {
     zones: pack.zones,
     measurers: pack.measurers,
     journeys: pack.journeys,
-    history: historyForJson(pack.history)
+    history: historyForJson(pack.history),
+    factions: pack.factions
   };
   return JSON.stringify({
     info,
@@ -201,7 +202,8 @@ function getPackCellsData() {
     zones: pack.zones,
     measurers: pack.measurers,
     journeys: pack.journeys,
-    history: historyForJson(pack.history)
+    history: historyForJson(pack.history),
+    factions: pack.factions
   };
 }
 
