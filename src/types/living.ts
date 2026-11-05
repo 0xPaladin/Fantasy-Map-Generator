@@ -236,6 +236,12 @@ export interface BurgSimState {
   cityYields?: YieldValues;
   hp?: number;
   maxHp?: number;
+  /** state besieging this burg (0 = none) */
+  siegeStateId?: number;
+  /** seasons of ongoing siege (for garrison weakening) */
+  siegeProgress?: number;
+  /** siege supply HD remaining (buffers attrition) */
+  siegeSupplies?: number;
   hasStruckThisTurn?: boolean;
   soldBuildingThisTurn?: boolean;
   religionPressure?: Record<number, number>;

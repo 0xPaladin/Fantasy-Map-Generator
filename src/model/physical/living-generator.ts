@@ -3475,6 +3475,14 @@ class LivingModel {
     const key = this.unitKey(state.i, regiment.i);
     if (living.units) delete living.units[key];
     if (living.armies) delete living.armies[key];
+    // Lift any siege this regiment was conducting.
+    for (const bSim of Object.values(living.burgs ?? {})) {
+      if (bSim.siegeStateId === state.i) {
+        bSim.siegeStateId = 0;
+        bSim.siegeProgress = 0;
+        bSim.siegeSupplies = 0;
+      }
+    }
   }
 
   /** One tactical tick: utility work, army orders, battles and city strikes. */
@@ -4279,10 +4287,35 @@ class LivingModel {
     const garrison = this.cityGarrisonBlocks(burg);
     if (garrison.length === 0) {
       // Undefended: walk in.
-      this.captureCity(state, burg, living);
+      this.captureCity(state, burg, living, "occupy");
       if (army.cell !== burg.cell) {
         this.moveRegimentTo(army, burg.cell, state.i, key, this.armyOccupancy(living));
       }
+      return true;
+    }
+
+    // Siege progression: track ongoing siege for this state.
+    const siegeStateId = bSim.siegeStateId ?? 0;
+    if (siegeStateId !== state.i) {
+      bSim.siegeStateId = state.i;
+      bSim.siegeProgress = 0;
+      bSim.siegeSupplies = Number(burg.walls ?? 0) * 20;
+    }
+    bSim.siegeProgress = (bSim.siegeProgress ?? 0) + 1;
+
+    // Apply garrison weakening (15% per season, floor 40%).
+    const weakenFactor = this.siegeWeakenFactor(bSim);
+    if (weakenFactor < 1) {
+      for (const block of garrison) {
+        block.hp = Math.max(0.4, block.hp * weakenFactor);
+      }
+    }
+
+    // Decide: assault or continue besieging.
+    const odds = this.estimateSiegeOdds(state, army, garrison, types);
+    const shouldAssault = (bSim.siegeProgress ?? 0) >= 2 || odds >= 40;
+    if (!shouldAssault) {
+      bSim.hp = Math.max(1, bSim.hp ?? 1);
       return true;
     }
 
@@ -4325,7 +4358,8 @@ class LivingModel {
 
     if (outcome.winner === "attacker") {
       bSim.hp = 0;
-      this.captureCity(state, burg, living);
+      const policy = this.chooseCapturePolicy(state, burg, living);
+      this.captureCity(state, burg, living, policy);
       if (armyIsEmpty(army)) {
         this.removeRegiment(state, army, living);
         return true;
@@ -4340,7 +4374,16 @@ class LivingModel {
 
     // Repulsed: survivors fall back one cell; the city keeps its HP.
     if (armyIsEmpty(army)) this.removeRegiment(state, army, living);
-    else this.retreatArmy(state, army, burg.cell, living);
+    else {
+      this.retreatArmy(state, army, burg.cell, living);
+      // Lift siege if the army is no longer adjacent.
+      const stillAdjacent = (pack.cells.c?.[burg.cell] ?? []).includes(army.cell);
+      if (!stillAdjacent) {
+        bSim.siegeStateId = 0;
+        bSim.siegeProgress = 0;
+        bSim.siegeSupplies = 0;
+      }
+    }
     bSim.hp = Math.max(1, bSim.hp ?? 1);
     return false;
   }
@@ -4349,6 +4392,49 @@ class LivingModel {
   cityGarrison(burgId: number): ArmyBlock[] {
     const burg = pack.burgs[burgId];
     return burg?.i && !burg.removed ? this.cityGarrisonBlocks(burg) : [];
+  }
+
+  /** Garrison weaken factor for an ongoing siege: 15% per season, floor 40%. */
+  private siegeWeakenFactor(bSim: BurgSimState): number {
+    const progress = bSim.siegeProgress ?? 0;
+    const supplies = bSim.siegeSupplies ?? 0;
+    // Siege supplies buffer: each 20 HD blocks one season of attrition.
+    if (supplies > 0) {
+      bSim.siegeSupplies = Math.max(0, supplies - 10);
+      return 1;
+    }
+    const factor = 1 - progress * 0.15;
+    return Math.max(0.4, factor);
+  }
+
+  /** Estimate siege odds for the assault decision. */
+  private estimateSiegeOdds(state: State, army: Regiment, garrison: ArmyBlock[], types: Record<string, UnitType>, burg: Burg): number {
+    try {
+      const { config } = currentContent();
+      const battleTypes = toBattleTypes(types);
+      const odds = estimateOdds(
+        config,
+        { factionId: state.i, armyId: null, units: toBattleUnits(army.units ?? []) },
+        { factionId: burg.state ?? 0, armyId: null, units: toBattleUnits(garrison) },
+        this.siegeModifiers(state, burg),
+        battleTypes
+      );
+      return odds.attackerWinPct;
+    } catch {
+      return 50;
+    }
+  }
+
+  /** Choose a capture policy based on ruler personality and war state. */
+  private chooseCapturePolicy(state: State, burg: Burg, living: LivingWorldState): string {
+    const sSim = living.states[state.i];
+    const warExhaustion = sSim?.warExhaustion ?? 0;
+    const happiness = sSim?.happiness ?? 0;
+    const wasCapital = Boolean(burg.capital);
+    if (wasCapital && warExhaustion > 30) return "sack";
+    if (happiness < -5) return "sack";
+    if (warExhaustion > 20) return "loot";
+    return "occupy";
   }
 
   /** Modifiers for a city assault: walls, bracing garrison, terrain and lord multipliers. */
@@ -4390,7 +4476,7 @@ class LivingModel {
   }
 
   /** §5.3 city capture: half the citizens, reset HP, clear queue, destroy national wonders. */
-  private captureCity(state: State, burg: Burg, living: LivingWorldState): void {
+  private captureCity(state: State, burg: Burg, living: LivingWorldState, policy: string = "occupy"): void {
     const previousStateId = burg.state ?? 0;
     const wasCapital = Boolean(burg.capital);
     this.annexBurg(state.i, burg, true);
@@ -4401,19 +4487,59 @@ class LivingModel {
 
     if (wasCapital) this.relocateCapital(previousStateId, burg);
 
+    // Base booty from city population.
+    const baseBooty = (bSim.citizens ?? 1) * 10;
+
     bSim.citizens = Math.max(1, Math.floor((bSim.citizens ?? 1) / 2));
     burg.population = populationFromCitizens(bSim.citizens);
     bSim.maxHp = CITY_BASE_HP;
     bSim.hp = 100;
     bSim.productionQueue = [];
     bSim.productionProgress = {};
-    bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
-      const def = CIV_BUILDING_BY_ID[id];
-      return !def?.nationalWonder && !def?.isWonder;
-    });
-    syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+
+    // Apply capture policy effects.
+    switch (policy) {
+      case "raze":
+        bSim.civBuildings = [];
+        syncCivFlagsFromBuildings(burg, []);
+        bSim.unrest = 5;
+        state.treasury = (state.treasury ?? 0) + baseBooty * 3;
+        break;
+      case "sack":
+        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
+          const def = CIV_BUILDING_BY_ID[id];
+          return !def?.nationalWonder && !def?.isWonder;
+        });
+        // Destroy one additional building.
+        if (bSim.civBuildings.length > 0) bSim.civBuildings.pop();
+        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+        bSim.unrest = 15;
+        state.treasury = (state.treasury ?? 0) + baseBooty * 4;
+        break;
+      case "loot":
+        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
+          const def = CIV_BUILDING_BY_ID[id];
+          return !def?.nationalWonder && !def?.isWonder;
+        });
+        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+        bSim.unrest = 20;
+        state.treasury = (state.treasury ?? 0) + baseBooty * 2;
+        break;
+      default: // occupy
+        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
+          const def = CIV_BUILDING_BY_ID[id];
+          return !def?.nationalWonder && !def?.isWonder;
+        });
+        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
+        bSim.unrest = 6 + bSim.citizens;
+        break;
+    }
     bSim.cityYields = undefined;
-    bSim.unrest = 6 + bSim.citizens;
+
+    // Clear siege state.
+    bSim.siegeStateId = 0;
+    bSim.siegeProgress = 0;
+    bSim.siegeSupplies = 0;
 
     const captures = living.states[state.i];
     if (captures?.agenda?.kind === "conquer") captures.agenda = null;
