@@ -1,26 +1,41 @@
 // Living World Threats Engine: manages troubles, lairs, danger markers, and emergent sovereign ascension.
 import { currentContent } from "@/conquest/content/store";
-import { assignStateRoster } from "@/conquest/engine/common/content";
-import type { ArmyBlock, ArmyUnit, UnitType } from "@/conquest/engine/common/types";
-import { assetCheckDifficulties, valueModifier } from "@/conquest/engine/game/saves";
-import type { Alignment } from "@/data/culture-traits";
+import { assignStateRoster, type UnitType } from "@/conquest/engine/common/content";
+import type { ArmyBlock, ArmyUnit } from "@/conquest/engine/common/types";
+import { finalizeBattle, initBattleSession, stepBattleRound } from "@/conquest/engine/game/battle";
+import { valueModifier } from "@/conquest/engine/game/saves";
+import {
+  type Alignment,
+  aggressiveTraits,
+  drawVice,
+  rollAlignment,
+  rollFigureTraits,
+  traitsRng
+} from "@/data/culture-traits";
 import { convertDangerMarkerToRuins, createLairFromMarker, isDangerMarker } from "@/data/danger-markers";
-import { getLairDef, instantiateLairUnits, isLairStateCapable } from "@/data/living-lairs";
+import {
+  createProvinceLair,
+  getLairDef,
+  instantiateLairUnits,
+  isLairStateCapable,
+  LAIR_NATURE_IDS,
+  pickLairForTrouble
+} from "@/data/living-lairs";
 import {
   BURG_TROUBLE_IDS,
   getTroubleDef,
   isTroubleStatePromotable,
   RESOURCE_TROUBLE_IDS,
   RUIN_TROUBLE_IDS,
-  TROUBLE_CATALOG,
-  type TroubleDef,
   troubleUnitMatchMultiplier
 } from "@/data/living-troubles";
+import { fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";
+import { Burgs } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
-import { Military } from "@/model/political/military-generator";
+import { Military, type Regiment, syncRegimentTotals } from "@/model/political/military-generator";
 import { Names } from "@/model/society/names-generator";
 import type { Faction } from "@/types/factions";
-import type { HistoricalFigure } from "@/types/history";
+import type { HistoricalFigure, HistoryEventType, HistRef } from "@/types/history";
 import type {
   CapacityLedger,
   LivingWorldState,
@@ -31,16 +46,38 @@ import type {
   TroubleUnitRole
 } from "@/types/living";
 import type { Burg, Province, State } from "@/types/subdivided-pack";
+import { minmax } from "@/utils/number-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
+import { syncBurgFlagsFromBuildings } from "./living-generator";
 
 export interface ThreatHost {
   getState(): LivingWorldState;
-  pushNews(
+  pushNews?(
     living: LivingWorldState,
     news: { kind: string; text: string; cell?: number; burgId?: number; stateId?: number; provinceId?: number }
   ): void;
-  recomputeStateCapacity(stateId: number): CapacityLedger;
+  pushHistory?(type: HistoryEventType, actors: HistRef[], cell: number | undefined, text: string): void;
+  recomputeStateCapacity?(stateId: number): CapacityLedger;
+  relieveEschaton?(living: LivingWorldState, amount?: number): void;
+  addBattleMarker?(burgOrCell: Burg | number, label?: string): void;
+  fieldArmy?(state: State): Regiment | null;
+  applyArmySurvivors?(state: State, regiment: Regiment, units: ArmyUnit[]): void;
+  provinceCells?(provinceId: number): number[];
+  recordGrudge?(stateId: number, burg: Burg, kind: string, reason: string, otherId?: number): void;
+  findFigure?(figureId: number): HistoricalFigure | undefined;
+  rng?(tag: string, id?: number, tick?: number): Rng;
+  emergentTerritoryCells?(province: Province, capital: Burg, oldOwnerId: number): number[];
+  transferCells?(stateId: number, cells: number[]): void;
+  assignProvince?(stateId: number, cells: number[]): void;
+  syncBurgs?(living: LivingWorldState): void;
+  syncProvinces?(living: LivingWorldState): void;
+  syncStates?(living: LivingWorldState): void;
+  createRegiment?(state: State): Regiment;
+  moveArmy?(regiment: Regiment, burg: Burg): void;
+  ensureCommanders?(): void;
+  recordClaim?(stateId: number, burg: Burg, heldByStateId: number): void;
+  burgHinterland?(burg: Burg): number[];
 }
 
 let hostRef: ThreatHost | null = null;
@@ -53,303 +90,309 @@ function getHost(): ThreatHost {
   return hostRef ?? (globalThis as unknown as { Living: ThreatHost }).Living;
 }
 
-function rngFor(tag: string, id = 0, tick = 0): Rng {
-  const living = getHost().getState();
-  return createRng(`${living.seed}:living:${living.tick || tick}:${tag}:${id}`);
-}
-
-/** Synchronizes `pack.markers` danger pins with `living.activeLairs` */
-export function syncDangerMarkers(living: LivingWorldState): void {
-  if (!pack.markers) return;
-  living.activeLairs ??= {};
-
-  for (const marker of pack.markers) {
-    if (!marker || marker.hidden || !isDangerMarker(marker)) continue;
-    const key = `lair:${marker.i}`;
-    if (!living.activeLairs[key]) {
-      const provinceId = pack.cells?.province?.[marker.cell] ?? 0;
-      const lair = createLairFromMarker(marker, provinceId);
-      living.activeLairs[key] = lair;
-      marker.threatId = key;
-
-      if (provinceId && living.provinces?.[provinceId] && !living.provinces[provinceId].lair) {
-        living.provinces[provinceId].lair = lair;
-      }
-    }
-  }
-}
-
-/** Spawn an active provincial trouble */
-export function spawnTrouble(
-  provinceId: number,
-  troubleId?: string,
-  theme?: TroubleTheme,
-  level?: number
-): ProvinceTrouble | null {
-  const province = pack.provinces?.[provinceId];
+function getRng(tag: string, id = 0, salt = 0): Rng {
   const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces?.[provinceId];
-  if (!province?.i || province.removed || !pSim) return null;
-
-  const rng = rngFor("trouble:seed", provinceId);
-  const selectedTheme: TroubleTheme = theme ?? (rng.next() < 0.6 ? "burg" : "ruin");
-
-  let def: TroubleDef;
-  if (troubleId && TROUBLE_CATALOG[troubleId]) {
-    def = TROUBLE_CATALOG[troubleId];
-  } else {
-    const table =
-      selectedTheme === "burg" ? BURG_TROUBLE_IDS : selectedTheme === "ruin" ? RUIN_TROUBLE_IDS : RESOURCE_TROUBLE_IDS;
-    const picked = table[rng.int(0, table.length - 1)];
-    def = getTroubleDef(picked ?? "monsters");
+  if (typeof host?.rng === "function") {
+    return host.rng(tag, id, salt);
   }
-
-  const burgsInProv = pack.burgs?.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === provinceId) ?? [];
-  const burg = burgsInProv.length > 0 ? burgsInProv[rng.int(0, burgsInProv.length - 1)] : undefined;
-  const burgId = selectedTheme === "burg" ? burg?.i : undefined;
-  const cell = burg?.cell ?? province.center ?? 0;
-
-  const trouble: ProvinceTrouble = {
-    id: def.id,
-    name: def.name,
-    level: level ?? Math.max(1, Math.min(10, Math.round(10 - pSim.order / 10))),
-    theme: selectedTheme,
-    pool: def.pool,
-    save: def.save,
-    requiredRole: def.requiredRole,
-    cell,
-    burgId,
-    seasonsUnchecked: 0
-  };
-
-  pSim.trouble = trouble;
-  living.activeTroubles ??= {};
-  living.activeTroubles[`trouble:${provinceId}`] = trouble;
-
-  host.pushNews(living, {
-    kind: "trouble",
-    text: `${trouble.name} has emerged in ${province.name}!`,
-    cell,
-    burgId,
-    provinceId
-  });
-
-  return trouble;
+  const living = host?.getState
+    ? host.getState()
+    : (globalThis as unknown as { Living?: { getState(): LivingWorldState } }).Living?.getState?.();
+  const seed = living?.seed ?? "threats-seed";
+  const tick = living?.tick ?? 1;
+  return createRng(`${seed}:living:${tick}:${tag}:${id}`);
 }
 
-/** Send military or specialist units to quell a provincial trouble with a domain saving throw. */
-export function resolveTrouble(stateId: number, provinceId: number): boolean {
-  const province = pack.provinces?.[provinceId];
-  if (!province?.i || province.removed || province.state !== stateId) return false;
+function pushNews(
+  living: LivingWorldState,
+  news: { kind: string; text: string; cell?: number; burgId?: number; stateId?: number; provinceId?: number }
+): void {
   const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces[provinceId];
-  if (!pSim?.trouble || pSim.lair) return false;
-
-  const state = pack.states[stateId];
-  const sSim = living.states[stateId];
-  if (!state?.i || state.removed || !sSim) return false;
-
-  const troubleDef = getTroubleDef(pSim.trouble.id);
-  const unitTypes = Military.getUnitTypes();
-
-  let bestUnit: ArmyBlock | null = null;
-  let bestReg: Regiment | null = null;
-  let bestMult = 3;
-  let bestDisruption = 999;
-
-  for (const reg of state.military ?? []) {
-    for (const unit of reg.units ?? []) {
-      if (unit.hp <= 0) continue;
-      const uType = unitTypes[unit.type];
-      const role: TroubleUnitRole = uType?.troubleRole ?? "military";
-      const mult = troubleUnitMatchMultiplier(troubleDef, role);
-      const dis = unit.disruption ?? 0;
-      if (mult < bestMult || (mult === bestMult && dis < bestDisruption)) {
-        bestMult = mult;
-        bestDisruption = dis;
-        bestUnit = unit;
-        bestReg = reg;
-      }
-    }
+  if (typeof host?.pushNews === "function") {
+    host.pushNews(living, news);
   }
+}
 
+function pushHistory(type: HistoryEventType, actors: HistRef[], cell: number | undefined, text: string): void {
+  const host = getHost();
+  if (typeof host?.pushHistory === "function") {
+    host.pushHistory(type, actors, cell, text);
+    return;
+  }
   const history = Chronicle.sync();
-  history.figures ??= [];
-  const figures = history.figures;
-  const commander = bestReg?.crew ? figures.find(f => f && f.i === bestReg?.crew && f.death === undefined) : undefined;
-
-  const ledger = host.recomputeStateCapacity(stateId);
-  const statVal = ledger[troubleDef.pool]?.gen ?? 10;
-  const dc = assetCheckDifficulties[troubleDef.save];
-  const mod = valueModifier(statVal);
-  const rng = rngFor("trouble:resolve", provinceId);
-  const roll = rng.d(20);
-  const total = roll + mod;
-  const success = total >= dc;
-
-  if (bestUnit) {
-    bestUnit.disruption = Math.min(100, (bestUnit.disruption ?? 0) + (success ? 10 * bestMult : 25 * bestMult));
-  }
-
-  const leaderVoice = commander ? `${commander.name} of the ${bestReg?.name ?? "Guard"}` : state.name;
-
-  if (success) {
-    quellTrouble(provinceId);
-    pSim.order = Math.min(100, pSim.order + 15);
-    pSim.stability += 2;
-    host.pushNews(living, {
-      kind: "trouble",
-      text: `${leaderVoice} successfully quelled ${pSim.trouble?.name ?? "trouble"} in ${province.name}!`,
-      cell: province.center,
-      stateId,
-      provinceId
-    });
-    return true;
-  }
-
-  pSim.order = Math.max(0, pSim.order - 10);
-  pSim.trouble.level = Math.min(10, pSim.trouble.level + 1);
-
-  if (roll <= 3 && pSim.order <= 20 && isTroubleStatePromotable(pSim.trouble.id)) {
-    promoteTroubleToState(provinceId);
-    return false;
-  }
-
-  host.pushNews(living, {
-    kind: "trouble",
-    text: `${leaderVoice} failed to contain ${pSim.trouble.name} in ${province.name}.`,
-    cell: province.center,
-    stateId,
-    provinceId
+  history.events ??= [];
+  history.events.push({
+    i: history.events.length,
+    year: options?.map?.lore?.calendar?.year ?? 1000,
+    type,
+    actors,
+    loc: cell,
+    text
   });
-  return false;
 }
 
-/** Quell and clear a provincial trouble */
-export function quellTrouble(provinceId: number): boolean {
+function recomputeStateCapacity(stateId: number): CapacityLedger {
   const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces?.[provinceId];
-  if (!pSim?.trouble) return false;
-
-  pSim.trouble = null;
-  if (living.activeTroubles) {
-    delete living.activeTroubles[`trouble:${provinceId}`];
+  if (typeof host?.recomputeStateCapacity === "function") {
+    return host.recomputeStateCapacity(stateId);
   }
-  return true;
-}
-
-/** Escalate a festering trouble into a physical armed lair */
-export function metastasizeTroubleToLair(provinceId: number, lairId?: string): ProvinceLair | null {
-  const province = pack.provinces?.[provinceId];
-  const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces?.[provinceId];
-  if (!province?.i || province.removed || !pSim?.trouble) return null;
-
-  const t = pSim.trouble;
-  const tDef = getTroubleDef(t.id);
-  const chosenLairId = lairId ?? tDef.metastasizesToLair ?? "brigand_camp";
-  const cell = t.cell ?? province.center ?? 0;
-  const level = Math.max(1, Math.min(10, t.level));
-
-  quellTrouble(provinceId);
-  return spawnLair(provinceId, chosenLairId, level, cell);
-}
-
-/** Spawn an armed lair within a province or wilderness */
-export function spawnLair(provinceId: number, lairId?: string, level?: number, cell?: number): ProvinceLair | null {
-  const province = pack.provinces?.[provinceId];
-  const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces?.[provinceId];
-  if (!province?.i || province.removed || !pSim) return null;
-
-  const chosenId = lairId ?? "bandit_camp";
-  const def = getLairDef(chosenId);
-  const resolvedCell = cell ?? province.center ?? 0;
-  const lairLevel = level ?? 1;
-
-  const unitTypes = Military.getUnitTypes();
-  const defenders = instantiateLairUnits(def.defenderUnits, unitTypes);
-  const raidUnits = instantiateLairUnits(def.raidUnits, unitTypes);
-
-  const lair: ProvinceLair = {
-    id: def.id,
-    name: def.name,
-    level: lairLevel,
-    cell: resolvedCell,
-    burgId: pSim.trouble?.burgId,
-    provinceId,
-    defenders,
-    raidUnits,
-    seasonsActive: 0
+  return {
+    m: { gen: 30, load: 15 },
+    w: { gen: 30, load: 15 },
+    c: { gen: 30, load: 15 },
+    s: { gen: 30, load: 15 }
   };
-
-  pSim.lair = lair;
-  living.activeLairs ??= {};
-  living.activeLairs[`prov_lair:${provinceId}`] = lair;
-
-  host.pushNews(living, {
-    kind: "lair",
-    text: `A ${lair.name} has entrenched itself in ${province.name}!`,
-    cell: resolvedCell,
-    provinceId
-  });
-
-  return lair;
 }
 
-/** Assault an active lair with state military */
-export function assaultLair(stateId: number, provinceId: number): boolean {
-  const province = pack.provinces?.[provinceId];
-  if (!province?.i || province.removed || province.state !== stateId) return false;
+function relieveEschaton(living: LivingWorldState, amount?: number): void {
   const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces[provinceId];
-  const lair = pSim?.lair;
-  if (!lair) return false;
+  if (typeof host?.relieveEschaton === "function") {
+    host.relieveEschaton(living, amount);
+  }
+}
 
-  const state = pack.states[stateId];
-  if (!state?.i || state.removed) return false;
+function addBattleMarker(burgOrCell: Burg | number, label?: string): void {
+  const host = getHost();
+  if (typeof host?.addBattleMarker === "function") {
+    host.addBattleMarker(burgOrCell, label);
+  }
+}
 
-  const rng = rngFor("lair:assault", provinceId);
-  const power = (state.military ?? []).reduce((acc, reg) => acc + (reg.a ?? 0), 0);
-  const needed = lair.level * 150;
+function fieldArmy(state: State): Regiment | null {
+  const host = getHost();
+  if (typeof host?.fieldArmy === "function") {
+    return host.fieldArmy(state);
+  }
+  return null;
+}
 
-  if (power >= needed || rng.d(20) + Math.round(power / 50) >= 14 + lair.level) {
-    clearLair(lair, state.name);
-    host.pushNews(living, {
-      kind: "lair",
-      text: `${state.name} legions assaulted and destroyed ${lair.name} in ${province.name}!`,
-      cell: lair.cell,
-      stateId,
-      provinceId
-    });
-    return true;
+function applyArmySurvivors(state: State, regiment: Regiment, units: ArmyUnit[]): void {
+  const host = getHost();
+  if (typeof host?.applyArmySurvivors === "function") {
+    host.applyArmySurvivors(state, regiment, units);
+  }
+}
+
+function getProvinceCells(provinceId: number): number[] {
+  const host = getHost();
+  if (typeof host?.provinceCells === "function") {
+    return host.provinceCells(provinceId);
+  }
+  const cells: number[] = [];
+  const provinces = pack.cells?.province;
+  if (!provinces) return cells;
+  for (let cell = 0; cell < provinces.length; cell++) {
+    if (provinces[cell] === provinceId) cells.push(cell);
+  }
+  return cells;
+}
+
+function recordGrudge(stateId: number, burg: Burg, kind: string, reason: string, otherId?: number): void {
+  const host = getHost();
+  if (typeof host?.recordGrudge === "function") {
+    host.recordGrudge(stateId, burg, kind, reason, otherId);
+  }
+}
+
+function _findFigure(figureId: number): HistoricalFigure | undefined {
+  const host = getHost();
+  if (typeof host?.findFigure === "function") {
+    return host.findFigure(figureId);
+  }
+  return Chronicle.sync()?.figures?.find?.(f => f.i === figureId);
+}
+
+function emergentTerritoryCells(province: Province, capital: Burg, oldOwnerId: number): number[] {
+  const host = getHost();
+  if (typeof host?.emergentTerritoryCells === "function") {
+    return host.emergentTerritoryCells(province, capital, oldOwnerId);
+  }
+  const hinterland = typeof host?.burgHinterland === "function" ? host.burgHinterland(capital) : [];
+  const cells = new Set<number>(hinterland);
+  cells.add(capital.cell);
+
+  const stateCenters = new Set<number>();
+  const stateCapitalCells = new Set<number>();
+  for (const s of pack.states ?? []) {
+    if (!s?.i || s.removed) continue;
+    if (s.center !== undefined) stateCenters.add(s.center);
+    if (s.capital && pack.burgs[s.capital]) stateCapitalCells.add(pack.burgs[s.capital].cell);
   }
 
-  lair.level = Math.min(10, lair.level + 1);
-  pSim.order = Math.max(0, pSim.order - 10);
-  host.pushNews(living, {
-    kind: "lair",
-    text: `${state.name} assault on ${lair.name} was repulsed with heavy losses!`,
-    cell: lair.cell,
-    stateId,
-    provinceId
+  for (const c of getProvinceCells(province.i)) {
+    if (c === capital.cell) continue;
+    if (stateCenters.has(c) || stateCapitalCells.has(c)) continue;
+    const cellBurgId = pack.cells.burg?.[c];
+    if (cellBurgId && pack.burgs[cellBurgId]?.capital) continue;
+    if (!oldOwnerId || pack.cells.state?.[c] === oldOwnerId || pack.cells.state?.[c] === 0) {
+      cells.add(c);
+    }
+  }
+  return Array.from(cells);
+}
+
+function transferCells(stateId: number, cells: number[]): void {
+  const host = getHost();
+  if (typeof host?.transferCells === "function") {
+    host.transferCells(stateId, cells);
+    return;
+  }
+  for (const c of cells) {
+    if (pack.cells.state) pack.cells.state[c] = stateId;
+  }
+}
+
+function assignProvince(stateId: number, cells: number[]): void {
+  const host = getHost();
+  if (typeof host?.assignProvince === "function") {
+    host.assignProvince(stateId, cells);
+  }
+}
+
+function syncBurgs(living: LivingWorldState): void {
+  const host = getHost();
+  if (typeof host?.syncBurgs === "function") {
+    host.syncBurgs(living);
+  }
+}
+
+function syncProvinces(living: LivingWorldState): void {
+  const host = getHost();
+  if (typeof host?.syncProvinces === "function") {
+    host.syncProvinces(living);
+  }
+}
+
+function syncStates(living: LivingWorldState): void {
+  const host = getHost();
+  if (typeof host?.syncStates === "function") {
+    host.syncStates(living);
+  }
+}
+
+function createRegiment(state: State): Regiment {
+  const host = getHost();
+  if (typeof host?.createRegiment === "function") {
+    return host.createRegiment(state);
+  }
+  const reg: Regiment = {
+    i: (state.military ?? []).length,
+    n: (state.military ?? []).length + 1,
+    name: `1st Host of ${state.name}`,
+    state: state.i,
+    cell: state.center ?? 0,
+    a: 0,
+    u: {},
+    units: [],
+    crew: []
+  };
+  state.military = [...(state.military ?? []), reg];
+  return reg;
+}
+
+function moveArmy(regiment: Regiment, burg: Burg): void {
+  const host = getHost();
+  if (typeof host?.moveArmy === "function") {
+    host.moveArmy(regiment, burg);
+    return;
+  }
+  regiment.cell = burg.cell;
+  regiment.x = burg.x;
+  regiment.y = burg.y;
+}
+
+function ensureCommanders(): void {
+  const host = getHost();
+  if (typeof host?.ensureCommanders === "function") {
+    host.ensureCommanders();
+  }
+}
+
+function recordClaim(stateId: number, burg: Burg, targetStateId: number): void {
+  const host = getHost();
+  if (typeof host?.recordClaim === "function") {
+    host.recordClaim(stateId, burg, targetStateId);
+  }
+}
+
+export function syncDangerMarkers(living: LivingWorldState): void {
+  living.activeLairs ??= {};
+  living.activeTroubles ??= {};
+
+  const activeMarkerIds = new Set<number>();
+
+  for (const marker of pack.markers ?? []) {
+    if (marker.hidden || !isDangerMarker(marker)) {
+      if (marker.threatId && living.activeLairs[marker.threatId]) {
+        delete living.activeLairs[marker.threatId];
+        delete marker.threatId;
+      }
+      continue;
+    }
+
+    activeMarkerIds.add(marker.i);
+    const key = `lair:${marker.i}`;
+    marker.threatId = key;
+
+    let lair = living.activeLairs[key];
+    if (!lair) {
+      lair = createLairFromMarker(marker, Military.getUnitTypes());
+      living.activeLairs[key] = lair;
+    } else {
+      lair.markerId = marker.i;
+      lair.name = marker.name;
+      lair.cell = marker.cell;
+      lair.provinceId = pack.cells?.province?.[marker.cell] ?? 0;
+    }
+
+    if (lair.provinceId && living.provinces[lair.provinceId]) {
+      const pSim = living.provinces[lair.provinceId]!;
+      if (!pSim.lair || pSim.lair.level < lair.level) {
+        pSim.lair = lair;
+      }
+    }
+  }
+
+  for (const [key, lair] of Object.entries(living.activeLairs)) {
+    if (lair.markerId !== undefined && !activeMarkerIds.has(lair.markerId)) {
+      delete living.activeLairs[key];
+      if (lair.provinceId && living.provinces[lair.provinceId]?.lair?.markerId === lair.markerId) {
+        living.provinces[lair.provinceId]!.lair = null;
+      }
+    }
+  }
+}
+
+export function registerActiveLair(lair: ProvinceLair, markerId: number, provinceId: number): void {
+  const living = getHost().getState();
+  living.activeLairs ??= {};
+  const key = `lair:${markerId}`;
+  lair.markerId = markerId;
+  lair.provinceId = provinceId;
+  living.activeLairs[key] = lair;
+  const marker = pack.markers?.[markerId];
+  if (marker) marker.threatId = key;
+}
+
+export function addLairMarker(lair: ProvinceLair, cell: number): number {
+  pack.markers ??= [];
+  const markers = pack.markers;
+  const [x, y] = pack.cells.p[cell] ?? [0, 0];
+  const markerIndex = markers.length;
+  const def = getLairDef(lair.id);
+  markers.push({
+    i: markerIndex,
+    type: "dungeon",
+    icon: def.markerIcon || "☠️",
+    x,
+    y,
+    cell,
+    name: `${lair.name} (Lair Lvl ${lair.level})`
   });
-  return false;
+  return markerIndex;
 }
 
-/** Send guild adventurers or mercenaries to clear a lair */
-export function sendAdventurersToLair(stateId: number, provinceId: number): boolean {
-  return assaultLair(stateId, provinceId);
-}
-
-/** Remove an active lair marker or convert to ruins */
-function removeLairMarker(markerId?: number, victorName?: string): void {
+export function removeLairMarker(markerId?: number, victorName?: string): void {
   if (markerId === undefined || !pack.markers) return;
   if (pack.history?.living?.activeLairs) delete pack.history.living.activeLairs[`lair:${markerId}`];
   const marker = pack.markers[markerId];
@@ -361,7 +404,6 @@ function removeLairMarker(markerId?: number, victorName?: string): void {
   }
 }
 
-/** Clears a defeated lair: converts marker to ruins, prunes activeLairs, updates province */
 export function clearLair(lair: ProvinceLair, victorName?: string): void {
   const host = getHost();
   const living = host.getState();
@@ -387,17 +429,423 @@ export function clearLair(lair: ProvinceLair, victorName?: string): void {
   }
 }
 
-/** Smite a lair directly (god mode / sandbox) */
-export function smiteLair(provinceId: number): boolean {
+export function spawnTrouble(
+  provinceId: number,
+  troubleId?: string,
+  theme?: TroubleTheme,
+  level?: number
+): ProvinceTrouble | null {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed) return null;
   const host = getHost();
   const living = host.getState();
-  const pSim = living.provinces?.[provinceId];
-  if (!pSim?.lair) return false;
-  clearLair(pSim.lair, "Divine Wrath");
+  const pSim = living.provinces[provinceId];
+  if (!pSim) return null;
+
+  const rng = getRng("trouble:spawn", provinceId, living.tick);
+
+  let finalTheme = theme;
+  if (!finalTheme) {
+    const provCells = getProvinceCells(provinceId);
+    const hasBurg = pack.burgs.some(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === provinceId);
+    const hasRuin = (pack.markers ?? []).some(
+      m =>
+        !m.hidden &&
+        m.cell &&
+        provCells.includes(m.cell) &&
+        ["ruins", "cave", "dungeon", "battlefields", "volcano"].includes(m.type)
+    );
+    const hasResource = provCells.some(c => Boolean(pack.cells.good?.[c]));
+
+    const candidates: TroubleTheme[] = [];
+    if (hasBurg) candidates.push("burg", "burg");
+    if (hasRuin) candidates.push("ruin", "ruin");
+    if (hasResource) candidates.push("resource", "resource");
+    if (candidates.length === 0) candidates.push("burg");
+    finalTheme = rng.choice(candidates) ?? "burg";
+  }
+
+  let finalTroubleId = troubleId;
+  if (!finalTroubleId) {
+    const table =
+      finalTheme === "burg" ? BURG_TROUBLE_IDS : finalTheme === "ruin" ? RUIN_TROUBLE_IDS : RESOURCE_TROUBLE_IDS;
+    finalTroubleId = rng.choice(table) ?? "monsters";
+  }
+
+  const finalLevel = minmax(level ?? rng.d(4) + 1, 1, 10);
+  const tDef = getTroubleDef(finalTroubleId);
+  const cell = province.center ?? pack.states[province.state]?.center ?? 0;
+  pSim.trouble = {
+    id: finalTroubleId,
+    name: tDef.name,
+    theme: finalTheme,
+    pool: tDef.pool,
+    save: tDef.save,
+    requiredRole: tDef.requiredRole,
+    level: finalLevel,
+    seasonsUnchecked: 0,
+    cell
+  };
+
+  if (province.state && living.states[province.state]) {
+    living.states[province.state].capacity = recomputeStateCapacity(province.state);
+  }
+
+  pushNews(living, {
+    kind: "trouble",
+    text: `${tDef.name} arose in ${province.name}! (${finalTheme} trouble, level ${finalLevel})`,
+    cell,
+    stateId: province.state
+  });
+
+  return pSim.trouble ?? null;
+}
+
+export function quellTrouble(provinceId: number): boolean {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed) return false;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim?.trouble) return false;
+
+  pSim.trouble = null;
+  if (province.state && living.states[province.state]) {
+    living.states[province.state].capacity = recomputeStateCapacity(province.state);
+  }
+  pushNews(living, {
+    kind: "trouble",
+    text: `Trouble in ${province.name} was quelled.`,
+    cell: province.center ?? 0,
+    stateId: province.state
+  });
   return true;
 }
 
-/** Promote a trouble directly to an emergent state */
+export function assaultLair(stateId: number, provinceId: number): boolean {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed || province.state !== stateId) return false;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim?.lair) return false;
+
+  const state = pack.states[stateId];
+  const sSim = living.states[stateId];
+  if (!state?.i || state.removed || !sSim) return false;
+
+  const army = fieldArmy(state);
+  if (!army) return false;
+
+  const lair = pSim.lair;
+  const { config } = currentContent();
+  const attackerUnits = toBattleUnitsMen(army.units ?? [], Military.getUnitTypes());
+  const defenderUnits = lair.defenders.filter(u => u.count > 0).map(u => ({ ...u }));
+
+  if (attackerUnits.length === 0) return false;
+
+  const session = initBattleSession({
+    config,
+    unitTypes: Military.getUnitTypes(),
+    attacker: { factionId: stateId, armyId: null, units: attackerUnits },
+    defender: { factionId: 0, armyId: null, units: defenderUnits },
+    cell: lair.cell,
+    regionId: provinceId,
+    assault: lair.fortified,
+    modifiers: {
+      walls: lair.fortified ? 1 : 0,
+      defenderEncamped: lair.fortified,
+      defenderAmbushed: false,
+      attackerCrossedRiver: false,
+      labels: [lair.fortified ? `${lair.name} (fortified walls)` : lair.name]
+    }
+  });
+
+  const rng = getRng("lair:assault", stateId * 1000 + provinceId, living.tick);
+  while (session.status === "active" && session.round < config.battle.maxRounds) {
+    stepBattleRound(session, rng.next);
+  }
+  const outcome = finalizeBattle(session, rng.next);
+
+  applyArmySurvivors(state, army, outcome.attacker.units);
+  addBattleMarker(lair.cell, lair.name);
+
+  if (outcome.winner === "attacker") {
+    const lairName = lair.name;
+    clearLair(lair, state.name);
+    sSim.warExhaustion = Math.max(0, sSim.warExhaustion - 2);
+    sSim.capacity = recomputeStateCapacity(stateId);
+    relieveEschaton(living);
+
+    pushNews(living, {
+      kind: "lair",
+      text: `${state.name}'s army conquered and destroyed ${lairName} in ${province.name}!`,
+      cell: lair.cell,
+      stateId
+    });
+    pushHistory(
+      "conquest",
+      [{ kind: "state", id: stateId }],
+      lair.cell,
+      `${state.name}'s legions conquered and dismantled the ${lairName} in ${province.name}.`
+    );
+    return true;
+  }
+
+  lair.defenders = outcome.defender.units.filter(u => u.count > 0).map(u => ({ ...u }));
+  if (lair.defenders.length === 0) {
+    const lairName = lair.name;
+    clearLair(lair, state.name);
+    sSim.capacity = recomputeStateCapacity(stateId);
+    pushNews(living, {
+      kind: "lair",
+      text: `${state.name}'s army destroyed ${lairName} in ${province.name} at immense cost!`,
+      cell: lair.cell,
+      stateId
+    });
+    return true;
+  }
+
+  for (const u of army.units ?? []) {
+    u.disruption = Math.min(3, (u.disruption ?? 0) + 1);
+  }
+  sSim.warExhaustion = Math.min(100, sSim.warExhaustion + 4);
+
+  pushNews(living, {
+    kind: "lair",
+    text: `${state.name}'s assault on ${lair.name} was repulsed with heavy losses!`,
+    cell: lair.cell,
+    stateId
+  });
+  pushHistory(
+    "battle",
+    [{ kind: "state", id: stateId }],
+    lair.cell,
+    `${state.name}'s expedition against ${lair.name} was repulsed.`
+  );
+  return false;
+}
+
+export function sendAdventurersToLair(stateId: number, provinceId: number): boolean {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed || province.state !== stateId) return false;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim?.lair) return false;
+
+  const state = pack.states[stateId];
+  const sSim = living.states[stateId];
+  if (!state?.i || state.removed || !sSim) return false;
+
+  const lair = pSim.lair;
+  const history = Chronicle.sync();
+  history.figures ??= [];
+
+  let adventurer = history.figures.find(
+    f => !f.death && f.roles.some(r => r.type === "adventurer" && r.target.kind === "state" && r.target.id === stateId)
+  );
+
+  const year = options.map?.lore?.calendar?.year ?? 1000;
+  if (!adventurer) {
+    const culture = state.culture ?? 0;
+    const index = history.figures.length;
+    const rng = traitsRng(living.seed, "adventurer", index + state.i * 500);
+    const alignment = rollAlignment(rng, pack.cultures[culture]?.alignment);
+    const { virtues, vices } = rollFigureTraits(rng, alignment);
+    adventurer = {
+      i: index,
+      name: Names.getCulture(culture),
+      culture,
+      birth: year - rng.int(22, 40),
+      roles: [{ type: "adventurer", target: { kind: "state", id: state.i }, from: year }],
+      alignment,
+      virtues,
+      vices
+    };
+    history.figures.push(adventurer);
+  }
+
+  const domainMod = valueModifier(Math.max(sSim.capacity.w.gen, sSim.capacity.c.gen));
+  const traitBonus = (adventurer.virtues?.length ?? 0) - (adventurer.vices?.length ?? 0);
+  const rng = getRng("adventurer:delve", stateId * 500 + provinceId, living.tick);
+  const roll = rng.d(20);
+  const total = roll + domainMod + traitBonus;
+  const dc = 14 + lair.level;
+
+  if (total >= dc) {
+    removeLairMarker(lair.markerId);
+    const lairName = lair.name;
+    pSim.lair = null;
+    pSim.order = Math.min(100, pSim.order + 12);
+    pSim.stability += 1;
+    sSim.capacity = recomputeStateCapacity(stateId);
+    relieveEschaton(living);
+
+    pushNews(living, {
+      kind: "lair",
+      text: `${adventurer.name} and their adventuring band purged ${lairName} in ${province.name}!`,
+      cell: lair.cell,
+      stateId
+    });
+    pushHistory(
+      "conquest",
+      [
+        { kind: "figure", id: adventurer.i },
+        { kind: "state", id: stateId }
+      ],
+      lair.cell,
+      `${adventurer.name} and their adventuring band slew the master of ${lairName} in ${province.name}.`
+    );
+    return true;
+  }
+
+  if (total >= dc - 3) {
+    for (const u of lair.defenders) {
+      u.count = Math.max(1, Math.round(u.count * (0.5 + rng.next() * 0.25)));
+    }
+    lair.level = Math.max(4, lair.level - 1);
+    sSim.capacity = recomputeStateCapacity(stateId);
+
+    pushNews(living, {
+      kind: "lair",
+      text: `${adventurer.name}'s band struck deep into ${lair.name}, culling defenders before withdrawing (reduced to level ${lair.level}).`,
+      cell: lair.cell,
+      stateId
+    });
+    return false;
+  }
+
+  if (rng.d(2) === 1) {
+    adventurer.death = year;
+    for (const role of adventurer.roles) {
+      if (role.type === "adventurer" && role.to === undefined) role.to = year;
+    }
+  }
+  lair.raidPending = true;
+
+  pushNews(living, {
+    kind: "lair",
+    text: `${adventurer.name}'s delve into ${lair.name} failed disastrously!`,
+    cell: lair.cell,
+    stateId
+  });
+  return false;
+}
+
+export function metastasizeTroubleToLair(provinceId: number, lairId?: string): ProvinceLair | null {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed) return null;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim) return null;
+  if (!pSim.trouble && !lairId) return null;
+
+  const trouble = pSim.trouble;
+  const rng = getRng("lair:metastasize", provinceId, living.tick);
+  const chosenLairId = lairId ?? (trouble ? pickLairForTrouble(trouble.id, rng) : LAIR_NATURE_IDS[0]!);
+  const originCell = trouble?.cell ?? province.center ?? pack.states[province.state]?.center ?? 0;
+  const level = Math.max(3, Math.ceil((trouble?.level ?? 3) / 2));
+  const theme = trouble?.theme ?? "ruin";
+
+  const lair = createProvinceLair(chosenLairId, originCell, level, theme, trouble?.burgId, Military.getUnitTypes());
+  const markerId = addLairMarker(lair, originCell);
+  registerActiveLair(lair, markerId, provinceId);
+
+  pSim.lair = lair;
+  pSim.trouble = null;
+
+  if (province.state) {
+    const sSim = living.states[province.state];
+    if (sSim) {
+      if (sSim.agenda?.kind === "resolve_trouble" && sSim.agenda.targetProvinceId === provinceId) {
+        sSim.agenda = null;
+      }
+      sSim.capacity = recomputeStateCapacity(province.state);
+    }
+  }
+
+  const lairDef = getLairDef(chosenLairId);
+  pushNews(living, {
+    kind: "lair",
+    text: `Unchecked trouble in ${province.name} has festered into a ${lairDef.name}!`,
+    cell: originCell,
+    stateId: province.state
+  });
+  pushHistory(
+    "collapse",
+    [{ kind: "state", id: province.state }],
+    originCell,
+    `A ${lairDef.name} took root in ${province.name}, defying lawful authority.`
+  );
+
+  return lair;
+}
+
+export function spawnLair(provinceId: number, lairId?: string, level?: number, cell?: number): ProvinceLair | null {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed) return null;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim) return null;
+
+  const rng = getRng("lair:spawn", provinceId, living.tick);
+  const chosenLairId = lairId ?? rng.choice(LAIR_NATURE_IDS) ?? "ancient_evil";
+  const originCell = cell ?? province.center ?? pack.states[province.state]?.center ?? 0;
+  const finalLevel = minmax(level ?? 4 + rng.d(4), 4, 10);
+
+  const lair = createProvinceLair(chosenLairId, originCell, finalLevel, "ruin", undefined, Military.getUnitTypes());
+  const markerId = addLairMarker(lair, originCell);
+  registerActiveLair(lair, markerId, provinceId);
+
+  if (pSim.lair) {
+    removeLairMarker(pSim.lair.markerId);
+  }
+  pSim.lair = lair;
+  pSim.trouble = null;
+
+  if (province.state && living.states[province.state]) {
+    living.states[province.state].capacity = recomputeStateCapacity(province.state);
+  }
+
+  const lairDef = getLairDef(chosenLairId);
+  pushNews(living, {
+    kind: "lair",
+    text: `A ${lairDef.name} arose in ${province.name}! (Lair level ${finalLevel})`,
+    cell: originCell,
+    stateId: province.state
+  });
+
+  return lair;
+}
+
+export function smiteLair(provinceId: number): boolean {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed) return false;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim?.lair) return false;
+
+  removeLairMarker(pSim.lair.markerId);
+  const lairName = pSim.lair.name;
+  pSim.lair = null;
+
+  if (province.state && living.states[province.state]) {
+    living.states[province.state].capacity = recomputeStateCapacity(province.state);
+  }
+
+  pushNews(living, {
+    kind: "lair",
+    text: `The ${lairName} in ${province.name} was destroyed.`,
+    cell: province.center ?? 0,
+    stateId: province.state
+  });
+  return true;
+}
+
 export function promoteTroubleToState(provinceId: number, burgId?: number): number | null {
   const province = pack.provinces?.[provinceId];
   if (!province?.i || province.removed) return null;
@@ -408,8 +856,7 @@ export function promoteTroubleToState(provinceId: number, burgId?: number): numb
   if (!trouble || !isTroubleStatePromotable(trouble.id)) return null;
 
   const tDef = getTroubleDef(trouble.id);
-  const lairId = tDef.metastasizesToLair ?? "brigand_camp";
-  const lairDef = getLairDef(lairId);
+  const lairDef = getLairDef(tDef.stateLairId ?? "aspiring_warlord");
   const unitTypes = Military.getUnitTypes();
   const scale = Math.max(1, Math.min(2, Math.round(trouble.level / 5)));
   const templates = lairDef.defenderUnits.map(t => ({ ...t, count: Math.max(1, Math.round(t.count * scale)) }));
@@ -431,7 +878,6 @@ export function promoteTroubleToState(provinceId: number, burgId?: number): numb
   });
 }
 
-/** Ascend an ambitious faction into an emergent sovereign state. */
 export function ascendFactionToState(factionId: number, targetBurgId?: number): number | null {
   const faction = pack.factions?.[factionId];
   if (!faction || faction.removed) return null;
@@ -504,7 +950,7 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
     faction.stateRelations[newStateId] = "Ally";
     Factions.recomputeScale(faction);
 
-    host.pushNews(living, {
+    pushNews(living, {
       kind: "faction",
       text: `${faction.name} has proclaimed sovereign independence, founding ${newState?.fullName ?? "a new realm"}!`,
       cell: targetCell,
@@ -516,7 +962,6 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
   return newStateId;
 }
 
-/** Ascend an eligible entrenched lair into an emergent sovereign state. */
 export function ascendLairToState(provinceId: number, burgId?: number): number | null {
   const province = pack.provinces?.[provinceId];
   if (!province?.i || province.removed) return null;
@@ -565,7 +1010,333 @@ export function ascendLairToState(provinceId: number, burgId?: number): number |
   return stateId;
 }
 
-/** Core emergent state engine: creates an independent state from trouble, lair or faction */
+export function spawnRemnantFaction(fallenState: State, conquerorStateId?: number): Faction | null {
+  if (!fallenState?.i) return null;
+
+  const stateRelations: Record<number, "Enemy" | "Ally" | "Friendly" | "Neutral"> = {};
+  if (conquerorStateId) {
+    stateRelations[conquerorStateId] = "Enemy";
+  }
+
+  const remnant = Factions.add({
+    name: `${fallenState.name} Restoration Front`,
+    category: "political",
+    type: "rebel_front",
+    scale: "province",
+    allegiance: "hostile",
+    color: fallenState.color,
+    culture: fallenState.culture,
+    alignment: "chaotic",
+    values: ["freedom", "justice"],
+    expansionism: 1.2,
+    expansionScope: "state",
+    sovereignAmbition: true,
+    stateForm: fallenState.formName || "Restored Republic",
+    stateRosterId: fallenState.rosterId,
+    hq: {
+      cell: fallenState.center || 0,
+      fortified: false,
+      secrecy: 50,
+      assets: ["safe_house", "muster_camp"]
+    },
+    treasury: 120,
+    influence: 40,
+    researchedTechs: fallenState.researchedTechs
+      ? [...fallenState.researchedTechs]
+      : ["pottery", "mining", "iron_working"],
+    stateRelations
+  });
+
+  const living = getHost().getState();
+  pushNews(living, {
+    kind: "faction",
+    text: `Loyalists of the fallen ${fallenState.name} formed the ${remnant.name}!`,
+    cell: fallenState.center || 0,
+    stateId: conquerorStateId
+  });
+
+  return remnant;
+}
+
+export function resolveTrouble(stateId: number, provinceId: number): boolean {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed || province.state !== stateId) return false;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim?.trouble || pSim.lair) return false;
+
+  const state = pack.states[stateId];
+  const sSim = living.states[stateId];
+  if (!state?.i || state.removed || !sSim) return false;
+
+  const troubleDef = getTroubleDef(pSim.trouble.id);
+  const unitTypes = Military.getUnitTypes();
+
+  let bestUnit: ArmyBlock | null = null;
+  let bestReg: Regiment | null = null;
+  let bestMult = 3;
+  let bestDisruption = 999;
+
+  for (const reg of state.military ?? []) {
+    for (const unit of reg.units ?? []) {
+      if (unit.hp <= 0) continue;
+      const uType = unitTypes[unit.type];
+      const role: TroubleUnitRole = uType?.troubleRole ?? "military";
+      const mult = troubleUnitMatchMultiplier(troubleDef, role);
+      const dis = unit.disruption ?? 0;
+      if (mult < bestMult || (mult === bestMult && dis < bestDisruption)) {
+        bestMult = mult;
+        bestDisruption = dis;
+        bestUnit = unit;
+        bestReg = reg;
+      }
+    }
+  }
+
+  const history = Chronicle.sync();
+  history.figures ??= [];
+  const figures = history.figures;
+  const commander = bestReg?.crew
+    ?.map(id => figures[id])
+    .find(f => f && !f.death && f.roles.some(r => r.type === "specialist" && r.specialty === troubleDef.requiredRole));
+
+  const troubleLevel = pSim.trouble.level;
+  const dc = 16 + bestMult * troubleLevel;
+  const poolGen = sSim.capacity[troubleDef.pool]?.gen ?? 0;
+  const domainMod = valueModifier(poolGen);
+  const skillBonus = commander?.skills?.[troubleDef.pool] ?? 0;
+  const traitBonus = commander ? (commander.virtues?.length ?? 0) - (commander.vices?.length ?? 0) : 0;
+  const unitDisruption = bestUnit?.disruption ?? 0;
+
+  const rng = getRng("trouble:resolve", provinceId, living.tick);
+  const roll = rng.d(20);
+  const total = roll + skillBonus + domainMod + traitBonus - unitDisruption;
+  const year = options?.map?.lore?.calendar?.year ?? 1000;
+  const cell = province.center ?? state.center;
+
+  const success = total >= dc;
+  if (success) {
+    const reduction = rng.d(4);
+    pSim.trouble.level -= reduction;
+    if (pSim.trouble.level <= 0) {
+      pSim.trouble = null;
+      pSim.order = Math.min(100, pSim.order + 10);
+      pSim.stability += 1;
+      if (commander) {
+        commander.xp = (commander.xp ?? 0) + 25;
+        pushNews(living, {
+          kind: "trouble",
+          text: `${commander.name} overcame ${troubleDef.name} in ${province.name}!`,
+          cell,
+          stateId
+        });
+        pushHistory(
+          "deed",
+          [
+            { kind: "figure", id: commander.i },
+            { kind: "state", id: stateId }
+          ],
+          cell,
+          `${commander.name} eliminated the ${troubleDef.name} affliction in ${province.name}.`
+        );
+      } else {
+        pushNews(living, {
+          kind: "trouble",
+          text: `${state.name} overcame ${troubleDef.name} in ${province.name}!`,
+          cell,
+          stateId
+        });
+        pushHistory(
+          "conquest",
+          [{ kind: "state", id: stateId }],
+          cell,
+          `${state.name} eliminated the ${troubleDef.name} affliction in ${province.name}.`
+        );
+      }
+    } else {
+      if (commander) commander.xp = (commander.xp ?? 0) + 10;
+      const who = commander ? commander.name : state.name;
+      pushNews(living, {
+        kind: "trouble",
+        text: `${who} quelled ${troubleDef.name} in ${province.name} (reduced to level ${pSim.trouble.level}).`,
+        cell,
+        stateId
+      });
+    }
+  } else {
+    if (bestUnit) {
+      bestUnit.disruption = Math.min(3, (bestUnit.disruption ?? 0) + 1);
+    }
+    let aftermath = "";
+    if (commander && total <= dc - 6) {
+      if (rng.d(2) === 1) {
+        commander.death = year;
+        for (const role of commander.roles) if (role.to === undefined) role.to = year;
+        if (bestReg?.crew) bestReg.crew = bestReg.crew.filter(id => id !== commander.i);
+        aftermath = ` ${commander.name} did not survive the attempt.`;
+      } else {
+        const vice = drawVice(rng, commander);
+        if (vice) {
+          commander.vices ??= [];
+          commander.vices.push(vice);
+          aftermath = ` The struggle left ${commander.name} ${vice}.`;
+        }
+      }
+    }
+    const who = commander ? `${commander.name}'s attempt` : `${state.name}'s attempt`;
+    pushNews(living, {
+      kind: "trouble",
+      text: `${who} to resolve ${troubleDef.name} in ${province.name} failed (rolled ${total} vs DC ${dc}).${aftermath}`,
+      cell,
+      stateId
+    });
+
+    if (
+      pSim.trouble &&
+      isTroubleStatePromotable(pSim.trouble.id) &&
+      pSim.trouble.level >= 6 &&
+      pSim.order <= 30 &&
+      (roll === 1 || total <= dc - 10)
+    ) {
+      promoteTroubleToState(provinceId);
+    }
+  }
+
+  sSim.capacity = recomputeStateCapacity(stateId);
+  return success;
+}
+
+function resolveEmergentCapital(
+  province: Province,
+  originKind: "trouble" | "lair" | "faction",
+  originCell: number,
+  rng: Rng,
+  requestedBurgId?: number
+): Burg | null {
+  if (requestedBurgId) {
+    const target = pack.burgs?.[requestedBurgId];
+    if (target?.i && !target.removed && (!target.capital || originKind === "faction")) return target;
+  }
+
+  const cellBurgId = pack.cells.burg?.[originCell];
+  if (cellBurgId) {
+    const cellBurg = pack.burgs?.[cellBurgId];
+    if (cellBurg?.i && !cellBurg.removed && (!cellBurg.capital || originKind === "faction")) return cellBurg;
+  }
+
+  if (originKind === "trouble" || originKind === "faction") {
+    if (province.burg) {
+      const pBurg = pack.burgs?.[province.burg];
+      if (pBurg?.i && !pBurg.removed && !pBurg.capital) return pBurg;
+    }
+    const candidates = (pack.burgs ?? []).filter(
+      b =>
+        b?.i &&
+        !b.removed &&
+        !b.capital &&
+        (pack.cells.province?.[b.cell] === province.i || (province.state && b.state === province.state))
+    );
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
+      return candidates[0]!;
+    }
+  }
+
+  return foundEmergentBurg(province, originCell, rng);
+}
+
+function foundEmergentBurg(province: Province, originCell: number, rng: Rng): Burg {
+  const occupiedCells = new Set<number>();
+  for (const b of pack.burgs ?? []) {
+    if (b?.i && !b.removed) occupiedCells.add(b.cell);
+  }
+
+  let cell = originCell;
+  if (occupiedCells.has(cell)) {
+    const neighbor = (pack.cells.c?.[originCell] ?? []).find(
+      c => !occupiedCells.has(c) && (!pack.cells.h || pack.cells.h[c] >= 20)
+    );
+    if (neighbor !== undefined) cell = neighbor;
+  }
+
+  const [x, y] = pack.cells.p?.[cell] ?? [0, 0];
+  const culture =
+    pack.cells.culture?.[cell] ??
+    (province.state ? pack.states[province.state]?.culture : undefined) ??
+    pack.states[1]?.culture ??
+    0;
+  const pop = Math.round(rng.range(1.5, 3.0) * 10) / 10;
+
+  try {
+    const addedId = Burgs.add(x, y);
+    const added = pack.burgs[addedId];
+    if (added) {
+      added.population = Math.max(added.population ?? 0, pop);
+      return added;
+    }
+  } catch {
+    // Fallback for stubbed test packs without full Voronoi grid or Routes
+  }
+
+  const burgId = pack.burgs.length;
+  const burg: Burg = {
+    i: burgId,
+    cell,
+    x,
+    y,
+    state: province.state ?? 0,
+    culture,
+    name: Names.getCulture(culture),
+    population: pop,
+    capital: 0,
+    port: 0,
+    walls: 1,
+    plaza: 1,
+    temple: 1,
+    citadel: 1,
+    tags: []
+  };
+  pack.burgs.push(burg);
+  if (pack.cells.burg) pack.cells.burg[cell] = burgId;
+  return burg;
+}
+
+function emergentStateColor(rosterId?: string, alignment?: Alignment, fallback?: string): string {
+  if (rosterId === "tombKingsBase") return "#d6ccb2";
+  if (rosterId === "vampireBase" || rosterId === "darkElfBase") return "#5e3c6e";
+  if (rosterId === "demonBase" || rosterId === "chaosBase") return "#9e2a2b";
+  if (rosterId === "infernalDwarfBase" || rosterId === "skavenBase") return "#5c646d";
+  if (rosterId === "orcBase" || rosterId === "tribalBase") return "#8c4a27";
+  if (alignment === "evil") return "#8b2635";
+  if (alignment === "chaotic") return "#b5532a";
+  if (alignment === "lawful") return "#4a5d73";
+  return fallback ?? "#7a6855";
+}
+
+function spawnEmergentRuler(state: State, living: LivingWorldState, preferredAlignment?: Alignment): HistoricalFigure {
+  const history = Chronicle.sync();
+  history.figures ??= [];
+  const year = options.map?.lore?.calendar?.year ?? 1000;
+  const culture = state.culture ?? 0;
+  const index = history.figures.length;
+  const rng = traitsRng(living.seed, "figure", index + state.i * 1000);
+  const alignment = preferredAlignment ?? rollAlignment(rng, pack.cultures[culture]?.alignment ?? "chaotic");
+  const { virtues, vices } = aggressiveTraits(rollFigureTraits(rng, alignment));
+  const figure: HistoricalFigure = {
+    i: index,
+    name: Names.getCulture(culture),
+    culture,
+    birth: year - rng.int(22, 48),
+    roles: [{ type: "ruler", target: { kind: "state", id: state.i }, from: year }],
+    alignment,
+    virtues,
+    vices
+  };
+  history.figures.push(figure);
+  return figure;
+}
+
 function spawnEmergentState(opts: {
   province: Province;
   pSim: ProvinceSimState;
@@ -583,7 +1354,7 @@ function spawnEmergentState(opts: {
   const { province, pSim, living, originKind, originName, originCell, requestedBurgId, markerId } = opts;
   const oldOwnerId = province.state ?? 0;
   const oldOwner = oldOwnerId ? pack.states[oldOwnerId] : undefined;
-  const rng = rngFor(`emergent:${originKind}`, province.i, living.tick);
+  const rng = getRng(`emergent:${originKind}`, province.i, living.tick);
 
   const capital = resolveEmergentCapital(province, originKind, originCell, rng, requestedBurgId);
   if (!capital) return null;
@@ -634,188 +1405,170 @@ function spawnEmergentState(opts: {
     coa: oldOwner?.coa ?? ({} as State["coa"]),
     salesTax: oldOwner?.salesTax ?? 0,
     pollTax: oldOwner?.pollTax ?? 0,
-    landTax: oldOwner?.landTax ?? 0,
-    tariffs: oldOwner?.tariffs ?? 0
+    treasury: 150
   };
-
   pack.states.push(newState);
-
-  // Transfer territory
+  capital.capital = 1;
   capital.state = newStateId;
-  pack.cells.state[capital.cell] = newStateId;
-  if (province.i && province.state === oldOwnerId) {
-    province.state = newStateId;
-    pSim.order = 60;
-    pSim.stability = 3;
-    for (let c = 0; c < pack.cells.i.length; c++) {
-      if (pack.cells.province?.[c] === province.i) {
-        pack.cells.state[c] = newStateId;
-      }
+
+  const territoryCells = emergentTerritoryCells(province, capital, oldOwnerId);
+  transferCells(newStateId, territoryCells);
+  capital.state = newStateId;
+
+  // Ensure the province transfers cleanly if its center or non-capital cells were seized
+  const oldCapitalCell = oldOwner?.capital ? pack.burgs[oldOwner.capital]?.cell : oldOwner?.center;
+  const provinceCells = getProvinceCells(province.i);
+  const holdsOldCapital = oldCapitalCell !== undefined && provinceCells.includes(oldCapitalCell);
+  if (!holdsOldCapital) {
+    if (oldOwner?.provinces) {
+      oldOwner.provinces = oldOwner.provinces.filter(id => id !== province.i);
     }
+    province.state = newStateId;
+    province.burg = capital.i;
+    province.center = capital.cell;
+    if (!newState.provinces?.includes(province.i)) {
+      newState.provinces = [...(newState.provinces ?? []), province.i];
+    }
+    for (const c of territoryCells) {
+      if (pack.cells.province) pack.cells.province[c] = province.i;
+    }
+  } else {
+    assignProvince(newStateId, territoryCells);
   }
 
-  // Ruler setup
-  const history = Chronicle.sync();
-  history.figures ??= [];
-  const figures = history.figures;
-  const rulerIndex = figures.length;
-  const rulerName = Names.getBase(culture);
-  const ruler: HistoricalFigure = {
-    i: rulerIndex,
-    name: rulerName,
-    birth: (options.map?.lore?.calendar?.year ?? 1000) - 30,
-    culture,
-    alignment: opts.alignment ?? "neutral",
-    roles: [
-      { type: "ruler", target: { kind: "state", id: newStateId }, from: options.map?.lore?.calendar?.year ?? 1000 }
-    ]
-  };
-  figures.push(ruler);
-
-  living.states ??= {};
-  living.states[newStateId] = {
-    stateId: newStateId,
-    unravel: 10,
-    warExhaustion: 0,
-    treasury: 100,
-    rulerId: rulerIndex,
-    unravelHoldSeasons: 4,
-    capacity: {
-      m: { gen: 30, load: 15 },
-      w: { gen: 30, load: 15 },
-      c: { gen: 30, load: 15 },
-      s: { gen: 30, load: 15 }
-    }
-  };
-
-  // Convert marker if originated from lair
-  if (markerId !== undefined && pack.markers?.[markerId]) {
-    pack.markers[markerId].hidden = true;
+  if (markerId !== undefined) {
+    removeLairMarker(markerId);
   }
 
   pSim.trouble = null;
   pSim.lair = null;
+  pSim.order = 75;
+  pSim.stability = 3;
 
-  const host = getHost();
-  host.pushNews(living, {
-    kind: "emergent_state",
-    text: `${originName} has declared sovereign independence as ${fullName} under ${rulerName}!`,
+  const ruler = spawnEmergentRuler(newState, living, opts.alignment);
+
+  // Sync world burgs/provinces/states and scaffold capital infrastructure
+  syncBurgs(living);
+  syncProvinces(living);
+  syncStates(living);
+
+  const bSim = living.burgs?.[capital.i];
+  if (bSim) {
+    bSim.unrest = 0;
+    bSim.conqueredBy = undefined;
+    const scaffold = ["walls2", "barracks1", "market1", "temple1"];
+    const bSet = new Set(bSim.buildings);
+    bSet.delete("walls1");
+    for (const bid of scaffold) bSet.add(bid);
+    bSim.buildings = Array.from(bSet);
+    syncBurgFlagsFromBuildings(capital, bSim.buildings);
+  }
+
+  const sSim = living.states[newStateId];
+  if (sSim) {
+    sSim.rulerId = ruler.i;
+    sSim.unravel = 0;
+    sSim.warExhaustion = 0;
+  }
+
+  // Clear stale agendas on former owner targeting this province
+  if (oldOwnerId && living.states[oldOwnerId]) {
+    const oldSim = living.states[oldOwnerId]!;
+    const kind = oldSim.agenda?.kind;
+    if (
+      (kind === "resolve_trouble" || kind === "clear_lair" || kind === "hire_adventurers") &&
+      oldSim.agenda?.targetProvinceId === province.i
+    ) {
+      oldSim.agenda = null;
+    }
+  }
+
+  // Form 1st Regiment at capital and trim excess blocks to guarantee capacity viability
+  const unitTypes = Military.getUnitTypes();
+  const regiment = createRegiment(newState);
+  regiment.name = `1st Host of ${newState.name}`;
+  moveArmy(regiment, capital);
+  regiment.units = fromBattleUnitsMen(opts.units, unitTypes);
+  syncRegimentTotals(regiment, unitTypes);
+  ensureCommanders();
+
+  let capacity = recomputeStateCapacity(newStateId);
+  while (
+    (capacity.m.load > capacity.m.gen || capacity.w.load > capacity.w.gen || capacity.s.load > capacity.s.gen) &&
+    regiment.units &&
+    regiment.units.length > 1
+  ) {
+    regiment.units.pop();
+    syncRegimentTotals(regiment, unitTypes);
+    capacity = recomputeStateCapacity(newStateId);
+  }
+  if (sSim) sSim.capacity = capacity;
+  if (oldOwnerId && living.states[oldOwnerId]) {
+    living.states[oldOwnerId]!.capacity = recomputeStateCapacity(oldOwnerId);
+  }
+
+  // Claims and mutual high-weight grudges with the former sovereign
+  if (oldOwnerId && oldOwner && !oldOwner.removed) {
+    recordClaim(oldOwnerId, capital, newStateId);
+    recordGrudge(
+      oldOwnerId,
+      capital,
+      "conquest",
+      `${newState.name} seized ${capital.name ?? "the province"} from ${oldOwner.name}`,
+      newStateId
+    );
+    const lastOldGrudge = living.states[oldOwnerId]?.grudges?.at(-1);
+    if (lastOldGrudge) lastOldGrudge.weight = 60;
+
+    recordGrudge(newStateId, capital, "conquest", `${ruler.name} vowed to cast down ${oldOwner.name}`, oldOwnerId);
+    const lastNewGrudge = living.states[newStateId]?.grudges?.at(-1);
+    if (lastNewGrudge) lastNewGrudge.weight = 60;
+  }
+
+  const provLabel = province.name ?? capital.name ?? "the province";
+  const text =
+    originKind === "lair"
+      ? `${ruler.name} of the ${originName} in ${provLabel} has proclaimed the ${fullName}!`
+      : `${originName} in ${provLabel} erupted into revolution, proclaiming the ${fullName} under ${ruler.name}!`;
+  pushNews(living, {
+    kind: originKind === "lair" ? "lair" : "revolt",
+    text,
     cell: capital.cell,
     stateId: newStateId,
     burgId: capital.i
   });
+  pushHistory(
+    "independence",
+    [
+      { kind: "figure", id: ruler.i },
+      { kind: "burg", id: capital.i },
+      { kind: "state", id: newStateId },
+      ...(oldOwnerId ? [{ kind: "state", id: oldOwnerId } as HistRef] : [])
+    ],
+    capital.cell,
+    text
+  );
 
   return newStateId;
-}
-
-function resolveEmergentCapital(
-  province: Province,
-  originKind: string,
-  originCell: number,
-  _rng: Rng,
-  requestedBurgId?: number
-): Burg | null {
-  if (requestedBurgId && pack.burgs?.[requestedBurgId]) {
-    return pack.burgs[requestedBurgId];
-  }
-
-  const localBurgs = pack.burgs?.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === province.i) ?? [];
-
-  if (originKind === "trouble" || localBurgs.length > 0) {
-    const nonCap = localBurgs.find(b => !b.capital);
-    return nonCap ?? localBurgs[0] ?? null;
-  }
-
-  // Wilderness lair: found a new capital settlement
-  const cell = originCell || province.center || 0;
-  pack.burgs ??= [{ i: 0 } as Burg];
-  const burgIndex = pack.burgs.length;
-  const culture = pack.cells.culture?.[cell] ?? province.culture ?? 1;
-  const [x, y] = pack.cells.p?.[cell] ?? [0, 0];
-  const newBurg: Burg = {
-    i: burgIndex,
-    name: Names.getBase(culture),
-    cell,
-    x,
-    y,
-    state: 0,
-    culture,
-    population: 4,
-    capital: 1,
-    walls: 1,
-    plaza: 0,
-    temple: 0,
-    citadel: 1
-  };
-  pack.burgs.push(newBurg);
-  return newBurg;
-}
-
-function emergentStateColor(rosterId?: string, alignment?: Alignment, oldColor?: string): string {
-  if (rosterId === "undead" || alignment === "evil") return "#4a0404";
-  if (rosterId === "greenskins") return "#2d5a27";
-  if (rosterId === "elemental") return "#c2410c";
-  if (rosterId === "demonic") return "#701a75";
-  if (alignment === "lawful") return "#1e3a8a";
-  if (alignment === "good") return "#047857";
-  return oldColor ? "#d97706" : "#64748b";
-}
-
-/** Spawn a remnant rebel front when a state collapses or is annexed */
-export function spawnRemnantFaction(fallenState: State, conquerorStateId?: number): Faction | null {
-  if (!fallenState?.i) return null;
-
-  const stateRelations: Record<number, "Enemy" | "Ally" | "Friendly" | "Neutral"> = {};
-  if (conquerorStateId) {
-    stateRelations[conquerorStateId] = "Enemy";
-  }
-
-  const remnant = Factions.add({
-    name: `${fallenState.name} Restoration Front`,
-    category: "political",
-    type: "rebel_front",
-    scale: "province",
-    allegiance: "hostile",
-    color: fallenState.color,
-    culture: fallenState.culture,
-    alignment: "chaotic",
-    values: ["freedom", "justice"],
-    expansionism: 1.2,
-    expansionScope: "state",
-    sovereignAmbition: true,
-    stateForm: fallenState.formName || "Restored Republic",
-    stateRosterId: fallenState.rosterId,
-    hq: {
-      cell: fallenState.center || 0,
-      fortified: false,
-      secrecy: 50,
-      assets: ["safe_house", "muster_camp"]
-    },
-    treasury: 120,
-    influence: 40,
-    researchedTechs: fallenState.researchedTechs
-      ? [...fallenState.researchedTechs]
-      : ["pottery", "mining", "iron_working"],
-    stateRelations
-  });
-
-  return remnant;
 }
 
 export const LivingThreats = {
   setHost: setThreatHost,
   syncDangerMarkers,
+  registerActiveLair,
+  addLairMarker,
+  removeLairMarker,
+  clearLair,
   spawnTrouble,
-  resolveTrouble,
   quellTrouble,
-  metastasizeTroubleToLair,
-  spawnLair,
   assaultLair,
   sendAdventurersToLair,
-  clearLair,
+  metastasizeTroubleToLair,
+  spawnLair,
   smiteLair,
   promoteTroubleToState,
   ascendFactionToState,
   ascendLairToState,
-  spawnRemnantFaction
+  spawnRemnantFaction,
+  resolveTrouble
 };

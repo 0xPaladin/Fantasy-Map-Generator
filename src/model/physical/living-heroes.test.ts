@@ -133,7 +133,7 @@ describe("living-heroes", () => {
 
     const _retired = retireHero(3);
     expect(mockGuild.roster).not.toContain(3);
-    expect(fig.death).toBe(1000);
+    expect(fig.roles[0]?.to).toBe(1000);
   });
 
   it("ensures commanders for fielded specialist units", () => {

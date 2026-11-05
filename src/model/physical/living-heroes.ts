@@ -1,6 +1,6 @@
 // Living World Heroes Engine: handles adventurer lifecycle, vitals, progression, recruitment, and specialist commanders.
 
-import { rollAlignment, rollFigureTraits } from "@/data/culture-traits";
+import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import {
   defaultPathForDoctrine,
   figureArchetype,
@@ -13,6 +13,7 @@ import {
   rollHeroArchetype
 } from "@/data/hero-archetypes";
 import { heroMaxVitals, heroTemperamentFor, recoverInjuries } from "@/data/hero-vitals";
+import { UNIT_ROLE_POOLS } from "@/data/living-troubles";
 import { Military } from "@/model/political/military-generator";
 import { Names } from "@/model/society/names-generator";
 import type { HistoricalFigure } from "@/types/history";
@@ -47,8 +48,17 @@ export function findFigure(figureId: number): HistoricalFigure | undefined {
   return Chronicle.sync().figures?.find(figure => figure.i === figureId);
 }
 
+export const GUILD_MAX_HEROES = [3, 4, 6, 8, 10] as const;
+
 export function maxHeroesForTier(tier: number): number {
-  return tier >= 3 ? 12 : tier === 2 ? 8 : 4;
+  return GUILD_MAX_HEROES[Math.min(4, Math.max(0, tier - 1))]!;
+}
+
+/** xp needed to enter a level: L1 0, L2 60, L3 140, ... */
+export function xpForHeroLevel(level: number): number {
+  let xp = 0;
+  for (let step = 1; step < Math.max(1, level); step++) xp += 40 + 20 * step;
+  return xp;
 }
 
 /** Hero level from lifetime xp: 40 + 20 × level per level */
@@ -62,6 +72,49 @@ export function figureLevel(xp = 0): number {
     needed = 40 + 20 * level;
   }
   return level;
+}
+
+/** Old saves receive no retroactive points: absent progression starts at the current level. */
+export function applyHeroLevels(figure: HistoricalFigure): boolean {
+  const level = figureLevel(figure.xp ?? 0);
+  figure.progression ??= {};
+
+  if (figure.progression.appliedLevel === undefined) {
+    figure.progression.appliedLevel = level;
+    figure.progression.pendingChoices ??= 0;
+    return false;
+  }
+
+  const appliedLevel = figure.progression.appliedLevel;
+  if (level <= appliedLevel) return false;
+
+  const def = figureArchetype(figure);
+  figure.skills ??= { m: 0, w: 0, s: 0, c: 0 };
+
+  let growthIndex = 0;
+  for (let step = 2; step <= appliedLevel; step++) {
+    if (step !== 3 && step !== 6) growthIndex += 1;
+  }
+
+  let pending = figure.progression.pendingChoices ?? 0;
+  let gained = false;
+  for (let step = appliedLevel + 1; step <= level; step++) {
+    if (step === 3 || step === 6) {
+      pending += 1;
+      continue;
+    }
+    const pool = def.growthOrder[growthIndex % def.growthOrder.length]!;
+    growthIndex += 1;
+    if (figure.skills[pool] < 5) {
+      figure.skills[pool] += 1;
+      gained = true;
+    }
+  }
+
+  figure.progression.appliedLevel = level;
+  figure.progression.pendingChoices = Math.min(2, pending);
+  if (pending > 0) figure.progression.choiceSinceTick = undefined;
+  return gained;
 }
 
 /** Lazily give an old roster hero identity without changing their existing pool ratings. */
@@ -193,10 +246,13 @@ export function recruitCandidate(figureId: number): boolean {
   guild.gold -= cost;
   guild.candidates = guild.candidates.filter(id => id !== figureId);
   guild.roster.push(figureId);
+  figure.cell ??= guild.hqBurgId ? pack.burgs[guild.hqBurgId]?.cell : undefined;
 
   host.pushNews(living, {
     kind: "muster",
-    text: `${figure.name} joined the Guild roster.`
+    text: `${figure.name} joined the Guild for ${cost} gold.`,
+    cell: figure.cell,
+    burgId: guild.hqBurgId
   });
   return true;
 }
@@ -213,48 +269,57 @@ export function retireHero(figureId: number): number | null {
   if (year - figure.birth < HERO_RETIREMENT_AGE) return null;
 
   guild.roster = guild.roster.filter(id => id !== figureId);
-  figure.death = year;
-
-  let protege: HistoricalFigure | undefined;
-  if (guild.tier >= 2) {
-    protege = mintProtege(living, figure);
-    if (protege && guild.roster.length < maxHeroesForTier(guild.tier)) guild.roster.push(protege.i);
+  guild.missions = guild.missions.filter(mission => mission.figureId !== figureId);
+  for (const role of figure.roles) {
+    if (role.to === undefined) role.to = year;
   }
 
+  const protege = spawnProtege(living, figure);
+  if (protege && guild.roster.length < maxHeroesForTier(guild.tier)) guild.roster.push(protege.i);
+
   host.pushNews(living, {
-    kind: "muster",
-    text: `${figure.name} retired with honor${protege ? `, naming ${protege.name} their successor` : ""}.`
+    kind: "succession",
+    text: `${figure.name} retired from the Guild and passed the torch to ${protege?.name ?? "a new protege"}.`,
+    cell: figure.cell
   });
-  return protege ? protege.i : null;
+  return protege?.i ?? null;
 }
 
-function mintProtege(living: LivingWorldState, veteran: HistoricalFigure): HistoricalFigure {
+export function spawnProtege(living: LivingWorldState, veteran: HistoricalFigure): HistoricalFigure | undefined {
   const history = Chronicle.sync();
   history.figures ??= [];
   const figures = history.figures;
   const index = figures.length;
-  const rng = createRng(`${living.seed}:guild:protege:${index}`);
-  const culture = veteran.culture ?? 0;
-  const skills = { m: 0, w: 0, s: 0, c: 0 };
+  const rng = createRng(`${living.seed}:guild:protege:${index + veteran.i * 1000}`);
+  const culture = veteran.culture;
+  const alignment = rollAlignment(rng, pack.cultures?.[culture]?.alignment);
+  const { virtues, vices } = rollFigureTraits(rng, alignment);
+  const year = options.map?.lore?.calendar?.year ?? 1000;
 
-  const validPools = (["m", "w", "s", "c"] as const).filter(p => (veteran.skills?.[p] ?? 0) >= 3);
-  const bestPool = validPools.length > 0 ? rng.choice(validPools) : "m";
-  skills[bestPool] = 1;
+  const skills = {
+    m: veteran.skills?.m ?? 0,
+    w: veteran.skills?.w ?? 0,
+    s: veteran.skills?.s ?? 0,
+    c: veteran.skills?.c ?? 0
+  };
+  const pools = ["m", "w", "s", "c"] as const;
+  const best = pools.reduce((chosen, pool) => (skills[pool] > skills[chosen] ? pool : chosen), pools[0]!);
+  skills[best] = Math.min(5, skills[best] + 1);
+  ensureHeroIdentity(veteran);
 
   const protege: HistoricalFigure = {
     i: index,
-    name: Names.getBase(culture),
+    name: Names.getCulture(culture),
     culture,
-    birth: (options.map?.lore?.calendar?.year ?? 1000) - 18,
-    alignment: veteran.alignment ?? "neutral",
-    virtues: [...(veteran.virtues ?? [])],
-    vices: [...(veteran.vices ?? [])],
+    birth: year - rng.int(18, 24),
+    roles: [{ type: "adventurer", target: { kind: "culture", id: culture }, from: year }],
+    alignment,
+    virtues,
+    vices,
+    cell: veteran.cell,
     xp: 0,
-    roles: [
-      { type: "adventurer", target: { kind: "culture", id: culture }, from: options.map?.lore?.calendar?.year ?? 1000 }
-    ],
     skills,
-    archetype: figureArchetype(veteran).id,
+    archetype: veteran.archetype,
     disciplines: [...figureDisciplines(veteran)],
     progression: { appliedLevel: 1, pendingChoices: 0, picks: [] }
   };
@@ -310,21 +375,25 @@ export function mintCandidate(living: LivingWorldState, avoid: HeroArchetypeId[]
   const skills = { ...def.baseSkills };
   let growthIndex = 0;
   for (let step = 2; step <= level; step++) {
+    if (step === 3 || step === 6) continue;
     const pool = def.growthOrder[growthIndex % def.growthOrder.length]!;
+    growthIndex += 1;
     skills[pool] = Math.min(5, skills[pool] + 1);
-    growthIndex++;
   }
+
+  const guild = getHost().getGuild();
 
   const candidate: HistoricalFigure = {
     i: index,
-    name: Names.getBase(culture),
+    name: Names.getCulture(culture),
     culture,
-    birth: year - 18 - rng.int(0, 10),
+    birth: year - rng.int(20, 38),
+    roles: [{ type: "adventurer", target: { kind: "culture", id: culture }, from: year }],
     alignment,
     virtues,
     vices,
-    xp: level === 1 ? 0 : level === 2 ? 100 : 300,
-    roles: [{ type: "adventurer", target: { kind: "culture", id: culture }, from: year }],
+    cell: guild.hqBurgId !== undefined ? pack.burgs[guild.hqBurgId]?.cell : undefined,
+    xp: xpForHeroLevel(level),
     skills,
     archetype,
     disciplines: [...def.disciplines],
@@ -370,8 +439,8 @@ export function autoPickPendingPaths(living: LivingWorldState, guild: GuildState
     }
     if (living.tick - progression.choiceSinceTick < 2) continue;
 
-    const level = pendingPathLevel(figure);
-    const pick = defaultPathForDoctrine(figure.archetype!, level, guild.doctrine);
+    const def = figureArchetype(figure);
+    const pick = defaultPathForDoctrine(def.id, def.defaultDoctrine, pendingPathLevel(figure));
     if (pick) chooseHeroPath(figure.i, pick.id);
   }
 }
@@ -420,30 +489,37 @@ export function commanderFor(state: State, regiment: Regiment, specialty: Troubl
 
   const index = figures.length;
   const culture = state.culture ?? 0;
-  const commander: HistoricalFigure = {
+  const year = options.map?.lore?.calendar?.year ?? 1000;
+  const living = getHost().getState();
+  const rng = traitsRng(living.seed, "figure", index);
+  const alignment = rollAlignment(rng, pack.cultures[culture]?.alignment);
+  const { virtues, vices } = rollFigureTraits(rng, alignment);
+  const skills = { m: 0, w: 0, s: 0, c: 0 };
+  skills[UNIT_ROLE_POOLS[specialty]] = 1;
+  const figure: HistoricalFigure = {
     i: index,
-    name: Names.getBase(culture),
+    name: Names.getCulture(culture),
     culture,
-    birth: (options.map?.lore?.calendar?.year ?? 1000) - 28,
-    alignment: "lawful",
-    roles: [
-      {
-        type: "specialist",
-        specialty,
-        target: { kind: "state", id: state.i },
-        from: options.map?.lore?.calendar?.year ?? 1000
-      }
-    ]
+    birth: year - rng.int(25, 45),
+    roles: [{ type: "specialist", specialty, target: { kind: "state", id: state.i }, from: year }],
+    alignment,
+    virtues,
+    vices,
+    cell: regiment.cell,
+    xp: 0,
+    skills
   };
-  figures.push(commander);
-  regiment.crew.push(index);
-  return index;
+  figures.push(figure);
+  regiment.crew.push(figure.i);
+  return figure.i;
 }
 
 export const LivingHeroes = {
   setHost: setHeroesHost,
   findFigure,
   figureLevel,
+  xpForHeroLevel,
+  applyHeroLevels,
   ensureHeroIdentity,
   ensureHeroGuildState,
   getHeroState,
@@ -453,6 +529,7 @@ export const LivingHeroes = {
   recruitCost,
   recruitCandidate,
   retireHero,
+  spawnProtege,
   mintCandidate,
   refreshCandidates,
   recoverHeroes,

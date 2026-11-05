@@ -104,6 +104,18 @@ describe("living-guild", () => {
       skills: { m: 4, w: 1, s: 0, c: 0 }
     });
     guild.roster = [1];
+    mockLiving.provinces[1] = {
+      order: 50,
+      stability: 1,
+      trouble: {
+        id: "bandits",
+        name: "Forest Bandits",
+        theme: "brigands",
+        level: 2,
+        seasonsUnchecked: 0,
+        cell: 1
+      }
+    } as any;
 
     const preview = getPartyPreview(1, 1);
     expect(preview).not.toBeNull();
