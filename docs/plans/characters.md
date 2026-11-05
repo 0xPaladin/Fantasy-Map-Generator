@@ -1,7 +1,7 @@
 # Plan — Characters: One Roster for People, Heroes & Historical Figures
 
 **Updated:** 2026-11-05  
-**Status:** In progress — Phase 1 implemented  
+**Status:** In progress — Phases 1-2 implemented  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 
@@ -55,7 +55,7 @@ The design has three layers:
 ### Progress
 
 - [x] **Phase 1 — Types, action catalogue, hero sheet** (2026-11-05)
-- [ ] Phase 2 — Characters facade and lifecycle
+- [x] **Phase 2 - Characters facade and lifecycle** (2026-11-05)
 - [ ] Phase 3 — Serialization and legacy migration
 - [ ] Phase 4 — Generators and manual preservation
 - [ ] Phase 5 — Hero checks and missions
@@ -756,20 +756,28 @@ Keep the existing trait rendering.
 
 ---
 
-### Phase 2 — Characters Facade & Lifecycle
+### Phase 2 — Characters Facade & Lifecycle ✅
 
+**Status:** Implemented 2026-11-05.  
 **Goal:** One API for every person; no direct writes to `pack.history.figures`.
 
 1. `src/model/society/characters.ts`
-   - `all`, `active`, `get`, `add`, `update`, `remove`, `restore`, `promoteToHero`, `nextId`, `ensureRegistry`, `status`, `factionsOf`, `isCandidate`, `joinFaction`, `leaveFaction`.
+   - `ensureRegistry`, `all`, `active`, `get`, `nextId`, `add`, `update`.
+   - `remove` closes open roles at the current year and clears the id from every faction's `memberIds` / `candidateIds`; `restore` only clears `removed`.
+   - `promoteToHero` infers an archetype when none is passed and seeds the Phase 1 starting package, keeping identity, roles, and traits; already-hero records are left unchanged.
+   - `status`, `factionsOf`, `isCandidate`, `joinFaction`, `leaveFaction`; membership stays on `Faction`.
+   - `NewCharacter` accepts a partial `Character` plus `culture`, one optional `role`, `hero: true`, and `archetype`.
 2. `src/app/fmg.ts`
-   - Expose `FMG.Characters`.
-3. Unit tests
-   - add/update/remove/restore;
-   - soft delete cleans membership and closes roles;
-   - promote preserves identity and traits;
-   - no duplicate ids;
-   - `active()` hides removed/dead as specified.
+   - Exposed `FMG.Characters`.
+3. `src/model/society/characters.test.ts`
+   - create/read/update and monotonic ids;
+   - generated names and unknown-culture rejection;
+   - soft delete, role closure, membership cleanup, restore;
+   - promotion preserving identity and traits, and promotion idempotence;
+   - `active()` hiding removed and dead records;
+   - status derivation, membership moves, and a missing faction registry.
+
+**Verification:** 9 lifecycle tests pass. `biome check` is clean on the three changed files. The new files add no `tsc --noEmit` errors; the repository still reports the same pre-existing errors elsewhere.
 
 **Acceptance:** a character can be created, promoted, edited, soft-deleted, restored, and joined to a faction entirely through `Characters`.
 

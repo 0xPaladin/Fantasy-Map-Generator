@@ -49,6 +49,7 @@ import { Provinces } from "@/model/political/provinces-generator";
 import { States } from "@/model/political/states-generator";
 import { Zones } from "@/model/political/zones-generator";
 import { Resample } from "@/model/resample";
+import { Characters } from "@/model/society/characters";
 import { Cultures } from "@/model/society/cultures-generator";
 import { Names } from "@/model/society/names-generator";
 import { Population } from "@/model/society/population-generator";
@@ -133,6 +134,7 @@ const FMG = {
   AddedLabels,
   Biomes,
   Burgs,
+  Characters,
   Coastline,
   Coordinates,
   Cultures,
