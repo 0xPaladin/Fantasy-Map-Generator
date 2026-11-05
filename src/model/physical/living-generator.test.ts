@@ -3703,6 +3703,141 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(unrestCap.w.gen).toBeLessThan(peacefulCap.w.gen);
     });
   });
+
+  describe("OpenCiv Faction City-Node Loop & Competitive Cell Draft (Phase 2)", () => {
+    beforeEach(() => {
+      setupCityWorld();
+      pack.factions = [{ i: 0 } as Faction];
+    });
+
+    it("competes for worked cells: clandestine outpost pre-drafts cells before State Burg and siphons gold", () => {
+      const living = Living.init();
+      living.burgs[1].civBuildings = ["palace", "market"];
+
+      const shadowFaction = Factions.add({
+        name: "Nightblade Syndicate",
+        category: "underworld",
+        type: "thieves_guild",
+        allegiance: "clandestine",
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 70, assets: ["safe_house"] },
+        outposts: [
+          {
+            burgId: 1,
+            cell: 5,
+            tier: 2,
+            influence: 60,
+            secrecy: 60,
+            assets: [],
+            establishedYear: 990
+          }
+        ]
+      });
+      shadowFaction.hq.sim!.citizens = 1;
+      shadowFaction.outposts[0].sim!.citizens = 2;
+
+      Living.tick(1);
+
+      const b1 = living.burgs[1];
+      const hqWorked = shadowFaction.hq.sim?.workedCells ?? [];
+      const outWorked = shadowFaction.outposts[0].sim?.workedCells ?? [];
+      const stateWorked = b1.workedCells ?? [];
+
+      expect(hqWorked.length).toBeGreaterThanOrEqual(1);
+      expect(outWorked.length).toBeGreaterThanOrEqual(1);
+      expect(stateWorked.length).toBeLessThan(5);
+
+      for (const c of stateWorked) {
+        expect(hqWorked).not.toContain(c);
+        expect(outWorked).not.toContain(c);
+      }
+
+      expect(shadowFaction.outposts[0].sim?.cityYields?.gold ?? 0).toBeGreaterThan(1);
+    });
+
+    it("chartered faction alternates cell picks after state food floor and pays 15% charter tax to host burg", () => {
+      const living = Living.init();
+      const baseGoldBefore = living.burgs[1].cityYields?.gold ?? 0;
+
+      const consortium = Factions.add({
+        name: "Golden Scales Charter",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "chartered",
+        patronStateId: 1,
+        stateRelations: { 1: "Friendly" },
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
+      });
+      consortium.hq.sim!.citizens = 2;
+
+      Living.tick(1);
+
+      const b1 = living.burgs[1];
+      const hqYields = consortium.hq.sim?.cityYields;
+      expect(hqYields).toBeDefined();
+      expect(hqYields!.gold).toBeLessThan(4);
+      expect(b1.cityYields!.gold).toBeGreaterThan(baseGoldBefore);
+    });
+
+    it("grows faction node citizens from food, boosts local influence from culture, and completes queued buildings", () => {
+      Living.init();
+      const guild = Factions.add({
+        name: "Silver Compass",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        researchedTechs: ["pottery", "currency"],
+        hq: { cell: 11, burgId: 2, fortified: false, secrecy: 0, assets: [] },
+        outposts: [
+          {
+            burgId: 1,
+            cell: 5,
+            tier: 1,
+            influence: 40,
+            secrecy: 0,
+            assets: ["wayside_shrine"],
+            establishedYear: 995
+          }
+        ]
+      });
+
+      const rival = Factions.add({
+        name: "Rival Peddlers",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+        outposts: [
+          {
+            burgId: 1,
+            cell: 5,
+            tier: 1,
+            influence: 35,
+            secrecy: 0,
+            assets: [],
+            establishedYear: 996
+          }
+        ]
+      });
+
+      const hqSim = guild.hq.sim!;
+      hqSim.citizens = 2;
+      hqSim.foodStored = foodNeededForGrowth(2);
+      hqSim.productionQueue = [{ kind: "building", id: "trade_depot" }];
+      hqSim.productionProgress = { "building:trade_depot": 79 };
+
+      const outSim = guild.outposts[0].sim!;
+      outSim.cultureStored = 20;
+
+      Living.tick(1);
+
+      expect(hqSim.citizens).toBe(3);
+      expect(hqSim.civBuildings).toContain("trade_depot");
+      expect(guild.hq.assets).toContain("trade_depot");
+
+      expect(guild.outposts[0].influence).toBe(50);
+      expect(rival.outposts[0].influence).toBe(30);
+    });
+  });
 });
 
 describe("Unified Figures slice 1: specialist commanders", () => {
