@@ -25,7 +25,8 @@ export const ENTITY_TYPES = [
   "culture",
   "religion",
   "biome",
-  "good"
+  "good",
+  "faction"
 ] as const;
 
 export const RECORD_TYPES = ["cell", "ice", "relief", "measurer", "deal", "transport", "nameBase"] as const;
@@ -35,7 +36,7 @@ export type EntityType = (typeof ENTITY_TYPES)[number] | (typeof RECORD_TYPES)[n
 export const isEntityType = (value: string): value is EntityType =>
   (ENTITY_TYPES as readonly string[]).includes(value) || (RECORD_TYPES as readonly string[]).includes(value);
 
-type EntityEditor = "GoodsEditor" | "MeasurersEditor" | "TransportEditor" | "NamesbaseEditor";
+type EntityEditor = "GoodsEditor" | "MeasurersEditor" | "TransportEditor" | "NamesbaseEditor" | "FactionsEditor";
 
 export interface EntityRef {
   type: EntityType;
@@ -109,7 +110,8 @@ const ELEMENT_PATTERNS: [RegExp, EntityType][] = [
   [/^market(\d+)$/, "market"],
   [/^culture(\d+)$/, "culture"],
   [/^religion(\d+)$/, "religion"],
-  [/^biome(\d+)$/, "biome"]
+  [/^biome(\d+)$/, "biome"],
+  [/^faction(\d+)$/, "faction"]
 ];
 /** Layers whose elements carry their entity's id in a data attribute */
 const DATA_TARGETS: [layer: string, attribute: string, type: EntityType][] = [
@@ -119,6 +121,7 @@ const DATA_TARGETS: [layer: string, attribute: string, type: EntityType][] = [
   ["#provinceEmblems", "data-i", "province"],
   ["#stateEmblems", "data-i", "state"],
   ["#goodsIcons", "data-i", "good"],
+  ["#factions", "data-id", "faction"],
   ["#ice", "data-id", "ice"],
   ["#terrain", "data-id", "relief"],
   ["#lakes, #coastline", "data-f", "feature"]
@@ -473,6 +476,38 @@ class EntityLookup {
       points: ref => this.goodPoints(ref.id),
       context: ref => this.byId(pack.goods, ref.id)?.tags?.join(", ") || "",
       editor: "GoodsEditor"
+    },
+    faction: {
+      label: t("Factions"),
+      kind: t("Faction"),
+      icon: "icon-shield",
+      scale: 6,
+      layers: ["factions", "burgIcons", "markers"],
+      collection: {
+        field: "factions",
+        indexed: true,
+        references: { culture: "culture", patronStateId: "state" }
+      },
+      name: id => this.byId(pack.factions, id)?.name || "",
+      refs: () => this.refsOf("faction", pack.factions, true),
+      position: id => {
+        const faction = this.byId(pack.factions, id);
+        if (!faction?.hq) return undefined;
+        if (faction.hq.burgId) {
+          const burg = this.byId(pack.burgs, faction.hq.burgId);
+          if (burg) return [burg.x, burg.y];
+        }
+        if (faction.hq.markerId !== undefined) {
+          const marker = this.byId(pack.markers, faction.hq.markerId);
+          if (marker) return [marker.x, marker.y];
+        }
+        return this.cellPoint(faction.hq.cell);
+      },
+      context: ref => {
+        const faction = this.byId(pack.factions, ref.id);
+        return faction ? `${capitalize(faction.category)} • ${faction.scale}` : "";
+      },
+      editor: "FactionsEditor"
     },
     cell: {
       label: t("Cells"),

@@ -15,6 +15,7 @@ import type { Zone } from "@/model/political/zones-generator";
 import type { Culture } from "@/model/society/cultures-generator";
 import type { Religion } from "@/model/society/religions-generator";
 import type { Marker } from "@/model/story/markers-generator";
+import type { Faction } from "./factions";
 import type { History } from "./history";
 import type { Journey } from "./journey";
 import type { Legend } from "./legend";
@@ -79,4 +80,5 @@ export interface PackedGraph {
   journeys: Journey[];
   history: History;
   legends: Legend[];
+  factions: Faction[];
 }

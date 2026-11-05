@@ -97,6 +97,9 @@ const TEMPLATE = /* html */ `
     <button id="editStatesButton" data-tip="${t("States Editor")}" data-shortcut="Shift + S">
       ${t("States")}
     </button>
+    <button id="editFactionsButton" data-tip="${t("Factions Editor")}">
+      ${t("Factions")}
+    </button>
     <button id="editTradeAnimationButton" data-tip="${t("Trade Animation Editor")}">
       ${t("Trade")}
     </button>
@@ -112,6 +115,7 @@ const TEMPLATE = /* html */ `
       ${t("Burgs")}
     </button>
     <button id="regenerateCultures" data-tip="${t("Click to regenerate non-locked cultures")}">${t("Cultures")}</button>
+    <button id="regenerateFactions" data-tip="${t("Click to regenerate procedural factions")}">${t("Factions")}</button>
     <button
       id="regenerateEconomy"
       data-tip="${t("Rebuild market territories, production, trade deals, and taxes from the current goods and markets")}"

@@ -55,6 +55,7 @@ To report a problem or propose a feature, see [Reporting bugs and suggesting ide
 [Scale and distance](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Scale-and-distance)
 
 **Fork features**
+[Factions](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Factions) ·
 [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) ·
 [Astral Cartographer](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Astral-Cartographer) ·
 [History](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/History) ·

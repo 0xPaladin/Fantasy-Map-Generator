@@ -23,6 +23,7 @@ import { Relief } from "@/model/physical/relief-generator";
 import { Rivers } from "@/model/physical/river-generator";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Emblems } from "@/model/political/emblems-generator";
+import { Factions } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
 import { States } from "@/model/political/states-generator";
 import { Zones } from "@/model/political/zones-generator";
@@ -129,6 +130,13 @@ export const MAP_COMMANDS: MapCommand[] = [
     link: true,
     aliases: "countries kingdoms nations",
     run: () => Controllers.StatesEditor.open()
+  },
+  {
+    id: "editFactionsButton",
+    name: t("Factions Editor"),
+    link: true,
+    aliases: "guilds syndicates cults outposts orders",
+    run: () => Controllers.FactionsEditor.open()
   },
   {
     id: "overviewBurgsButton",
@@ -546,6 +554,12 @@ export const MAP_COMMANDS: MapCommand[] = [
     run: () => confirmRegeneration(regenerateCultures)
   },
   {
+    id: "regenerateFactions",
+    name: `${t("Regenerate")}: ${t("Factions")}`,
+    aliases: "generate guilds syndicates cults outposts",
+    run: () => confirmRegeneration(regenerateFactions)
+  },
+  {
     id: "regenerateReligions",
     name: `${t("Regenerate")}: ${t("Religions")}`,
     aliases: "generate faith",
@@ -957,6 +971,11 @@ function regenerateReligions(): void {
 function regenerateCultures(): void {
   Cultures.regenerate();
   Layers.draw("cultures", "goods");
+}
+
+function regenerateFactions(): void {
+  Factions.generate();
+  Layers.draw("factions");
 }
 
 function regenerateMilitary(): void {
