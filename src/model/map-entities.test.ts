@@ -26,7 +26,14 @@ beforeEach(() => {
     addedLabels: [],
     religions: [],
     biomes: [],
-    goods: []
+    goods: [],
+    cells: {
+      p: [
+        [0, 0],
+        [20, 20]
+      ]
+    },
+    history: { events: [], realms: [], eras: [], figures: [] }
   } as unknown as typeof pack;
 });
 
@@ -53,6 +60,10 @@ describe("resolveElementId", () => {
     ["regiment3-1", { type: "regiment", id: 3, sub: 1 }]
   ])("maps %s to its entity", (elementId, expected) => {
     expect(MapEntities.resolveElement(elementId)).toEqual(expected);
+  });
+
+  it("maps a character marker to its chronicle figure", () => {
+    expect(MapEntities.resolveElement("character0")).toEqual({ type: "character", id: 0 });
   });
 
   it.each(["freshwater", "viewbox", "", null, undefined, "burg", "notAnId12"])("ignores %s", elementId => {
@@ -90,6 +101,18 @@ describe("entity on the map", () => {
 
   it("has no position for an entity that is gone", () => {
     expect(MapEntities.getPosition({ type: "burg", id: 99 })).toBeUndefined();
+  });
+});
+
+describe("characters", () => {
+  it("resolves, locates and opens a character from the chronicle", () => {
+    pack.history.figures = [{ i: 0, name: "Aster", culture: 1, birth: 900, roles: [], cell: 1 }];
+
+    expect(MapEntities.get({ type: "character", id: 0 })?.name).toBe("Aster");
+    expect(MapEntities.getPosition({ type: "character", id: 0 })).toEqual([20, 20]);
+    expect(MapEntities.getEditor("character")).toBe("CharactersEditor");
+    expect(MapEntities.getDisplay({ type: "character", id: 0 }).layers).toEqual(["characters"]);
+    expect(MapEntities.getDisplay({ type: "character", id: 0 }).highlight).toBe("#character0");
   });
 });
 

@@ -1,5 +1,6 @@
 // Living World simulation state types. See docs/plans/living-world.md
 import type { ArmyUnit } from "@/conquest/engine/common/types";
+import type { ActionId } from "./character-actions";
 
 export type SeasonId = 0 | 1 | 2 | 3;
 
@@ -40,7 +41,7 @@ export interface HeroInjury {
   untilTick?: number;
 }
 
-/** Per-hero guild state; kept out of the chronicle figure so old maps stay additive. */
+/** @deprecated legacy guild-owned hero state; migrate to `Character.hero.condition`. */
 export interface HeroGuildState {
   resolve: number;
   stamina: number;
@@ -319,7 +320,7 @@ export type GuildMissionKind = "trouble" | "lair" | "excavate" | "pacify";
 export interface MissionPhase {
   id: string;
   label: string;
-  pool: HeroPool;
+  action: ActionId;
   tags: MissionTag[];
   dc: number;
   required: boolean;
@@ -332,6 +333,8 @@ export interface MissionPhaseResult {
   total: number;
   success: boolean;
   untrained?: boolean;
+  critical?: boolean;
+  complication?: boolean;
 }
 
 export type MissionOutcome = "full" | "partial" | "failed";
@@ -344,7 +347,7 @@ export interface ActiveGuildMission {
   provinceId?: number;
   burgId?: number;
   markerId?: number;
-  pool: "m" | "w" | "s" | "c";
+  action: ActionId;
   dc: number;
   progress: number;
   required: number;

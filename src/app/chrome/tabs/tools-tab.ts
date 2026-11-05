@@ -100,6 +100,9 @@ const TEMPLATE = /* html */ `
     <button id="editFactionsButton" data-tip="${t("Factions Editor")}">
       ${t("Factions")}
     </button>
+    <button id="editCharactersButton" data-tip="${t("Characters Editor")}" data-shortcut="Shift + I">
+      ${t("Characters")}
+    </button>
     <button id="editTradeAnimationButton" data-tip="${t("Trade Animation Editor")}">
       ${t("Trade")}
     </button>

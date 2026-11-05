@@ -3,6 +3,7 @@
 // docs/plans/history-generation.md and docs/domain/glossary.md
 import { Controllers } from "@/controllers";
 import { goToPresent, isInPast, scrubRange, scrubToYear, viewedEpoch } from "@/controllers/historical-view";
+import { ACTION_DEFS, DICE } from "@/data/character-actions";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
 import { Chronicle } from "@/model/physical/history-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
@@ -393,8 +394,19 @@ function renderFigure(figure: HistoricalFigure): string {
     .join("; ");
   return /* html */ `<div class="legendsEvent">
     <span class="legendsYear">${life}</span>
-    <span class="legendsText"><b>${escapeHtml(figure.name)}</b> — ${roles}${renderTraits(figure)}</span>
+    <span class="legendsText"><span class="legendActor" data-kind="figure" data-id="${figure.i}" style="cursor:pointer;"><b>${escapeHtml(figure.name)}</b></span> — ${roles}${renderTraits(figure)}${renderHeroSummary(figure)}</span>
   </div>`;
+}
+
+function renderHeroSummary(figure: HistoricalFigure): string {
+  if (!figure.hero) return "";
+  const actions = Object.values(ACTION_DEFS)
+    .map(def => ({ label: def.label, die: figure.hero!.actions[def.id] }))
+    .sort((a, b) => DICE.indexOf(b.die) - DICE.indexOf(a.die))
+    .slice(0, 3)
+    .map(entry => `${entry.label} ${entry.die}`)
+    .join(" · ");
+  return ` <span class="legendsTraits">— Hero: ${escapeHtml(actions)}</span>`;
 }
 
 /** the figure's character after its roles: alignment, then the virtues and the vices it never
@@ -444,8 +456,10 @@ function openActor(this: HTMLElement): void {
       break;
     }
     case "realm":
+      switchTab("realms");
+      break;
     case "figure":
-      switchTab(this.dataset.kind === "realm" ? "realms" : "figures");
+      void Controllers.CharactersEditor.openDetails(id);
       break;
   }
 }

@@ -1,7 +1,23 @@
 // The map's chronicle: dated events, fallen realms and eras. See docs/plans/history-generation.md
 import type { Alignment } from "@/data/culture-traits";
+import type { CharacterRelations, HeroProgression, HeroSheet } from "@/types/character";
 import type { Emblem } from "@/types/emblems";
 import type { DisciplineId, HeroArchetypeId, LivingWorldState } from "@/types/living";
+
+export type {
+  CharacterAttributes,
+  CharacterRelations,
+  CharacterStatus,
+  HeroCondition,
+  HeroProgression,
+  HeroSheet
+} from "@/types/character";
+export type {
+  ActionCheck,
+  ActionCheckResult,
+  ActionId,
+  Die
+} from "@/types/character-actions";
 
 export type HistRefKind = "state" | "realm" | "burg" | "culture" | "religion" | "figure" | "polity" | "faction";
 
@@ -80,7 +96,7 @@ export interface HistoricalRole {
   specialty?: string;
 }
 
-/** the figure's four pool ratings (unified-figures): force, wealth, order, cunning */
+/** @deprecated legacy M/W/S/C ratings; migrated to hero action dice. */
 export interface FigureSkills {
   m: number;
   w: number;
@@ -88,21 +104,26 @@ export interface FigureSkills {
   c: number;
 }
 
-/** deterministic level growth and the two player-chosen paths */
-export interface HeroProgression {
-  appliedLevel?: number;
-  pendingChoices?: number;
-  picks?: string[];
-  /** tick the pending choice first appeared, for the two-season auto-pick */
-  choiceSinceTick?: number;
-}
-
-export interface HistoricalFigure {
+/** One person. Background characters use the base fields; heroes add `hero`. */
+export interface Character {
   i: number;
   name: string;
   culture: number;
   birth: number;
   death?: number;
+  gender?: string;
+  portrait?: string;
+  tags?: string[];
+  note?: string;
+  /** authored by the user; never generated over */
+  manual?: boolean;
+  /** generated, but protected from regeneration */
+  lock?: boolean;
+  /** soft delete; ids are never reused */
+  removed?: boolean;
+  /** deterministic anchor for generated rolls */
+  seedKey?: string;
+
   roles: HistoricalRole[];
   /** the ethos the figure rolled on its culture's prevailing column; absent on old chronicles and
    *  when `generation.cultures.traits` is off */
@@ -110,17 +131,30 @@ export interface HistoricalFigure {
   /** 0–3 each, per TRAIT_COUNTS: a good figure is all virtues, an evil one all vices */
   virtues?: string[];
   vices?: string[];
-  /** last known position; the Figures layer draws it (unified-figures) */
+  /** last known position; the Characters layer draws it */
   cell?: number;
-  /** lifetime experience; the conquest overlay mirrors it (unified-figures) */
-  xp?: number;
-  /** pool ratings 0..5, raised on level-up and skill spend (unified-figures) */
+  captor?: number;
+  relations?: CharacterRelations;
+
+  /** full sheet; only heroes have one */
+  hero?: HeroSheet;
+}
+
+/** Fields old saves and pre-Phase-3 call sites still carry. Read-only for migration. */
+export interface LegacyFigureFields {
+  /** @deprecated use `hero` */
   skills?: FigureSkills;
-  /** hero identity; absent on old maps and inferred lazily */
+  /** @deprecated use `hero.xp` */
+  xp?: number;
+  /** @deprecated use `hero.archetype` */
   archetype?: HeroArchetypeId;
+  /** @deprecated use `hero.abilities` */
   disciplines?: DisciplineId[];
+  /** @deprecated use `hero.progression` */
   progression?: HeroProgression;
 }
+
+export type HistoricalFigure = Character & LegacyFigureFields;
 
 /** a polity's stable identity: one lineage across epochs, even as its form and borders change */
 export interface EpochPolity {

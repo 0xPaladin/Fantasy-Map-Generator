@@ -1368,12 +1368,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const { json, snapshotRecords } = serializeHistory(pack.history, pack.cells.i.length);
       const restored = parseHistory(json, snapshotRecords, pack.cells.i.length);
 
-      expect(restored.living?.guild?.heroes?.[id]).toMatchObject({
+      const hero = restored.figures?.find(figure => figure.i === id)?.hero;
+      expect(hero?.condition).toMatchObject({
         stamina: 2,
-        doctrine: "manual",
         push: true,
         injuries: [{ kind: "wounded", untilTick: 4 }]
       });
+      expect(hero?.doctrine).toBe("manual");
     });
 
     it("auto-fills a deterministic tier-limited party", () => {
@@ -1657,7 +1658,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       const mission = Living.getMissions().find(entry => entry.kind === "excavate");
       expect(mission?.markerId).toBe(0);
-      expect(mission?.dc).toBe(14); // 13 + tier 1
+      expect(mission?.dc).toBe(6); // action ladder: old 14
     });
 
     it("mints a realm-named relic when excavating a chronicle site", () => {
@@ -2060,6 +2061,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       guild.roster = [addGuildHero({ m: 30, w: 0, s: 0, c: 30 })];
       expect(Living.dispatchBestHero(1)).toBe(true);
+      const mission = Living.getMissions()[0]!;
+      mission.dc = 2;
+      mission.phases = mission.phases?.map(phase => ({ ...phase, dc: 2 }));
 
       Living.tick(2);
 

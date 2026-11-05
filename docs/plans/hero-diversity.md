@@ -1,6 +1,12 @@
 # Plan — Hero Diversity: Archetypes, Disciplines, Aspects & Party Play
 
-Updated: 2026-11-01. Status: **complete (Phases 0-4 shipped)**.
+Updated: 2026-11-01. Status: **complete (Phases 0-4 shipped); pool/skill sections superseded (2026-11-05)**.
+
+> **Superseded in part by [characters.md](characters.md).** Keep the ten archetypes, their flavour,
+> paths, aspects, temperament and party-expedition shape. Do not follow the **M/W/S/C** pools,
+> `FigureSkills`, numeric pool growth or `1d20 + pool` resolution: heroes now use the compact hero
+> sheet, twelve action dice and `actionCheck`. `GuildState.heroes` is a deprecated migration source;
+> vitals live on `Character.hero.condition`.
 
 Companions: [living-idle-guild.md](living-idle-guild.md), [unified-figures.md](unified-figures.md),
 [culture-traits.md](culture-traits.md), [living-world.md](living-world.md),
@@ -166,7 +172,11 @@ creates one. Chosen implementation:
 
 ---
 
-## 5. Phase 1 — Archetypes, Disciplines & Aspects
+## 5. Phase 1 - Archetypes, Disciplines & Aspects
+
+> **Superseded data:** pools and `FigureSkills` are gone from characters. The archetype/path flavour
+> is kept; starting dice and attributes live in `src/data/character-actions.ts`, and abilities are
+> `hero.abilities`.
 
 Phase 1 is the recommended first feature slice. It changes identity and mission fit without
 adding a new action economy.
@@ -456,7 +466,10 @@ Mission card additions:
 
 ---
 
-## 6. Phase 2 — Vitals, Temperament & Growth
+## 6. Phase 2 - Vitals, Temperament & Growth
+
+> **Superseded storage:** vitals now live on `Character.hero.condition`; `GuildState.heroes` is a
+> deprecated migration source. Growth steps action dice, not pool ratings.
 
 Phase 2 adds cost and personality. It should land only after Phase 1 identity is stable.
 
@@ -602,7 +615,10 @@ type HeroDoctrine =
 
 ---
 
-## 7. Phase 3 — Party Expeditions & Mission Tags
+## 7. Phase 3 - Party Expeditions & Mission Tags
+
+> **Superseded resolution:** each phase is an action check (`phase.action`, `actionCheck`), not a
+> pool check. The party shape, tags and partial-success rules remain.
 
 Phase 3 is the biggest diversity payoff: heroes matter because they cover each other.
 
@@ -734,6 +750,9 @@ make the `pacify` mission kind real.
 ---
 
 ## 8. Data Model
+
+> **Superseded interfaces:** see [characters.md](characters.md) for the current `Character`,
+> `HeroSheet`, `ActionId` and mission types. The interfaces below are historical.
 
 All fields are additive and optional. Existing `.map` record 53 loads with lazy defaults.
 
