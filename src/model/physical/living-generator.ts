@@ -1392,17 +1392,12 @@ class LivingModel {
 
     const faction = this.getPlayerFaction();
     if (faction) {
-      if (guild.gold > 0 && faction.treasury === 0) faction.treasury = guild.gold;
-      else if (faction.treasury > 0) guild.gold = faction.treasury;
-
-      if (guild.renown > 0 && faction.influence === 0) faction.influence = guild.renown;
-      else if (faction.influence > 0) guild.renown = faction.influence;
-
-      if (faction.memberIds?.length && !guild.roster.length) guild.roster = [...faction.memberIds];
-      else if (guild.roster.length) faction.memberIds = [...guild.roster];
-
-      if (faction.missions?.length) guild.missions = faction.missions;
-      if (faction.relics?.length) guild.relics = faction.relics;
+      faction.treasury = guild.gold;
+      faction.influence = guild.renown;
+      if (guild.roster.length) faction.memberIds = [...guild.roster];
+      else if (faction.memberIds?.length) guild.roster = [...faction.memberIds];
+      guild.missions = faction.missions ?? guild.missions;
+      guild.relics = faction.relics ?? guild.relics;
     }
     return guild;
   }
@@ -1423,7 +1418,8 @@ class LivingModel {
           type: "adventurer_guild",
           allegiance: "autonomous",
           hq: { cell: 0, fortified: false, secrecy: 0, assets: ["chapter_lodge"] },
-          treasury: 150
+          treasury: living.guild?.gold ?? 0,
+          influence: living.guild?.renown ?? 0
         });
       }
       living.playerFactionId = faction.i;
@@ -1437,7 +1433,16 @@ class LivingModel {
     if (!faction || faction.removed) return false;
     const living = this.getState();
     living.playerFactionId = factionId;
-    this.syncPlayerFaction(living);
+    const guild = living.guild;
+    if (guild) {
+      guild.gold = faction.treasury;
+      guild.renown = faction.influence;
+      guild.tier = Math.min(3, Math.max(1, faction.tier)) as 1 | 2 | 3;
+      guild.roster = faction.memberIds ? [...faction.memberIds] : [];
+      guild.candidates = faction.candidateIds ? [...faction.candidateIds] : [];
+      guild.missions = faction.missions ? [...faction.missions] : [];
+      guild.relics = faction.relics ? [...faction.relics] : [];
+    }
     return true;
   }
 
@@ -1447,14 +1452,26 @@ class LivingModel {
     if (!faction) return;
     const guild = living.guild;
     if (guild) {
-      guild.gold = faction.treasury;
-      guild.renown = faction.influence;
-      guild.tier = Math.min(3, Math.max(1, faction.tier)) as 1 | 2 | 3;
-      if (faction.doctrine) guild.doctrine = faction.doctrine;
-      if (faction.memberIds) guild.roster = faction.memberIds;
-      if (faction.candidateIds) guild.candidates = faction.candidateIds;
-      if (faction.missions) guild.missions = faction.missions;
-      if (faction.relics) guild.relics = faction.relics;
+      if (faction.treasury > 0 && guild.gold === 0) guild.gold = faction.treasury;
+      else faction.treasury = guild.gold;
+
+      if (faction.influence > 0 && guild.renown === 0) guild.renown = faction.influence;
+      else faction.influence = guild.renown;
+
+      if (guild.tier > faction.tier) faction.tier = guild.tier;
+      else guild.tier = Math.min(3, Math.max(1, faction.tier)) as 1 | 2 | 3;
+
+      if (guild.roster.length > 0) faction.memberIds = [...guild.roster];
+      else if (faction.memberIds?.length) guild.roster = [...faction.memberIds];
+
+      if (guild.candidates.length > 0) faction.candidateIds = [...guild.candidates];
+      else if (faction.candidateIds?.length) guild.candidates = [...faction.candidateIds];
+
+      if (guild.missions.length > 0) faction.missions = [...guild.missions];
+      else if (faction.missions?.length) guild.missions = [...faction.missions];
+
+      if (guild.relics.length > 0) faction.relics = [...guild.relics];
+      else if (faction.relics?.length) guild.relics = [...faction.relics];
     }
   }
 
@@ -3724,6 +3741,8 @@ class LivingModel {
     if (tier <= guild.tier) return;
 
     guild.tier = tier;
+    const faction = this.getPlayerFaction();
+    if (faction) faction.tier = tier;
     this.pushNews(living, {
       kind: "muster",
       text: `The Guild Hall was raised to tier ${tier}: ${GUILD_TIER_TITLES[tier - 1]}.`
@@ -10511,8 +10530,8 @@ class LivingModel {
       this.stepFactionEconomyAndTech(living);
       this.stepFactionAgendas(living);
       this.stepFactionMilitaryAndRaids(living);
-      this.stepPlayerFactionMissions(living);
     }
+    this.stepPlayerFactionMissions(living);
     this.stepLairs(living);
   }
 
@@ -10552,14 +10571,19 @@ class LivingModel {
           }
         }
 
+        const bBurg = pack.burgs?.[outpost.burgId];
+        const provId = bBurg ? (pack.cells.province?.[bBurg.cell] ?? 0) : 0;
+        const pSim = provId ? living.provinces?.[provId] : null;
+        const floor = Math.max(pSim?.trouble?.level ?? 0, pSim?.lair?.level ?? 0);
         const bSim = living.burgs?.[outpost.burgId];
         if (bSim) {
           if (
-            faction.category === "commercial" ||
-            faction.category === "adventuring" ||
-            (faction.category === "religious" && faction.alignment !== "evil")
+            outpost.assets.some(a => a === "chapter_lodge" || a === "sanctuary" || a === "grand_temple") &&
+            (faction.category === "commercial" ||
+              faction.category === "adventuring" ||
+              (faction.category === "religious" && faction.alignment !== "evil"))
           ) {
-            bSim.unrest = Math.max(0, (bSim.unrest ?? 0) - 1);
+            bSim.unrest = Math.max(floor, (bSim.unrest ?? 0) - 1);
           } else if (
             faction.category === "underworld" ||
             faction.allegiance === "hostile" ||
