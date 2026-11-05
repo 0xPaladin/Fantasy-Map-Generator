@@ -320,7 +320,6 @@ export function getGuild(): GuildState {
   guild.chapterBurgIds ??= [];
   guild.roster ??= [];
   guild.candidates ??= [];
-  guild.heroes ??= {};
   guild.missions ??= [];
   guild.relics ??= [];
   guild.cooldowns ??= {};
@@ -471,7 +470,8 @@ export function guildOperationCost(kind: GuildOperationKind): number {
 
 function isHeroIdle(guild: GuildState, figureId: number): boolean {
   if (guild.missions.some(mission => mission.figureId === figureId || mission.party?.includes(figureId))) return false;
-  const state = guild.heroes?.[figureId];
+  const figure = findFigure(figureId);
+  const state = figure ? ensureHeroGuildState(guild, figure) : undefined;
   const tick = getHost().getState().tick;
   if (state?.downUntilTick !== undefined && state.downUntilTick > tick) return false;
   return (guild.cooldowns[figureId] ?? 0) <= tick;

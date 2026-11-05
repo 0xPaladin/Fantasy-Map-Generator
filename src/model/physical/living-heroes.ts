@@ -1,5 +1,12 @@
 // Living World Heroes Engine: handles adventurer lifecycle, vitals, progression, recruitment, and specialist commanders.
 
+import {
+  attributesFromSkills,
+  DICE,
+  heroStartingPackage,
+  legacyActionForPool,
+  legacyActionsFromSkills
+} from "@/data/character-actions";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import {
   defaultPathForDoctrine,
@@ -7,7 +14,6 @@ import {
   figureDisciplines,
   findHeroPath,
   HERO_ARCHETYPES,
-  type HeroArchetypeId,
   inferHeroArchetype,
   pendingPathLevel,
   rollHeroArchetype
@@ -15,12 +21,64 @@ import {
 import { heroMaxVitals, heroTemperamentFor, recoverInjuries } from "@/data/hero-vitals";
 import { UNIT_ROLE_POOLS } from "@/data/living-troubles";
 import { Military } from "@/model/political/military-generator";
+import { Characters } from "@/model/society/characters";
 import { Names } from "@/model/society/names-generator";
+import type { HeroSheet } from "@/types/character";
+import type { Die } from "@/types/character-actions";
 import type { HistoricalFigure } from "@/types/history";
-import type { GuildState, HeroDoctrine, HeroGuildState, LivingWorldState, TroubleUnitRole } from "@/types/living";
+import type {
+  DisciplineId,
+  GuildState,
+  HeroArchetypeId,
+  HeroDoctrine,
+  HeroGuildState,
+  LivingWorldState,
+  TroubleUnitRole
+} from "@/types/living";
 import type { Regiment, State } from "@/types/subdivided-pack";
 import { createRng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
+
+const HERO_STATES = new WeakMap<HistoricalFigure, HeroGuildState>();
+
+function stepDie(die: Die): Die {
+  return DICE[Math.min(DICE.indexOf(die) + 1, DICE.length - 1)] ?? "d12";
+}
+
+/** Build or backfill the sheet, mirroring the legacy fields the guild stub still reads. */
+export function ensureHeroSheet(figure: HistoricalFigure): HeroSheet {
+  if (!figure.hero) {
+    const archetype = figure.archetype ?? inferHeroArchetype(figure);
+    const start = heroStartingPackage(archetype);
+    const progression = figure.progression ?? {
+      appliedLevel: figureLevel(figure.xp ?? 0),
+      pendingChoices: 0,
+      picks: []
+    };
+    figure.hero = {
+      archetype,
+      attributes: figure.skills ? attributesFromSkills(figure.skills) : { ...start.attributes },
+      actions: figure.skills ? legacyActionsFromSkills(figure.skills) : { ...start.actions },
+      abilities: figure.disciplines?.length ? [...figure.disciplines] : [start.ability],
+      xp: figure.xp ?? 0,
+      progression
+    };
+  }
+
+  const hero = figure.hero;
+  const start = heroStartingPackage(hero.archetype ?? "freeblade");
+  hero.actions ??= { ...start.actions };
+  hero.attributes ??= { ...start.attributes };
+  hero.abilities ??= [start.ability];
+  hero.xp ??= figure.xp ?? 0;
+  hero.progression ??= {};
+
+  figure.archetype ??= hero.archetype;
+  figure.disciplines ??= [...hero.abilities] as DisciplineId[];
+  figure.progression ??= hero.progression;
+  figure.xp ??= hero.xp;
+  return hero;
+}
 
 export const GUILD_CANDIDATES_PER_YEAR = 3;
 export const HERO_RETIREMENT_AGE = 50;
@@ -45,7 +103,7 @@ function getHost(): HeroesHost {
 }
 
 export function findFigure(figureId: number): HistoricalFigure | undefined {
-  return Chronicle.sync().figures?.find(figure => figure.i === figureId);
+  return Characters.get(figureId);
 }
 
 export const GUILD_MAX_HEROES = [3, 4, 6, 8, 10] as const;
@@ -76,27 +134,26 @@ export function figureLevel(xp = 0): number {
 
 /** Old saves receive no retroactive points: absent progression starts at the current level. */
 export function applyHeroLevels(figure: HistoricalFigure): boolean {
-  const level = figureLevel(figure.xp ?? 0);
-  figure.progression ??= {};
+  const hero = ensureHeroSheet(figure);
+  const progression = hero.progression!;
+  const level = figureLevel(hero.xp ?? 0);
 
-  if (figure.progression.appliedLevel === undefined) {
-    figure.progression.appliedLevel = level;
-    figure.progression.pendingChoices ??= 0;
+  if (progression.appliedLevel === undefined) {
+    progression.appliedLevel = level;
+    progression.pendingChoices ??= 0;
     return false;
   }
 
-  const appliedLevel = figure.progression.appliedLevel;
+  const appliedLevel = progression.appliedLevel;
   if (level <= appliedLevel) return false;
 
   const def = figureArchetype(figure);
-  figure.skills ??= { m: 0, w: 0, s: 0, c: 0 };
-
   let growthIndex = 0;
   for (let step = 2; step <= appliedLevel; step++) {
     if (step !== 3 && step !== 6) growthIndex += 1;
   }
 
-  let pending = figure.progression.pendingChoices ?? 0;
+  let pending = progression.pendingChoices ?? 0;
   let gained = false;
   for (let step = appliedLevel + 1; step <= level; step++) {
     if (step === 3 || step === 6) {
@@ -105,56 +162,112 @@ export function applyHeroLevels(figure: HistoricalFigure): boolean {
     }
     const pool = def.growthOrder[growthIndex % def.growthOrder.length]!;
     growthIndex += 1;
-    if (figure.skills[pool] < 5) {
-      figure.skills[pool] += 1;
+    const action = legacyActionForPool(pool);
+    const next = stepDie(hero.actions[action]);
+    if (next !== hero.actions[action]) {
+      hero.actions[action] = next;
       gained = true;
     }
   }
 
-  figure.progression.appliedLevel = level;
-  figure.progression.pendingChoices = Math.min(2, pending);
-  if (pending > 0) figure.progression.choiceSinceTick = undefined;
+  progression.appliedLevel = level;
+  progression.pendingChoices = Math.min(2, pending);
+  if (pending > 0) progression.choiceSinceTick = undefined;
+  figure.progression = progression;
   return gained;
 }
 
-/** Lazily give an old roster hero identity without changing their existing pool ratings. */
+/** Lazily give an old roster hero identity without changing their existing sheet. */
 export function ensureHeroIdentity(figure: HistoricalFigure): void {
-  figure.progression ??= {};
-  if (!figure.archetype) figure.archetype = inferHeroArchetype(figure);
-  if (!figure.disciplines?.length) figure.disciplines = [...HERO_ARCHETYPES[figure.archetype].disciplines];
-  figure.progression.appliedLevel ??= figureLevel(figure.xp ?? 0);
-  figure.progression.pendingChoices ??= 0;
+  const hero = ensureHeroSheet(figure);
+  hero.progression!.appliedLevel ??= figureLevel(hero.xp ?? 0);
+  hero.progression!.pendingChoices ??= 0;
+  figure.progression = hero.progression;
 }
 
-/** Lazy vitals for old saves and fresh candidates alike. */
-export function ensureHeroGuildState(guild: GuildState, figure: HistoricalFigure): HeroGuildState {
+/** Lazy vitals for old saves and fresh candidates alike; the sheet is the only store. */
+export function ensureHeroGuildState(_guild: GuildState, figure: HistoricalFigure): HeroGuildState {
   ensureHeroIdentity(figure);
-  guild.heroes ??= {};
-
+  const hero = figure.hero!;
   const def = figureArchetype(figure);
-  const max = heroMaxVitals(def.id, figureLevel(figure.xp ?? 0), figure.progression?.picks ?? []);
-  let state = guild.heroes[figure.i];
-  if (!state) {
-    state = {
-      resolve: max.maxResolve,
-      stamina: max.maxStamina,
-      maxResolve: max.maxResolve,
-      maxStamina: max.maxStamina,
-      doctrine: def.defaultDoctrine,
-      temperament: heroTemperamentFor(def.id),
-      injuries: []
-    };
-    guild.heroes[figure.i] = state;
-    return state;
-  }
+  const max = heroMaxVitals(def.id, figureLevel(hero.xp ?? 0), hero.progression?.picks ?? []);
 
-  state.maxResolve = max.maxResolve;
-  state.maxStamina = max.maxStamina;
-  state.resolve = Math.min(state.resolve ?? max.maxResolve, max.maxResolve);
-  state.stamina = Math.min(state.stamina ?? max.maxStamina, max.maxStamina);
-  state.doctrine ??= def.defaultDoctrine;
-  state.temperament ??= heroTemperamentFor(def.id);
-  state.injuries ??= [];
+  hero.condition ??= {
+    resolve: max.maxResolve,
+    stamina: max.maxStamina,
+    maxResolve: max.maxResolve,
+    maxStamina: max.maxStamina,
+    injuries: []
+  };
+  const condition = hero.condition;
+  condition.maxResolve = max.maxResolve;
+  condition.maxStamina = max.maxStamina;
+  condition.resolve = Math.min(condition.resolve ?? max.maxResolve, max.maxResolve);
+  condition.stamina = Math.min(condition.stamina ?? max.maxStamina, max.maxStamina);
+  condition.injuries ??= [];
+  hero.doctrine ??= def.defaultDoctrine;
+  hero.temperament ??= heroTemperamentFor(def.id);
+
+  const cached = HERO_STATES.get(figure);
+  if (cached) return cached;
+
+  const state: HeroGuildState = {
+    get resolve() {
+      return condition.resolve;
+    },
+    set resolve(value) {
+      condition.resolve = value;
+    },
+    get stamina() {
+      return condition.stamina;
+    },
+    set stamina(value) {
+      condition.stamina = value;
+    },
+    get maxResolve() {
+      return condition.maxResolve;
+    },
+    set maxResolve(value) {
+      condition.maxResolve = value;
+    },
+    get maxStamina() {
+      return condition.maxStamina;
+    },
+    set maxStamina(value) {
+      condition.maxStamina = value;
+    },
+    get doctrine() {
+      return hero.doctrine!;
+    },
+    set doctrine(value) {
+      hero.doctrine = value;
+    },
+    get temperament() {
+      return hero.temperament!;
+    },
+    set temperament(value) {
+      hero.temperament = value;
+    },
+    get injuries() {
+      return condition.injuries;
+    },
+    set injuries(value) {
+      condition.injuries = value;
+    },
+    get downUntilTick() {
+      return condition.downUntilTick;
+    },
+    set downUntilTick(value) {
+      condition.downUntilTick = value;
+    },
+    get push() {
+      return condition.push;
+    },
+    set push(value) {
+      condition.push = value;
+    }
+  };
+  HERO_STATES.set(figure, state);
   return state;
 }
 
@@ -185,27 +298,35 @@ export function setHeroPush(figureId: number, enabled: boolean): boolean {
 export function chooseHeroPath(figureId: number, pathId: string): boolean {
   const figure = findFigure(figureId);
   if (!figure || figure.death !== undefined) return false;
+  const hero = ensureHeroSheet(figure);
   ensureHeroIdentity(figure);
 
-  const progression = figure.progression!;
+  const progression = hero.progression!;
   if ((progression.pendingChoices ?? 0) <= 0) return false;
 
   const level = pendingPathLevel(figure);
-  const found = findHeroPath(figure.archetype!, pathId);
+  const found = findHeroPath(hero.archetype!, pathId);
   if (!found || found.choice.level !== level) return false;
 
   const path = found.path;
-  figure.skills ??= { m: 0, w: 0, s: 0, c: 0 };
-  if (path.pool) figure.skills[path.pool] = Math.min(5, figure.skills[path.pool] + 1);
-  if (path.discipline && !figure.disciplines?.includes(path.discipline)) {
+  if (path.pool) {
+    const action = legacyActionForPool(path.pool);
+    hero.actions[action] = stepDie(hero.actions[action]);
+    figure.skills ??= { m: 0, w: 0, s: 0, c: 0 };
+    figure.skills[path.pool] = Math.min(5, figure.skills[path.pool] + 1);
+  }
+  if (path.discipline) {
+    hero.abilities ??= [];
+    if (!hero.abilities.includes(path.discipline)) hero.abilities.push(path.discipline);
     figure.disciplines ??= [];
-    figure.disciplines.push(path.discipline);
+    if (!figure.disciplines.includes(path.discipline)) figure.disciplines.push(path.discipline);
   }
 
   progression.picks ??= [];
   progression.picks.push(path.id);
   progression.pendingChoices = Math.max(0, (progression.pendingChoices ?? 0) - 1);
   progression.choiceSinceTick = undefined;
+  figure.progression = progression;
 
   const guild = getHost().getGuild();
   const state = ensureHeroGuildState(guild, figure);
@@ -286,11 +407,8 @@ export function retireHero(figureId: number): number | null {
 }
 
 export function spawnProtege(living: LivingWorldState, veteran: HistoricalFigure): HistoricalFigure | undefined {
-  const history = Chronicle.sync();
-  history.figures ??= [];
-  const figures = history.figures;
-  const index = figures.length;
-  const rng = createRng(`${living.seed}:guild:protege:${index + veteran.i * 1000}`);
+  const veteranHero = ensureHeroSheet(veteran);
+  const rng = createRng(`${living.seed}:guild:protege:${Characters.nextId() + veteran.i * 1000}`);
   const culture = veteran.culture;
   const alignment = rollAlignment(rng, pack.cultures?.[culture]?.alignment);
   const { virtues, vices } = rollFigureTraits(rng, alignment);
@@ -305,10 +423,9 @@ export function spawnProtege(living: LivingWorldState, veteran: HistoricalFigure
   const pools = ["m", "w", "s", "c"] as const;
   const best = pools.reduce((chosen, pool) => (skills[pool] > skills[chosen] ? pool : chosen), pools[0]!);
   skills[best] = Math.min(5, skills[best] + 1);
-  ensureHeroIdentity(veteran);
 
-  const protege: HistoricalFigure = {
-    i: index,
+  const id = Characters.nextId();
+  const protege = Characters.add({
     name: Names.getCulture(culture),
     culture,
     birth: year - rng.int(18, 24),
@@ -317,13 +434,22 @@ export function spawnProtege(living: LivingWorldState, veteran: HistoricalFigure
     virtues,
     vices,
     cell: veteran.cell,
-    xp: 0,
-    skills,
-    archetype: veteran.archetype,
-    disciplines: [...figureDisciplines(veteran)],
-    progression: { appliedLevel: 1, pendingChoices: 0, picks: [] }
-  };
-  figures.push(protege);
+    hero: true,
+    archetype: veteranHero.archetype,
+    seedKey: `figure:${id}`
+  }) as HistoricalFigure;
+
+  protege.xp = 0;
+  protege.skills = skills;
+  protege.disciplines = [...figureDisciplines(veteran)];
+  protege.progression = { appliedLevel: 1, pendingChoices: 0, picks: [] };
+
+  const hero = ensureHeroSheet(protege);
+  hero.xp = 0;
+  hero.actions = legacyActionsFromSkills(skills);
+  hero.attributes = attributesFromSkills(skills);
+  hero.abilities = [...(veteranHero.abilities ?? [])];
+  hero.progression = protege.progression;
   return protege;
 }
 
@@ -357,10 +483,7 @@ export function refreshCandidates(living: LivingWorldState): void {
 
 /** A fresh, unaffiliated adventurer for the tavern. */
 export function mintCandidate(living: LivingWorldState, avoid: HeroArchetypeId[] = []): HistoricalFigure {
-  const history = Chronicle.sync();
-  history.figures ??= [];
-  const figures = history.figures;
-  const index = figures.length;
+  const index = Characters.nextId();
   const rng = createRng(`${living.seed}:guild:candidate:${index}`);
   const cultures = (pack.cultures ?? []).filter(culture => culture?.i && !culture.removed);
   const culture = cultures.length > 0 ? cultures[rng.int(0, cultures.length - 1)]!.i : 0;
@@ -382,9 +505,7 @@ export function mintCandidate(living: LivingWorldState, avoid: HeroArchetypeId[]
   }
 
   const guild = getHost().getGuild();
-
-  const candidate: HistoricalFigure = {
-    i: index,
+  const candidate = Characters.add({
     name: Names.getCulture(culture),
     culture,
     birth: year - rng.int(20, 38),
@@ -393,17 +514,26 @@ export function mintCandidate(living: LivingWorldState, avoid: HeroArchetypeId[]
     virtues,
     vices,
     cell: guild.hqBurgId !== undefined ? pack.burgs[guild.hqBurgId]?.cell : undefined,
-    xp: xpForHeroLevel(level),
-    skills,
+    hero: true,
     archetype,
-    disciplines: [...def.disciplines],
-    progression: {
-      appliedLevel: level,
-      pendingChoices: level >= 3 ? 1 : 0,
-      picks: []
-    }
+    seedKey: `figure:${index}`
+  }) as HistoricalFigure;
+
+  candidate.xp = xpForHeroLevel(level);
+  candidate.skills = skills;
+  candidate.disciplines = [...def.disciplines];
+  candidate.progression = {
+    appliedLevel: level,
+    pendingChoices: level >= 3 ? 1 : 0,
+    picks: []
   };
-  figures.push(candidate);
+
+  const hero = ensureHeroSheet(candidate);
+  hero.xp = candidate.xp;
+  hero.actions = legacyActionsFromSkills(skills);
+  hero.attributes = attributesFromSkills(skills);
+  hero.abilities = [...def.disciplines];
+  hero.progression = candidate.progression;
   return candidate;
 }
 
@@ -417,7 +547,7 @@ export function recoverHeroes(living: LivingWorldState, guild: GuildState): void
     const state = ensureHeroGuildState(guild, figure);
     if (state.downUntilTick !== undefined && living.tick >= state.downUntilTick) state.downUntilTick = undefined;
 
-    const healer = figureDisciplines(figure).includes("healing");
+    const healer = (ensureHeroSheet(figure).abilities ?? []).includes("healing");
     state.resolve = Math.min(state.maxResolve, state.resolve + (healer ? 2 : 1));
     state.stamina = Math.min(state.maxStamina, state.stamina + 1);
     state.injuries = recoverInjuries(state.injuries, living.tick, healer);
@@ -429,9 +559,10 @@ export function autoPickPendingPaths(living: LivingWorldState, guild: GuildState
   for (const id of guild.roster) {
     const figure = findFigure(id);
     if (!figure || figure.death !== undefined) continue;
+    const hero = ensureHeroSheet(figure);
     ensureHeroIdentity(figure);
 
-    const progression = figure.progression!;
+    const progression = hero.progression!;
     if ((progression.pendingChoices ?? 0) <= 0) continue;
     if (progression.choiceSinceTick === undefined) {
       progression.choiceSinceTick = living.tick;
@@ -463,18 +594,15 @@ export function ensureCommanders(): void {
 /** The living commander figure for a regiment's specialty, minting one on first need. */
 export function commanderFor(state: State, regiment: Regiment, specialty: TroubleUnitRole): number | undefined {
   if (specialty === "military") return undefined;
-  const history = Chronicle.sync();
-  history.figures ??= [];
-  const figures = history.figures;
   regiment.crew ??= [];
 
   const crewed = regiment.crew.find(id => {
-    const figure = figures[id];
+    const figure = Characters.get(id);
     return figure && !figure.death && figure.roles.some(r => r.type === "specialist" && r.specialty === specialty);
   });
   if (crewed !== undefined) return crewed;
 
-  const existing = figures.find(
+  const existing = Characters.all().find(
     figure =>
       !figure.death &&
       figure.roles.some(
@@ -487,17 +615,16 @@ export function commanderFor(state: State, regiment: Regiment, specialty: Troubl
     return existing.i;
   }
 
-  const index = figures.length;
+  const index = Characters.nextId();
   const culture = state.culture ?? 0;
   const year = options.map?.lore?.calendar?.year ?? 1000;
   const living = getHost().getState();
-  const rng = traitsRng(living.seed, "figure", index);
+  const rng = traitsRng(living.seed, "figure", `figure:${index}`);
   const alignment = rollAlignment(rng, pack.cultures[culture]?.alignment);
   const { virtues, vices } = rollFigureTraits(rng, alignment);
   const skills = { m: 0, w: 0, s: 0, c: 0 };
   skills[UNIT_ROLE_POOLS[specialty]] = 1;
-  const figure: HistoricalFigure = {
-    i: index,
+  const figure = Characters.add({
     name: Names.getCulture(culture),
     culture,
     birth: year - rng.int(25, 45),
@@ -506,10 +633,16 @@ export function commanderFor(state: State, regiment: Regiment, specialty: Troubl
     virtues,
     vices,
     cell: regiment.cell,
-    xp: 0,
-    skills
-  };
-  figures.push(figure);
+    hero: true,
+    seedKey: `figure:${index}`
+  }) as HistoricalFigure;
+
+  figure.xp = 0;
+  figure.skills = skills;
+  const hero = ensureHeroSheet(figure);
+  hero.xp = 0;
+  hero.actions = legacyActionsFromSkills(skills);
+  hero.attributes = attributesFromSkills(skills);
   regiment.crew.push(figure.i);
   return figure.i;
 }

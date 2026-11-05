@@ -1,7 +1,7 @@
 # Plan — Characters: One Roster for People, Heroes & Historical Figures
 
 **Updated:** 2026-11-05  
-**Status:** In progress — Phases 1-3 implemented  
+**Status:** In progress — Phases 1-4 implemented  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 
@@ -57,7 +57,7 @@ The design has three layers:
 - [x] **Phase 1 — Types, action catalogue, hero sheet** (2026-11-05)
 - [x] **Phase 2 - Characters facade and lifecycle** (2026-11-05)
 - [x] **Phase 3 - Serialization and legacy migration** (2026-11-05)
-- [ ] Phase 4 — Generators and manual preservation
+- [x] **Phase 4 - Generators and manual preservation** (2026-11-05)
 - [ ] Phase 5 — Hero checks and missions
 - [ ] Phase 6 — Characters editor
 - [ ] Phase 7 — Layer, map entity, omnibar, tool button
@@ -815,32 +815,35 @@ Keep the existing trait rendering.
 
 ---
 
-### Phase 4 — Generators & Manual Preservation
+### Phase 4 — Generators & Manual Preservation ✅
 
+**Status:** Implemented 2026-11-05.  
 **Goal:** History and living heroes mint through one API; user canon survives regeneration.
 
 1. `src/model/physical/history-generator.ts`
-   - `Characters.add`;
-   - `Characters.nextId`;
-   - `seedKey`-based traits;
-   - preserve `manual || lock`.
+   - Figures mint through `Characters.add` and `Characters.nextId`.
+   - Traits are keyed by `seedKey` (`figure:<id>`) through `traitsRng`.
+   - `manual`, `lock`, and `removed` records survive regeneration with their ids; events that reference them are kept.
+   - Generated ids start above every preserved id.
 2. `src/model/physical/living-heroes.ts`
-   - mint candidates through `Characters.add`;
-   - read/write `hero.condition`;
-   - levels grant action steps or abilities;
-   - no new guild writes.
-3. `src/data/hero-archetypes.ts`
-   - remove the legacy pool fields (`primaryPool`, `secondaryPool`, `baseSkills`, `growthOrder`, `disciplines`) once migration reads the Phase 1 starting packages.
-4. `src/model/physical/living-guild.ts`
-   - keep the shim for non-hero fields; mark deprecated;
-   - remove `ensureHeroGuildState` calls and stop writing `GuildState.heroes`; hero condition now lives on `Character.hero.condition`.
+   - `mintCandidate`, `spawnProtege`, and `commanderFor` mint through `Characters.add` with `hero: true`.
+   - `ensureHeroSheet` is the single sheet accessor; legacy `skills` / `xp` / `archetype` / `disciplines` remain as temporary mirrors for the guild stub and HUD.
+   - `ensureHeroGuildState` returns a cached view backed by `hero.condition`, `hero.doctrine`, and `hero.temperament`.
+   - `applyHeroLevels` steps action dice; `chooseHeroPath` steps an action and adds an ability.
+   - `recoverHeroes` and path auto-picks read the sheet.
+3. `src/model/physical/living-guild.ts`
+   - `GuildState.heroes` is no longer initialized or written; `isHeroIdle` reads the sheet condition.
+   - Legacy operator scoring still reads the temporary skill mirrors until Phase 5.
+4. `src/data/hero-archetypes.ts`
+   - **Deferred:** pool fields remain because the guild HUD and mission scoring still read them. Phase 5 rewires mission checks; the pool fields are removed with the guild shim afterward.
 5. Tests
-   - same seed → same generated figures;
-   - manual/locked figures survive regeneration with the same ids and traits;
-   - generated ids never collide with preserved ids;
-   - a hero can exist without a guild.
+   - `history-generator.test.ts`: seed keys, manual hero preservation, removed tombstones, generated-id isolation.
+   - `living-heroes.test.ts`: vitals live on `hero.condition`, not `GuildState.heroes`.
+   - `living-generator.test.ts`: hero vitals round-trip through the chronicle on the sheet.
 
-**Acceptance:** regenerate a map with a manual hero; the hero keeps its id, name, traits, and sheet, and generated figures rebuild around it.
+**Verification:** 263 tests pass across the history, hero, and living suites. The new code adds no `tsc --noEmit` errors; pre-existing errors in the guild/HUD and test harness remain.
+
+**Acceptance:** regenerating a map preserves manual/locked/removed characters with their ids and sheets, new figures rebuild around them, and living hero vitals live on the character sheet.
 
 ---
 
