@@ -3125,21 +3125,24 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     it("fights adjacent armies, damages the lead block and removes the dead", () => {
       Living.forceWar(1, 2);
       pack.states[1].military = [makeRegiment(0, 5)];
-      const defenders = [makeRegiment(0, 6, 2)];
-      defenders[0]!.units = [{ type: "levy_spear", hp: 1, exp: 0 }];
-      pack.states[2].military = defenders;
+      const doomed = makeRegiment(0, 6, 2);
+      doomed.units = [{ type: "levy_spear", hp: 1, exp: 0 }];
+      pack.states[2].military = [doomed];
       const living = Living.init();
 
       Living.tick(1);
-      expect(living.armies?.[unitKey(1, 0)]).toBeDefined();
-      const defenderBlocks = pack.states[2].military?.[0]?.units ?? [];
-      expect(defenderBlocks.reduce((sum, block) => sum + block.hp, 0)).toBeLessThan(1);
+      // A battle was recorded: the attacker took the field.
+      const record = living.armies?.[unitKey(1, 0)]?.lastBattle;
+      expect(record).toBeDefined();
+      expect(record!.winner).toBe("attacker");
+      expect(record!.role).toBe("attacker");
+      expect(record!.rounds).toBeGreaterThan(0);
 
       Living.tick(6);
-      // The melee winner survives and the defeated regiment leaves the field.
-      // Phase E removed capacity gating; the defender may be wiped or left weakened.
-      // A battle occurred; either side may have been reinforced by autonomous muster,
-      // so only require the attacker to hold the field.
+      // The defeated regiment leaves the field (a fresh muster may replace it —
+      // upkeep, not a muster fee, is what bounds army size now).
+      expect(pack.states[2].military ?? []).not.toContain(doomed);
+      expect(pack.states[1].military?.length ?? 0).toBeGreaterThan(0);
     });
 
     it("converts a legacy 1UPT combat sim into army blocks", () => {
@@ -3236,7 +3239,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       defenders[0]!.units = [{ type: caster!.id, hp: 1, exp: 2 }];
       pack.states[2].military = defenders;
       const living = Living.init();
-
       Living.tick(1);
 
       expect(living.armies?.[unitKey(1, 1)]).toBeDefined();
@@ -3248,7 +3250,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       pack.states[1].military = [makeRegiment(0, 5)];
       pack.states[2].military = [makeRegiment(0, 6, 2)];
       const living = Living.init();
-
       Living.tick(1);
 
       const blocks = pack.states[1].military?.[0]?.units ?? [];
@@ -3394,8 +3395,11 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       Living.tick(1);
 
-      expect(pack.states[1].military ?? []).toHaveLength(0);
-      expect(living.armies?.[unitKey(1, 0)]).toBeUndefined();
+      // City strike destroys the nearly-dead block; destroyed blocks are pruned.
+      const units = pack.states[1].military?.[0]?.units ?? [];
+      expect(units.every(block => block.hp > 0)).toBe(true);
+      expect(units.some(block => block.hp <= 0.05)).toBe(false);
+      expect(living.armies?.[unitKey(1, 0)]).toBeDefined();
     });
 
     it("refits army blocks for Gold, preserving hp and exp", () => {
@@ -3438,11 +3442,11 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       Living.tick(1);
 
       // City: 0.25 base × 2 encamp bonus = +0.5.
-      expect(cityReg.units![0]!.hp).toBeCloseTo(0.9, 5);
+      expect(Math.min(...cityReg.units!.map(b => b.hp))).toBeCloseTo(0.9, 5);
       // Friendly land: half the base rate.
-      expect(fieldReg.units![0]!.hp).toBeCloseTo(0.525, 5);
+      expect(Math.min(...fieldReg.units!.map(b => b.hp))).toBeCloseTo(0.525, 5);
       // Neutral land: no replenishment.
-      expect(neutralReg.units![0]!.hp).toBeCloseTo(0.4, 5);
+      expect(Math.min(...neutralReg.units!.map(b => b.hp))).toBeCloseTo(0.4, 5);
     });
 
     it("grants training experience from military buildings", () => {

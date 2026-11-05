@@ -165,7 +165,7 @@ Troubles that survive the PR-27 faction absorption (pure environmental: blight, 
 
 - Deleted from `living-generator.ts`: `emptyCapacityLedger`, `recomputeStateCapacity`, `recomputeAllCapacities`, `freeCapacity`, `hasFreeCapacity`, the `freeGarrisonWaiver` math, and the `valueModifier`/`assetCheckDifficulties` imports. `CapacityLedger`/`CapacityPoolEntry` are gone from `src/types/living.ts`; `CapacityPoints` is now a private type inside `roster-content.ts` (roster parsing only).
 - `StatePolitySim.capacity` is deleted; the load path simply drops the field from old saves.
-- Recruitment and development now use the Civ economy: a state needs **≥20 Gold** to muster, and development costs **20 Gold + 4 stability**.
+- Recruitment and development add **no new gate**: the Civ economy already bounds both (upkeep `Σ upkeep × hp` drained from the treasury, `settleDebt` disbanding the newest block on bankruptcy, and the production queue for buildings). Development keeps its existing stability cost only.
 - Autonomous construction no longer rolls the 3-check dice; a roster building completes when its turn count elapses (the Civ production queue owns buildings).
 - Environmental trouble is minted as `{ kind: "trouble", id }` in the province's burg production queue (80 Production); completion clears it, awards order/stability and writes a chronicle entry.
 - The state card's M/W/S/C meter is replaced by an **Economy** strip (Gold/season + banked, Production, Science, Culture, Faith).

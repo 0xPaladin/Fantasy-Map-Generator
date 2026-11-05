@@ -5253,12 +5253,10 @@ class LivingModel {
     const capacityConfig = currentContent().config.capacity;
     if (pSim.stability < capacityConfig.developStabilityCost) return false;
     if (pSim.development >= this.provinceDevelopmentCap(provinceId)) return false;
-    if ((state.treasury ?? 0) < 20) return false; // Civ economy: development is paid in Gold
 
     const settlementId = this.pickProvinceSettlement(provinceId, stateId);
     if (!settlementId) return false;
 
-    state.treasury = (state.treasury ?? 0) - 20;
     pSim.stability -= capacityConfig.developStabilityCost;
     pSim.developmentProgress = { settlementId, turnsLeft: capacityConfig.developTurns };
     const settlement = pack.burgs[settlementId];
@@ -6557,9 +6555,8 @@ class LivingModel {
       if (unit.requiresWallTier !== undefined && maxWalls < unit.requiresWallTier) continue;
 
       const regiment = this.findRegimentForUnit(state, unitId, maxUnits, roster.caps[unitId]);
-      // Civ-economy recruitment gate (replaces the retired MWSC capacity gate):
-      // a state must hold at least 20 Gold to raise new troops.
-      if ((state.treasury ?? 0) < 20) continue;
+      // Civ economy owns army size via upkeep (Σ upkeep × hp, treasury,
+      // settleDebt) — no per-muster fee (conquest retirement Phase E).
       return { unit, regiment };
     }
     return null;
@@ -8115,5 +8112,4 @@ window.Living = Living;
 export { LivingGuild } from "./living-guild";
 export { LivingHeroes } from "./living-heroes";
 export { LivingThreats } from "./living-threats";
-
 
