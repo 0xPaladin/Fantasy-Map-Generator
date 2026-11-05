@@ -32,18 +32,17 @@ git fetch upstream && git merge upstream/master
 - **`src/services/io/export-json.ts`**: the chronicle added to both JSON exports.
 - *Conflict resolution strategy*: keep the record index — upstream may claim 53 for its own feature, in which case the chronicle moves to 54 and the load path must read the new index.
 
-### OpenConquest: Atlas Invictus (the campaign game)
+### Core battle engine (formerly OpenConquest)
 
-- **`src/controllers/conquest-mode.ts`**: new controller (`Controllers.ConquestMode`) managing Conquest as a native view mode.
-- **`src/components/options/view-mode.ts`**: view mode toggle added (`viewConquest`) switching between Standard, 3D, Astral, and Conquest modes.
-- **`src/controllers/battle-screen.ts`**: steppable Lanchester combat simulator with round-by-round tactical commands, odds calculations, and map troop loss sync.
-- **`src/generators/military-generator.ts`**: roster-native unit allocation (`ArmyUnit[]`) and composition calculation for state military forces.
-- **`src/generators/states-generator.ts`**: deterministic roster assignment (`state.rosterId`) with culture/state auto-inference.
+- **`src/model/battle/**`**: combined-arms Lanchester battle engine, garrisons and reporting types.
+- **`src/data/roster-content.ts`, `roster-store.ts`, `battle-config.ts`, `tiers.ts`**: roster parsing, content store and battle configuration.
+- **`src/data/rosters/**`, `bundled.ts`, `docs/{events,victory}`**: shipped roster content.
+- **`src/controllers/political/military/battle-screen.ts`**: steppable Lanchester combat simulator with round-by-round tactical commands, odds calculations, and map troop loss sync.
+- **`src/model/political/military-generator.ts`**: roster-native unit allocation (`ArmyUnit[]`) and composition calculation for state military forces.
+- **`src/model/political/states-generator.ts`**: deterministic roster assignment (`state.rosterId`) with culture/state auto-inference.
 - **`src/renderers/draw-burg-icons.ts`**: renders circled stars for state capitals and smaller stars for province capitals.
-- **`src/components/map-commands.ts`**: `MAP_COMMANDS` published on `window` (the campaign's omnibar entries).
-- **`src/main.ts`**: one import appended (`@/conquest/entry`) — registers Conquest commands and boot lifecycle.
-- **`src/conquest/**`**: self-contained campaign engine, Web Worker compiler, content packs (9 fantasy & historical rosters), session store and UI rail.
-- *Conflict resolution strategy*: reconcile imports and registry additions; the Conquest engine itself is fully self-contained in `src/conquest/`.
+- **`src/app/map-commands.ts`**: `MAP_COMMANDS` published on `window`.
+- *Conflict resolution strategy*: reconcile imports and registry additions; the battle engine is now part of the core model and follows the normal layering.
 
 ### Phase A: Astral Cartographer Content in Core (Bases + Culture Sets)
 
@@ -246,8 +245,7 @@ saved cultures and a rename keeps its corpus.
 - **`src/controllers/*`**: editors read, write and import ids; new bases get a generated id.
 - **`src/services/io/name-bases-format.ts`** (new): the slot-31 row format and the legacy migration;
   **`save.ts`** and **`load.ts`** call it.
-- **`src/conquest/engine/compiler/*`**: name pools are keyed by id, `AzgaarCulture.base` is a string,
-  `COMPILER_VERSION` is 0.2.0.
+- **`src/data/name-bases.ts`** and consumers**: name pools are keyed by id, `AzgaarCulture.base` is a string.
 - *Conflict resolution strategy*: if upstream adds bases, give them ids and append them; existing ids
   are permanent and must never be reassigned. If upstream changes the slot-31 format, reconcile in
   `name-bases-format.ts` — the loader also accepts the six-column legacy layout.

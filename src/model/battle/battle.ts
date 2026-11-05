@@ -6,16 +6,14 @@
  * stronger side inflicts proportionally more casualties. Sides rout below
  * `routThreshold` of initial power; otherwise max rounds → higher remaining power% wins.
  *
- * Deterministic: casualty jitter draws from the campaign PRNG.
- * Content-driven: unit stats come from the campaign's resolved unit types.
+ * Deterministic: casualty jitter draws from the supplied PRNG.
+ * Content-driven: unit stats come from the resolved roster.
  */
 
 import type { UnitType } from "@/data/roster-content";
 import { MATCHUP } from "@/data/roster-content";
 import type { ArmyUnit } from "@/types/battle";
-import type { BattleSideReport, BattleSummary } from "@/conquest/engine/game/events";
-import type { Campaign } from "@/conquest/engine/game/state";
-import { rng } from "@/conquest/engine/game/state";
+import type { BattleSideReport, BattleSummary } from "./events";
 
 export interface BattleSide {
   factionId: number;
@@ -618,7 +616,7 @@ export function finalizeBattle(session: BattleSession, prng: () => number): Batt
 }
 
 export function resolveBattle(
-  campaign: Campaign,
+  prng: () => number,
   opts: {
     config: import("@/data/battle-config").CampaignConfig;
     unitTypes: Record<string, UnitType>;
@@ -632,9 +630,9 @@ export function resolveBattle(
 ): BattleOutcome {
   const session = initBattleSession(opts);
   while (session.status === "active" && session.round < opts.config.battle.maxRounds) {
-    stepBattleRound(session, () => rng(campaign));
+    stepBattleRound(session, prng);
   }
-  return finalizeBattle(session, () => rng(campaign));
+  return finalizeBattle(session, prng);
 }
 
 /** Expectation-only odds (§5.4 "battle bar"): analytic sigmoid on effective power. */

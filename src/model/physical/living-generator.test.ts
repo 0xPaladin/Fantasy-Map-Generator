@@ -274,14 +274,14 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(ruler1?.death).toBeUndefined();
     expect(ruler1?.roles[0]).toMatchObject({ type: "ruler", target: { kind: "state", id: 1 } });
 
-    // Burg 1 flags (walls=1, citadel=1, plaza=1, temple=1) map to standing Conquest buildings
+    // Burg 1 flags (walls=1, citadel=1, plaza=1, temple=1) map to standing roster buildings
     const b1 = living.burgs[1];
     expect(b1.baseTier).toBe(5);
     expect(b1.buildings).toEqual(expect.arrayContaining(["walls2", "market1", "temple1", "barracks1"]));
 
   });
 
-  it("synchronizes burg flags and Conquest buildings bidirectionally", () => {
+  it("synchronizes burg flags and roster buildings bidirectionally", () => {
     const burg = pack.burgs[2];
     const buildings = syncBurgBuildingsFromFlags(burg, []);
     expect(buildings).toEqual(["walls1"]);

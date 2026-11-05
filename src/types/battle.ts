@@ -1,7 +1,6 @@
 /**
  * Battle / army types shared between the Living World (civ) engine and the
- * roster content pipeline. Moved here from src/conquest/engine/common/types.ts
- * as part of Phase A of the conquest retirement plan.
+ * roster content pipeline.
  */
 
 export interface ArmyUnit {

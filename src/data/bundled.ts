@@ -2,8 +2,8 @@
  * bundled.ts — the shipped ruleset, imported into the page.
  *
  * The files under `docs/` are the source of truth for the whole project: the dev
- * server validates them from disk, and this module embeds them in the mod so a
- * campaign can run with no server at all (Phase D / D6, D8). One ruleset, two
+ * server validates them from disk, and this module embeds them so the battle and
+ * living systems can run with no server at all (Phase D / D6, D8). One ruleset, two
  * consumers — they cannot drift, because they are the same bytes.
  *
  * The imports are explicit and the arrays are hand-ordered on purpose. A

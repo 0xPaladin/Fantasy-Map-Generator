@@ -7,13 +7,12 @@ approach (see [mod-seams-proposal.md](mod-seams-proposal.md)) is therefore **sup
 use**: the patches remain valid as an upstream contribution, but our mods move in-tree.
 
 This fork becomes the one repo: **stock FMG + History (shipped) + Astral Cartographer content +
-OpenConquest campaign game.**
+Living World simulation.**
 
 ## Target architecture
 
 Everything follows FMG's own layering (`docs/architecture/architecture.md`). A mod in-tree is not
-a folder bolted beside `src/` — it dissolves into the layers it belongs to, keeping one deviation
-documented (below).
+a folder bolted beside `src/` - it dissolves into the layers it belongs to.
 
 | Mod piece | Lands in | Layer |
 |---|---|---|
@@ -21,14 +20,13 @@ documented (below).
 | Astral culture sets (3) | `CULTURE_SETS` + `CulturesGenerator.getDefault()` branches | generator |
 | Polity/sector/system naming | `src/generators/astral-naming.ts` (new, gated on set) | generator |
 | Star classes & traits | `src/generators/astral-naming.ts` (derived view) | generator |
-| OpenConquest engine, host, store, ui | `src/conquest/**` — one self-contained vertical | documented exception |
-| OpenConquest Tools entry | registry + `map-commands.ts` + Tools tab | controller wiring |
+| Combined-arms battle engine | `src/model/battle/**` + `src/data/roster-*` | model / data |
+| Living World simulation | `src/model/physical/living-*` | model |
 
-**The one exception:** OpenConquest is a game engine compiled from a finished world — it is not
-world generation, not a renderer, and not a dialog. It stays a self-contained vertical under
-`src/conquest/` (engine / host / store / ui), exposed to the app through one controller and
-native Layers/commands. Documented as a deliberate layering exception; its `ui/` parts follow the
-controller conventions (own markup, lazy load, cleanup).
+**No layering exception:** the former OpenConquest campaign vertical was retired in
+[conquest-retirement.md](conquest-retirement.md). Its battle core, rosters and configuration
+dissolved into the model/data layers; the Living World is the single simulation. See
+[Battle-Engine.md](../wiki/Battle-Engine.md).
 
 **Upstream-merge discipline** — the whole point of this direction. Every merge into this fork
 keeps its touch points on existing files short and append-only, so `git merge upstream/master`

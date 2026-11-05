@@ -1,8 +1,6 @@
 /**
- * Settlement and region tier thresholds, moved here from
- * src/conquest/engine/compiler/index.ts as part of Phase A of the conquest
- * retirement plan. These are pack-level constants (changing them changes
- * contentHash) — pure data, no behavior.
+ * Settlement and region tier thresholds. These are pack-level constants
+ * (changing them changes contentHash) — pure data, no behavior.
  */
 
 /** Max minor settlements allowed for any region. */

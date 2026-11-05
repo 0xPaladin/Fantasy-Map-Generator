@@ -353,7 +353,7 @@ export function figureBias(
   return bias;
 }
 
-/** Reconcile Conquest building IDs from FMG Burg feature flags (walls, plaza, temple, citadel) */
+/** Reconcile roster building IDs from FMG Burg feature flags (walls, plaza, temple, citadel) */
 export function syncBurgBuildingsFromFlags(burg: Burg, existing: string[]): string[] {
   const set = new Set(existing);
   const wallTier = Number(burg.walls ?? 0);
@@ -384,7 +384,7 @@ export function syncBurgBuildingsFromFlags(burg: Burg, existing: string[]): stri
   return Array.from(set);
 }
 
-/** Push completed Conquest buildings back onto FMG Burg flags */
+/** Push completed roster buildings back onto FMG Burg flags */
 export function syncBurgFlagsFromBuildings(burg: Burg, buildings: string[]): void {
   if (buildings.includes("walls3")) {
     burg.walls = 3;
@@ -3480,7 +3480,7 @@ class LivingModel {
     if (army.stance !== "march") {
       const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
       if (enemy) {
-        // No heroic suicides (absorbs conquest ai.ts): a badly outmatched army
+        // No heroic suicides (absorbs the campaign AI): a badly outmatched army
         // holds position unless its goal orders the attack anyway.
         const agenda = living.states[state.i]?.agenda;
         const ordered = agenda?.kind === "conquer" || agenda?.kind === "raid" || agenda?.kind === "defend";
@@ -3603,7 +3603,7 @@ class LivingModel {
   }
 
   /**
-   * Combined-arms battle through OpenConquest's battle.ts
+   * Combined-arms battle through the shared battle engine
    * (living-openciv-armies.md §8). Both sides are blocks, so the 1,000-strength
    * bridge keeps `fill = hp` exactly; the outcome converts back to hp before
    * anything else reads it.
@@ -3887,7 +3887,7 @@ class LivingModel {
 
   /** The cell a regiment should march toward this tick. */
   /**
-   * Goal-driven army targeting (Phase C of the conquest retirement): the
+   * Goal-driven army targeting (Phase C of the army integration): the
    * state's agenda IS the goal — its burg/province target decides where this
    * army marches. With no goal, an at-war army hunts the nearest enemy
    * regiment inside the aggro radius.
@@ -5776,7 +5776,7 @@ class LivingModel {
     ).attackerWinPct;
   }
 
-  /** The burg's roster and its Conquest militia garrison. */
+  /** The burg's roster and its militia garrison. */
   private burgDefenders(burg: Burg): ArmyUnit[] {
     const roster = this.burgDefenderRoster(burg);
     const unitTypes = Military.getUnitTypes();
@@ -6264,7 +6264,7 @@ class LivingModel {
   }
 
   /**
-   * AI treaty acceptance, ported from conquest aiAccepts and re-expressed over
+   * AI treaty acceptance, ported from the campaign AI and re-expressed over
    * FMG's native relation strings + living's own war-exhaustion bookkeeping.
    */
   private aiAcceptsTreaty(aiId: number, fromId: number, kind: TreatyKind): { accept: boolean; reason: string } {
@@ -6309,7 +6309,7 @@ class LivingModel {
 
   /**
    * Confederation: a dying or devoted culture-mate peacefully merges into a
-   * stronger cousin (ported from conquest aiAcceptsConfederation).
+   * stronger cousin (ported from the campaign AI).
    */
   offerConfederation(byId: number, targetId: number): boolean {
     const by = pack.states[byId];
@@ -6573,7 +6573,7 @@ class LivingModel {
 
       const regiment = this.findRegimentForUnit(state, unitId, maxUnits, roster.caps[unitId]);
       // Civ economy owns army size via upkeep (Σ upkeep × hp, treasury,
-      // settleDebt) — no per-muster fee (conquest retirement Phase E).
+      // settleDebt) — no per-muster fee (army integration).
       return { unit, regiment };
     }
     return null;
@@ -6721,7 +6721,7 @@ class LivingModel {
     const bias = this.traitBias(state, sSim);
 
     // Defend: an at-war enemy regiment within aggro range of home territory
-    // (absorbs conquest ai.ts threat evaluation + defensive interception).
+    // (absorbs the campaign AI threat evaluation + defensive interception).
     const threat = this.pickDefendTarget(state);
     if (threat) {
       const burg = pack.burgs[threat.nearBurgId];
@@ -6821,7 +6821,7 @@ class LivingModel {
   /** Best defended border burg of a state already at war. */
   /**
    * Defend target: the nearest at-war enemy army within aggro range of any home
-   * major burg (absorbs conquest ai.ts threat evaluation). Returns the enemy
+   * major burg (absorbs the campaign AI threat evaluation). Returns the enemy
    * state and the home burg being threatened, or null when nothing threatens.
    */
   private pickDefendTarget(state: State): { enemyState: State; enemyCell: number; nearBurgId: number } | null {

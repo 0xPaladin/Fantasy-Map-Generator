@@ -60,7 +60,7 @@ describe("living-lairs (Slice 1: Lair Catalog, Unit Templates, and Trouble Mappi
         expect(def.stateRosterId).toBeTruthy();
         expect(["good", "lawful", "neutral", "chaotic", "evil"]).toContain(def.defaultAlignment);
         if (def.stateRosterId !== "local") {
-          expect(rosters[def.stateRosterId!], `Roster ${def.stateRosterId} exists in Conquest rosters`).toBeDefined();
+          expect(rosters[def.stateRosterId!], `Roster ${def.stateRosterId} exists in the roster catalog`).toBeDefined();
         }
       } else {
         expect(def.canFormState).toBe(false);
@@ -70,7 +70,7 @@ describe("living-lairs (Slice 1: Lair Catalog, Unit Templates, and Trouble Mappi
     }
   });
 
-  it("references valid unit types defined in the Conquest content catalog", () => {
+  it("references valid unit types defined in the roster catalog", () => {
     const { unitTypes } = currentContent().content;
     for (const id of LAIR_NATURE_IDS) {
       const def = LAIR_CATALOG[id];

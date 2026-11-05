@@ -126,8 +126,8 @@ export class LayersRegistry<Id extends string = string> {
     return this.layers;
   }
 
-  /** Register layers after construction — the conquest campaign adds its own.
-   *  Accepts bare `LayerParams` so a self-contained feature module can register
+  /** Register layers after construction.
+   *  Accepts bare `LayerParams` so a feature module can register
    *  without importing this module's Layer class. Appended in registration order
    *  and initialized immediately, so registered layers join the same ordering,
    *  visibility and save/restore flow as the native ones. */

@@ -20,7 +20,6 @@ export const Controllers = createRegistry(
     CoastlineEditor: () => import("@/controllers/physical/coastline-editor").then(m => m.CoastlineEditor),
     ColorPicker: () => import("@/controllers/color-picker").then(m => m.ColorPicker),
     ComparePrices: () => import("@/controllers/economy/trade/compare-prices").then(m => m.ComparePrices),
-    ConquestMode: () => import("@/controllers/conquest-mode").then(m => m.ConquestMode),
     ContextMenu: () => import("@/controllers/context-menu").then(m => m.ContextMenu),
     CsvUpload: () => import("@/controllers/csv-upload").then(m => m.CsvUpload),
     CulturesEditor: () => import("@/controllers/society/cultures-editor").then(m => m.CulturesEditor),

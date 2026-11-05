@@ -1,9 +1,7 @@
 /**
- * Pure helpers extracted from src/conquest/engine/game/saves.ts for Phase A
- * of the conquest retirement plan. Only the functions actually consumed by
- * non-conquest (civ/living) code are retained here; the rest of saves.ts
- * (rollSave, rollValueCheck, regionValues, domainValue, regionActivity,
- * effectiveValue, assetCheckDifficulties) stays in conquest.
+ * Save/check helpers used by the Living World. Only the functions consumed
+ * by civ/living code live here; value bands and their modifier are shared by
+ * the domain and guild checks.
  */
 
 export const DEFAULT_BANDS = [6, 11, 16, 21] as const;

@@ -106,8 +106,8 @@ export interface UnitType {
   missile: number;
   /**
    * **Production points** to raise one block at `hp = 1`, queued in a city
-   * (Living World). Replaces the retired Conquest recruit price; the campaign
-   * that read it as Gold is being phased out (living-openciv-armies.md §6.2).
+   * (Living World). The retired campaign read it as Gold
+   * (living-openciv-armies.md §6.2).
    */
   cost: number;
   /** **Gold per tick** to keep one block at `hp = 1` (Living World). */

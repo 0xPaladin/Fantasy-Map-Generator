@@ -847,7 +847,7 @@ export const MAP_COMMANDS: MapCommand[] = [
 ];
 
 declare global {
-  // biome-ignore lint/suspicious/noRedeclare: exposed on window for the conquest feature seam
+  // biome-ignore lint/suspicious/noRedeclare: exposed on window for external tooling
   var MAP_COMMANDS: MapCommand[];
 }
 

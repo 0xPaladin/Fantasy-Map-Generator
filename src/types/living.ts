@@ -20,7 +20,7 @@ export type AgendaKind =
   | "raid";
 
 /**
- * Diplomatic treaties (Phase D of the conquest retirement). War and peace stay
+ * Diplomatic treaties (Phase D of the army integration). War and peace stay
  * on the FMG diplomacy matrix ("Enemy" or not); these are the *positive*
  * agreements layered on top of it. Symmetric — recorded on both sides.
  */

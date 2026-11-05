@@ -197,6 +197,16 @@ After A–F, `src/conquest/` contains only the campaign shell. Remove in one com
 
 **Exit:** `grep -r "conquest" src/` returns nothing outside historical docs/plans; suite green; bundle measurably smaller.
 
+### 7.1 Phase G delivery notes
+
+- Deleted the whole of `src/conquest/` (121 files: engine, host, store, UI, content leftovers and the campaign-only tests). The calibration fixture moved to `tests/fixtures/sample-world.json`.
+- `src/model/battle/battle.ts` is now standalone: reporting types moved to `src/model/battle/events.ts`, and `resolveBattle` takes a `prng: () => number` instead of a campaign object (the Living World passes its seeded generator).
+- Removed the Conquest view mode: `conquest-mode.ts` + its test, the `Controllers.ConquestMode` registry entry, the view-mode switch branch, and the `tw*` layer filtering in the Layers tab.
+- `province-dialog.ts` no longer reads the campaign session for buildings/construction; only the Living World simulation is consulted.
+- `historical-view.ts` hides only present-day layers (`emblems`, `military`) — the `tw*` list is gone.
+- `docs/openconquest/` replaced by `docs/wiki/Battle-Engine.md`; `MERGING.md` now documents the battle engine as core; `mod-merge-plan.md` drops the layering exception.
+- Remaining `conquest` strings in `src/` are domain words (history event kind, grudge reason, realm cause, a campaign name in the political generator), not module references.
+
 ---
 
 ## 8. Build order
@@ -209,7 +219,7 @@ After A–F, `src/conquest/` contains only the campaign shell. Remove in one com
 | **D** | Treaties (peace/nonAggression/trade/defensiveAlliance/militaryAccess), acceptance thresholds, confederation, calls-to-arms; rebellion gap-check vs `checkRebellions` | medium | Treaties appear/expire in the chronicle; alliances drag allies into wars |
 | **E** ✅ | Delete MWSC (checklist §6.1); trouble → burg production actions (§6.2); HUD meter swap | medium | No `CapacityPoints`/capacity ledger in civ code; troubles resolve via queues |
 | **F** ✅ | Stance polish: march ×1.5 (no attack), ambush +30% initiation, raid plunder → Gold + unrest; `riverCrossing` modifier | small | Stances measurably change movement/combat |
-| **G** | Delete `src/conquest/` + seams (§7) | medium | grep clean; suite green; MERGING/architecture updated |
+| **G** ✅ | Delete `src/conquest/` + seams (§7) | medium | grep clean; suite green; MERGING/architecture updated |
 | **H** | Docs: wiki battle-engine page, README fork blurb, data-model updates, this plan marked done | small | — |
 
 Order rationale: A unlocks everything (G cannot happen while living imports conquest). B–F are independent enough to land serially in this order (C is largest; E removes imports B/C might otherwise trip over). Characters (Rule 3) are untouched throughout.
