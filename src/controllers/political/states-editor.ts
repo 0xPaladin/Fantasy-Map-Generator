@@ -160,6 +160,7 @@ const columns: EditorColumn<State>[] = [
     sortBy: s => Tags.format(s.tags),
     sortType: "alpha"
   },
+  { key: "edit", width: "1.1em" },
   { key: "note", width: "1.1em" },
   { key: "locate", width: "1.1em" },
   { key: "focus", width: "1.1em" },
@@ -332,6 +333,7 @@ function renderDialog(): void {
     else if (classList.contains("stateBurgs")) openStateCitiesDialog(stateId);
     else if (classList.contains("statePopulation")) changePopulation(stateId);
     else if (classList.contains("stateTreasury")) openTreasuryDialog(stateId);
+    else if (classList.contains("icon-pencil") || $element.dataset.col === "edit") openStateCitiesDialog(stateId);
     else if (classList.contains("icon-book")) void Controllers.NotesEditor.open({ type: "state", id: stateId });
     else if (classList.contains("icon-pin")) toggleFog(stateId, classList);
     else if (classList.contains("icon-target"))
@@ -475,6 +477,7 @@ function renderStatesPage(view: TableView<State>): void {
           <input class="statePower placeholder" type="number" value="0" />
         </div>
         <div data-col="tags" class="placeholder"></div>
+        <div data-col="edit"></div>
         <div data-col="note"></div>
         <div data-col="locate"></div>
         <div data-col="focus"></div>
@@ -545,6 +548,7 @@ function renderStatesPage(view: TableView<State>): void {
       <div data-col="tags">
         <input data-tip="${sentences(t("State tags"), t("Comma-separated list of tags"))}" class="stateTags" placeholder="${t("none")}" value="${Tags.format(s.tags)}" />
       </div>
+      <span data-col="edit" data-tip="${t("State cities & yields")}" class="icon-pencil pointer"></span>
       ${noteIcon(t("Edit free text notes (legend)"))}
       <span data-col="locate" data-tip="${t("Locate on map")}" class="icon-target"></span>
       <span data-col="focus" data-tip="${t("Toggle state focus")}" class="icon-pin ${focused ? "" : " inactive"}"></span>
