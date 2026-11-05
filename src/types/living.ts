@@ -15,7 +15,9 @@ export type AgendaKind =
   | "pacify"
   | "resolve_trouble"
   | "clear_lair"
-  | "hire_adventurers";
+  | "hire_adventurers"
+  | "defend"
+  | "raid";
 
 export type TroubleTheme = "burg" | "ruin" | "resource";
 export type TroublePool = "m" | "w" | "s";
@@ -442,7 +444,8 @@ export type LivingNewsKind =
   | "lair"
   | "tech"
   | "religion"
-  | "faction";
+  | "faction"
+  | "raid";
 
 export interface LivingNewsItem {
   tick: number;

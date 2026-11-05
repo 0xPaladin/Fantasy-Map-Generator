@@ -3628,6 +3628,11 @@ class LivingModel {
   ): boolean {
     const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
     if (enemy) {
+      // No heroic suicides (absorbs conquest ai.ts): a badly outmatched army
+      // holds position unless its goal orders the attack anyway.
+      const agenda = living.states[state.i]?.agenda;
+      const ordered = agenda?.kind === "conquer" || agenda?.kind === "raid" || agenda?.kind === "defend";
+      if (!ordered && this.armyOutmatched(regiment, enemy.regiment)) return false;
       this.resolveArmyBattle(state, regiment, enemy.state, enemy.regiment, living);
       return true;
     }
@@ -3710,6 +3715,13 @@ class LivingModel {
   }
 
   /** Nearest at-war enemy **army** within melee reach or the army's firing range. */
+  /** No heroic suicides: true when this army is under 30% of the enemy's strength. */
+  private armyOutmatched(regiment: Regiment, enemy: Regiment): boolean {
+    const mine = armyStrength(regiment);
+    const theirs = armyStrength(enemy);
+    return theirs > 0 && mine < theirs * 0.3;
+  }
+
   private findEnemyArmyInRange(
     stateId: number,
     cell: number,
@@ -4019,6 +4031,12 @@ class LivingModel {
   }
 
   /** The cell a regiment should march toward this tick. */
+  /**
+   * Goal-driven army targeting (Phase C of the conquest retirement): the
+   * state's agenda IS the goal — its burg/province target decides where this
+   * army marches. With no goal, an at-war army hunts the nearest enemy
+   * regiment inside the aggro radius.
+   */
   private tacticalTarget(state: State, living: LivingWorldState, fromCell: number): number | null {
     const agenda = living.states[state.i]?.agenda;
     const burgId = agenda?.targetBurgId;
@@ -6636,6 +6654,22 @@ class LivingModel {
   private warAgenda(state: State, sSim: StatePolitySim): StateAgenda | null {
     const army = this.fieldArmy(state);
     const bias = this.traitBias(state, sSim);
+
+    // Defend: an at-war enemy regiment within aggro range of home territory
+    // (absorbs conquest ai.ts threat evaluation + defensive interception).
+    const threat = this.pickDefendTarget(state);
+    if (threat) {
+      const burg = pack.burgs[threat.nearBurgId];
+      return {
+        kind: "defend",
+        label: `Defending ${burg?.name ?? "the border"} against ${threat.enemyState.name}`,
+        targetBurgId: threat.nearBurgId,
+        targetStateId: threat.enemyState.i,
+        progress: 0,
+        required: 1
+      };
+    }
+
     const target = army ? this.pickWarTarget(state, army) : null;
     if (target) return this.conquerAgenda(target);
 
@@ -6667,6 +6701,19 @@ class LivingModel {
         kind: "colonize",
         label: `Colonizing ${free.name ?? "a free town"}`,
         targetBurgId: free.i,
+        progress: 0,
+        required: 1
+      };
+    }
+
+    // Raid: a martial ruler plunders an enemy border town for Gold + unrest.
+    const raidTarget = army ? this.pickRaidTarget(state, army) : null;
+    if (raidTarget && this.rng("agenda:raid", state.i).chance(0.08 + bias.martial * 0.35)) {
+      return {
+        kind: "raid",
+        label: `Raiding ${raidTarget.name ?? "enemy lands"}`,
+        targetBurgId: raidTarget.i,
+        targetStateId: raidTarget.state,
         progress: 0,
         required: 1
       };
@@ -6707,6 +6754,49 @@ class LivingModel {
   }
 
   /** Best defended border burg of a state already at war. */
+  /**
+   * Defend target: the nearest at-war enemy army within aggro range of any home
+   * major burg (absorbs conquest ai.ts threat evaluation). Returns the enemy
+   * state and the home burg being threatened, or null when nothing threatens.
+   */
+  private pickDefendTarget(state: State): { enemyState: State; enemyCell: number; nearBurgId: number } | null {
+    const living = this.getState();
+    let best: { enemyState: State; enemyCell: number; nearBurgId: number; distance: number } | null = null;
+
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || burg.state !== state.i || !burg.capital) continue;
+      const reach = this.cellHopDistances(burg.cell, UNIT_AGGRO_RANGE);
+      for (const other of pack.states) {
+        if (!other?.i || other.removed || other.i === state.i) continue;
+        if (!this.isAtWar(state.i, other.i)) continue;
+        for (const regiment of other.military ?? []) {
+          const distance = reach.get(regiment.cell);
+          if (distance === undefined) continue;
+          if (!living.armies?.[this.unitKey(other.i, regiment.i)] || armyIsEmpty(regiment)) continue;
+          if (!best || distance < best.distance) {
+            best = { enemyState: other, enemyCell: regiment.cell, nearBurgId: burg.i, distance };
+          }
+        }
+      }
+      if (best && best.distance <= 2) break; // close threat wins immediately
+    }
+    return best;
+  }
+
+  /** Weakest enemy border burg for a raid: plunder Gold, seed unrest. */
+  private pickRaidTarget(state: State, army: Regiment): Burg | null {
+    return this.pickAssaultTarget(
+      state,
+      army,
+      burg => {
+        const defenders = this.cityGarrisonBlocks(burg);
+        const totalHp = defenders.reduce((sum, block) => sum + block.hp, 0);
+        return totalHp <= 2; // weakly held: a raid, not a siege
+      },
+      55
+    );
+  }
+
   private pickWarTarget(state: State, army: Regiment): Burg | null {
     return this.pickAssaultTarget(
       state,
@@ -6978,6 +7068,50 @@ class LivingModel {
         const burg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
         const unrest = burg ? (living.burgs[burg.i]?.unrest ?? 0) : 0;
         if (!burg || burg.removed || burg.state !== state.i || unrest <= 0) sSim.agenda = null;
+        return;
+      }
+      case "defend": {
+        // The army marches home via tacticalTarget; the goal clears when the
+        // threat is gone (enemy destroyed or moved out of aggro range).
+        if (!this.pickDefendTarget(state)) sSim.agenda = null;
+        return;
+      }
+      case "raid": {
+        const burg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
+        if (!burg || burg.removed || !burg.state || burg.state === state.i) {
+          sSim.agenda = null;
+          return;
+        }
+        const army = this.fieldArmy(state);
+        if (!army) {
+          agenda.progress += 1;
+          if (agenda.progress >= 6) sSim.agenda = null; // no field army: call off
+          return;
+        }
+        const adjacent = (pack.cells.c?.[burg.cell] ?? []).includes(army.cell) || army.cell === burg.cell;
+        if (!adjacent) {
+          agenda.progress += 1;
+          if (agenda.progress >= 6) sSim.agenda = null; // marching for a few seasons
+          return;
+        }
+        // Plunder: Gold to the treasury, unrest to the burg.
+        const bSim = living.burgs[burg.i];
+        const booty = Math.round((bSim?.citizens ?? 1) * 2 + 10);
+        state.treasury = (state.treasury ?? 0) + booty;
+        if (bSim) bSim.unrest = (bSim.unrest ?? 0) + 8;
+        this.declareWar(state.i, burg.state);
+        const raidState = pack.states[burg.state];
+        this.pushNews(living, {
+          kind: "raid",
+          text: `${state.name} raided ${burg.name}, plundering ${booty} Gold.`,
+          cell: burg.cell,
+          stateId: state.i,
+          burgId: burg.i
+        });
+        this.pushHistory("conquest", [{ kind: "state", id: state.i }], burg.cell,
+          `${state.name} raided ${burg.name} and carried off ${booty} Gold${raidState ? ` from ${raidState.name}` : ""}.`);
+        agenda.progress += 1;
+        if (agenda.progress >= agenda.required) sSim.agenda = null;
         return;
       }
       default:
