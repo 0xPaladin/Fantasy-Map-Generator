@@ -1,7 +1,7 @@
 # Plan — Characters: One Roster for People, Heroes & Historical Figures
 
 **Updated:** 2026-11-05  
-**Status:** In progress — Phases 1-5 implemented  
+**Status:** In progress — Phases 1-6 implemented  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 
@@ -59,7 +59,7 @@ The design has three layers:
 - [x] **Phase 3 - Serialization and legacy migration** (2026-11-05)
 - [x] **Phase 4 - Generators and manual preservation** (2026-11-05)
 - [x] **Phase 5 - Hero checks and missions** (2026-11-05)
-- [ ] Phase 6 — Characters editor
+- [x] **Phase 6 - Characters editor** (2026-11-05)
 - [ ] Phase 7 — Layer, map entity, omnibar, tool button
 - [ ] Phase 8 — Docs, glossary, cleanup
 
@@ -879,27 +879,39 @@ Keep the existing trait rendering.
 
 ---
 
-### Phase 6 — Characters Editor
+### Phase 6 — Characters Editor ✅
 
+**Status:** Implemented 2026-11-05.  
 **Goal:** A standard table editor and detail sheet for every person.
 
 1. `src/controllers/society/characters-editor.ts`
-   - table, filters, sorting, CSV, add, edit, soft delete, restore, focus.
+   - Standard editor table with search, status/tier filters, column sorting and visibility.
+   - Add, detail, locate, soft delete, restore, focus.
+   - CSV export and import; imports update by id or add a manual character.
+   - The faction column stays derived from `Characters.factionsOf`.
+   - `Layers.show("characters")` runs only when the layer exists, so Phase 7 can register it.
 2. Detail dialog
-   - identity, roles, traits, hero, relations, notes.
+   - Identity: name, culture, birth/death, gender, cell, tags, notes, manual/lock.
+   - Traits: alignment, virtues, vices.
+   - Roles: add/remove rows with type, target kind/id, span, specialty.
+   - Relations: faction-style matrix with add/remove rows for factions, states, and characters.
 3. Hero sheet controls
-   - four attribute steppers;
-   - twelve die selects;
-   - abilities, inventory, condition, progression.
+   - Four bounded attribute inputs.
+   - Twelve action die selects.
+   - Abilities, inventory, XP, condition, push, and progression.
+   - Background characters expose **Promote to hero**.
 4. `src/controllers/index.ts`
-   - register `CharactersEditor`.
-5. Tests / checks
-   - table renders heroes and background characters;
-   - faction column is derived, not stored;
-   - CSV round-trip;
-   - hero edits persist through save/load.
+   - Registered `CharactersEditor`.
+5. `src/controllers/society/characters-editor.test.ts`
+   - hero and background rows;
+   - derived faction column;
+   - delete and restore;
+   - promote, set attributes/dice, add a relation, save/load persistence;
+   - CSV import/export shape.
 
-**Acceptance:** create a background character, promote it, set its dice, add a relation, delete it, restore it — all from the editor.
+**Verification:** 5 editor tests pass. `biome check` is clean on the new files; the editor adds no `tsc --noEmit` errors.
+
+**Acceptance:** create a background character, promote it, set its dice, add a relation, delete it, restore it, and round-trip it through save/load — all from the editor.
 
 ---
 
