@@ -964,9 +964,12 @@ Keep the existing trait rendering.
    - Marked pool/skill sections superseded; kept archetype, path, aspect and party-expedition flavour.
 5. `docs/plans/living-idle-guild.md`
    - Marked `GuildState` as a deprecated stub and `guild.heroes` as migration-only.
-6. `docs/wiki/Living-World.md`
-   - Rewrote the hero section for the one character registry, hero sheet, action checks, growth and party play.
-7. Deprecated code removal was intentionally not done: it waits for the guild/faction cleanup, as the plan requires.
+6. `docs/wiki/Characters.md`
+   - New wiki page for the one character registry, background characters, hero sheet, action checks, growth, party play and guild operations.
+   - Linked from `docs/wiki/Home.md`.
+7. `docs/wiki/Living-World.md`
+   - Keeps the Grand Guild and seasonal simulation; the character section now points to **Characters**.
+8. Deprecated code removal was intentionally not done: it waits for the guild/faction cleanup, as the plan requires.
 
 **Verification:** documentation-only change; no test suite was run, per the repo's markdown rule.
 
