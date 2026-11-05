@@ -27,7 +27,7 @@ describe("mission phases", () => {
     expect(chronicle.map(phase => phase.label)).toEqual(["Survey", "Delve", "Extraction"]);
   });
 
-  it("builds trouble and pacify phases with their own pools", () => {
+  it("builds trouble and pacify phases with their own actions", () => {
     const trouble = buildMissionPhases({
       kind: "trouble",
       dc: 16,
@@ -36,7 +36,7 @@ describe("mission phases", () => {
     });
     const pacify = buildMissionPhases({ kind: "pacify", dc: 13, tags: ["social", "order"], level: 3 });
 
-    expect(trouble.map(phase => phase.pool)).toEqual(["c", "m", "s"]);
+    expect(trouble.map(phase => phase.action)).toEqual(["investigate", "strike", "persuade"]);
     expect(trouble[0]!.tags).toContain("trouble");
     expect(pacify.map(phase => phase.label)).toEqual(["Parley", "Enforce"]);
   });

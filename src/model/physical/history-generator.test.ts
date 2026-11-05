@@ -10,6 +10,7 @@ import {
   VICES,
   VIRTUES
 } from "@/data/culture-traits";
+import { Characters } from "@/model/society/characters";
 import type { HistRefKind } from "@/types/history";
 import { emptyHistory } from "@/types/history";
 import "@/model/graph/pack-generator"; // Markers.place resolves cells through the global Pack
@@ -436,6 +437,42 @@ describe("Chronicle.generate figures", () => {
     expect(figures().map(figure => figure.i)).toEqual(figures().map((_, index) => index));
   });
 
+  it("gives every generated figure a stable seed key", () => {
+    Chronicle.generate();
+    for (const figure of figures()) expect(figure.seedKey).toBe(`figure:${figure.i}`);
+  });
+
+  it("preserves manual figures, their hero sheets and their ids", () => {
+    Chronicle.generate();
+    const manual = figures()[0]!;
+    manual.manual = true;
+    manual.name = "The Keeper";
+    Characters.promoteToHero(manual.i, "warden");
+    const id = manual.i;
+    const hero = structuredClone(manual.hero);
+
+    Chronicle.generate();
+
+    const preserved = figures().find(figure => figure.i === id);
+    expect(preserved?.name).toBe("The Keeper");
+    expect(preserved?.manual).toBe(true);
+    expect(preserved?.hero).toEqual(hero);
+    expect(figures().filter(figure => figure.name === "The Keeper")).toHaveLength(1);
+    for (const figure of figures().filter(entry => !entry.manual && !entry.lock && !entry.removed)) {
+      expect(figure.i).toBeGreaterThan(id);
+    }
+  });
+
+  it("keeps removed characters as tombstones", () => {
+    Chronicle.generate();
+    const id = figures()[0]!.i;
+    figures()[0]!.removed = true;
+
+    Chronicle.generate();
+
+    expect(figures().find(figure => figure.i === id)?.removed).toBe(true);
+  });
+
   it("gives every interstate war a general", () => {
     Chronicle.generate();
     const wars = pack.history.events.filter(
@@ -492,7 +529,7 @@ describe("figure traits", () => {
 
     Chronicle.generate();
     for (const figure of figures()) {
-      const rng = traitsRng(seed, "figure", figure.i);
+      const rng = traitsRng(seed, "figure", figure.seedKey!);
       const alignment = rollAlignment(rng, pack.cultures[figure.culture]?.alignment);
       expect(figure.alignment).toBe(alignment);
       expect({ virtues: figure.virtues, vices: figure.vices }).toEqual(rollFigureTraits(rng, alignment));
@@ -503,7 +540,7 @@ describe("figure traits", () => {
     // the fixture cultures carry no alignment, as on a map generated before the traits layer
     Chronicle.generate();
     for (const figure of figures()) {
-      const rng = traitsRng(seed, "figure", figure.i);
+      const rng = traitsRng(seed, "figure", figure.seedKey!);
       expect(figure.alignment).toBe(rollAlignment(rng));
     }
   });

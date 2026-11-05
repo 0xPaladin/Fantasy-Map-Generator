@@ -9,6 +9,7 @@ import { drawBiomes } from "@/renderers/draw-biomes";
 import { drawBorders } from "@/renderers/draw-borders";
 import { drawBurgIcons } from "@/renderers/draw-burg-icons";
 import { drawCells } from "@/renderers/draw-cells";
+import { drawCharacters, removeCharacters } from "@/renderers/draw-characters";
 import { drawCoastline } from "@/renderers/draw-coastline";
 import { drawCoordinates } from "@/renderers/draw-coordinates";
 import { drawCultures } from "@/renderers/draw-cultures";
@@ -475,6 +476,7 @@ const mapLayers = [
   new Layer({ id: "military", element: "armies", parent: "viewbox", draw: drawMilitary }),
   new Layer({ id: "fogging", parent: "viewbox", attrs: { mask: "url(#fog)" }, permanent: true, draw: drawFogging }),
   new Layer({ id: "markers", parent: "viewbox", draw: drawMarkers }),
+  new Layer({ id: "characters", parent: "viewbox", draw: drawCharacters, erase: removeCharacters }),
   new Layer({ id: "trouble", parent: "viewbox", draw: drawTrouble, erase: removeTrouble }),
   new Layer({
     id: "factions",

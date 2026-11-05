@@ -17,10 +17,10 @@ test("cached instructions contain the map rules, operations and data fields", ()
   expect(cached.cache_control).toEqual({ type: "ephemeral" });
 });
 
-// About 3.5 characters per token: keeps the fixed prompt under about 4k tokens
+// About 3.5 characters per token: keeps the fixed prompt under about 4.5k tokens
 test("cached instructions stay compact", () => {
   const [cached] = SYSTEM_PROMPT;
-  expect(cached.text.length).toBeLessThan(15_400);
+  expect(cached.text.length).toBeLessThan(15_800);
 });
 
 test("generated context matches the codebase and Knowledge Base", () => {

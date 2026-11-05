@@ -56,6 +56,7 @@ To report a problem or propose a feature, see [Reporting bugs and suggesting ide
 
 **Fork features**
 [Factions](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Factions) ·
+[Characters](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Characters) ·
 [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) ·
 [Battle Engine](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Battle-Engine) ·
 [Astral Cartographer](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Astral-Cartographer) ·

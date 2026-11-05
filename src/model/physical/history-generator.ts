@@ -27,6 +27,7 @@ import { NECROPOLIS_TYPES } from "@/data/markers";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Emblems } from "@/model/political/emblems-generator";
 import { States } from "@/model/political/states-generator";
+import { Characters } from "@/model/society/characters";
 import { Names } from "@/model/society/names-generator";
 import { Markers } from "@/model/story/markers-generator";
 import { Notes } from "@/model/story/notes";
@@ -62,10 +63,10 @@ interface FallSubject {
 /** the character of the figure at `index`: one of the three traits its alignment dictates, rolled on
  *  the prevailing column of the culture it serves. Not assigned when the traits layer is off, and
  *  a culture that predates the layer (or the Wildlands) reads the neutral column */
-function figureTraits(index: number, cultureId: number): Pick<HistoricalFigure, "alignment" | "virtues" | "vices"> {
+function figureTraits(seedKey: string, cultureId: number): Pick<HistoricalFigure, "alignment" | "virtues" | "vices"> {
   if (!options.generation.cultures.traits) return {};
 
-  const rng = traitsRng(options.map.seed, "figure", index);
+  const rng = traitsRng(options.map.seed, "figure", seedKey);
   const alignment = rollAlignment(rng, pack.cultures[cultureId]?.alignment);
   const { virtues, vices } = rollFigureTraits(rng, alignment);
   return { alignment, virtues, vices };
@@ -80,6 +81,8 @@ class ChronicleModel {
       return;
     }
 
+    const preserved = this.preserveExisting();
+    pack.history = { ...emptyHistory(), figures: preserved.figures };
     const events: HistoryEvent[] = [];
     const founded = this.dateFoundings(events);
     this.emitPastWars(events, founded);
@@ -89,15 +92,11 @@ class ChronicleModel {
     this.emitReligionSchisms(events);
     const eras: Era[] = [];
     const realms = this.emitRealms(events, founded, eras);
-    const figures = this.emitFigures(events, founded);
+    this.emitFigures(events, founded);
     eras.sort((a, b) => a.from - b.from);
     eras.push({ name: options.map.lore.calendar.era, from: last(eras)?.to ?? this.year - this.span, to: this.year });
-    events.sort((a, b) => a.year - b.year);
-    events.forEach((event, i) => {
-      event.i = i;
-    });
-    pack.history = { events, realms, eras, figures };
-    this.echoes(realms, events);
+    const allEvents = this.finish({ realms, eras }, events, preserved.events);
+    this.echoes(realms, allEvents);
   }
 
   /** ensure the pack carries the chronicle; safe to call repeatedly, older saves predate it */
@@ -109,26 +108,52 @@ class ChronicleModel {
   /** the epochs mode: the political events are what the epoch engine did, not an invention;
    * culture and faith remain deep time, dated backwards as always */
   private generateEpochs(): void {
+    const preserved = this.preserveExisting();
+    pack.history = { ...emptyHistory(), figures: preserved.figures };
     const events: HistoryEvent[] = [];
     this.emitCultureDivergence(events);
     this.emitReligionSchisms(events);
     const { epochs, polities, events: political, snapshots } = Epochs.generate();
     events.push(...political);
-    const figures = this.emitEpochFigures(events, epochs, polities);
-    events.sort((a, b) => a.year - b.year);
-    events.forEach((event, i) => {
+    this.emitEpochFigures(events, epochs, polities);
+    const allEvents = this.finish(
+      {
+        realms: [], // the ghost realms are retired: the epochs are real
+        eras: epochs.map(epoch => ({ name: epoch.era, from: epoch.from, to: epoch.to })),
+        epochs,
+        polities,
+        snapshots
+      },
+      events,
+      preserved.events
+    );
+    this.epochEchoes(polities, epochs, snapshots, allEvents);
+  }
+
+  /** Manual, locked and removed records survive regeneration with their ids and events. */
+  private preserveExisting(): { figures: HistoricalFigure[]; events: HistoryEvent[] } {
+    const figures = pack.history?.figures ?? [];
+    const preserved = figures.filter(figure => figure.manual || figure.lock || figure.removed);
+    const ids = new Set(preserved.map(figure => figure.i));
+    const events = (pack.history?.events ?? []).filter(event =>
+      event.actors.some(actor => actor.kind === "figure" && ids.has(actor.id))
+    );
+    return { figures: preserved, events };
+  }
+
+  /** Sort the rebuilt events, keep preserved ones, and write the chronicle back. */
+  private finish(
+    chronicle: Omit<Partial<History>, "events" | "figures">,
+    events: HistoryEvent[],
+    preservedEvents: HistoryEvent[]
+  ): HistoryEvent[] {
+    const allEvents = [...events, ...preservedEvents];
+    allEvents.sort((a, b) => a.year - b.year);
+    allEvents.forEach((event, i) => {
       event.i = i;
     });
-    pack.history = {
-      events,
-      realms: [], // the ghost realms are retired: the epochs are real
-      eras: epochs.map(epoch => ({ name: epoch.era, from: epoch.from, to: epoch.to })),
-      figures,
-      epochs,
-      polities,
-      snapshots
-    };
-    this.epochEchoes(polities, epochs, snapshots, events);
+    pack.history = { ...emptyHistory(), ...chronicle, events: allEvents, figures: Characters.all() };
+    return allEvents;
   }
 
   private get year(): number {
@@ -285,17 +310,17 @@ class ChronicleModel {
 
   /** dynasties for the major states and a general for every interstate war, each figure made only as an event needs it */
   private emitFigures(events: HistoryEvent[], founded: number[]): HistoricalFigure[] {
-    const figures: HistoricalFigure[] = [];
-    for (const stateId of this.majorStates()) this.emitDynasty(stateId, founded[stateId], figures, events);
+    const figures = Characters.ensureRegistry();
+    for (const stateId of this.majorStates()) this.emitDynasty(stateId, founded[stateId], events);
     for (const event of events) {
       if (event.type !== "war") continue;
       const patron = event.actors.find(ref => ref.kind === "state" && ref.id); // a state, not the wilds
       if (patron)
-        this.attachGeneral(
-          event,
-          { ref: patron, name: this.displayName(patron.id), culture: pack.states[patron.id]?.culture ?? 0 },
-          figures
-        );
+        this.attachGeneral(event, {
+          ref: patron,
+          name: this.displayName(patron.id),
+          culture: pack.states[patron.id]?.culture ?? 0
+        });
     }
     return figures;
   }
@@ -314,7 +339,7 @@ class ChronicleModel {
     epochs: HistoryEpoch[],
     polities: EpochPolity[]
   ): HistoricalFigure[] {
-    const figures: HistoricalFigure[] = [];
+    const figures = Characters.ensureRegistry();
     const present = epochs.at(-1)!;
     const peak = new Map<number, number>();
     for (const epoch of epochs) {
@@ -342,7 +367,6 @@ class ChronicleModel {
         { kind: "polity", id: polity.id },
         { name: polity.name, culture: this.polityCulture(polity), formName: polity.form },
         segments,
-        figures,
         events
       );
     }
@@ -351,7 +375,7 @@ class ChronicleModel {
       const patron = event.actors.find(ref => ref.kind === "polity"); // id 0 is a real lineage: it was founded first
       const lord = polities.find(polity => polity.id === patron?.id);
       if (patron && lord)
-        this.attachGeneral(event, { ref: patron, name: lord.name, culture: this.polityCulture(lord) }, figures);
+        this.attachGeneral(event, { ref: patron, name: lord.name, culture: this.polityCulture(lord) });
     }
     return figures;
   }
@@ -364,13 +388,12 @@ class ChronicleModel {
   }
 
   /** each dynasty: 2–5 rulers spanning the state's founding to the present; each accession is an event */
-  private emitDynasty(stateId: number, start: number, figures: HistoricalFigure[], events: HistoryEvent[]): void {
+  private emitDynasty(stateId: number, start: number, events: HistoryEvent[]): void {
     const state = pack.states[stateId];
     this.ruleSegments(
       { kind: "state", id: stateId },
       { name: state.name, culture: state.culture, formName: state.formName },
       [{ from: start, reigns: rand(2, 5) }],
-      figures,
       events
     );
   }
@@ -381,7 +404,6 @@ class ChronicleModel {
     target: HistRef,
     subject: { name: string; culture: number; formName?: string },
     segments: { from: number; to?: number; reigns: number }[],
-    figures: HistoricalFigure[],
     events: HistoryEvent[]
   ): void {
     let predecessor: HistoricalFigure | undefined;
@@ -392,15 +414,17 @@ class ChronicleModel {
       for (let r = 0; r < reigns; r++, from += length) {
         const accession = Math.round(from);
         const end = r === reigns - 1 ? segment.to : Math.max(accession + 1, Math.round(from + length));
-        const figure: HistoricalFigure = {
-          i: figures.length,
+        const id = Characters.nextId();
+        const seedKey = `figure:${id}`;
+        const figure = Characters.add({
           name: Names.getCulture(subject.culture),
           culture: subject.culture,
           birth: accession - rand(18, 40),
           death: end, // reigns end with the ruler; a living dynasty's last figure has neither
           roles: [{ type: "ruler", target, from: accession, to: end }],
-          ...figureTraits(figures.length, subject.culture)
-        };
+          seedKey,
+          ...figureTraits(seedKey, subject.culture)
+        });
         const figureRef: HistRef = { kind: "figure", id: figure.i };
         events.push(
           predecessor
@@ -419,7 +443,6 @@ class ChronicleModel {
                 text: ra(CORONATION_TEMPLATES)(figure.name, this.rulerTitle(subject), subject.name)
               }
         );
-        figures.push(figure);
         predecessor = figure;
       }
     }
@@ -431,22 +454,19 @@ class ChronicleModel {
   }
 
   /** the war is remembered through the commander its leading power trusted it to */
-  private attachGeneral(
-    event: HistoryEvent,
-    leader: { ref: HistRef; name: string; culture: number },
-    figures: HistoricalFigure[]
-  ): void {
-    const figure: HistoricalFigure = {
-      i: figures.length,
+  private attachGeneral(event: HistoryEvent, leader: { ref: HistRef; name: string; culture: number }): void {
+    const id = Characters.nextId();
+    const seedKey = `figure:${id}`;
+    const figure = Characters.add({
       name: Names.getCulture(leader.culture),
       culture: leader.culture,
       birth: event.year - rand(20, 45),
       roles: [{ type: "general", target: leader.ref, from: event.year }],
-      ...figureTraits(figures.length, leader.culture)
-    };
+      seedKey,
+      ...figureTraits(seedKey, leader.culture)
+    });
     event.actors.push({ kind: "figure", id: figure.i });
     if (P(0.5)) event.text += ` ${ra(WAR_GENERAL_TEMPLATES)(figure.name, leader.name)}`;
-    figures.push(figure);
   }
 
   /** weave in fallen empires: the largest state and its neighbors, once one and about to be again */

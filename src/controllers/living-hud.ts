@@ -3,6 +3,7 @@
 import { select } from "d3";
 import { currentContent } from "@/data/roster-store";
 import { Controllers } from "@/controllers";
+import { ACTION_DEFS, DIE_SIDES } from "@/data/character-actions";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
 import { GUILD_OPERATIONS } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel } from "@/data/hero-archetypes";
@@ -11,9 +12,9 @@ import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_BELIEF_BY_ID } from "@/data/living-civ-beliefs";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { describeRelicBonuses, RELIC_CATALOG, reserveRelics, vaultHasRoom, vaultRelics } from "@/data/living-relics";
@@ -26,8 +27,7 @@ import {
   troubleMissionTags
 } from "@/data/mission-tags";
 import { estimateOdds, type BattleModifiers } from "@/model/battle/battle";
-
-import { Military } from "@/model/political/military-generator";
+import { Pack } from "@/model/graph/pack-generator";
 import {
   armyHp,
   armyIsEmpty,
@@ -37,7 +37,6 @@ import {
   toBattleTypes,
   toBattleUnits
 } from "@/model/physical/living-armies";
-import { Pack } from "@/model/graph/pack-generator";
 import {
   activeCivThemeId,
   figureLevel,
@@ -48,6 +47,8 @@ import {
   pantheonFaithCost,
   prophetFaithCost
 } from "@/model/physical/living-generator";
+import { ensureHeroSheet } from "@/model/physical/living-heroes";
+import { Military } from "@/model/political/military-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
 import {
   clearLivingToasts,
@@ -1249,12 +1250,14 @@ function renderMarkerCard(markerId: number): string {
     <div class="livingButtons">${actions}</div>`;
 }
 
-const SKILL_DICE = ["d4", "d6", "d8", "d10", "d12", "d12"] as const;
-
-function skillDice(figure: HistoricalFigure): string {
-  const skills = figure.skills ?? { m: 0, w: 0, s: 0, c: 0 };
-  const die = (rating: number) => SKILL_DICE[Math.max(0, Math.min(5, rating))]!;
-  return `M ${die(skills.m)} · W ${die(skills.w)} · S ${die(skills.s)} · C ${die(skills.c)}`;
+function actionDice(figure: HistoricalFigure): string {
+  const hero = ensureHeroSheet(figure);
+  return Object.values(ACTION_DEFS)
+    .map(def => ({ label: def.label, die: hero.actions[def.id] }))
+    .sort((a, b) => DIE_SIDES[b.die] - DIE_SIDES[a.die])
+    .slice(0, 3)
+    .map(entry => `${entry.label} ${entry.die}`)
+    .join(" · ");
 }
 
 function disciplineChips(figure: HistoricalFigure): string {
@@ -1343,7 +1346,7 @@ function renderVitals(figureId: number, state: HeroGuildState | undefined, isHer
 }
 
 function missionPhaseChips(mission: {
-  phases?: { id: string; label: string; pool: string }[];
+  phases?: { id: string; label: string; action: string }[];
   phaseResults?: { phaseId: string; heroId: number; success: boolean; untrained?: boolean }[];
   progress: number;
 }): string {
@@ -1355,7 +1358,8 @@ function missionPhaseChips(mission: {
       const result = results.find(entry => entry.phaseId === phase.id);
       const status = result ? (result.success ? "✓" : "✗") : index === mission.progress ? "next" : "·";
       const untrained = result?.untrained ? " ⚠" : "";
-      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()} ${status}${untrained}</span>`;
+      const action = ACTION_DEFS[phase.action as keyof typeof ACTION_DEFS]?.label ?? phase.action;
+      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${action} ${status}${untrained}</span>`;
     })
     .join("");
 }
@@ -1365,7 +1369,10 @@ function renderPartyPreview(provinceId: number): string {
   if (!preview || preview.party.length === 0) return "";
   const names = preview.members.map(member => escapeHtml(member.name)).join(", ");
   const phases = preview.phases
-    .map(phase => `<span class="livingDiscipline">${escapeHtml(phase.label)} ${phase.pool.toUpperCase()}</span>`)
+    .map(phase => {
+      const action = ACTION_DEFS[phase.action as keyof typeof ACTION_DEFS]?.label ?? phase.action;
+      return `<span class="livingDiscipline">${escapeHtml(phase.label)} ${action}</span>`;
+    })
     .join("");
   const buttons = preview.members
     .map(
@@ -1414,7 +1421,7 @@ function renderFigureCard(figureId: number): string {
     .filter((note): note is string => Boolean(note))
     .map(note => `<div class="livingMuted">${escapeHtml(note)}</div>`)
     .join("");
-  const skills = `<div class="livingMuted">Skills: ${skillDice(figure)}</div>`;
+  const skills = `<div class="livingMuted">Top actions: ${actionDice(figure)}</div>`;
 
   let status = `<div class="livingMuted">Free agent</div>`;
   if (figure.death !== undefined) status = `<div class="livingMuted">Died ${figure.death}</div>`;
@@ -2766,7 +2773,7 @@ function renderHeroDialogItem(guild: GuildState, figureId: number, isSeeker: boo
   const archetype = figureArchetype(figure);
   const heroState = Living.getHeroState?.(figureId);
   const status = heroStatus(guild, figureId);
-  const skills = skillDice(figure);
+  const skills = actionDice(figure);
   const disciplines = figureDisciplines(figure)
     .map(id => `<span class="livingDiscipline">${escapeHtml(HERO_DISCIPLINES[id]?.name ?? id)}</span>`)
     .join(" ");

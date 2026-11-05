@@ -12,7 +12,9 @@ export interface HeroPathDef {
   id: string;
   name: string;
   kind: HeroPathKind;
+  /** @deprecated map through `legacyActionForPool`; removed with the guild shim */
   pool?: HeroPool;
+  /** @deprecated folded into `hero.abilities` */
   discipline?: DisciplineId;
   maxResolve?: number;
   maxStamina?: number;
@@ -29,10 +31,15 @@ export interface HeroArchetypeDef {
   id: HeroArchetypeId;
   name: string;
   icon: string;
+  /** @deprecated use the hero sheet actions */
   primaryPool: HeroPool;
+  /** @deprecated use the hero sheet actions */
   secondaryPool: HeroPool;
+  /** @deprecated use `hero.abilities` */
   disciplines: readonly [DisciplineId, DisciplineId, DisciplineId];
+  /** @deprecated use `HERO_STARTING_PACKAGES` */
   baseSkills: FigureSkills;
+  /** @deprecated use action-die growth */
   growthOrder: readonly HeroPool[];
   paths: readonly HeroPathChoice[];
   virtueBias: readonly string[];

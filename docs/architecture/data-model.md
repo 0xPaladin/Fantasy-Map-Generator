@@ -585,6 +585,38 @@ A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` /
 
 Map data that is **not** simulation state: `state.rosterId` (the culture roster) and `Regiment.units` (`ArmyBlock[]`) belong to the pack and survive save/load independently; `pack.history.living` reads them.
 
+## Characters
+
+Every person lives in `pack.history.figures`, the single character registry. There is no `pack.characters` and no separate hero store. `Characters` in [`characters.ts`](../../src/model/society/characters.ts) is the write path; generators and the Characters editor go through it. The registry serializes inside history record 55.
+
+A **background character** uses the base fields only; a **hero** adds `hero`:
+
+- `i`: `number` - character id, unique and never reused after soft delete
+- `name`: `string`
+- `culture`: `number` - culture id
+- `birth`, `death`: `number` - years; `death` marks a dead character
+- `gender`, `portrait`, `tags`, `note`: optional identity fields
+- `manual`, `lock`, `removed`: preservation flags; `removed` is the tombstone
+- `seedKey`: stable key for generated traits
+- `roles`: `HistoricalRole[]` - dated roles (`ruler`, `general`, `prophet`, `rebel`, `adventurer`, `specialist`, `agent`) with a `HistRef` target
+- `alignment`, `virtues`, `vices`: optional culture traits
+- `cell`: last known cell
+- `captor`: optional captor figure id
+- `relations`: optional relationship matrix toward `characters`, `factions` and `states`, using `FactionRelation` tiers
+- `hero`: optional **hero sheet**; absent on background characters
+
+A hero sheet (`HeroSheet`) holds the compact character stat block:
+
+- `archetype`: starting-package label, not a permanent class
+- `attributes`: `{ might, agility, wits, presence }`, each `-1..+2`
+- `actions`: all twelve action ids mapped to `d4 | d6 | d8 | d10 | d12`
+- `abilities`, `inventory`: string lists
+- `xp`, `progression`: lifetime experience and level/path choices
+- `condition`: optional `{ resolve, stamina, maxResolve, maxStamina, injuries, downUntilTick, push }`
+- `doctrine`, `temperament`, `cooldownUntil`: optional seasonal-play fields
+
+Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them. Mission phases also carry an `action`, not a pool.
+
 ## Legends
 
 The legend boxes shown on the map are stored in `pack.legends: Legend[]`, in display order. A generated map has none. Where a box sits on the canvas is the viewer's own (`legendPositions`), not map data. Object structure:

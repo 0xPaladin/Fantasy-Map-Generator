@@ -1,6 +1,12 @@
 # Plan — Living Idle Game: The Grand Guild, Relics, Map Juice & The Wheel of Ages
 
-Updated: 2026-11-01. Status: **slices 1-5 and the hero-diversity follow-on shipped; Astral follow-on planned**.
+Updated: 2026-11-01. Status: **slices 1-5 shipped; `GuildState` deprecated (2026-11-05); Astral follow-on planned**.
+
+> **Superseded in part by [characters.md](characters.md) and [factions.md](factions.md).**
+> `GuildState` in `pack.history.living.guild` is a deprecated stub. Factions own organizations,
+> treasury, membership, missions and relics; hero identity and stats live on
+> `pack.history.figures[].hero.condition`. New code must not write `GuildState.heroes`. Keep this
+> plan for the guild economy, relics, petitions and Wheel-of-Ages flavour.
 
 Companions: [living-world.md](living-world.md), [unified-figures.md](unified-figures.md),
 [lair-ascension.md](lair-ascension.md), [hero-diversity.md](hero-diversity.md),
@@ -86,6 +92,9 @@ flowchart TD
 
 ### 2.1. Guild State & Economy
 
+> **Deprecated stub:** `GuildState` remains for old saves and the existing HUD, but factions own the
+> organization, treasury, membership and missions. New code must not add guild-owned hero state.
+
 The Guild lives on `pack.history.living.guild` (`GuildState`) so it persists automatically inside
 record 53 of `.map` files:
 
@@ -112,6 +121,9 @@ record 53 of `.map` files:
 | **5** | Immortal Conclave | 700 | 1000 | 10 | 5 | Unlocks *Turn the Wheel of Ages* prestige action |
 
 ### 2.2. The Hero Stable & Idle Doctrines
+
+> **Superseded storage:** `guild.heroes` is read once by migration. Hero identity, condition,
+> temperament and doctrine now live on `Character.hero` in `pack.history.figures`.
 
 Guild heroes are standard `HistoricalFigure` entries in `pack.history.figures` referenced by
 `guild.roster: number[]`.

@@ -34,6 +34,7 @@ import { Styles } from "@/model/styles/styles";
 import { Hatches } from "@/renderers/hatches";
 import { getGroupStyle } from "@/renderers/labels/label-groups";
 import { type LayerId, Layers, type LayersState } from "@/renderers/layers";
+import { migrateCharacters } from "@/services/io/characters-migration";
 import {
   adoptLegacyIconSlots,
   type LegacySvg,
@@ -112,6 +113,8 @@ export async function resolveVersionConflicts(mapVersion: string, data: string[]
   } finally {
     legacySvg?.host.remove();
   }
+
+  migrateCharacters(pack.history);
 }
 
 async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacySvg): Promise<void> {
