@@ -429,12 +429,29 @@ function updateBurgLiving(burgId: number): void {
 
   const outposts = Factions.atBurg(selectedId);
   const outpostsLine = outposts.length
-    ? `<div style="margin-top: 2px;">${t("Outposts")}: ${outposts
+    ? `<div style="margin-top: 2px;">${t("Outposts")}:</div>${outposts
         .map(f => {
+          const isHq = f.hq.burgId === selectedId;
           const op = f.outposts.find(o => o.burgId === selectedId);
-          return `<span style="color: ${f.color || "#38bdf8"}; font-weight: 500;">${escapeHtml(f.name)} (T${op?.tier ?? 1})</span>`;
+          const sim = isHq ? f.hq.sim : op?.sim;
+          const yields = sim?.cityYields;
+          const yieldText = yields
+            ? `🌾 ${Math.round(yields.food)} · 🔨 ${Math.round(yields.production)} · 🪙 ${Math.round(yields.gold)} · 🔬 ${Math.round(yields.science)} · 🎭 ${Math.round(yields.culture)} · ✨ ${Math.round(yields.faith)}`
+            : "—";
+          const queue = (sim?.productionQueue ?? [])
+            .map(item => {
+              const def =
+                item.kind === "unit"
+                  ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
+                  : CIV_BUILDING_BY_ID[item.id];
+              const progress = Math.round(sim?.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
+              return `${def?.name ?? item.id} ${progress}/${Math.round(def?.cost ?? 0)}`;
+            })
+            .join(", ");
+          const tier = isHq ? null : op?.tier;
+          return `<div style="color: ${f.color || "#38bdf8"}; font-weight: 500;">${escapeHtml(f.name)}${tier !== null && tier !== undefined ? ` (T${tier})` : ""}</div><div style="font-size: 0.85em; opacity: 0.85;">${isHq ? "HQ" : "Outpost"} · ${sim?.citizens ?? 0} citizens · ${sim?.workedCells?.length ?? 0} worked cells · ${escapeHtml(yieldText)}${queue ? ` · Queue: ${escapeHtml(queue)}` : ""}</div>`;
         })
-        .join(", ")}</div>`
+        .join("")}`
     : "";
 
   ensureEl("burgLiving").innerHTML = `<div>${escapeHtml(citizensLine)}</div>${religionLine}${queueLine}${outpostsLine}`;

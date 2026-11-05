@@ -1,9 +1,13 @@
 import { Controllers } from "@/controllers";
 import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { Factions } from "@/model/political/factions-generator";
+import { Military } from "@/model/political/military-generator";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
 import type { Faction, FactionScale } from "@/types/factions";
+import type { YieldValues } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -36,10 +40,77 @@ const CSV_COLUMNS = [
   "Outposts Count",
   "Treasury",
   "Influence",
+  "Food",
+  "Production",
+  "Gold",
+  "Science",
+  "Culture",
+  "Faith",
+  "Happiness",
+  "Citizens",
+  "Worked Cells",
   "Alignment",
   "Expansionism",
   "Color"
 ];
+
+function formatYieldValue(value: number | undefined): string {
+  return String(Math.round(value ?? 0));
+}
+
+function formatYields(faction: Faction): string {
+  const yields: YieldValues | undefined = faction.yieldsPerTurn;
+  if (!yields) return "—";
+  return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)} · 😊 ${formatYieldValue(faction.happiness)}`;
+}
+
+function factionNodes(faction: Faction) {
+  return [faction.hq, ...(faction.outposts ?? [])].filter(Boolean);
+}
+
+function totalCitizens(faction: Faction): number {
+  return factionNodes(faction).reduce((sum, node) => sum + (node?.sim?.citizens ?? 0), 0);
+}
+
+function totalWorkedCells(faction: Faction): number {
+  return factionNodes(faction).reduce((sum, node) => sum + (node?.sim?.workedCells?.length ?? 0), 0);
+}
+
+function productionSummary(faction: Faction): string {
+  const sim = faction.hq?.sim;
+  const item = sim?.productionQueue?.[0];
+  if (!item) return "—";
+  const def =
+    item.kind === "unit"
+      ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
+      : CIV_BUILDING_BY_ID[item.id];
+  const progress = Math.round(sim?.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
+  const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 0);
+  return `${def?.name ?? item.id} ${progress}/${cost}`;
+}
+
+function nodeDetailsText(faction: Faction, node: NonNullable<Faction["hq"]> | Faction["outposts"][number], isHq: boolean): string {
+  void faction;
+  const sim = node.sim;
+  if (!sim) return "—";
+  const yields = sim.cityYields;
+  const yieldText = yields
+    ? `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)}`
+    : "—";
+  const queue = (sim.productionQueue ?? [])
+    .map(item => {
+      const def =
+        item.kind === "unit"
+          ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
+          : CIV_BUILDING_BY_ID[item.id];
+      const progress = Math.round(sim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
+      const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 0);
+      return `${def?.name ?? item.id} ${progress}/${cost}`;
+    })
+    .join(", ");
+  const workedCount = sim.workedCells?.length ?? 0;
+  return `${isHq ? "HQ" : "Outpost"} · ${sim.citizens ?? 0} citizens · ${workedCount} worked cells · ${yieldText}${queue ? ` · Queue: ${queue}` : ""}`;
+}
 
 let filterState: { search: string; category: string; scale: string };
 
@@ -110,6 +181,34 @@ const columns: EditorColumn<Faction>[] = [
     width: "5em",
     sortBy: f => f.influence || 0,
     sortType: "numeric"
+  },
+  {
+    key: "yields",
+    label: t("Yields"),
+    width: "14em",
+    sortBy: f => f.yieldsPerTurn?.gold || 0,
+    sortType: "numeric"
+  },
+  {
+    key: "citizens",
+    label: t("Citizens"),
+    width: "7em",
+    sortBy: f => totalCitizens(f),
+    sortType: "numeric"
+  },
+  {
+    key: "worked",
+    label: t("Worked Cells"),
+    width: "5em",
+    sortBy: f => totalWorkedCells(f),
+    sortType: "numeric"
+  },
+  {
+    key: "production",
+    label: t("Production"),
+    width: "10em",
+    sortBy: f => f.hq?.sim?.productionQueue?.[0]?.id || "",
+    sortType: "alpha"
   },
   {
     key: "military",
@@ -322,6 +421,10 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <span data-col="outposts" class="badge pointer" data-action="outposts" data-tip="${t("Click to manage outposts and assets")}">${f.outposts?.length || 0}</span>
         <input type="number" min="0" max="99999" value="${f.treasury || 0}" data-col="treasury" data-action="treasury" style="width: 4.5em;" />
         <input type="number" min="0" max="99999" value="${f.influence || 0}" data-col="influence" data-action="influence" style="width: 4.5em;" />
+        <span data-col="yields" data-tip="${escapeHtml(formatYields(f))}">${escapeHtml(formatYields(f))}</span>
+        <span data-col="citizens" style="text-align: center;">${totalCitizens(f)}</span>
+        <span data-col="worked" style="text-align: center;">${totalWorkedCells(f)}</span>
+        <span data-col="production" data-tip="${escapeHtml(productionSummary(f))}">${escapeHtml(productionSummary(f))}</span>
         <span data-col="military" style="text-align: center;">${f.military?.length || 0}</span>
         <div data-col="details" class="pointer icon-pencil" data-action="details" data-tip="${t("Manage Outposts & Assets")}"></div>
         <div data-col="remove" class="pointer icon-trash" data-action="remove" data-tip="${t("Remove faction")}"></div>
@@ -470,6 +573,15 @@ function exportCsv(): void {
     f.outposts?.length ?? 0,
     f.treasury,
     f.influence,
+    f.yieldsPerTurn?.food ?? 0,
+    f.yieldsPerTurn?.production ?? 0,
+    f.yieldsPerTurn?.gold ?? 0,
+    f.yieldsPerTurn?.science ?? 0,
+    f.yieldsPerTurn?.culture ?? 0,
+    f.yieldsPerTurn?.faith ?? 0,
+    f.happiness ?? 0,
+    totalCitizens(f),
+    totalWorkedCells(f),
     f.alignment,
     f.expansionism,
     f.color
@@ -506,6 +618,7 @@ export function openOutpostsDialog(factionId: number): void {
               <div>
                 <b>${escapeHtml(burgName)}</b>
                 <span style="font-size: 0.85em; opacity: 0.8;"> · Tier ${op.tier} · Infl: ${op.influence}% · Assets: ${assetsText}</span>
+                <div style="font-size: 0.82em; opacity: 0.75; margin-top: 2px;">${escapeHtml(nodeDetailsText(faction, op, false))}</div>
               </div>
               <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
             </div>
@@ -533,6 +646,8 @@ export function openOutpostsDialog(factionId: number): void {
         <span style="color: ${faction.color};">${faction.icon || "⚔️"}</span> ${escapeHtml(faction.name)}
         <span class="badge" style="float: right;">${capitalize(faction.scale)} (T${faction.tier})</span>
       </div>
+      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${escapeHtml(formatYields(faction))} · ${totalCitizens(faction)} citizens · ${totalWorkedCells(faction)} worked cells</div>
+      <div style="font-size: 0.82em; opacity: 0.75; margin-bottom: 8px;">${escapeHtml(nodeDetailsText(faction, faction.hq, true))}</div>
 
       <div style="margin-bottom: 12px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
         <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ Assets")}:</div>

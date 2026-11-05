@@ -4080,6 +4080,29 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(faction.treasury).toBeGreaterThan(0);
       expect(living.burgs[5]?.unrest ?? 0).toBeGreaterThan(unrestBefore);
     });
+
+    it("autonomous faction competes for worked cells against the host State Burg", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Independent Traders",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        stateRelations: { 1: "Neutral" },
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      faction.hq.sim!.citizens = 2;
+
+      Living.tick(1);
+
+      const stateWorked = living.burgs[1]?.workedCells ?? [];
+      const factionWorked = faction.hq.sim?.workedCells ?? [];
+      expect(stateWorked.length).toBeGreaterThan(0);
+      expect(factionWorked.length).toBeGreaterThan(0);
+      expect(new Set([...stateWorked, ...factionWorked]).size).toBe(stateWorked.length + factionWorked.length);
+      expect(faction.hq.sim?.cityYields?.food ?? 0).toBeGreaterThan(0);
+      expect(faction.hq.sim?.cityYields?.gold ?? 0).toBeGreaterThanOrEqual(0);
+    });
   });
 });
 
