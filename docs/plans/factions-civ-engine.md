@@ -1,6 +1,6 @@
 # Plan — Unified OpenCiv Engine for Factions & Burgs
 
-**Status:** Approved Design — Ready for Implementation  
+**Status: Implemented (Phases 1–5 complete, see `factions` branch commits `70e9c187`, `1664b94a`, `c66fb9d3`, `7ff65e5e`, `088115a4`)**
 **Branch:** `factions`  
 **Touchpoints:** [`src/types/factions.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/types/factions.ts), [`src/types/living.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/types/living.ts), [`src/data/living-civ-buildings.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/data/living-civ-buildings.ts), [`src/data/faction-assets.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/data/faction-assets.ts), [`src/model/political/factions-generator.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/model/political/factions-generator.ts), [`src/model/physical/living-generator.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/model/physical/living-generator.ts), [`src/controllers/political/factions-editor.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/controllers/political/factions-editor.ts), [`src/controllers/political/burgs/burg-editor.ts`](file:///home/paladin/workspace/Fantasy-Map-Generator/src/controllers/political/burgs/burg-editor.ts)  
 **Companions:** [factions.md](factions.md), [factions-plan.md](factions-plan.md), [living-openciv.md](living-openciv.md), [living-openciv-armies.md](living-openciv-armies.md)

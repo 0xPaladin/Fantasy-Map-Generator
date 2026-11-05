@@ -20,6 +20,11 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Loading draws the map from its data; the stored SVG is read only to update older maps
 - Legend boxes are saved as map data
 
+## Unreleased (factions branch)
+
+- Factions: unified OpenCiv engine — HQs/outposts are city-nodes competing for worked cells, gathering seven yields, producing from unified queues, researching with host spillover, and fighting with shared Builders/Settlers/armies/sieges
+- Factions Editor: new Yields, Citizens, Worked Cells and Production columns; Outposts dialog and Burg inspector show per-node yields, citizens, worked cells and production queue
+
 # Releases
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:

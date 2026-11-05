@@ -231,6 +231,32 @@ States (countries) data is stored as an array of objects with strict element ord
 - `units`: `ArmyBlock[]` - optional. Living World army composition: `{ type: rosterUnitId, hp: 0..1, exp: 0..9 }`. `u` and `a` mirror the blocks as nominal men
 - `note`: `string` - optional. The user's note (legend) about the regiment, as html. Removed with it
 
+## Factions
+
+Non-territorial organizations stored as an array of objects with strict element order. Element 0 is reserved and unused. If a faction is removed, the element is not getting removed, but instead a `removed` attribute is added. Factions run on the unified OpenCiv engine: every HQ and outpost carries a `BurgSimState` city-node. See the [Factions wiki](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Factions).
+
+- `i`: `number` - faction id, always equal to the array index
+- `name`: `string` - faction name
+- `category`: `FactionCategory` - `commercial`, `adventuring`, `underworld`, `religious`, `political` or `martial`
+- `type`: `string` - archetype id (for example `merchant_consortium`, `thieves_guild`, `raider_clan`)
+- `scale`: `FactionScale` - `burg`, `province`, `state` or `world`, dynamically recomputed from outposts/assets/techs/treasury
+- `allegiance`: `FactionAllegiance` - `state_arm`, `chartered`, `autonomous`, `clandestine` or `hostile`
+- `patronStateId`: `number` - optional host/patron state id
+- `color`: `string` - faction color in hex
+- `icon`: `string` - marker icon
+- `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, secrecy, assets: string[], sim?: BurgSimState }`
+- `outposts`: `FactionOutpost[]` - `{ burgId, cell, tier: 1|2|3, influence, secrecy, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
+- `tier`: `number` - `1..5`, derived from scale
+- `science`: `number` - current science per season (mirrors `yieldsPerTurn.science`)
+- `currentTechId` / `researchQueue` / `researchedTechs` / `researchedProgress` / `freeTechs?` - OpenCiv research state
+- `yieldsPerTurn?` / `happiness?` / `happinessBreakdown?` - empire rollup yields and happiness
+- `treasury`: `number` - faction gold balance
+- `influence`: `number` - empire influence (mirrors guild renown for the player faction)
+- `military`: `Regiment[]` - `ArmyBlock[]` composition; living sim keys are `f{factionId}-{regimentId}` in `living.units`/`living.armies`
+- `stateRelations` / `factionRelations`: `Record<number, FactionRelation>` - `Ally`, `Friendly`, `Neutral`, `Suspicion`, `Rival` or `Enemy` with states and other factions
+- `seasonsActive`: `number` - seasons simulated, used for sovereignty thresholds
+- `removed` / `lock` / `note` - soft-delete, lock and legend, as for states
+
 ## Provinces
 
 Provinces data is stored as an array of objects with strict element order. Element 0 is not used. If religion is removed, the element is not getting removed, but instead a `removed` attribute is added. Object structure:

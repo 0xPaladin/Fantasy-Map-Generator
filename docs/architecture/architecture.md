@@ -71,6 +71,7 @@ Example stored entities:
 - Cells
 - Burgs
 - States
+- Factions (non-territorial headquarters, outposts and armies; see the unified OpenCiv engine)
 - Cultures
 - Religions
 - Rivers
