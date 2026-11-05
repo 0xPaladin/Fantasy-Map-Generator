@@ -9,6 +9,7 @@ import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
 import type { Faction, FactionAllegiance, FactionCategory } from "@/types/factions";
 import type { YieldValues } from "@/types/living";
+import { emptyYields, FOOD_PER_CITIZEN } from "@/model/physical/living-generator";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -61,6 +62,52 @@ function formatYields(faction: Faction): string {
   const yields: YieldValues | undefined = faction.yieldsPerTurn;
   if (!yields) return "—";
   return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)} · 😊 ${formatYieldValue(faction.happiness)}`;
+}
+
+/** Project yields one turn ahead: simulate food growth and citizen change. */
+function projectedYields(faction: Faction): YieldValues {
+  const base = { ...(faction.yieldsPerTurn ?? emptyYields()) };
+  let projectedCitizens = 0;
+
+  for (const node of factionNodes(faction)) {
+    const sim = node.sim;
+    if (!sim) continue;
+    const citizens = sim.citizens ?? 0;
+    const foodStored = sim.foodStored ?? 0;
+    const needed = 15 + 8 * Math.max(1, Math.floor(citizens));
+    const grows = foodStored >= needed;
+    projectedCitizens += grows ? citizens + 1 : citizens;
+  }
+
+  // More citizens = more food consumption
+  const currentCitizens = factionNodes(faction).reduce((sum, n) => sum + (n.sim?.citizens ?? 0), 0);
+  const deltaCitizens = projectedCitizens - currentCitizens;
+  base.food = Math.max(0, base.food - FOOD_PER_CITIZEN * deltaCitizens);
+
+  return base;
+}
+
+function formatProjectedYields(faction: Faction): string {
+  const y = projectedYields(faction);
+  return `🌾 ${formatYieldValue(y.food)} · 🔨 ${formatYieldValue(y.production)} · 🪙 ${formatYieldValue(y.gold)} · 🔬 ${formatYieldValue(y.science)} · 🎭 ${formatYieldValue(y.culture)} · ✨ ${formatYieldValue(y.faith)}`;
+}
+
+/** Project yields one turn ahead for a single node (HQ or outpost). */
+function projectedNodeYields(node: FactionHq | FactionOutpost): YieldValues {
+  const sim = node.sim;
+  if (!sim) return emptyYields();
+  const base = { ...(sim.cityYields ?? emptyYields()) };
+  const citizens = sim.citizens ?? 0;
+  const foodStored = sim.foodStored ?? 0;
+  const needed = 15 + 8 * Math.max(1, Math.floor(citizens));
+  const grows = foodStored >= needed;
+  if (grows) base.food = Math.max(0, base.food - FOOD_PER_CITIZEN);
+  return base;
+}
+
+function formatNodeProjectedYields(node: FactionHq | FactionOutpost): string {
+  const y = projectedNodeYields(node);
+  return `🌾 ${formatYieldValue(y.food)} · 🔨 ${formatYieldValue(y.production)} · 🪙 ${formatYieldValue(y.gold)} · 🔬 ${formatYieldValue(y.science)} · 🎭 ${formatYieldValue(y.culture)} · ✨ ${formatYieldValue(y.faith)}`;
 }
 
 function factionNodes(faction: Faction) {
@@ -168,13 +215,6 @@ const columns: EditorColumn<Faction>[] = [
     sortType: "numeric"
   },
   {
-    key: "yields",
-    label: t("Yields"),
-    width: "14em",
-    sortBy: f => f.yieldsPerTurn?.gold || 0,
-    sortType: "numeric"
-  },
-  {
     key: "citizens",
     label: t("Citizens"),
     width: "7em",
@@ -183,17 +223,10 @@ const columns: EditorColumn<Faction>[] = [
   },
   {
     key: "worked",
-    label: t("Worked Cells"),
+    label: t("Cells"),
     width: "5em",
     sortBy: f => totalWorkedCells(f),
     sortType: "numeric"
-  },
-  {
-    key: "production",
-    label: t("Production"),
-    width: "10em",
-    sortBy: f => f.hq?.sim?.productionQueue?.[0]?.id || "",
-    sortType: "alpha"
   },
   {
     key: "military",
@@ -288,8 +321,10 @@ function renderDialog(): void {
   Dialog.destroy("factionsEditor");
   const editorHtml = /* html */ `
     <div id="factionsEditor" class="dialog stable editorDialog">
-      ${renderEditorHeader({ dialogId, columns })}
-      <div id="factionsBodySection" class="table" data-type="absolute" style="max-height: 480px; overflow-y: auto;"></div>
+      <div id="factionsBodySection" class="table">
+        ${renderEditorHeader({ dialogId, columns })}
+        <div id="factionsRows"></div>
+      </div>
       <div id="factionsFilters" data-tip="${t("Apply a filter")}" class="editorFilters">
         <label for="factionsSearch" data-tip="${t("Filter by name, type, category, allegiance, alignment, or HQ burg")}"
           >${t("Search")}: <input id="factionsSearch" type="search"
@@ -400,7 +435,7 @@ function updateFilters(): void {
 }
 
 function renderFactionsPage(view: TableView<Faction>): void {
-  const container = findEl("factionsBodySection");
+  const container = findEl("factionsRows");
   if (!container) return;
 
   const totalOutposts = view.all.reduce((sum, f) => sum + (f.outposts?.length ?? 0), 0);
@@ -457,10 +492,8 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <span data-col="hq" class="pointer" data-action="locate" data-tip="${t("Click to zoom to HQ")}" style="text-decoration: underline;">${escapeHtml(hqName)}</span>
         <span data-col="outposts" class="badge pointer" data-action="outposts" data-tip="${t("Click to manage outposts and assets")}">${f.outposts?.length || 0}</span>
         <input type="number" min="0" max="99999" value="${f.treasury || 0}" data-col="treasury" data-action="treasury" style="width: 4.5em;" />
-        <span data-col="yields" data-tip="${escapeHtml(formatYields(f))}">${escapeHtml(formatYields(f))}</span>
         <span data-col="citizens" style="text-align: center;">${totalCitizens(f)}</span>
         <span data-col="worked" style="text-align: center;">${totalWorkedCells(f)}</span>
-        <span data-col="production" data-tip="${escapeHtml(productionSummary(f))}">${escapeHtml(productionSummary(f))}</span>
         <span data-col="military" style="text-align: center;">${f.military?.length || 0}</span>
         <div data-col="details" class="pointer icon-pencil" data-action="details" data-tip="${t("Manage Outposts & Assets")}"></div>
         <div data-col="remove" class="pointer icon-trash" data-action="remove" data-tip="${t("Remove faction")}"></div>
@@ -645,61 +678,91 @@ export function openOutpostsDialog(factionId: number): void {
 
   const outpostsHtml = faction.outposts.length
     ? faction.outposts
-        .map((op, idx) => {
-          const burg = pack.burgs?.[op.burgId];
-          const burgName = burg?.name ?? `Burg ${op.burgId}`;
-          const assetsText = op.assets.join(", ") || t("None");
-          return /* html */ `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #334155;">
-              <div>
-                <b>${escapeHtml(burgName)}</b>
-                <span style="font-size: 0.85em; opacity: 0.8;"> · Tier ${op.tier} · Infl: ${op.influence}% · Assets: ${assetsText}</span>
-                <div style="font-size: 0.82em; opacity: 0.75; margin-top: 2px;">${escapeHtml(nodeDetailsText(faction, op, false))}</div>
-              </div>
+      .map((op, idx) => {
+        const burg = pack.burgs?.[op.burgId];
+        const burgName = burg?.name ?? `Burg ${op.burgId}`;
+        const assetsText = op.assets.join(", ") || t("None");
+        const sim = op.sim;
+        const yields = formatNodeProjectedYields(op);
+        const citizens = sim?.citizens ?? 0;
+        const cells = sim?.workedCells?.length ?? 0;
+        return /* html */ `
+          <tr style="border-bottom: 1px solid #444;">
+            <td style="padding: 4px;"><b>${escapeHtml(burgName)}</b></td>
+            <td style="padding: 4px; text-align: center;">${op.tier}</td>
+            <td style="padding: 4px; text-align: center;">${op.influence}%</td>
+            <td style="padding: 4px;">${assetsText}</td>
+            <td style="padding: 4px;">${yields}</td>
+            <td style="padding: 4px; text-align: center;">${citizens}</td>
+            <td style="padding: 4px; text-align: center;">${cells}</td>
+            <td style="padding: 4px; text-align: right;">
               <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
-            </div>
-          `;
-        })
-        .join("")
-    : `<div style="padding: 6px 0; opacity: 0.7;">${t("No outposts established yet.")}</div>`;
+            </td>
+          </tr>
+        `;
+      })
+      .join("")
+    : `<tr><td colspan="8" style="padding: 6px; opacity: 0.7; text-align: center;">${t("No outposts established yet.")}</td></tr>`;
 
   const hqAssetsHtml = faction.hq.assets.length
     ? faction.hq.assets
-        .map(
-          (aid, idx) => `
+      .map(
+        (aid, idx) => `
             <span class="badge" style="margin: 2px;">
               ${escapeHtml(getFactionAsset(aid)?.name ?? aid)}
               <span class="pointer removeHqAssetBtn" data-index="${idx}" style="margin-left: 4px; color: #f87171;">✕</span>
             </span>
           `
-        )
-        .join("")
+      )
+      .join("")
     : `<span style="opacity: 0.7;">${t("No assets constructed.")}</span>`;
 
   const markup = /* html */ `
     <div id="${dialogDomId}" class="dialog" style="min-width: 380px; max-width: 500px; padding: 10px;">
-      <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 8px;">
+      <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 4px;">
         <span style="color: ${faction.color};">${faction.icon || "⚔️"}</span> ${escapeHtml(faction.name)}
-        <span class="badge" style="float: right;">${capitalize(faction.category)} • ${capitalize(faction.allegiance)} • ${capitalize(faction.alignment)}</span>
       </div>
-      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${escapeHtml(formatYields(faction))} · ${totalCitizens(faction)} citizens · ${totalWorkedCells(faction)} worked cells</div>
-      <div style="font-size: 0.82em; opacity: 0.75; margin-bottom: 8px;">${escapeHtml(nodeDetailsText(faction, faction.hq, true))}</div>
+      <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 4px;">
+        <span class="badge" style="margin-right: 4px;">${capitalize(faction.category)}</span>
+        <span class="badge" style="margin-right: 4px;">${capitalize(faction.allegiance)}</span>
+        <span class="badge">${capitalize(faction.alignment)}</span>
+      </div>
+      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 4px;">${escapeHtml(formatProjectedYields(faction))}</div>
+      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${totalCitizens(faction)} citizens · ${totalWorkedCells(faction)} cells</div>
 
       <div style="margin-bottom: 12px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
         <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ Assets")}:</div>
         <div id="hqAssetsList" style="margin-bottom: 6px;">${hqAssetsHtml}</div>
-        <div style="display: flex; gap: 4px;">
+        <div style="width: 100%; display: flex; gap: 4px;">
           <select id="newHqAssetSelect" style="flex-grow: 1;">${assetOptions}</select>
-          <button id="addHqAssetBtn" class="btn" style="white-space: nowrap;">${t("+ Asset")}</button>
+          <button id="addHqAssetBtn" class="btn">${t("+ Asset")}</button>
         </div>
       </div>
 
       <div style="margin-bottom: 8px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
         <div style="font-weight: bold; margin-bottom: 4px;">${t("Established Outposts")}:</div>
-        <div id="outpostsList" style="max-height: 160px; overflow-y: auto; margin-bottom: 6px;">${outpostsHtml}</div>
-        <div style="display: flex; gap: 4px;">
+        <div id="outpostsList" style="width: 100%; overflow-x: auto; margin-bottom: 6px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+            <thead>
+              <tr style="text-align: left; border-bottom: 1px solid #555;">
+                <th style="padding: 4px;">${t("Burg")}</th>
+                <th style="padding: 4px;">${t("Tier")}</th>
+                <th style="padding: 4px;">${t("Influence")}</th>
+                <th style="padding: 4px;">${t("Assets")}</th>
+                <th style="padding: 4px;">${t("Yields")}</th>
+                <th style="padding: 4px;">${t("Citizens")}</th>
+                <th style="padding: 4px;">${t("Cells")}</th>
+                <th style="padding: 4px; text-align: right;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${outpostsHtml}
+            </tbody>
+          </table>
+        </div>
+        <div style="width: 100%; display: flex; gap: 4px;">
           <select id="newOutpostBurgSelect" style="flex-grow: 1;">${burgOptions}</select>
-          <button id="addOutpostBtn" class="btn" style="white-space: nowrap;">${t("+ Outpost")}</button>
+          <button id="addOutpostBtn" class="btn">${t("+ Outpost")}</button>
         </div>
       </div>
     </div>
