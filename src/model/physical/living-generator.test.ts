@@ -3940,6 +3940,146 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(debtor.treasury).toBe(0);
       expect((debtor.military[0]?.units?.length ?? 0)).toBeLessThan(blocksBefore);
     });
+
+    it("faction builders improve worked cells", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Builder Guild",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        researchedTechs: ["pottery"],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      faction.hq.sim!.productionQueue = [{ kind: "unit", id: "builder" }];
+      faction.hq.sim!.productionProgress = { "unit:builder": 49 };
+
+      Living.tick(10);
+
+      expect(faction.military.some(r => r.type === "builder")).toBe(true);
+      const improved = Object.values(living.cells ?? {}).filter(cell => cell.improvement);
+      expect(improved.length).toBeGreaterThan(0);
+    });
+
+    it("faction settlers march to a burg and establish an outpost", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Settler Guild",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        researchedTechs: [],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      faction.hq.sim!.productionQueue = [{ kind: "unit", id: "settler" }];
+      faction.hq.sim!.productionProgress = { "unit:settler": 105 };
+
+      Living.tick(10);
+
+      expect(faction.outposts.length).toBeGreaterThan(0);
+      expect(faction.outposts.some(o => o.burgId !== 1)).toBe(true);
+      expect(faction.military.some(r => r.type === "settler")).toBe(false);
+      expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("established a new outpost"))).toBe(
+        true
+      );
+    });
+
+    it("faction armies fight adjacent enemy armies and siege burgs", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Raider Warband",
+        category: "martial",
+        type: "raider_clan",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        stateRelations: { 1: "Enemy", 2: "Enemy" },
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      // State regiment south of the HQ, faction regiment at the HQ cell.
+      pack.states[1].military = [
+        {
+          i: 0,
+          name: "Aeloria Regiment",
+          a: 100,
+          cell: 9,
+          x: 90,
+          y: 90,
+          bx: 90,
+          by: 90,
+          u: { spear: 100 },
+          units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+          n: 0,
+          state: 1,
+          icon: "⚔️"
+        } as unknown as (typeof pack.states[1].military)[number]
+      ];
+      faction.military = [
+        {
+          i: 1,
+          name: "Raider Guard",
+          a: 100,
+          cell: 5,
+          x: 50,
+          y: 50,
+          bx: 50,
+          by: 50,
+          u: { spear: 100 },
+          units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+          n: 0,
+          state: 0,
+          icon: "⚔️",
+          rosterId: faction.rosterId
+        } as unknown as (typeof faction.military)[number]
+      ];
+
+      const stateHpBefore = (pack.states[1].military[0]?.units ?? []).reduce((sum, b) => sum + b.hp, 0);
+      Living.tick(1);
+
+      const stateHpAfter = (pack.states[1].military[0]?.units ?? []).reduce((sum, b) => sum + b.hp, 0);
+      const factionHpAfter = (faction.military.find(r => r.i === 1)?.units ?? []).reduce((sum, b) => sum + b.hp, 0);
+      expect(stateHpAfter).toBeLessThan(stateHpBefore);
+      expect(living.armies?.[Living.factionUnitKey(faction.i, 1)]?.lastBattle).toBeDefined();
+      expect(factionHpAfter).toBeGreaterThan(0);
+    });
+
+    it("faction armies siege a non-capital burg and pillage it", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Siege Warband",
+        category: "martial",
+        type: "raider_clan",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        stateRelations: { 1: "Enemy", 2: "Enemy" },
+        treasury: 0,
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      // Place the faction army adjacent to Millbrook (burg 5, cell 4, state 1, non-capital).
+      faction.military = [
+        {
+          i: 1,
+          name: "Siege Guard",
+          a: 100,
+          cell: 5,
+          x: 50,
+          y: 50,
+          bx: 50,
+          by: 50,
+          u: { spear: 100 },
+          units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+          n: 0,
+          state: 0,
+          icon: "⚔️",
+          rosterId: faction.rosterId
+        } as unknown as (typeof faction.military)[number]
+      ];
+      const unrestBefore = living.burgs[5]?.unrest ?? 0;
+
+      Living.tick(1);
+
+      expect(faction.treasury).toBeGreaterThan(0);
+      expect(living.burgs[5]?.unrest ?? 0).toBeGreaterThan(unrestBefore);
+    });
   });
 });
 
@@ -4798,7 +4938,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(faction.stateRelations[1]).toBe("Enemy");
   });
 
-  it("musters military regiments, conducts raids and ascends to sovereign state", () => {
+  it("ascends to sovereign state when sovereignty conditions are met", () => {
     const living = Living.init();
     pack.factions = [{ i: 0 } as Faction];
 
@@ -4816,9 +4956,27 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       hq: { cell: 4, fortified: true, secrecy: 0, assets: ["muster_camp"] }
     });
 
-    // Step military: musters regiment
+    // Legacy instant muster is retired: Phase 4 regiments come from the production queue.
     Living.stepFactionMilitaryAndRaids(living);
-    expect(raiderFaction.military.length).toBeGreaterThan(0);
+    expect(raiderFaction.military.length).toBe(0);
+
+    // Seed a combat regiment with blocks for the ascension check.
+    raiderFaction.military.push({
+      i: 1,
+      name: "Ironfang Vanguard",
+      a: 100,
+      cell: 4,
+      x: 0,
+      y: 0,
+      bx: 0,
+      by: 0,
+      u: { spear: 100 },
+      units: [{ type: "spear", hp: 1, exp: 0 }],
+      n: 0,
+      state: 0,
+      icon: "⚔️",
+      rosterId: raiderFaction.rosterId
+    } as unknown as (typeof raiderFaction.military)[number]);
     expect(raiderFaction.military[0].u).toHaveProperty("spear");
 
     // Direct ascension test: ascendFactionToState

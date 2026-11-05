@@ -78,7 +78,7 @@ import { type State, States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { isAstralView } from "@/renderers/view-mode";
-import type { Faction, FactionHq, FactionOutpost, FactionScale } from "@/types/factions";
+import type { Faction, FactionHq, FactionOutpost } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import {
   type ActiveGuildMission,
@@ -4489,6 +4489,46 @@ class LivingModel {
       }
     }
 
+    for (const faction of Factions.active()) {
+      syncFactionState(faction);
+      for (const regiment of faction.military ?? []) {
+        const key = this.factionUnitKey(faction.i, regiment.i);
+        const civilianType = (regiment.type ?? "").toLowerCase();
+        if (isCivilianUnit(civilianType)) {
+          const def = this.civilianDefinition(civilianType);
+          if (!def?.isUtility) continue;
+          regiment.units = [];
+          const unit = living.units[key] ?? this.createUtilitySim(regiment, def);
+          this.applyUnitDefinition(unit, def);
+          if (unit.domain === "sea") regiment.n = 1;
+          regiment.a = Math.max(0, Math.round(unit.hp));
+          regiment.u = { [def.id]: regiment.a };
+          living.units[key] = unit;
+          aliveUnits.add(key);
+          continue;
+        }
+
+        migrateArmyBlocks(regiment, unitTypes);
+        if (!regiment.units?.length) continue;
+        normalizeArmy(regiment, maxSlots, unitTypes);
+        if (armyIsEmpty(regiment)) {
+          this.removeFactionRegiment(faction, regiment, living);
+          continue;
+        }
+        const speed = armySpeed(regiment, unitTypes);
+        const army = living.armies[key] ?? {
+          movement: speed,
+          maxMovement: speed,
+          stance: "fortify" as const,
+          hasFought: false
+        };
+        army.maxMovement = speed;
+        living.armies[key] = army;
+        aliveArmies.add(key);
+        syncRegimentTotals(regiment, unitTypes);
+      }
+    }
+
     for (const key of Object.keys(living.units)) {
       if (!aliveUnits.has(key)) delete living.units[key];
     }
@@ -4555,9 +4595,10 @@ class LivingModel {
   }
 
   /**
-   * Occupant registry: one combat army plus one utility regiment per state and
-   * cell, never two states (living-openciv-armies.md §7.1). Army granularity is
+   * Occupant registry: one combat army plus one utility regiment per polity and
+   * cell, never two polities (living-openciv-armies.md §7.1). Army granularity is
    * the regiment, not the old 1UPT sim.
+   * Polity ids: state ids are positive, faction ids are negated (see `factionOwnerId`).
    */
   private armyOccupancy(living: LivingWorldState): Map<number, { stateId: number; isUtility: boolean; key: string }[]> {
     const map = new Map<number, { stateId: number; isUtility: boolean; key: string }[]>();
@@ -4571,6 +4612,18 @@ class LivingModel {
         if (!isUtility && armyIsEmpty(regiment)) continue;
         const list = map.get(regiment.cell) ?? [];
         list.push({ stateId: state.i, isUtility, key });
+        map.set(regiment.cell, list);
+      }
+    }
+    for (const faction of Factions.active()) {
+      for (const regiment of faction.military ?? []) {
+        const key = this.factionUnitKey(faction.i, regiment.i);
+        const unit = living.units?.[key];
+        const isUtility = Boolean(unit?.isUtility);
+        if (isUtility && (!unit || unit.hp <= 0)) continue;
+        if (!isUtility && armyIsEmpty(regiment)) continue;
+        const list = map.get(regiment.cell) ?? [];
+        list.push({ stateId: this.factionOwnerId(faction.i), isUtility, key });
         map.set(regiment.cell, list);
       }
     }
@@ -4614,6 +4667,32 @@ class LivingModel {
     if (living.armies) delete living.armies[key];
   }
 
+  /** Faction owner id for occupancy / borders: negated so it never collides with a State id. */
+  private factionOwnerId(factionId: number): number {
+    return -factionId;
+  }
+
+  private removeFactionRegiment(faction: Faction, regiment: Regiment, living: LivingWorldState): void {
+    faction.military = (faction.military ?? []).filter(entry => entry !== regiment);
+    const key = this.factionUnitKey(faction.i, regiment.i);
+    if (living.units) delete living.units[key];
+    if (living.armies) delete living.armies[key];
+  }
+
+  /** Is this faction at war with this state (Enemy relation or hostile allegiance)? */
+  private isFactionEnemyOfState(faction: Faction, stateId: number): boolean {
+    if (!stateId) return false;
+    if (faction.stateRelations?.[stateId] === "Enemy") return true;
+    if (faction.allegiance === "hostile") return true;
+    return false;
+  }
+
+  /** Is this faction at war with that faction (explicit Enemy relation)? */
+  private isFactionEnemyOfFaction(faction: Faction, other: Faction): boolean {
+    if (faction.i === other.i) return false;
+    return faction.factionRelations?.[other.i] === "Enemy" || other.factionRelations?.[faction.i] === "Enemy";
+  }
+
   /** One tactical tick: utility work, army orders, battles and city strikes. */
   private stepTactical(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
@@ -4629,6 +4708,13 @@ class LivingModel {
       this.ensureCityHp(bSim);
       bSim.hp = Math.min(bSim.maxHp ?? CITY_BASE_HP, (bSim.hp ?? 0) + 20);
       bSim.hasStruckThisTurn = false;
+    }
+
+    // Faction HQ/outpost nodes regenerate similarly.
+    for (const entry of this.collectFactionNodes()) {
+      this.ensureCityHp(entry.sim);
+      entry.sim.hp = Math.min(entry.sim.maxHp ?? CITY_BASE_HP, (entry.sim.hp ?? 0) + 20);
+      entry.sim.hasStruckThisTurn = false;
     }
 
     for (const state of pack.states) {
@@ -4679,6 +4765,46 @@ class LivingModel {
       this.autoUpgrade(state, living);
     }
 
+    for (const faction of Factions.active()) {
+      syncFactionState(faction);
+      for (const regiment of [...(faction.military ?? [])]) {
+        const key = this.factionUnitKey(faction.i, regiment.i);
+        const unit = living.units?.[key];
+
+        if (unit?.isUtility) {
+          if (unit.hp <= 0) {
+            this.removeFactionRegiment(faction, regiment, living);
+            continue;
+          }
+          this.tickFactionUnitHealing(unit, regiment, faction);
+          unit.movement = unit.maxMovement;
+          unit.hasAttacked = false;
+          let acted = false;
+          if (unit.unitTypeId === "settler") {
+            acted = this.stepFactionSettler(faction, regiment, unit, living, occupancy);
+          } else {
+            acted = this.stepFactionBuilder(faction, regiment, unit, living, occupancy);
+          }
+          unit.fortified = !acted;
+          continue;
+        }
+
+        const army = living.armies?.[key];
+        if (!army) continue;
+        if (armyIsEmpty(regiment)) {
+          this.removeFactionRegiment(faction, regiment, living);
+          continue;
+        }
+        army.movement = army.maxMovement;
+        army.hasFought = false;
+        const acted = this.stepFactionArmyOrders(faction, regiment, army, living, occupancy);
+        army.stance = acted
+          ? "march"
+          : this.factionRestStance(faction, regiment, army);
+        syncRegimentTotals(regiment, Military.getUnitTypes());
+      }
+    }
+
     this.replenishArmies(living);
     this.stepCityStrikes(living);
   }
@@ -4692,6 +4818,20 @@ class LivingModel {
     return army.stance === "encamp" && inCity ? "encamp" : "fortify";
   }
 
+  private factionRestStance(faction: Faction, regiment: Regiment, army: ArmySimState): ArmyStance {
+    const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
+    const inCity = burgId > 0 && this.factionNodesAtBurg(faction.i, burgId);
+    if (inCity && armyHp(regiment) < 0.6) return "encamp";
+    return army.stance === "encamp" && inCity ? "encamp" : "fortify";
+  }
+
+  private factionNodesAtBurg(factionId: number, burgId: number): boolean {
+    const faction = pack.factions?.[factionId];
+    if (!faction?.i || faction.removed) return false;
+    if (faction.hq?.burgId === burgId) return true;
+    return (faction.outposts ?? []).some(outpost => outpost.burgId === burgId && !outpost.pillaged);
+  }
+
   /** Fortification-only healing: +25 in a friendly city, +20 in friendly lands, +10 elsewhere. */
   private tickUnitHealing(unit: UnitSimState, regiment: Regiment, state: State): void {
     if (!unit.fortified || unit.hp <= 0 || unit.hp >= UNIT_MAX_HP) return;
@@ -4699,6 +4839,18 @@ class LivingModel {
     const inFriendlyCity = burgId > 0 && pack.burgs[burgId]?.state === state.i;
     const inFriendlyLands = pack.cells.state?.[regiment.cell] === state.i;
     const heal = inFriendlyCity ? 25 : inFriendlyLands ? 20 : 10;
+    unit.hp = Math.min(UNIT_MAX_HP, unit.hp + heal);
+  }
+
+  private tickFactionUnitHealing(unit: UnitSimState, regiment: Regiment, faction: Faction): void {
+    if (!unit.fortified || unit.hp <= 0 || unit.hp >= UNIT_MAX_HP) return;
+    const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
+    const inFriendlyCity = burgId > 0 && this.factionNodesAtBurg(faction.i, burgId);
+    const nearNode =
+      inFriendlyCity ||
+      Boolean(faction.hq && this.cellHopDistances(faction.hq.cell, MAX_WORK_DISTANCE).has(regiment.cell)) ||
+      (faction.outposts ?? []).some(outpost => this.cellHopDistances(outpost.cell, MAX_WORK_DISTANCE).has(regiment.cell));
+    const heal = inFriendlyCity ? 25 : nearNode ? 20 : 10;
     unit.hp = Math.min(UNIT_MAX_HP, unit.hp + heal);
   }
 
@@ -4766,6 +4918,173 @@ class LivingModel {
     return this.moveArmyToward(regiment, army, target, state.i, this.unitKey(state.i, regiment.i), occupancy);
   }
 
+  /** Faction army orders: engage enemies, siege adjacent burgs, or march toward a target. */
+  private stepFactionArmyOrders(
+    faction: Faction,
+    regiment: Regiment,
+    army: ArmySimState,
+    living: LivingWorldState,
+    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
+  ): boolean {
+    const enemy = this.findFactionEnemyInRange(faction, regiment.cell, regiment, living);
+    if (enemy) {
+      this.resolveFactionBattle(
+        faction,
+        regiment,
+        enemy.kind,
+        enemy.id,
+        enemy.regiment,
+        living,
+        occupancy
+      );
+      return true;
+    }
+
+    const adjacentBurg = this.factionSiegeTarget(faction, regiment.cell);
+    if (adjacentBurg) {
+      return this.openFactionAssault(faction, regiment, adjacentBurg, living, occupancy);
+    }
+
+    const target = this.factionTacticalTarget(faction, regiment.cell, living);
+    if (target === null) return false;
+    return this.moveArmyToward(
+      regiment,
+      army,
+      target,
+      this.factionOwnerId(faction.i),
+      this.factionUnitKey(faction.i, regiment.i),
+      occupancy
+    );
+  }
+
+  private factionSiegeTarget(faction: Faction, fromCell: number): Burg | null {
+    if (faction.allegiance !== "hostile" && faction.allegiance !== "clandestine" && faction.allegiance !== "autonomous") {
+      // only offensive allegiances wage sieges
+      if (!faction.sovereignAmbition) return null;
+    }
+    const neighbors = pack.cells.c?.[fromCell] ?? [];
+    let best: Burg | null = null;
+    for (const cell of [...neighbors, fromCell]) {
+      const burgId = Number(pack.cells.burg?.[cell] ?? 0);
+      const burg = burgId ? pack.burgs?.[burgId] : undefined;
+      if (!burg?.i || burg.removed) continue;
+      if (this.factionNodesAtBurg(faction.i, burg.i)) continue;
+      const owner = burg.state ?? 0;
+      if (!owner) continue;
+      if (!this.isFactionEnemyOfState(faction, owner)) continue;
+      if (burg.capital && !faction.sovereignAmbition) continue;
+      if (!best || burg.cell < best.cell) best = burg;
+    }
+    return best;
+  }
+
+  private findFactionEnemyInRange(
+    faction: Faction,
+    cell: number,
+    regiment: Regiment,
+    living: LivingWorldState
+  ): { kind: "state" | "faction"; id: number; regiment: Regiment } | null {
+    const ranged = armyIsRangedBlocks(regiment, Military.getUnitTypes());
+    const distances = this.cellHopDistances(cell, ranged ? 2 : 1);
+    const ordered = [...distances.entries()].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    for (const [candidate, hops] of ordered) {
+      if (hops === 0) continue;
+      for (const other of pack.states) {
+        if (!other?.i || other.removed) continue;
+        if (!this.isFactionEnemyOfState(faction, other.i)) continue;
+        for (const enemy of other.military ?? []) {
+          if (enemy.cell !== candidate) continue;
+          if (!living.armies?.[this.unitKey(other.i, enemy.i)]) continue;
+          if (armyIsEmpty(enemy)) continue;
+          if (ranged && terrainDefenseMultiplier(candidate) > 1) continue;
+          return { kind: "state", id: other.i, regiment: enemy };
+        }
+      }
+      for (const other of Factions.active()) {
+        if (other.i === faction.i) continue;
+        if (!this.isFactionEnemyOfFaction(faction, other)) continue;
+        for (const enemy of other.military ?? []) {
+          if (enemy.cell !== candidate) continue;
+          if (!living.armies?.[this.factionUnitKey(other.i, enemy.i)]) continue;
+          if (armyIsEmpty(enemy)) continue;
+          if (ranged && terrainDefenseMultiplier(candidate) > 1) continue;
+          return { kind: "faction", id: other.i, regiment: enemy };
+        }
+      }
+    }
+    return null;
+  }
+
+  private factionTacticalTarget(faction: Faction, fromCell: number, living: LivingWorldState): number | null {
+    // Cheap: nearest enemy burg or nearest enemy army.
+    let best: { cell: number; distance: number } | null = null;
+    const enemyRegReach = this.cellHopDistances(fromCell, UNIT_AGGRO_RANGE);
+    for (const other of pack.states) {
+      if (!other?.i || other.removed) continue;
+      if (!this.isFactionEnemyOfState(faction, other.i)) continue;
+      for (const regiment of other.military ?? []) {
+        const distance = enemyRegReach.get(regiment.cell);
+        if (distance === undefined) continue;
+        if (!living.armies?.[this.unitKey(other.i, regiment.i)] || armyIsEmpty(regiment)) continue;
+        if (!best || distance < best.distance || (distance === best.distance && regiment.cell < best.cell)) {
+          best = { cell: regiment.cell, distance };
+        }
+      }
+    }
+    for (const other of Factions.active()) {
+      if (!this.isFactionEnemyOfFaction(faction, other)) continue;
+      for (const regiment of other.military ?? []) {
+        const distance = enemyRegReach.get(regiment.cell);
+        if (distance === undefined) continue;
+        if (!living.armies?.[this.factionUnitKey(other.i, regiment.i)] || armyIsEmpty(regiment)) continue;
+        if (!best || distance < best.distance || (distance === best.distance && regiment.cell < best.cell)) {
+          best = { cell: regiment.cell, distance };
+        }
+      }
+    }
+    if (best) return best.cell;
+
+    const isOffensive =
+      faction.allegiance === "hostile" ||
+      faction.allegiance === "clandestine" ||
+      faction.sovereignAmbition ||
+      (faction.outposts ?? []).some(outpost => {
+        if (outpost.pillaged) return false;
+        const burg = pack.burgs?.[outpost.burgId];
+        return Boolean(burg?.state && this.isFactionEnemyOfState(faction, burg.state));
+      }) ||
+      Object.values(faction.stateRelations ?? {}).includes("Enemy");
+    if (!isOffensive) return null;
+
+    const distances = this.cellHopDistances(fromCell, 40);
+    for (const burg of pack.burgs ?? []) {
+      if (!burg?.i || burg.removed || !burg.state) continue;
+      if (this.factionNodesAtBurg(faction.i, burg.i)) continue;
+      if (!this.isFactionEnemyOfState(faction, burg.state)) continue;
+      if (burg.capital && !faction.sovereignAmbition) continue;
+      const distance = distances.get(burg.cell);
+      if (distance === undefined) continue;
+      if (!best || distance < best.distance || (distance === best.distance && burg.cell < best.cell)) {
+        best = { cell: burg.cell, distance };
+      }
+    }
+    for (const other of Factions.active()) {
+      if (!this.isFactionEnemyOfFaction(faction, other)) continue;
+      const cells = [
+        other.hq?.cell,
+        ...(other.outposts ?? []).map(outpost => outpost.cell)
+      ].filter((cell): cell is number => typeof cell === "number");
+      for (const cell of cells) {
+        const distance = distances.get(cell);
+        if (distance === undefined) continue;
+        if (!best || distance < best.distance || (distance === best.distance && cell < best.cell)) {
+          best = { cell, distance };
+        }
+      }
+    }
+    return best?.cell ?? null;
+  }
+
   /** Movement cost for an army: the slowest block decides the terrain, not the lead. */
   private armyMovementCost(from: number, to: number, regiment: Regiment, movement: number): number {
     const target = getCellTerrainInfo(to);
@@ -4785,8 +5104,9 @@ class LivingModel {
     return target.movementCost;
   }
 
-  /** Closed borders: an army may only enter foreign land when at war. */
+  /** Closed borders: an army may only enter foreign land when at war. Factions ignore borders. */
   private canEnterForeignCellFor(stateId: number, cell: number): boolean {
+    if (stateId < 0) return true;
     const owner = pack.cells.state?.[cell] ?? 0;
     if (!owner || owner === stateId) return true;
     return this.isAtWar(stateId, owner);
@@ -5001,6 +5321,321 @@ class LivingModel {
     this.addBattleMarker(defenderRegiment.cell, `${attackerState.name} vs ${defenderState.name}`);
   }
 
+  private resolveFactionBattle(
+    attackerFaction: Faction,
+    attackerRegiment: Regiment,
+    defenderKind: "state" | "faction",
+    defenderId: number,
+    defenderRegiment: Regiment,
+    living: LivingWorldState,
+    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
+  ): void {
+    const { config } = currentContent();
+    const types = Military.getUnitTypes();
+    const maxSlots = config.military.maxUnitsPerArmy;
+    const attackerKey = this.factionUnitKey(attackerFaction.i, attackerRegiment.i);
+    const defenderKey =
+      defenderKind === "state" ? this.unitKey(defenderId, defenderRegiment.i) : this.factionUnitKey(defenderId, defenderRegiment.i);
+    const attackerArmy = living.armies?.[attackerKey];
+    const defenderArmy = living.armies?.[defenderKey];
+
+    const attackerUnits = toBattleUnits(attackerRegiment.units ?? []);
+    const defenderUnits = toBattleUnits(defenderRegiment.units ?? []);
+    if (attackerUnits.length === 0 || defenderUnits.length === 0) return;
+
+    const defenderName =
+      defenderKind === "state" ? (pack.states[defenderId]?.name ?? `State ${defenderId}`) : (pack.factions?.[defenderId]?.name ?? `Faction ${defenderId}`);
+    const defenderHappiness =
+      defenderKind === "state" ? (living.states[defenderId]?.happiness ?? 0) : (pack.factions?.[defenderId]?.happiness ?? 0);
+    const before = {
+      attackerHp: armyStrength(attackerRegiment),
+      defenderHp: armyStrength(defenderRegiment),
+      attackerBlocks: attackerRegiment.units?.length ?? 0,
+      defenderBlocks: defenderRegiment.units?.length ?? 0
+    };
+
+    const session = initBattleSession({
+      config,
+      unitTypes: toBattleTypes(types),
+      attacker: {
+        factionId: this.factionOwnerId(attackerFaction.i),
+        armyId: `fm-f${attackerFaction.i}-${attackerRegiment.i}`,
+        units: attackerUnits
+      },
+      defender: {
+        factionId: defenderKind === "state" ? defenderId : this.factionOwnerId(defenderId),
+        armyId: defenderKind === "state" ? `fm-${defenderId}-${defenderRegiment.i}` : `fm-f${defenderId}-${defenderRegiment.i}`,
+        units: defenderUnits
+      },
+      cell: defenderRegiment.cell,
+      regionId: pack.cells.province?.[defenderRegiment.cell] ?? 0,
+      assault: false,
+      modifiers: this.factionBattleModifiers(attackerFaction, attackerRegiment, defenderRegiment, defenderKind, defenderId, defenderHappiness)
+    });
+
+    const rng = this.rng("faction:army:battle", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
+    while (session.status === "active" && session.round < config.battle.maxRounds) {
+      stepBattleRound(session, rng.next, {
+        attacker: this.battleOrder(session, "attacker", attackerArmy?.stance ?? "march"),
+        defender: this.battleOrder(session, "defender", defenderArmy?.stance ?? "fortify")
+      });
+    }
+    const outcome = finalizeBattle(session, rng.next);
+
+    attackerRegiment.units = fromBattleUnits(outcome.attacker.units);
+    defenderRegiment.units = fromBattleUnits(outcome.defender.units);
+    normalizeArmy(attackerRegiment, maxSlots, types);
+    normalizeArmy(defenderRegiment, maxSlots, types);
+
+    if (attackerArmy) attackerArmy.hasFought = true;
+    if (defenderArmy) defenderArmy.hasFought = true;
+
+    const winnerRegiment = outcome.winner === "attacker" ? attackerRegiment : defenderRegiment;
+    for (const block of winnerRegiment.units ?? []) this.awardBlockExp(block, 5);
+
+    syncRegimentTotals(attackerRegiment, types);
+    syncRegimentTotals(defenderRegiment, types);
+
+    const after = {
+      attackerHp: armyStrength(attackerRegiment),
+      defenderHp: armyStrength(defenderRegiment),
+      attackerBlocks: attackerRegiment.units?.length ?? 0,
+      defenderBlocks: defenderRegiment.units?.length ?? 0
+    };
+    if (attackerArmy) {
+      attackerArmy.lastBattle = this.battleRecord(
+        attackerRegiment,
+        "attacker",
+        outcome.winner,
+        session.round,
+        living.tick,
+        { before: before.attackerHp, after: after.attackerHp, beforeBlocks: before.attackerBlocks, afterBlocks: after.attackerBlocks }
+      );
+    }
+    if (defenderArmy) {
+      defenderArmy.lastBattle = this.battleRecord(
+        defenderRegiment,
+        "defender",
+        outcome.winner,
+        session.round,
+        living.tick,
+        { before: before.defenderHp, after: after.defenderHp, beforeBlocks: before.defenderBlocks, afterBlocks: after.defenderBlocks }
+      );
+    }
+
+    const attackerWiped = armyIsEmpty(attackerRegiment);
+    const defenderWiped = armyIsEmpty(defenderRegiment);
+    if (defenderWiped) {
+      if (attackerWiped && attackerRegiment.units?.[0]) attackerRegiment.units[0].hp = 0.01;
+      if (defenderKind === "state") {
+        const defenderState = pack.states[defenderId];
+        if (defenderState) this.removeRegiment(defenderState, defenderRegiment, living);
+      } else {
+        const defenderFaction = pack.factions?.[defenderId];
+        if (defenderFaction) this.removeFactionRegiment(defenderFaction, defenderRegiment, living);
+      }
+      if (this.armyHasMelee(attackerRegiment, types)) {
+        this.moveRegimentTo(attackerRegiment, defenderRegiment.cell, this.factionOwnerId(attackerFaction.i), attackerKey, occupancy);
+      }
+      if (defenderKind === "state") {
+        const provId = pack.cells?.province?.[defenderRegiment.cell] ?? 0;
+        const pSim = provId ? living.provinces?.[provId] : undefined;
+        if (pSim) pSim.order = Math.max(0, pSim.order - 2);
+      }
+    }
+    if (attackerWiped && !defenderWiped) this.removeFactionRegiment(attackerFaction, attackerRegiment, living);
+
+    const winnerName = outcome.winner === "attacker" ? attackerFaction.name : defenderName;
+    this.pushNews(living, {
+      kind: "battle",
+      text:
+        `${attackerFaction.name} and ${defenderName} fought` +
+        (session.labels.length ? ` (${session.labels.slice(0, 2).join(", ")})` : "") +
+        `; ${winnerName} held the field after ${session.round} rounds.`,
+      cell: defenderRegiment.cell
+    });
+    this.addBattleMarker(defenderRegiment.cell, `${attackerFaction.name} vs ${defenderName}`);
+  }
+
+  private factionBattleModifiers(
+    attackerFaction: Faction,
+    attackerRegiment: Regiment,
+    defenderRegiment: Regiment,
+    defenderKind: "state" | "faction",
+    defenderId: number,
+    defenderHappiness: number
+  ): BattleModifiers {
+    const living = this.getState();
+    const defenderKey =
+      defenderKind === "state" ? this.unitKey(defenderId, defenderRegiment.i) : this.factionUnitKey(defenderId, defenderRegiment.i);
+    const defenderArmy = living.armies?.[defenderKey];
+
+    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
+    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const walls =
+      burg?.i && !burg.removed && defenderKind === "state" && burg.state === defenderId ? Number(burg.walls ?? 0) : 0;
+    const attackerCrossedRiver =
+      Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
+      Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
+    const attackerLordMult = happinessCombatMultiplier(attackerFaction.happiness ?? 0);
+    const defenderLordMult = happinessCombatMultiplier(defenderHappiness);
+    return {
+      walls,
+      defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
+      defenderAmbushed: defenderArmy?.stance === "ambush",
+      attackerCrossedRiver,
+      defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
+      labels: [],
+      ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
+      ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
+    };
+  }
+
+  private openFactionAssault(
+    faction: Faction,
+    army: Regiment,
+    burg: Burg,
+    living: LivingWorldState,
+    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
+  ): boolean {
+    const bSim = living.burgs[burg.i];
+    if (!army || !bSim) return false;
+    this.ensureCityHp(bSim);
+    const key = this.factionUnitKey(faction.i, army.i);
+    const armyState = living.armies?.[key];
+    if (!armyState) return false;
+
+    const adjacent = (pack.cells.c?.[burg.cell] ?? []).includes(army.cell) || army.cell === burg.cell;
+    if (!adjacent) {
+      this.moveArmyToward(army, armyState, burg.cell, this.factionOwnerId(faction.i), key, occupancy);
+      if (!((pack.cells.c?.[burg.cell] ?? []).includes(army.cell) || army.cell === burg.cell)) return false;
+    }
+
+    const { config } = currentContent();
+    const types = Military.getUnitTypes();
+    const maxSlots = config.military.maxUnitsPerArmy;
+    const attackerBlocks = (army.units ?? []).filter(block => block.hp > 0);
+    if (attackerBlocks.length === 0) return false;
+
+    const garrison = this.cityGarrisonBlocks(burg);
+    if (garrison.length === 0) {
+      this.captureFactionBurg(faction, burg, living);
+      if (army.cell !== burg.cell) {
+        this.moveRegimentTo(army, burg.cell, this.factionOwnerId(faction.i), key, this.armyOccupancy(living));
+      }
+      return true;
+    }
+
+    const before = armyStrength(army);
+    const session = initBattleSession({
+      config,
+      unitTypes: toBattleTypes(types),
+      attacker: { factionId: this.factionOwnerId(faction.i), armyId: `fm-f${faction.i}-${army.i}`, units: toBattleUnits(attackerBlocks) },
+      defender: { factionId: burg.state ?? 0, armyId: null, units: toBattleUnits(garrison) },
+      cell: burg.cell,
+      regionId: pack.cells.province?.[burg.cell] ?? 0,
+      assault: true,
+      modifiers: this.factionSiegeModifiers(faction, burg)
+    });
+
+    const rng = this.rng("faction:city:siege", faction.i * 1000 + burg.i, living.tick);
+    while (session.status === "active" && session.round < config.battle.maxRounds) {
+      stepBattleRound(session, rng.next, {
+        attacker: this.battleOrder(session, "attacker", "march"),
+        defender: this.battleOrder(session, "defender", "fortify")
+      });
+    }
+    const outcome = finalizeBattle(session, rng.next);
+
+    army.units = fromBattleUnits(outcome.attacker.units);
+    normalizeArmy(army, maxSlots, types);
+    syncRegimentTotals(army, types);
+    armyState.hasFought = true;
+    const after = armyStrength(army);
+    armyState.lastBattle = {
+      tick: living.tick,
+      cell: burg.cell,
+      role: "attacker",
+      winner: outcome.winner,
+      rounds: session.round,
+      lossesHp: Math.max(0, before - after),
+      blocksLost: Math.max(0, attackerBlocks.length - (army.units?.length ?? 0)),
+      survivorsHp: before > 0 ? after / before : 0
+    };
+
+    if (outcome.winner === "attacker") {
+      bSim.hp = 0;
+      this.captureFactionBurg(faction, burg, living);
+      if (armyIsEmpty(army)) {
+        this.removeFactionRegiment(faction, army, living);
+        return true;
+      }
+      for (const block of army.units ?? []) this.awardBlockExp(block, 5);
+      if (army.cell !== burg.cell) {
+        this.moveRegimentTo(army, burg.cell, this.factionOwnerId(faction.i), key, this.armyOccupancy(living));
+      }
+      return true;
+    }
+
+    if (armyIsEmpty(army)) this.removeFactionRegiment(faction, army, living);
+    else this.retreatFactionArmy(faction, army, burg.cell, living);
+    bSim.hp = Math.max(1, bSim.hp ?? 1);
+    return false;
+  }
+
+  private factionSiegeModifiers(faction: Faction, burg: Burg): BattleModifiers {
+    const living = this.getState();
+    const defenderId = burg.state ?? 0;
+    const attackerLordMult = happinessCombatMultiplier(faction.happiness ?? 0);
+    const defenderLordMult = happinessCombatMultiplier(living.states[defenderId]?.happiness);
+    return {
+      walls: Number(burg.walls ?? 0),
+      defenderEncamped: true,
+      defenderAmbushed: false,
+      attackerCrossedRiver: false,
+      defenderTerrain: terrainDefenseMultiplier(burg.cell) > 1,
+      labels: [],
+      ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
+      ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
+    };
+  }
+
+  private captureFactionBurg(faction: Faction, burg: Burg, living: LivingWorldState): void {
+    if (faction.sovereignAmbition && !burg.capital && (faction.seasonsActive >= 4 || faction.tier >= 2)) {
+      const ascStateId = this.ascendFactionToState(faction.i, burg.i);
+      if (ascStateId !== null) return;
+    }
+    const rng = this.rng("faction:pillage", faction.i * 1000 + burg.i, living.tick);
+    const loot = 50 + rng.d(50);
+    faction.treasury = Math.round((Number(faction.treasury ?? 0) + loot) * 100) / 100;
+    const bSim = living.burgs[burg.i];
+    const provId = pack.cells?.province?.[burg.cell] ?? 0;
+    const pSim = provId ? living.provinces?.[provId] : undefined;
+    if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 8);
+    if (pSim) pSim.order = Math.max(0, pSim.order - 5);
+    bSim && (bSim.hp = 1);
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${faction.name} pillaged ${burg.name ?? "a settlement"} and seized ${loot} gold!`,
+      cell: burg.cell,
+      burgId: burg.i
+    });
+  }
+
+  private retreatFactionArmy(faction: Faction, regiment: Regiment, fromCell: number, living: LivingWorldState): void {
+    const key = this.factionUnitKey(faction.i, regiment.i);
+    const occupancy = this.armyOccupancy(living);
+    const candidates = (pack.cells.c?.[fromCell] ?? [])
+      .filter(cell => {
+        const info = getCellTerrainInfo(cell);
+        if (regiment.n === 1 ? !info.isWater : info.isWater || info.isMountain) return false;
+        return !hasStackingConflict(occupancy.get(cell) ?? [], this.factionOwnerId(faction.i), false, key);
+      })
+      .sort((a, b) => a - b);
+    const target = candidates[0];
+    if (target !== undefined) this.moveRegimentTo(regiment, target, this.factionOwnerId(faction.i), key, occupancy);
+  }
+
   /** Battle modifiers from stance, terrain, river, walls and the lord multipliers. */
   private armyBattleModifiers(
     attackerState: State,
@@ -5108,9 +5743,12 @@ class LivingModel {
       const state = pack.states[burg.state];
       if (!state?.i || state.removed || !this.stateAtWar(state)) continue;
 
-      let target: { state: State; regiment: Regiment } | null = null;
-      let targetHp = 2;
       const distances = this.cellHopDistances(burg.cell, 2);
+      const types = Military.getUnitTypes();
+      let targetState: { state: State; regiment: Regiment } | null = null;
+      let targetFaction: { faction: Faction; regiment: Regiment } | null = null;
+      let targetHp = 2;
+
       for (const [candidate, hops] of distances) {
         if (hops === 0) continue;
         for (const other of pack.states) {
@@ -5121,15 +5759,30 @@ class LivingModel {
             if (!living.armies?.[this.unitKey(other.i, regiment.i)]) continue;
             const hp = armyHp(regiment);
             if (hp > 0 && hp < targetHp) {
-              target = { state: other, regiment };
+              targetState = { state: other, regiment };
+              targetFaction = null;
+              targetHp = hp;
+            }
+          }
+        }
+        for (const faction of Factions.active()) {
+          if (!this.isFactionEnemyOfState(faction, state.i)) continue;
+          for (const regiment of faction.military ?? []) {
+            if (regiment.cell !== candidate) continue;
+            if (!living.armies?.[this.factionUnitKey(faction.i, regiment.i)]) continue;
+            const hp = armyHp(regiment);
+            if (hp > 0 && hp < targetHp) {
+              targetFaction = { faction, regiment };
+              targetState = null;
               targetHp = hp;
             }
           }
         }
       }
+
+      const target = targetFaction ? { faction: targetFaction.faction, regiment: targetFaction.regiment, isFaction: true as const } : targetState ? { state: targetState.state, regiment: targetState.regiment, isFaction: false as const } : null;
       if (!target) continue;
 
-      const types = Military.getUnitTypes();
       let block: ArmyBlock | undefined;
       for (const candidate of target.regiment.units ?? []) {
         if (candidate.hp <= 0) continue;
@@ -5143,7 +5796,68 @@ class LivingModel {
 
       target.regiment.units = (target.regiment.units ?? []).filter(entry => entry.hp > 0);
       syncRegimentTotals(target.regiment, types);
-      if (armyIsEmpty(target.regiment)) this.removeRegiment(target.state, target.regiment, living);
+      if (armyIsEmpty(target.regiment)) {
+        if (target.isFaction) this.removeFactionRegiment(target.faction, target.regiment, living);
+        else this.removeRegiment(target.state, target.regiment, living);
+      }
+    }
+
+    for (const entry of this.collectFactionNodes()) {
+      if (entry.sim.hasStruckThisTurn || (entry.sim.hp ?? 0) <= 0) continue;
+      const distances = this.cellHopDistances(entry.node.cell, 2);
+      const types = Military.getUnitTypes();
+      let targetState: { state: State; regiment: Regiment } | null = null;
+      let targetFaction: { faction: Faction; regiment: Regiment } | null = null;
+      let targetHp = 2;
+      for (const [candidate, hops] of distances) {
+        if (hops === 0) continue;
+        for (const other of pack.states) {
+          if (!other?.i || other.removed) continue;
+          if (!this.isFactionEnemyOfState(entry.faction, other.i)) continue;
+          for (const regiment of other.military ?? []) {
+            if (regiment.cell !== candidate) continue;
+            if (!living.armies?.[this.unitKey(other.i, regiment.i)]) continue;
+            const hp = armyHp(regiment);
+            if (hp > 0 && hp < targetHp) {
+              targetState = { state: other, regiment };
+              targetFaction = null;
+              targetHp = hp;
+            }
+          }
+        }
+        for (const other of Factions.active()) {
+          if (other.i === entry.faction.i) continue;
+          if (!this.isFactionEnemyOfFaction(entry.faction, other)) continue;
+          for (const regiment of other.military ?? []) {
+            if (regiment.cell !== candidate) continue;
+            if (!living.armies?.[this.factionUnitKey(other.i, regiment.i)]) continue;
+            const hp = armyHp(regiment);
+            if (hp > 0 && hp < targetHp) {
+              targetFaction = { faction: other, regiment };
+              targetState = null;
+              targetHp = hp;
+            }
+          }
+        }
+      }
+      const target = targetFaction ? { faction: targetFaction.faction, regiment: targetFaction.regiment, isFaction: true as const } : targetState ? { state: targetState.state, regiment: targetState.regiment, isFaction: false as const } : null;
+      if (!target) continue;
+      let block: ArmyBlock | undefined;
+      for (const candidate of target.regiment.units ?? []) {
+        if (candidate.hp <= 0) continue;
+        if (!block || candidate.hp > block.hp || (candidate.hp === block.hp && candidate.type < block.type)) {
+          block = candidate;
+        }
+      }
+      if (!block) continue;
+      block.hp = Math.max(0, block.hp - CITY_STRIKE_HP);
+      entry.sim.hasStruckThisTurn = true;
+      target.regiment.units = (target.regiment.units ?? []).filter(e => e.hp > 0);
+      syncRegimentTotals(target.regiment, types);
+      if (armyIsEmpty(target.regiment)) {
+        if (target.isFaction) this.removeFactionRegiment(target.faction, target.regiment, living);
+        else this.removeRegiment(target.state, target.regiment, living);
+      }
     }
   }
 
@@ -5315,6 +6029,187 @@ class LivingModel {
     const target = this.pickSettlerTarget(state, regiment.cell, living);
     if (target === null) return false;
     return this.moveUnitToward(regiment, unit, target, state.i, this.unitKey(state.i, regiment.i), occupancy);
+  }
+
+  /** Faction Builder: improve a cell worked by this faction's HQ/outposts. */
+  private stepFactionBuilder(
+    faction: Faction,
+    regiment: Regiment,
+    unit: UnitSimState,
+    living: LivingWorldState,
+    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
+  ): boolean {
+    const key = this.factionUnitKey(faction.i, regiment.i);
+    if (unit.workOrder) {
+      unit.workOrder.turnsLeft -= 1;
+      if (unit.workOrder.turnsLeft <= 0) {
+        this.completeFactionImprovement(regiment.cell, unit.workOrder.improvementId, faction, living);
+        unit.workOrder = null;
+      }
+      return true;
+    }
+
+    const target = this.pickFactionBuilderTarget(faction, regiment.cell, living);
+    if (!target) {
+      if (!Routes.isConnected(regiment.cell)) {
+        try {
+          Routes.connect(regiment.cell);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
+
+    if (regiment.cell !== target.cell) {
+      return this.moveUnitToward(regiment, unit, target.cell, this.factionOwnerId(faction.i), key, occupancy);
+    }
+
+    unit.workOrder = {
+      improvementId: target.improvementId,
+      turnsLeft: Math.max(1, CIV_IMPROVEMENT_BY_ID[target.improvementId]?.buildTurns ?? 5)
+    };
+    return true;
+  }
+
+  private pickFactionBuilderTarget(
+    faction: Faction,
+    fromCell: number,
+    living: LivingWorldState
+  ): { cell: number; improvementId: string } | null {
+    const techs = new Set(faction.researchedTechs ?? []);
+    const distances = this.cellHopDistances(fromCell, BUILDER_RANGE);
+    const worked = new Set<number>();
+    for (const node of [faction.hq, ...(faction.outposts ?? [])]) {
+      for (const cell of node?.sim?.workedCells ?? []) worked.add(cell);
+    }
+    let best: { cell: number; improvementId: string; score: number } | null = null;
+
+    for (const [cell, hops] of distances) {
+      if (living.cells?.[cell]?.improvement) continue;
+      if (worked.size > 0 && !worked.has(cell)) continue;
+      const improvementId = this.desiredImprovement(cell);
+      if (!improvementId) continue;
+      const def = CIV_IMPROVEMENT_BY_ID[improvementId];
+      if (def?.requiredTech && !techs.has(def.requiredTech)) continue;
+
+      const hostStateId = pack.cells.state?.[cell] ?? 0;
+      const resource = getCellResource(cell, hostStateId, living);
+      const score =
+        (resource?.revealed ? 3 : resource ? 2 : 0) +
+        (getCellYields(cell, hostStateId, living).food + getCellYields(cell, hostStateId, living).production) / 10 -
+        hops / 10;
+      if (!best || score > best.score || (score === best.score && cell < best.cell)) {
+        best = { cell, improvementId, score };
+      }
+    }
+
+    return best ? { cell: best.cell, improvementId: best.improvementId } : null;
+  }
+
+  private completeFactionImprovement(
+    cell: number,
+    improvementId: string,
+    faction: Faction,
+    living: LivingWorldState
+  ): void {
+    living.cells ??= {};
+    living.cells[cell] = { ...(living.cells[cell] ?? {}), improvement: improvementId, pillaged: false, progress: {} };
+
+    if (CIV_IMPROVEMENT_BY_ID[improvementId]?.route && pack.cells.routes) {
+      try {
+        Routes.connect(cell);
+      } catch {
+        // stripped packs have no route grid
+      }
+    }
+
+    this.pushNews(living, {
+      kind: "develop",
+      text: `${faction.name} built a ${CIV_IMPROVEMENT_BY_ID[improvementId]?.name ?? improvementId}.`,
+      cell,
+      ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
+    });
+  }
+
+  /** Faction Settler/Envoy: march to a target burg and establish an outpost on arrival. */
+  private stepFactionSettler(
+    faction: Faction,
+    regiment: Regiment,
+    unit: UnitSimState,
+    living: LivingWorldState,
+    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
+  ): boolean {
+    const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
+    const burg = burgId ? pack.burgs?.[burgId] : undefined;
+    if (burg?.i && !burg.removed && burg.cell === regiment.cell && !this.factionNodesAtBurg(faction.i, burg.i)) {
+      if (!this.foundFactionOutpost(faction, burg, living)) return false;
+      this.removeFactionRegiment(faction, regiment, living);
+      return true;
+    }
+
+    const target = this.pickFactionSettlerTarget(faction, regiment.cell, living);
+    if (target === null) return false;
+    return this.moveUnitToward(
+      regiment,
+      unit,
+      target,
+      this.factionOwnerId(faction.i),
+      this.factionUnitKey(faction.i, regiment.i),
+      occupancy
+    );
+  }
+
+  private pickFactionSettlerTarget(faction: Faction, fromCell: number, living: LivingWorldState): number | null {
+    const distances = this.cellHopDistances(fromCell, 40);
+    const candidates: { cell: number; score: number; distance: number }[] = [];
+    for (const burg of pack.burgs ?? []) {
+      if (!burg?.i || burg.removed) continue;
+      if (this.factionNodesAtBurg(faction.i, burg.i)) continue;
+      const distance = distances.get(burg.cell);
+      if (distance === undefined) continue;
+      let score = (burg.population ?? 0) - distance * 2;
+      if (faction.category === "commercial" && burg.port) score += 20;
+      if (faction.category === "underworld") score += (burg.population ?? 0) * 0.5;
+      candidates.push({ cell: burg.cell, score, distance });
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.score - a.score || a.distance - b.distance || a.cell - b.cell);
+    return candidates[0]!.cell;
+  }
+
+  private foundFactionOutpost(faction: Faction, burg: Burg, living: LivingWorldState): boolean {
+    const currentYear = options.map?.lore?.calendar?.year ?? 1000;
+    const startingAsset =
+      faction.category === "commercial"
+        ? "trade_depot"
+        : faction.category === "adventuring"
+          ? "chapter_lodge"
+          : faction.category === "underworld"
+            ? "safe_house"
+            : faction.category === "religious"
+              ? "wayside_shrine"
+              : "muster_camp";
+    faction.outposts ??= [];
+    faction.outposts.push({
+      burgId: burg.i,
+      cell: burg.cell,
+      tier: 1,
+      influence: 35,
+      secrecy: faction.allegiance === "clandestine" ? 60 : 0,
+      assets: [startingAsset],
+      establishedYear: currentYear
+    });
+    ensureFactionNodeSim(faction.outposts[faction.outposts.length - 1]!, false);
+    Factions.recomputeScale(faction);
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${faction.name} established a new outpost in ${burg.name ?? "a settlement"}!`,
+      cell: burg.cell,
+      burgId: burg.i
+    });
+    return true;
   }
 
   private canFoundBurg(cell: number, state: State): boolean {
@@ -5816,6 +6711,34 @@ class LivingModel {
         if (healed) syncRegimentTotals(regiment, types);
       }
     }
+
+    for (const faction of Factions.active()) {
+      for (const regiment of faction.military ?? []) {
+        const key = this.factionUnitKey(faction.i, regiment.i);
+        const army = living.armies?.[key];
+        if (!army || army.hasFought) continue;
+
+        const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
+        const inCity = burgId > 0 && this.factionNodesAtBurg(faction.i, burgId);
+        const friendly =
+          inCity ||
+          Boolean(faction.hq && this.cellHopDistances(faction.hq.cell, MAX_WORK_DISTANCE).has(regiment.cell)) ||
+          (faction.outposts ?? []).some(outpost =>
+            this.cellHopDistances(outpost.cell, MAX_WORK_DISTANCE).has(regiment.cell)
+          );
+        if (!inCity && !friendly) continue;
+
+        const gain =
+          (army.stance === "encamp" ? base * config.military.encampReplenishBonus : base) * (inCity ? 1 : 0.5);
+        let healed = false;
+        for (const block of regiment.units ?? []) {
+          if (block.hp <= 0 || block.hp >= 1) continue;
+          block.hp = Math.min(1, block.hp + gain);
+          healed = true;
+        }
+        if (healed) syncRegimentTotals(regiment, types);
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -6288,8 +7211,9 @@ class LivingModel {
     return best?.cell ?? null;
   }
 
-  /** Closed borders: a unit may only enter foreign land at war or when it ignores borders. */
+  /** Closed borders: a unit may only enter foreign land at war or when it ignores borders. Factions ignore borders. */
   private canEnterForeignCell(stateId: number, cell: number, unit: UnitSimState): boolean {
+    if (stateId < 0) return true;
     const owner = pack.cells.state?.[cell] ?? 0;
     if (!owner || owner === stateId) return true;
     const def = CIV_CIVILIAN_BY_ID[unit.unitTypeId];
@@ -8206,11 +9130,10 @@ class LivingModel {
     this.stepLairs(living);
   }
 
-  /** Step faction agendas: patron severance, teleport expansion (until Settlers in Phase 4), and turf clashes */
+  /** Step faction agendas: patron severance and turf clashes (expansion is via Settlers in Phase 4) */
   stepFactionAgendas(living: LivingWorldState): void {
     const activeFactions = Factions.active();
     const rng = this.rng("faction:agendas", living.tick);
-    const currentYear = options.map?.lore?.calendar?.year ?? 1000;
 
     for (const faction of activeFactions) {
       if (faction.allegiance === "state_arm" && faction.patronStateId) {
@@ -8227,70 +9150,6 @@ class LivingModel {
             cell: faction.hq.cell,
             burgId: faction.hq.burgId
           });
-        }
-      }
-
-      const maxOutposts: Record<FactionScale, number> = {
-        burg: 2,
-        province: 4,
-        state: 8,
-        world: 25
-      };
-
-      const shouldExpand = rng.next() <= (faction.expansionism || 1) * 0.5;
-      if (shouldExpand && faction.treasury >= 100 && faction.outposts.length < (maxOutposts[faction.scale] ?? 2)) {
-        const candidateBurgs =
-          pack.burgs?.filter(b => {
-            if (!b?.i || b.removed) return false;
-            if (b.i === faction.hq.burgId) return false;
-            if (faction.outposts.some(o => o.burgId === b.i)) return false;
-            return true;
-          }) ?? [];
-
-        if (candidateBurgs.length > 0) {
-          let targetBurg = candidateBurgs[0];
-          if (faction.category === "commercial") {
-            targetBurg = [...candidateBurgs].sort(
-              (a, b) => (b.population || 0) + (b.port ? 20 : 0) - ((a.population || 0) + (a.port ? 20 : 0))
-            )[0];
-          } else if (faction.category === "underworld") {
-            targetBurg = [...candidateBurgs].sort((a, b) => (b.population || 0) - (a.population || 0))[0];
-          } else {
-            targetBurg = candidateBurgs[Math.floor(rng.next() * candidateBurgs.length)];
-          }
-
-          if (targetBurg) {
-            faction.treasury -= 100;
-            const startingAsset =
-              faction.category === "commercial"
-                ? "trade_depot"
-                : faction.category === "adventuring"
-                  ? "chapter_lodge"
-                  : faction.category === "underworld"
-                    ? "safe_house"
-                    : faction.category === "religious"
-                      ? "wayside_shrine"
-                      : "muster_camp";
-
-            faction.outposts.push({
-              burgId: targetBurg.i,
-              cell: targetBurg.cell,
-              tier: 1,
-              influence: 35,
-              secrecy: faction.allegiance === "clandestine" ? 60 : 0,
-              assets: [startingAsset],
-              establishedYear: currentYear
-            });
-
-            Factions.recomputeScale(faction);
-
-            this.pushNews(living, {
-              kind: "faction",
-              text: `${faction.name} established a new outpost in ${targetBurg.name}!`,
-              cell: targetBurg.cell,
-              burgId: targetBurg.i
-            });
-          }
         }
       }
 
@@ -8338,57 +9197,9 @@ class LivingModel {
     }
   }
 
-  /** Step faction regiment mustering and seasonal raids */
+  /** Entrenched-sovereignty check: hostile factions ascend when order has collapsed. Combat and expansion run in stepTactical. */
   stepFactionMilitaryAndRaids(living: LivingWorldState): void {
-    const activeFactions = Factions.active();
-
-    for (const faction of activeFactions) {
-      const maxRegs: Record<FactionScale, number> = {
-        burg: 1,
-        province: 2,
-        state: 4,
-        world: 8
-      };
-      let limit = maxRegs[faction.scale] ?? 1;
-      if (faction.hq.assets.includes("muster_camp")) limit += 1;
-      if (faction.hq.assets.includes("war_citadel")) limit += 2;
-
-      faction.military ??= [];
-      if (
-        faction.military.length < limit &&
-        faction.treasury >= 120 &&
-        (faction.category === "martial" || faction.allegiance === "hostile" || faction.sovereignAmbition)
-      ) {
-        faction.treasury -= 120;
-        const regId = faction.military.length + 1;
-        const [x, y] = pack.cells?.p?.[faction.hq.cell] ?? [0, 0];
-
-        const unitsComposition: Record<string, number> = { spear: 50 };
-        if (faction.researchedTechs.includes("archery")) unitsComposition.archers = 30;
-        if (faction.researchedTechs.includes("iron_working")) unitsComposition.swordsmen = 25;
-        if (faction.researchedTechs.includes("horseback_riding")) unitsComposition.cavalry = 20;
-
-        faction.military.push({
-          i: regId,
-          name: `${faction.name} Regiment ${regId}`,
-          a: 100,
-          cell: faction.hq.cell,
-          x,
-          y,
-          bx: x,
-          by: y,
-          u: unitsComposition,
-          n: faction.hq.maritime ? 1 : 0,
-          state: 0,
-          icon: faction.icon || "⚔️"
-        });
-      }
-
-      if (faction.allegiance === "hostile" && faction.military.length > 0) {
-        this.tickFactionRaid(faction, living);
-      }
-
-      // Check entrenched wilderness sovereignty
+    for (const faction of Factions.active()) {
       if (
         faction.sovereignAmbition &&
         faction.allegiance === "hostile" &&
@@ -8410,93 +9221,6 @@ class LivingModel {
         }
       }
     }
-  }
-
-  /** Execute a seasonal raid by a hostile martial/underworld faction */
-  tickFactionRaid(faction: Faction, living: LivingWorldState): void {
-    const rng = this.rng("faction:raid", faction.i, living.tick);
-    const raidThreshold = faction.raidThreshold ?? 5;
-    const shouldRaid = faction.raidPending || rng.d(6) >= raidThreshold;
-    if (!shouldRaid) return;
-
-    const [lx, ly] = pack.cells?.p?.[faction.hq.cell] ?? [0, 0];
-    const targets = (pack.burgs ?? [])
-      .filter(b => b?.i && !b.removed && b.cell !== faction.hq.cell)
-      .map(b => ({ burg: b, dist: Math.hypot(b.x - lx, b.y - ly) }))
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, 5)
-      .map(t => t.burg);
-
-    if (targets.length === 0) return;
-    const target = targets[0];
-    faction.raidPending = false;
-
-    const { config } = currentContent();
-    const raidUnits: ArmyUnit[] = [];
-    for (const reg of faction.military) {
-      for (const [unitName, count] of Object.entries(reg.u ?? {})) {
-        raidUnits.push({ type: unitName as UnitType, count });
-      }
-    }
-    if (raidUnits.length === 0) raidUnits.push({ type: "spear", count: 50 });
-
-    const defenders = this.burgDefenders(target);
-    const ownerState = pack.states?.[target.state ?? 0];
-    const stationedReg = (ownerState?.military ?? []).find(r => r.cell === target.cell && r.a > 0);
-    const unitTypes = Military.getUnitTypes();
-    const stationedBlocks = (stationedReg?.units ?? []).filter(u => u.hp > 0 && unitTypes[u.type]);
-    for (const u of toBattleUnitsMen(stationedBlocks, unitTypes)) defenders.push(u);
-
-    const session = initBattleSession({
-      config,
-      unitTypes,
-      attacker: { factionId: faction.i, armyId: null, units: raidUnits },
-      defender: { factionId: target.state ?? 0, armyId: null, units: defenders },
-      cell: target.cell,
-      regionId: pack.cells?.province?.[target.cell] ?? 0,
-      assault: Number(target.walls ?? 0) > 0,
-      modifiers: this.assaultModifiers(target)
-    });
-
-    while (session.status === "active" && session.round < config.battle.maxRounds) {
-      stepBattleRound(session, rng.next);
-    }
-    const outcome = finalizeBattle(session, rng.next);
-    this.addBattleMarker(target);
-
-    if (outcome.winner === "defender") {
-      this.pushNews(living, {
-        kind: "faction",
-        text: `${target.name} garrison repelled raiders from ${faction.name}!`,
-        cell: target.cell,
-        burgId: target.i
-      });
-      return;
-    }
-
-    const loot = 50 + rng.d(50);
-    faction.treasury += loot;
-
-    const bSim = living.burgs?.[target.i];
-    const provId = pack.cells?.province?.[target.cell] ?? 0;
-    const pSim = provId ? living.provinces?.[provId] : undefined;
-
-    if (faction.sovereignAmbition && !target.capital && (faction.seasonsActive >= 4 || faction.tier >= 2)) {
-      const ascStateId = this.ascendFactionToState(faction.i, target.i);
-      if (ascStateId !== null) {
-        return;
-      }
-    }
-
-    if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 8);
-    if (pSim) pSim.order = Math.max(0, pSim.order - 5);
-
-    this.pushNews(living, {
-      kind: "faction",
-      text: `${faction.name} raided ${target.name} and pillaged ${loot} gold!`,
-      cell: target.cell,
-      burgId: target.i
-    });
   }
 
   /** Step seasonal raids and lair activity. */
