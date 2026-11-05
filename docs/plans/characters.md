@@ -1,7 +1,7 @@
 # Plan — Characters: One Roster for People, Heroes & Historical Figures
 
 **Updated:** 2026-11-05  
-**Status:** In progress — Phases 1-2 implemented  
+**Status:** In progress — Phases 1-3 implemented  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 
@@ -56,7 +56,7 @@ The design has three layers:
 
 - [x] **Phase 1 — Types, action catalogue, hero sheet** (2026-11-05)
 - [x] **Phase 2 - Characters facade and lifecycle** (2026-11-05)
-- [ ] Phase 3 — Serialization and legacy migration
+- [x] **Phase 3 - Serialization and legacy migration** (2026-11-05)
 - [ ] Phase 4 — Generators and manual preservation
 - [ ] Phase 5 — Hero checks and missions
 - [ ] Phase 6 — Characters editor
@@ -783,29 +783,35 @@ Keep the existing trait rendering.
 
 ---
 
-### Phase 3 — Serialization & Legacy Migration
+### Phase 3 — Serialization & Legacy Migration ✅
 
+**Status:** Implemented 2026-11-05.  
 **Goal:** Old maps load without loss; new maps save only the new shape.
 
-1. `src/services/io/save.ts`, `load.ts`, `epochs-format.ts`
-   - Characters stay inside history record 55.
-   - No record renumbering.
-2. Migration helpers
-   - `seedKey` backfill;
-   - `skills` → action dice + attributes;
-   - `archetype` / `disciplines` / `progression` → `hero`;
-   - `GuildState.heroes` → `hero.condition`;
-   - `GuildState.cooldowns` → `hero.cooldownUntil`.
+1. `src/services/io/characters-migration.ts`
+   - `LegacyFigure` reads the Phase 1 bridge fields.
+   - `migrateCharacters(history)` backfills `seedKey` and builds `hero` from `skills`, `archetype`, `disciplines`, or `progression`.
+   - `skills` map through `legacyActionsFromSkills` and `attributesFromSkills`; old disciplines become abilities; `xp` moves onto the sheet; progression keeps pending choices but clears `picks`.
+   - `GuildState.heroes` fills `hero.condition`, `doctrine`, and `temperament`; `GuildState.cooldowns` fills `hero.cooldownUntil`.
+   - An existing new-format sheet is never overwritten; only missing guild state is filled.
+   - Legacy fields stay readable for one release.
+2. `src/data/character-actions.ts`
+   - Added `legacyActionsFromSkills` for the pool-family to action mapping.
 3. `src/services/io/auto-update.ts`
-   - Run the migration on load; keep old fields readable for one release.
-4. Tests
-   - old figure with `skills` loads;
-   - old guild hero state loads;
-   - new hero sheet round-trips;
-   - removed character round-trips;
-   - history record indices unchanged.
+   - Runs `migrateCharacters(pack.history)` after the legacy-map migration, before the loaded map is used.
+4. `src/services/io/epochs-format.ts`
+   - Unchanged: characters stay in history record 55; snapshot records still start at 56.
+5. `src/services/io/characters-migration.test.ts`
+   - legacy skills to sheet;
+   - old guild hero state, cooldowns, and doctrine;
+   - existing sheet preservation;
+   - background figures stay sheetless;
+   - idempotence;
+   - hero and removed-character round-trips through record 55.
 
-**Acceptance:** a pre-Characters save opens, every roster figure has a valid hero sheet or remains a background character, and saving writes the new shape.
+**Verification:** 7 migration/round-trip tests pass alongside the 9 action tests. `biome check` is clean. The new files add no `tsc --noEmit` errors.
+
+**Acceptance:** a pre-Characters save opens, roster figures get a hero sheet, background figures stay sheetless, and character data round-trips inside history record 55 without renumbering.
 
 ---
 

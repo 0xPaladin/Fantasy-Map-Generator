@@ -142,6 +142,28 @@ export function legacyActionForPool(pool: "m" | "w" | "s" | "c"): ActionId {
   return "scout";
 }
 
+const ACTION_LEGACY_POOL: Record<ActionId, "m" | "w" | "s" | "c"> = {
+  strike: "m",
+  guard: "m",
+  maneuver: "m",
+  scout: "c",
+  infiltrate: "c",
+  survive: "c",
+  investigate: "w",
+  craft: "w",
+  treat: "w",
+  persuade: "s",
+  deceive: "s",
+  command: "s"
+};
+
+/** Old M/W/S/C ratings to the twelve action dice. */
+export function legacyActionsFromSkills(skills: { m: number; w: number; s: number; c: number }): Record<ActionId, Die> {
+  return Object.fromEntries(
+    ACTIONS.map(action => [action, dieForRating(skills[ACTION_LEGACY_POOL[action]])])
+  ) as Record<ActionId, Die>;
+}
+
 export function actionCheck(
   rng: Rng,
   hero: Pick<HeroSheet, "actions" | "attributes">,
