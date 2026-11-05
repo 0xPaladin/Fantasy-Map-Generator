@@ -21,17 +21,22 @@ This plan introduces **Factions (`pack.factions`)** as a first-class FMG entity 
    - Generated during standard map generation (`Factions.generate()`), persisted in `.map` files, searchable in the Omnibar (`MapEntities`), rendered on a dedicated `#factions` map layer, and editable via a first-class **Factions Overview** and **Faction Editor**.
 2. **Hybrid of Cultures, States, and Burgs**:
    - **Like Cultures**: Every faction has an `alignment` (`good`, `lawful`, `neutral`, `chaotic`, `evil`), `values` (1–2 core ethos values from `CULTURAL_VALUES`), and `expansionism` + `expansionScope`.
-   - **Like States**: Every faction has a `military` (`Regiment[]` with `ArmyBlock[]` composition and `rosterId`), `treasury`, diplomatic `relations`, **Tech Tree `advancement`** (`researchedTechs`, `currentTechId`, `researchQueue`), and **Outposts** across burgs.
+   - **Like States**: Every faction has a `military` (`Regiment[]` with `ArmyBlock[]` composition and `rosterId`), `treasury`, full two-tier diplomatic `relations` (with States **and** other Factions), **Tech Tree `advancement`** (`researchedTechs`, `currentTechId`, `researchQueue`), and **Outposts** across burgs.
    - **Like Burgs**: Every faction builds and upgrades **Assets** both at its **HQ** (whether urban or wilderness) and inside each of its **Burg Outposts**.
-3. **4-Tier Operational Scale (`burg` $\rightarrow$ `province` $\rightarrow$ `state` $\rightarrow$ `world`)**:
-   - Factions scale from single-settlement or single-lair groups (`burg`) to regional brotherhoods (`province`), national institutions/syndicates (`state`), and transnational networks (`world`).
-4. **Unification of Troubles & Lairs (Option B — Hazard + Faction Split)**:
+3. **Calculated Operational Scale (`burg` $\rightarrow$ `province` $\rightarrow$ `state` $\rightarrow$ `world`)**:
+   - Scale is **not a static or manually assigned setting**; it is **dynamically calculated** based on the faction's real footprint: total active outposts, geographic span across provinces and states, number and tier of built assets, researched technologies, and accumulated influence. As a faction expands its network, its scale automatically rises; if its outposts are sacked or assets destroyed, its scale contracts.
+4. **Behavioral Drivers: Expansionism vs. Type/Alignment/Values**:
+   - **`expansionism` drives tempo & investment**: Governs how aggressively and frequently the faction commits its treasury to founding new outposts and building assets.
+   - **`type`, `alignment`, and `values` define behavior**: Dictate which **actions/agendas** the faction takes (e.g. peacekeeping, trade expeditions, holy crusades, illicit smuggling, plunder raids, or coups), which **desired asset types** it constructs, and which branches of the **OpenCiv tech tree** it prioritizes researching.
+5. **Two-Tier Bilateral Relations (Allied to At War)**:
+   - Factions maintain full 6-tier diplomatic relations (`Ally`, `Friendly`, `Neutral`, `Suspicion`, `Rival`, `Enemy` / At War) **with States** AND **with other Factions**. A faction can be allied with a kingdom while at war with a rival criminal syndicate, or multiple factions can band into leagues and coalitions.
+6. **Unification of Troubles & Lairs (Option B — Hazard + Faction Split)**:
    - **All 20 Lair archetypes** (`src/data/living-lairs.ts`) and **all 19+ organizational Trouble archetypes** (`src/data/living-troubles.ts`: cults, secret societies, brigands, exiled lords, demagogues, corrupt officials, mutinous garrisons, rebel communes) become **Factions** in `pack.factions`. `ProvinceLair` and `living.activeLairs` are retired.
    - **Environmental, economic, and site hazards** (`flooding`, `barren_surroundings`, `recurrent_sickness`, `no_workers`, `inaccessible`, `ancient_curse`, `leyline_blight`, etc.) remain lightweight provincial/cell hazards (`ProvinceHazard`) that lower order/yields, **attract or spawn Factions**, and can be resolved by State or Faction missions.
-5. **Retirement of Bespoke `living.guild` (`GuildState`)**:
+7. **Retirement of Bespoke `living.guild` (`GuildState`)**:
    - The standalone `living.guild` singleton is retired. Adventurers' Guilds, Merchant Guilds, Thieves' Guilds, Holy Orders, Cults, and Warlords are all standard `Faction` instances in `pack.factions` sharing one unified engine for HQ, outposts, assets, tech advancement, military, figure rosters (`leaderId`, `memberIds`), missions, and relics (`relics`).
    - In the Living HUD, the user can observe all factions autonomously, intervene via Sandbox God Mode, or select any Faction as their **Controlled / Patron Faction** (`living.playerFactionId?: number`).
-6. **Multi-Faction Coexistence & Competition in Burgs**:
+8. **Multi-Faction Coexistence & Competition in Burgs**:
    - Multiple factions can establish outposts in the same Burg, building assets that either enrich or parasitize the host settlement and competing with rival factions for local influence, trade, and public order.
 
 ```mermaid
@@ -80,14 +85,68 @@ flowchart TD
 - **`clandestine`**: Hidden organization (`secrecy > 50`, e.g., Thieves' Guild, Secret Society, Sinister Cult, Rebel Cell). Operates covert outposts inside burgs; host states must detect/investigate them before launching a military or magistrate crackdown.
 - **`hostile`**: Open enemies of settled order (Rogue Warlords, Bandit Camps, Pirate Fleets, Marauder Hordes, Doomsday Cults, Monster Lairs). Attacked on sight by state garrisons and rival adventuring/martial factions.
 
-### 2.3. Four Operational Scales (`FactionScale`)
+### 2.3. Operational Scale as a Calculated Metric (`computeFactionScale`)
 
-| Scale | Operational Reach | Max Outposts | Max Regiments | Advancement Requirements to Reach Scale |
+Scale is **never manually assigned or statically set**. Instead, a faction's scale dynamically reflects its real operational footprint on the map: its active outposts, geographic distribution across provinces and states, accumulated infrastructure assets, and tech level.
+
+Scale is re-evaluated on tick via `computeFactionScale(faction, pack)`:
+
+| Calculated Scale | Reach & Footprint Requirements | Max Outposts Allowed | Max Military Regiments | Description & Examples |
 | :---: | :--- | :---: | :---: | :--- |
-| **`burg`** | Single HQ Burg (or wilderness HQ marker/cell + 1 nearest burg) | `1` | `1` | Starting scale for local guilds, gangs, cells, and lairs |
-| **`province`** | All burgs and resource/ruin cells within the HQ's `Province` (or within 6 Voronoi hops) | `4` | `2` | **Outposts:** $\ge 1$ · **Assets:** $\ge 2$ · **Tech:** $\ge 2$ Ancient/Classical techs |
-| **`state`** | All burgs within the HQ's `State` (plus adjacent border markets/ports) | `10` | `4` | **Outposts:** $\ge 3$ · **Assets:** $\ge 5$ (incl. T2) · **Tech:** $\ge 5$ techs (Classical/Medieval) |
-| **`world`** | Any reachable burg across the map connected by land routes or sea lanes | `25` | `8` | **Outposts:** $\ge 7$ (in $\ge 2$ states) · **Assets:** $\ge 10$ (incl. T3) · **Tech:** $\ge 10$ techs (Medieval/Renaissance) |
+| **`burg`** | Baseline footprint (HQ only or $\le 1$ outpost) | `1` | `1` | Local cell, gang, neighborhood cult, single bandit camp, isolated wizard spire |
+| **`province`** | $\ge 2$ total outposts (or outpost beyond HQ in the province) **AND** $\ge 2$ built assets **AND** $\ge 2$ researched techs | `4` | `2` | Provincial brotherhood, regional merchant guild, border warlord host |
+| **`state`** | Outposts across $\ge 2$ different Provinces in the same State (or $\ge 3$ total outposts) **AND** $\ge 5$ built assets (with $\ge 1$ T2 asset) **AND** $\ge 5$ researched techs | `10` | `4` | Kingdom-wide syndicate, Royal Inquisition, Chartered State Company, Realm Knightly Order |
+| **`world`** | Outposts across $\ge 2$ different sovereign States **AND** $\ge 7$ total outposts **AND** $\ge 10$ built assets (with $\ge 1$ T3 asset) **AND** $\ge 10$ researched techs | `25` | `8` | Transnational Adventurers' Guild, Continental Banking Consortium, World Cult, Grand Crusade |
+
+> [!NOTE]
+> **Dynamic Contraction:** If a faction's outposts are sacked by rival factions or wiped out by state crackdowns, its scale drops automatically. A `world`-spanning guild can be reduced to a `province` or `burg` presence if its foreign branches are severed!
+
+### 2.4. Behavioral Drivers: Expansionism vs. Type, Alignment & Values
+
+A faction's decisions and evolution are driven by two distinct mechanisms:
+
+1. **`expansionism` (0.2 .. 2.0) drives Tempo & Investment**:
+   - Acts as the velocity and resource-allocation multiplier.
+   - High expansionism factions aggressively prioritize spending their treasury to fund new outposts (`establish_outpost`) and construct assets (`build_asset`), taking higher financial risks to broaden their map footprint.
+   - Low expansionism factions hoard gold, fortify their existing HQ, and expand cautiously only within their immediate cultural/state borders.
+2. **`type`, `alignment`, and `values` define Actions, Desired Asset Types, and Tech Choices**:
+   - **Agendas / Actions**:
+     - *Type*: Martial factions raid and muster; Underworld factions smuggle, extort, and run turf wars; Commercial factions secure trade routes and market monopolies; Religious factions spread faith and root out heretics; Political factions stage coups and incite revolts.
+     - *Alignment*: Good factions protect settlements and clear hazards; Lawful factions uphold contracts and support state order; Neutral factions seek knowledge and balance; Chaotic factions break monopolies and foster rebellions; Evil factions exploit, corrupt, and subjugate.
+     - *Values*: Core values from `CULTURAL_VALUES` weight specific actions (e.g. `greed` weights trade & extortion; `knowledge` weights excavation & research; `valor`/`order` weights hunting lairs & peacekeeping; `subjugation`/`power` weights coups & rival strikes).
+   - **Desired Asset Types**:
+     - Factions construct assets matching their category and ethos:
+       - *Commercial + Lawful / Greed*: `trade_depot`, `counting_house`, `grand_exchange`.
+       - *Underworld + Chaotic / Evil*: `safe_house`, `smuggler_tunnel`, `shadow_court`.
+       - *Religious + Good / Lawful*: `wayside_shrine`, `monastic_scriptorium`.
+       - *Religious + Evil / Chaotic*: `hidden_shrine`, `ritual_sanctum`.
+       - *Scholarly + Knowledge*: `alchemical_lab`, `seeker_archives`, `grand_conclave`.
+       - *Martial + Conflict / Valor*: `muster_camp`, `armory_forge`, `war_citadel`.
+   - **Desired Tech Tree Priorities**:
+     - Factions do not research the tech tree randomly; their AI tech-selection weights prioritize branches supporting their archetype:
+       - *Commercial*: `sailing`, `currency`, `banking`, `economics`, `navigation`.
+       - *Martial / Warlords*: `bronze_working`, `iron_working`, `horseback_riding`, `chivalry`, `steel`, `gunpowder`.
+       - *Underworld / Intrigue*: `masonry`, `optics`, `guilds`, `printing_press`, `civil_service`.
+       - *Religious / Occult*: `calendar`, `philosophy`, `theology`, `education`.
+       - *Scholarly / Arcane*: `writing`, `mathematics`, `education`, `scientific_theory`, `chemistry`.
+
+### 2.5. Two-Tier Comprehensive Diplomacy (`stateRelations` & `factionRelations`)
+
+Factions exist in a dynamic diplomatic matrix spanning both sovereign states and other non-polity organizations:
+
+$$\text{Relations Spectrum: } \text{Ally} \longleftrightarrow \text{Friendly} \longleftrightarrow \text{Neutral} \longleftrightarrow \text{Suspicion} \longleftrightarrow \text{Rival} \longleftrightarrow \text{Enemy (At War)}$$
+
+1. **State Relations (`stateRelations: Record<number, FactionRelation>`)**:
+   - **`Ally`**: Sponsoring state charters the faction, grants tax waivers, hires its auxiliary regiments, and stations joint garrisons.
+   - **`Enemy` (At War)**: The state outlaws the faction, dispatches military regiments and magistrates to raid the faction's HQ, and demolishes its outposts. The faction retaliates with guerrilla raids, coups, or smuggling embargoes.
+2. **Faction Relations (`factionRelations: Record<number, FactionRelation>`)**:
+   - **Inter-Faction Warfare (`Enemy`)**:
+     - *Guild Turf Wars*: Competing thieves' guilds or smuggler syndicates clash in shared burgs to seize outposts and eliminate rival informants.
+     - *Holy Wars & Inquisitions*: Paladin/monastic orders crusade against dark cult fanes and necromantic cabals.
+     - *Mercenary & Warlord Rivalries*: Rival free companies battle over state contracts or frontier plunder.
+   - **Inter-Faction Alliances (`Ally` / `Friendly`)**:
+     - *Trade Leagues*: Commercial factions form alliances (e.g. Hanseatic-style leagues) pooling market goods and sharing outpost facilities.
+     - *Rebel Coalitions*: Insurgent fronts, bandit bands, and dissident noble houses band together to overthrow an imperial dynasty.
 
 ---
 
@@ -172,7 +231,7 @@ export interface Faction {
   name: string;
   category: FactionCategory;
   type: string;                           // Archetype key in FACTIONS_CATALOG
-  scale: FactionScale;
+  readonly scale: FactionScale;           // Calculated dynamically via computeFactionScale(faction, pack)
   allegiance: FactionAllegiance;
   patronStateId?: number;                 // Sponsoring state for "state_arm" or "chartered"
 
@@ -306,13 +365,12 @@ flowchart LR
 2. **Host-Burg Tech Spillover**:
    - Because factions operate inside burgs, if a faction is researching `currentTechId` and **any Burg where the faction holds an HQ or Outpost belongs to a State that has already researched `currentTechId`**, the faction receives a **`+25%` research speed bonus** (`spilloverMult = 1.25`, or `+50%` if the faction has an `informant_ring` or `seeker_archives`!).
    - Newly spawned factions initialize their `researchedTechs` from their founding Burg/State's known Ancient/Classical technologies so mid-game factions never start in the Stone Age.
-3. **What Advancement Unlocks**:
-   - **Organizational Tier (`tier: 1..5`)**: Computed from `(researchedTechs.length, totalOutpostTiers, totalAssetTiers, influence)`:
-     - **Tier 1** (`burg` scale): Base operations, T1 assets, 1 regiment.
-     - **Tier 2** (`province` scale): Requires $\ge 1$ outpost, $\ge 2$ assets, $\ge 2$ techs.
-     - **Tier 3** (`state` scale): Requires $\ge 3$ outposts, $\ge 5$ assets (at least one T2), $\ge 5$ techs.
-     - **Tier 4** (`world` scale): Requires $\ge 7$ outposts across $\ge 2$ states, $\ge 10$ assets (at least one T3), $\ge 10$ techs.
-     - **Tier 5** (*Grand Hegemon / Ascendant Order*): World-spanning network capable of triggering global events, brokering empire-wide wars, or turning the Wheel of Ages.
+3. **What Advancement & Growth Unlocks**:
+   - **Calculated Scale (`computeFactionScale`)**: Automatically promoted or contracted based on current map footprint:
+     - **`burg`**: Baseline (HQ only or $\le 1$ outpost).
+     - **`province`**: Requires $\ge 2$ total outposts **AND** $\ge 2$ built assets **AND** $\ge 2$ techs.
+     - **`state`**: Requires outposts across $\ge 2$ different provinces in the same state (or $\ge 3$ total outposts) **AND** $\ge 5$ built assets (with $\ge 1$ T2 asset) **AND** $\ge 5$ techs.
+     - **`world`**: Requires outposts across $\ge 2$ different sovereign states **AND** $\ge 7$ total outposts **AND** $\ge 10$ built assets (with $\ge 1$ T3 asset) **AND** $\ge 10$ techs.
    - **Military Unit Tech Gating**: Faction regiments use `faction.researchedTechs` to unlock and upgrade roster `UnitType` blocks (`requiredTech`, `upgradesTo`), using the exact same tech-gating rules as States in `living-openciv-armies.md`.
 
 ---
