@@ -1,0 +1,269 @@
+{
+  "id": "elfBase",
+  "name": "Highborne Elven Realms",
+  "roster": {
+    "id": "elfBase",
+    "units": {
+      "elf_spears": {
+        "name": "Highborne Spearmen",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 6,
+        "defense": 14,
+        "charge": 3,
+        "missile": 0,
+        "cost": 19,
+        "upkeep": 0.154,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        }
+      },
+      "elf_archers": {
+        "name": "Highborne Longbows",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 4,
+        "defense": 6,
+        "charge": 1,
+        "missile": 13,
+        "cost": 23,
+        "upkeep": 0.185,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 2,
+          "c": 0
+        }
+      },
+      "lott_seaguard": {
+        "name": "Sea-Wardens (Spear & Bow)",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 7,
+        "defense": 11,
+        "charge": 2,
+        "missile": 11,
+        "cost": 25,
+        "upkeep": 0.2,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        }
+      },
+      "swordmasters": {
+        "name": "Blademasters of the White Tower",
+        "category": "melee",
+        "quantity": 100,
+        "attack": 14,
+        "defense": 13,
+        "charge": 6,
+        "missile": 0,
+        "cost": 29,
+        "upkeep": 0.231,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 2,
+          "c": 0
+        },
+        "requiresGood": 4,
+        "resistArcane": 0.15
+      },
+      "phoenix_guard": {
+        "name": "Sanctuary Halberdiers",
+        "category": "melee",
+        "quantity": 100,
+        "attack": 10,
+        "defense": 17,
+        "charge": 4,
+        "missile": 0,
+        "cost": 31,
+        "upkeep": 0.246,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 2,
+          "c": 0
+        },
+        "requiresGood": 4,
+        "powers": {
+          "ward": 0.12,
+          "terror": 0.03
+        }
+      },
+      "elf_riders": {
+        "name": "Elven Reaver Outriders",
+        "category": "cavalry",
+        "quantity": 80,
+        "attack": 9,
+        "defense": 9,
+        "charge": 10,
+        "missile": 6,
+        "cost": 27,
+        "upkeep": 0.215,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "requiresGood": 18
+      },
+      "dragon_princes": {
+        "name": "Drake-Crested Heavy Lancers",
+        "category": "cavalry",
+        "quantity": 60,
+        "attack": 13,
+        "defense": 13,
+        "charge": 14,
+        "missile": 0,
+        "cost": 35,
+        "upkeep": 0.277,
+        "capacityCost": {
+          "m": 3,
+          "w": 4,
+          "s": 2,
+          "c": 0
+        },
+        "requiresGood": 18,
+        "powers": {
+          "ward": 0.06
+        }
+      },
+      "high_archmage": {
+        "name": "High Magic Conclave",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 4,
+        "defense": 6,
+        "charge": 1,
+        "missile": 16,
+        "cost": 46,
+        "upkeep": 0.369,
+        "capacityCost": {
+          "m": 1,
+          "w": 3,
+          "s": 4,
+          "c": 1
+        },
+        "powers": {
+          "ward": 0.12,
+          "hex": 0.08,
+          "heal": 8,
+          "arcaneSiege": 1
+        },
+        "resistArcane": 0.2
+      },
+      "star_dragon": {
+        "name": "Star-Drake & Frost-Phoenix",
+        "category": "monster",
+        "quantity": 20,
+        "attack": 18,
+        "defense": 16,
+        "charge": 15,
+        "missile": 12,
+        "cost": 54,
+        "upkeep": 0.431,
+        "capacityCost": {
+          "m": 4,
+          "w": 4,
+          "s": 2,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.06,
+          "terror": 0.08
+        }
+      },
+      "elf_bolt": {
+        "name": "Eagle-Claw Bolt Throwers",
+        "category": "artillery",
+        "quantity": 40,
+        "attack": 2,
+        "defense": 4,
+        "charge": 0,
+        "missile": 14,
+        "cost": 29,
+        "upkeep": 0.231,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 2,
+          "c": 0
+        },
+        "requiresGood": 4
+      },
+      "levy_wardens": {
+        "name": "Warden Levy",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 3,
+        "defense": 10,
+        "charge": 2,
+        "missile": 0,
+        "cost": 8,
+        "upkeep": 0.062,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "levy_glades": {
+        "name": "Glade Levy",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 2,
+        "defense": 5,
+        "charge": 1,
+        "missile": 8,
+        "cost": 9,
+        "upkeep": 0.068,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      }
+    },
+    "recruitable": [
+      "elf_spears",
+      "elf_archers",
+      "lott_seaguard",
+      "swordmasters",
+      "phoenix_guard",
+      "elf_riders",
+      "dragon_princes",
+      "high_archmage",
+      "star_dragon",
+      "elf_bolt"
+    ],
+    "garrison": {
+      "melee": "levy_wardens",
+      "ranged": "levy_glades"
+    },
+    "regimentMap": {
+      "infantry": "elf_spears",
+      "archers": "elf_archers",
+      "cavalry": "elf_riders",
+      "artillery": "elf_bolt"
+    },
+    "caps": {
+      "swordmasters": 4,
+      "phoenix_guard": 4,
+      "dragon_princes": 3,
+      "high_archmage": 2,
+      "star_dragon": 2,
+      "elf_bolt": 4
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

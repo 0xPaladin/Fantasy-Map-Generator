@@ -1,6 +1,6 @@
 import { select, sum } from "d3";
-import { currentContent } from "@/conquest/content/store";
-import type { UnitType } from "@/conquest/engine/common/content";
+import { currentContent } from "@/data/roster-store";
+import type { UnitType } from "@/data/roster-content";
 import {
   type BattleModifiers,
   type BattleOutcome,
@@ -11,7 +11,7 @@ import {
   finalizeBattle,
   initBattleSession,
   stepBattleRound
-} from "@/conquest/engine/game/battle";
+} from "@/model/battle/battle";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import { fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";

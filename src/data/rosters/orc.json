@@ -1,0 +1,265 @@
+{
+  "id": "orcBase",
+  "name": "Orc & Goblin War-Tribes",
+  "roster": {
+    "id": "orcBase",
+    "units": {
+      "orc_boyz": {
+        "name": "Orc Boyz",
+        "category": "melee",
+        "quantity": 180,
+        "attack": 8,
+        "defense": 8,
+        "charge": 5,
+        "missile": 0,
+        "cost": 12,
+        "upkeep": 0.092,
+        "capacityCost": {
+          "m": 1,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "black_orcs": {
+        "name": "Iron-Clad Big 'Uns",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 13,
+        "defense": 13,
+        "charge": 7,
+        "missile": 0,
+        "cost": 25,
+        "upkeep": 0.2,
+        "capacityCost": {
+          "m": 3,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 4
+      },
+      "night_fanatics": {
+        "name": "Cave-Goblin Whirling Fanatics",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 14,
+        "defense": 4,
+        "charge": 10,
+        "missile": 0,
+        "cost": 17,
+        "upkeep": 0.138,
+        "capacityCost": {
+          "m": 2,
+          "w": 1,
+          "s": 0,
+          "c": 1
+        },
+        "powers": {
+          "hex": 0.04
+        }
+      },
+      "orc_archers": {
+        "name": "Arrer Boyz",
+        "category": "ranged",
+        "quantity": 140,
+        "attack": 4,
+        "defense": 4,
+        "charge": 1,
+        "missile": 9,
+        "cost": 14,
+        "upkeep": 0.108,
+        "capacityCost": {
+          "m": 1,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "warg_riders": {
+        "name": "Wolf & Spider Riders",
+        "category": "cavalry",
+        "quantity": 80,
+        "attack": 10,
+        "defense": 7,
+        "charge": 10,
+        "missile": 4,
+        "cost": 21,
+        "upkeep": 0.169,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 18
+      },
+      "boar_boyz": {
+        "name": "War-Boar Savage Riders",
+        "category": "cavalry",
+        "quantity": 80,
+        "attack": 11,
+        "defense": 10,
+        "charge": 13,
+        "missile": 0,
+        "cost": 25,
+        "upkeep": 0.2,
+        "capacityCost": {
+          "m": 3,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 18
+      },
+      "troll": {
+        "name": "River & Stone Trolls",
+        "category": "monster",
+        "quantity": 60,
+        "attack": 13,
+        "defense": 10,
+        "charge": 8,
+        "missile": 0,
+        "cost": 29,
+        "upkeep": 0.231,
+        "capacityCost": {
+          "m": 3,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 4,
+        "powers": {
+          "heal": 10,
+          "terror": 0.04
+        },
+        "resistArcane": 0.15
+      },
+      "arachnarok": {
+        "name": "Colossal Cave-Spider & Giant",
+        "category": "monster",
+        "quantity": 20,
+        "attack": 17,
+        "defense": 15,
+        "charge": 13,
+        "missile": 8,
+        "cost": 50,
+        "upkeep": 0.4,
+        "capacityCost": {
+          "m": 4,
+          "w": 3,
+          "s": 0,
+          "c": 1
+        },
+        "powers": {
+          "terror": 0.08
+        }
+      },
+      "waaagh_shaman": {
+        "name": "Waaagh! Shaman Cabal",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 5,
+        "defense": 5,
+        "charge": 2,
+        "missile": 15,
+        "cost": 37,
+        "upkeep": 0.292,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 2,
+          "c": 2
+        },
+        "powers": {
+          "hex": 0.12,
+          "arcaneSiege": 1
+        }
+      },
+      "siege_bow": {
+        "name": "Rock Lobbers & Doom-Divers",
+        "category": "artillery",
+        "quantity": 40,
+        "attack": 2,
+        "defense": 3,
+        "charge": 0,
+        "missile": 15,
+        "cost": 27,
+        "upkeep": 0.215,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 4
+      },
+      "orc_levy": {
+        "name": "Orc Mob Levy",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 5,
+        "defense": 5,
+        "charge": 3,
+        "missile": 0,
+        "cost": 6,
+        "upkeep": 0.046,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "goblin_levy": {
+        "name": "Goblin Bow Levy",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 2,
+        "defense": 3,
+        "charge": 1,
+        "missile": 6,
+        "cost": 6,
+        "upkeep": 0.046,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      }
+    },
+    "recruitable": [
+      "orc_boyz",
+      "black_orcs",
+      "night_fanatics",
+      "orc_archers",
+      "warg_riders",
+      "boar_boyz",
+      "troll",
+      "arachnarok",
+      "waaagh_shaman",
+      "siege_bow"
+    ],
+    "garrison": {
+      "melee": "orc_levy",
+      "ranged": "goblin_levy"
+    },
+    "regimentMap": {
+      "infantry": "orc_boyz",
+      "archers": "orc_archers",
+      "cavalry": "warg_riders",
+      "artillery": "siege_bow"
+    },
+    "caps": {
+      "black_orcs": 4,
+      "boar_boyz": 4,
+      "troll": 4,
+      "arachnarok": 2,
+      "waaagh_shaman": 2,
+      "siege_bow": 3
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

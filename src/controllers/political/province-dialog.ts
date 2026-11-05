@@ -1,8 +1,8 @@
 import { Controllers } from "@/controllers";
-import { currentContent } from "@/conquest/content/store";
-import type { BuildingDef } from "@/conquest/engine/common/content";
-import { poiCapacityType } from "@/conquest/engine/compiler";
-import { valueModifier } from "@/conquest/engine/game/saves";
+import { currentContent } from "@/data/roster-store";
+import type { BuildingDef } from "@/data/roster-content";
+import { poiCapacityType } from "@/data/tiers";
+import { valueModifier } from "@/data/saves-helpers";
 import { currentSession } from "@/conquest/store/session";
 import { civBuildingCapacity } from "@/data/living-civ-buildings";
 import { isLairStateCapable } from "@/data/living-lairs";

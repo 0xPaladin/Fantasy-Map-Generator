@@ -129,7 +129,7 @@ vi.mock("@/model/physical/living-generator", () => ({
 vi.mock("@/renderers/layers", () => ({ Layers: { draw: vi.fn() } }));
 vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
 vi.mock("@/model/story/journeys/journey-places", () => ({ getCellPoint: vi.fn(() => [10, 10]) }));
-vi.mock("@/conquest/content/store", () => ({
+vi.mock("@/data/roster-store", () => ({
   currentContent: () => ({ content: { buildings: [{ id: "market1", name: "Market" }] }, config: {} })
 }));
 vi.mock("@/controllers", () => ({

@@ -1,6 +1,6 @@
 import Alea from "alea";
 import { mean, median, quadtree, sum } from "d3";
-import { assignStateRoster } from "@/conquest/engine/common/content";
+import { assignStateRoster } from "@/data/roster-content";
 import { getInverseRelation, RELATIONS } from "@/data/diplomacy";
 import type { Label } from "@/model/annotations/labels-generator";
 import { Markets } from "@/model/economy/markets-generator";

@@ -1,5 +1,5 @@
 // Living World simulation state types. See docs/plans/living-world.md
-import type { ArmyUnit } from "@/conquest/engine/common/types";
+import type { ArmyUnit } from "@/types/battle";
 
 export type SeasonId = 0 | 1 | 2 | 3;
 

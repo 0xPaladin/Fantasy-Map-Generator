@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { currentContent } from "@/conquest/content/store";
+import { currentContent } from "@/data/roster-store";
 
 const raw = JSON.parse(readFileSync("src/conquest/test-data/sample-world.json", "utf8"));
 

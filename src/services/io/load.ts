@@ -1,4 +1,4 @@
-import { assignStateRoster } from "@/conquest/engine/common/content";
+import { assignStateRoster } from "@/data/roster-content";
 import { Controllers } from "@/controllers";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";

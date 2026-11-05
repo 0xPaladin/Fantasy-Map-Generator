@@ -8,9 +8,9 @@
  * `BATTLE_STRENGTH` abstract men so `fill = hp` exactly and integer loss
  * quantisation can never make a small-`quantity` block immortal (§5.3).
  */
-import type { ResolvedRoster, UnitCategory, UnitType } from "@/conquest/engine/common/content";
-import type { ArmyBlock, ArmyUnit } from "@/conquest/engine/common/types";
-import { type BattleTacticalOrder, categoryShares } from "@/conquest/engine/game/battle";
+import type { ResolvedRoster, UnitCategory, UnitType } from "@/data/roster-content";
+import type { ArmyBlock, ArmyUnit } from "@/types/battle";
+import { type BattleTacticalOrder, categoryShares } from "@/model/battle/battle";
 import type { Regiment } from "@/model/political/military-generator";
 import type { ArmyStance } from "@/types/living";
 

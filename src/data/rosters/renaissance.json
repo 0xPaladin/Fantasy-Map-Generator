@@ -1,0 +1,195 @@
+{
+  "id": "renaissanceBase",
+  "name": "Renaissance Europe",
+  "roster": {
+    "id": "renaissanceBase",
+    "extends": "commonBase",
+    "units": {
+      "pikemen": {
+        "name": "Pikemen",
+        "category": "melee",
+        "quantity": 180,
+        "attack": 6,
+        "defense": 14,
+        "charge": 2,
+        "missile": 0,
+        "cost": 15,
+        "upkeep": 0.117,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "arquebusiers": {
+        "name": "Arquebusiers",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 4,
+        "defense": 6,
+        "charge": 1,
+        "missile": 13,
+        "cost": 19,
+        "upkeep": 0.148,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "tercio": {
+        "name": "Spanish Tercio",
+        "category": "melee",
+        "quantity": 200,
+        "attack": 9,
+        "defense": 15,
+        "charge": 4,
+        "missile": 4,
+        "cost": 25,
+        "upkeep": 0.2,
+        "capacityCost": {
+          "m": 3,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "requiresGood": 4
+      },
+      "doppelsoldner": {
+        "name": "Doppelsöldner",
+        "category": "melee",
+        "quantity": 100,
+        "attack": 12,
+        "defense": 8,
+        "charge": 7,
+        "missile": 0,
+        "cost": 21,
+        "upkeep": 0.169,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 4
+      },
+      "reiters": {
+        "name": "Reiter Cavalry",
+        "category": "cavalry",
+        "quantity": 80,
+        "attack": 8,
+        "defense": 10,
+        "charge": 6,
+        "missile": 7,
+        "cost": 25,
+        "upkeep": 0.2,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 18
+      },
+      "gendarme": {
+        "name": "Gendarmes",
+        "category": "cavalry",
+        "quantity": 60,
+        "attack": 11,
+        "defense": 12,
+        "charge": 12,
+        "missile": 0,
+        "cost": 29,
+        "upkeep": 0.231,
+        "capacityCost": {
+          "m": 2,
+          "w": 4,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 18
+      },
+      "culverin": {
+        "name": "Culverin Battery",
+        "category": "artillery",
+        "quantity": 40,
+        "attack": 2,
+        "defense": 4,
+        "charge": 0,
+        "missile": 16,
+        "cost": 33,
+        "upkeep": 0.262,
+        "capacityCost": {
+          "m": 2,
+          "w": 4,
+          "s": 0,
+          "c": 0
+        },
+        "requiresGood": 4
+      },
+      "militia_pikes": {
+        "name": "Town Militia",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 4,
+        "defense": 10,
+        "charge": 2,
+        "missile": 0,
+        "cost": 6,
+        "upkeep": 0.049,
+        "capacityCost": {
+          "m": 1,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "militia_shot": {
+        "name": "Militia Arquebus",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 2,
+        "defense": 4,
+        "charge": 1,
+        "missile": 9,
+        "cost": 8,
+        "upkeep": 0.062,
+        "capacityCost": {
+          "m": 1,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      }
+    },
+    "recruitable": [
+      "pikemen",
+      "arquebusiers",
+      "tercio",
+      "doppelsoldner",
+      "reiters",
+      "gendarme",
+      "culverin"
+    ],
+    "garrison": {
+      "melee": "militia_pikes",
+      "ranged": "militia_shot"
+    },
+    "regimentMap": {
+      "infantry": "pikemen",
+      "archers": "arquebusiers",
+      "cavalry": "reiters",
+      "artillery": "culverin"
+    },
+    "caps": {
+      "tercio": 4,
+      "doppelsoldner": 4,
+      "gendarme": 4,
+      "culverin": 3
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

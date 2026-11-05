@@ -1,5 +1,5 @@
 // Living World Guild Engine: manages guild state, operations, missions, relics, petitions, and player faction bridging.
-import { valueModifier } from "@/conquest/engine/game/saves";
+import { valueModifier } from "@/data/saves-helpers";
 import { GUILD_OPERATIONS, type GuildOperationKind } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines } from "@/data/hero-archetypes";
 import { aspectBonus } from "@/data/hero-aspects";

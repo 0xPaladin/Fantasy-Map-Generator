@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { currentContent } from "@/conquest/content/store";
-import { valueModifier } from "@/conquest/engine/game/saves";
+import { currentContent } from "@/data/roster-store";
+import { valueModifier } from "@/data/saves-helpers";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { getPetitionDef } from "@/data/living-petitions";

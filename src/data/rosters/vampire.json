@@ -1,0 +1,277 @@
+{
+  "id": "vampireBase",
+  "name": "Vampiric Blood-Counts",
+  "roster": {
+    "id": "vampireBase",
+    "units": {
+      "skeleton_warriors": {
+        "name": "Risen Barrow-Skeletons",
+        "category": "melee",
+        "quantity": 200,
+        "attack": 5,
+        "defense": 10,
+        "charge": 2,
+        "missile": 0,
+        "cost": 9,
+        "upkeep": 0.068,
+        "capacityCost": {
+          "m": 1,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "crypt_ghouls": {
+        "name": "Flesh-Feaster Crypt Ghouls",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 9,
+        "defense": 7,
+        "charge": 5,
+        "missile": 0,
+        "cost": 15,
+        "upkeep": 0.123,
+        "capacityCost": {
+          "m": 2,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "grave_guard": {
+        "name": "Wight-Blade Barrow Guard",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 11,
+        "defense": 14,
+        "charge": 5,
+        "missile": 0,
+        "cost": 25,
+        "upkeep": 0.2,
+        "capacityCost": {
+          "m": 3,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        },
+        "requiresGood": 4,
+        "powers": {
+          "hex": 0.05
+        }
+      },
+      "cairn_wraiths": {
+        "name": "Ethereal Wraiths & Banshees",
+        "category": "melee",
+        "quantity": 60,
+        "attack": 10,
+        "defense": 12,
+        "charge": 6,
+        "missile": 9,
+        "cost": 29,
+        "upkeep": 0.231,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 2,
+          "c": 1
+        },
+        "powers": {
+          "ward": 0.18,
+          "terror": 0.06
+        }
+      },
+      "black_knights": {
+        "name": "Wight-Steed Black Knights",
+        "category": "cavalry",
+        "quantity": 80,
+        "attack": 10,
+        "defense": 12,
+        "charge": 12,
+        "missile": 0,
+        "cost": 27,
+        "upkeep": 0.215,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "requiresGood": 18
+      },
+      "blood_knights": {
+        "name": "Vampire Blood-Order Knights",
+        "category": "cavalry",
+        "quantity": 50,
+        "attack": 15,
+        "defense": 14,
+        "charge": 16,
+        "missile": 0,
+        "cost": 39,
+        "upkeep": 0.308,
+        "capacityCost": {
+          "m": 3,
+          "w": 4,
+          "s": 2,
+          "c": 0
+        },
+        "requiresGood": 18,
+        "powers": {
+          "heal": 6,
+          "terror": 0.05
+        }
+      },
+      "vargheists": {
+        "name": "Winged Vargheists & Varghulfs",
+        "category": "monster",
+        "quantity": 40,
+        "attack": 14,
+        "defense": 10,
+        "charge": 13,
+        "missile": 0,
+        "cost": 33,
+        "upkeep": 0.262,
+        "capacityCost": {
+          "m": 3,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "heal": 6,
+          "terror": 0.05
+        }
+      },
+      "terrorgheist": {
+        "name": "Abyssal Death-Shriek Terrorgheist",
+        "category": "monster",
+        "quantity": 20,
+        "attack": 16,
+        "defense": 14,
+        "charge": 13,
+        "missile": 14,
+        "cost": 54,
+        "upkeep": 0.431,
+        "capacityCost": {
+          "m": 4,
+          "w": 4,
+          "s": 2,
+          "c": 0
+        },
+        "powers": {
+          "heal": 6,
+          "terror": 0.09
+        }
+      },
+      "necromancer_coven": {
+        "name": "Master Necromancers & Mortis Engine",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 4,
+        "defense": 6,
+        "charge": 1,
+        "missile": 12,
+        "cost": 44,
+        "upkeep": 0.354,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 4,
+          "c": 2
+        },
+        "powers": {
+          "heal": 18,
+          "hex": 0.1,
+          "ward": 0.06
+        }
+      },
+      "corpse_balista": {
+        "name": "Bone-Thrower & Screaming Bell-Cart",
+        "category": "artillery",
+        "quantity": 40,
+        "attack": 3,
+        "defense": 5,
+        "charge": 0,
+        "missile": 12,
+        "cost": 25,
+        "upkeep": 0.2,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        },
+        "requiresGood": 4,
+        "powers": {
+          "heal": 4
+        }
+      },
+      "shambling_thralls": {
+        "name": "Shambling Thralls Levy",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 3,
+        "defense": 6,
+        "charge": 1,
+        "missile": 0,
+        "cost": 5,
+        "upkeep": 0.025,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "fell_bat_swarms": {
+        "name": "Fell Bat Swarms",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 3,
+        "defense": 4,
+        "charge": 3,
+        "missile": 6,
+        "cost": 5,
+        "upkeep": 0.037,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      }
+    },
+    "recruitable": [
+      "skeleton_warriors",
+      "crypt_ghouls",
+      "grave_guard",
+      "cairn_wraiths",
+      "black_knights",
+      "blood_knights",
+      "vargheists",
+      "terrorgheist",
+      "necromancer_coven",
+      "corpse_balista"
+    ],
+    "garrison": {
+      "melee": "shambling_thralls",
+      "ranged": "fell_bat_swarms"
+    },
+    "regimentMap": {
+      "infantry": "skeleton_warriors",
+      "archers": "cairn_wraiths",
+      "cavalry": "black_knights",
+      "artillery": "corpse_balista"
+    },
+    "caps": {
+      "grave_guard": 4,
+      "cairn_wraiths": 3,
+      "blood_knights": 3,
+      "vargheists": 3,
+      "terrorgheist": 2,
+      "necromancer_coven": 2,
+      "corpse_balista": 3
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

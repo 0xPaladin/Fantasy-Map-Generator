@@ -1,0 +1,247 @@
+{
+  "id": "darkElfBase",
+  "name": "Dread-Corsair Principalities",
+  "roster": {
+    "id": "darkElfBase",
+    "units": {
+      "dreadspears": {
+        "name": "Dread-Spire Spearmen",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 7,
+        "defense": 13,
+        "charge": 3,
+        "missile": 0,
+        "cost": 19,
+        "upkeep": 0.148,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 0,
+          "c": 1
+        }
+      },
+      "darkshards": {
+        "name": "Repeater Crossbow Darkshards",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 4,
+        "defense": 7,
+        "charge": 1,
+        "missile": 14,
+        "cost": 22,
+        "upkeep": 0.178,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 0,
+          "c": 1
+        }
+      },
+      "witch_furies": {
+        "name": "Blood-Cauldron Witch Furies",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 14,
+        "defense": 7,
+        "charge": 9,
+        "missile": 0,
+        "cost": 27,
+        "upkeep": 0.215,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 2,
+          "c": 1
+        },
+        "powers": {
+          "ward": 0.06,
+          "hex": 0.06
+        }
+      },
+      "black_tower_guard": {
+        "name": "Obsidian Guard & Executioners",
+        "category": "melee",
+        "quantity": 100,
+        "attack": 14,
+        "defense": 14,
+        "charge": 7,
+        "missile": 0,
+        "cost": 30,
+        "upkeep": 0.24,
+        "capacityCost": {
+          "m": 3,
+          "w": 3,
+          "s": 1,
+          "c": 1
+        },
+        "requiresGood": 4
+      },
+      "dark_riders": {
+        "name": "Raven-Cloak Outriders",
+        "category": "cavalry",
+        "quantity": 80,
+        "attack": 8,
+        "defense": 7,
+        "charge": 9,
+        "missile": 9,
+        "cost": 26,
+        "upkeep": 0.209,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 0,
+          "c": 1
+        },
+        "requiresGood": 18
+      },
+      "cold_one_knights": {
+        "name": "Dread-Raptor Lancers",
+        "category": "cavalry",
+        "quantity": 60,
+        "attack": 13,
+        "defense": 13,
+        "charge": 13,
+        "missile": 0,
+        "cost": 33,
+        "upkeep": 0.262,
+        "capacityCost": {
+          "m": 3,
+          "w": 3,
+          "s": 1,
+          "c": 1
+        },
+        "requiresGood": 18,
+        "powers": {
+          "terror": 0.04
+        }
+      },
+      "war_hydra": {
+        "name": "Many-Headed War-Hydra",
+        "category": "monster",
+        "quantity": 20,
+        "attack": 16,
+        "defense": 14,
+        "charge": 12,
+        "missile": 10,
+        "cost": 48,
+        "upkeep": 0.385,
+        "capacityCost": {
+          "m": 4,
+          "w": 4,
+          "s": 1,
+          "c": 1
+        },
+        "powers": {
+          "heal": 12,
+          "terror": 0.07
+        }
+      },
+      "dark_sorceresses": {
+        "name": "Conclave of Dark Magic",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 4,
+        "defense": 5,
+        "charge": 1,
+        "missile": 18,
+        "cost": 46,
+        "upkeep": 0.369,
+        "capacityCost": {
+          "m": 1,
+          "w": 3,
+          "s": 3,
+          "c": 2
+        },
+        "powers": {
+          "hex": 0.14,
+          "ward": 0.06,
+          "arcaneSiege": 1
+        }
+      },
+      "reaper_bolts": {
+        "name": "Reaper Multi-Bolt Throwers",
+        "category": "artillery",
+        "quantity": 40,
+        "attack": 3,
+        "defense": 4,
+        "charge": 0,
+        "missile": 15,
+        "cost": 29,
+        "upkeep": 0.231,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "requiresGood": 4
+      },
+      "corsair_watch": {
+        "name": "Corsair Watch",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 4,
+        "defense": 8,
+        "charge": 2,
+        "missile": 0,
+        "cost": 6,
+        "upkeep": 0.049,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "crossbow_watch": {
+        "name": "Crossbow Watch",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 2,
+        "defense": 4,
+        "charge": 1,
+        "missile": 7,
+        "cost": 7,
+        "upkeep": 0.055,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      }
+    },
+    "recruitable": [
+      "dreadspears",
+      "darkshards",
+      "witch_furies",
+      "black_tower_guard",
+      "dark_riders",
+      "cold_one_knights",
+      "war_hydra",
+      "dark_sorceresses",
+      "reaper_bolts"
+    ],
+    "garrison": {
+      "melee": "corsair_watch",
+      "ranged": "crossbow_watch"
+    },
+    "regimentMap": {
+      "infantry": "dreadspears",
+      "archers": "darkshards",
+      "cavalry": "cold_one_knights",
+      "artillery": "reaper_bolts"
+    },
+    "caps": {
+      "witch_furies": 4,
+      "black_tower_guard": 4,
+      "cold_one_knights": 3,
+      "war_hydra": 2,
+      "dark_sorceresses": 2,
+      "reaper_bolts": 3
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

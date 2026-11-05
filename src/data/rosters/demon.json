@@ -1,0 +1,267 @@
+{
+  "id": "demonBase",
+  "name": "Legions of the Infernal Abyss",
+  "roster": {
+    "id": "demonBase",
+    "units": {
+      "tiefling_hellblades": {
+        "name": "Fiendblood Hellblade Vanguard",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 9,
+        "defense": 10,
+        "charge": 5,
+        "missile": 0,
+        "cost": 16,
+        "upkeep": 0.129,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        },
+        "resistArcane": 0.1
+      },
+      "blood_renders": {
+        "name": "Crimson Bloodletter Fiends",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 14,
+        "defense": 9,
+        "charge": 9,
+        "missile": 0,
+        "cost": 25,
+        "upkeep": 0.197,
+        "capacityCost": {
+          "m": 3,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.08,
+          "terror": 0.03
+        }
+      },
+      "plague_hulks": {
+        "name": "Blight-Swollen Plaguebearers",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 9,
+        "defense": 16,
+        "charge": 3,
+        "missile": 0,
+        "cost": 26,
+        "upkeep": 0.209,
+        "capacityCost": {
+          "m": 3,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.12,
+          "hex": 0.06,
+          "heal": 5
+        }
+      },
+      "brimstone_imps": {
+        "name": "Warp-Flame Horrors & Imps",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 4,
+        "defense": 6,
+        "charge": 1,
+        "missile": 14,
+        "cost": 19,
+        "upkeep": 0.154,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.06,
+          "hex": 0.05
+        }
+      },
+      "hellsteed_flayers": {
+        "name": "Juggernaut & Hellsteed Riders",
+        "category": "cavalry",
+        "quantity": 60,
+        "attack": 14,
+        "defense": 13,
+        "charge": 15,
+        "missile": 0,
+        "cost": 33,
+        "upkeep": 0.262,
+        "capacityCost": {
+          "m": 3,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.08,
+          "terror": 0.04
+        }
+      },
+      "fiend_stalkers": {
+        "name": "Soporific Slaanesh-Fiends",
+        "category": "monster",
+        "quantity": 50,
+        "attack": 14,
+        "defense": 11,
+        "charge": 12,
+        "missile": 0,
+        "cost": 31,
+        "upkeep": 0.246,
+        "capacityCost": {
+          "m": 3,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "hex": 0.08,
+          "terror": 0.05
+        }
+      },
+      "abyssal_pit_lord": {
+        "name": "Arch-Daemon of the Pit",
+        "category": "monster",
+        "quantity": 20,
+        "attack": 19,
+        "defense": 16,
+        "charge": 16,
+        "missile": 10,
+        "cost": 52,
+        "upkeep": 0.415,
+        "capacityCost": {
+          "m": 4,
+          "w": 4,
+          "s": 2,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.1,
+          "terror": 0.09,
+          "arcaneSiege": 1
+        },
+        "resistArcane": 0.2
+      },
+      "hellpact_warlocks": {
+        "name": "Infernal Pact-Sorcerers",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 5,
+        "defense": 7,
+        "charge": 2,
+        "missile": 17,
+        "cost": 42,
+        "upkeep": 0.338,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 2,
+          "c": 2
+        },
+        "powers": {
+          "hex": 0.14,
+          "ward": 0.06,
+          "arcaneSiege": 1
+        }
+      },
+      "soul_grinder": {
+        "name": "Abyssal Soul-Grinder Engine",
+        "category": "artillery",
+        "quantity": 30,
+        "attack": 10,
+        "defense": 12,
+        "charge": 6,
+        "missile": 18,
+        "cost": 39,
+        "upkeep": 0.308,
+        "capacityCost": {
+          "m": 2,
+          "w": 4,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.06,
+          "terror": 0.05,
+          "arcaneSiege": 1
+        }
+      },
+      "cultist_thralls": {
+        "name": "Cultist Thrall Levy",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 3,
+        "defense": 5,
+        "charge": 1,
+        "missile": 0,
+        "cost": 5,
+        "upkeep": 0.025,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "imp_firethrowers": {
+        "name": "Lesser Imp Firethrowers",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 2,
+        "defense": 4,
+        "charge": 1,
+        "missile": 8,
+        "cost": 5,
+        "upkeep": 0.031,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      }
+    },
+    "recruitable": [
+      "tiefling_hellblades",
+      "blood_renders",
+      "plague_hulks",
+      "brimstone_imps",
+      "hellsteed_flayers",
+      "fiend_stalkers",
+      "abyssal_pit_lord",
+      "hellpact_warlocks",
+      "soul_grinder"
+    ],
+    "garrison": {
+      "melee": "cultist_thralls",
+      "ranged": "imp_firethrowers"
+    },
+    "regimentMap": {
+      "infantry": "tiefling_hellblades",
+      "archers": "brimstone_imps",
+      "cavalry": "hellsteed_flayers",
+      "artillery": "soul_grinder"
+    },
+    "caps": {
+      "blood_renders": 4,
+      "plague_hulks": 4,
+      "brimstone_imps": 4,
+      "hellsteed_flayers": 3,
+      "fiend_stalkers": 3,
+      "abyssal_pit_lord": 2,
+      "hellpact_warlocks": 2,
+      "soul_grinder": 2
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

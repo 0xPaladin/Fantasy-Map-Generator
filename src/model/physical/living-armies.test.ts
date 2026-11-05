@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MEN_PER_BLOCK, type ResolvedRoster, type UnitType } from "@/conquest/engine/common/content";
-import type { ArmyBlock } from "@/conquest/engine/common/types";
-import { type BattleModifiers, computeBattleSetup } from "@/conquest/engine/game/battle";
-import { resolveConfig } from "@/conquest/engine/game/config";
+import { MEN_PER_BLOCK, type ResolvedRoster, type UnitType } from "@/data/roster-content";
+import type { ArmyBlock } from "@/types/battle";
+import { type BattleModifiers, computeBattleSetup } from "@/model/battle/battle";
+import { resolveConfig } from "@/data/battle-config";
 import {
   armyHp,
   armyLead,

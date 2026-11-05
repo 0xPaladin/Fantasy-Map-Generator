@@ -1,7 +1,7 @@
 // The Living World HUD: a seasonal clock, a live news ticker and a god-mode inspector.
 // See docs/plans/living-world.md (slice 5)
 import { select } from "d3";
-import { currentContent } from "@/conquest/content/store";
+import { currentContent } from "@/data/roster-store";
 import { Controllers } from "@/controllers";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
 import { GUILD_OPERATIONS } from "@/data/guild-operations";
@@ -25,8 +25,8 @@ import {
   PACIFY_MISSION_TAGS,
   troubleMissionTags
 } from "@/data/mission-tags";
-import { estimateOdds, type BattleModifiers } from "@/conquest/engine/game/battle";
-import { valueModifier } from "@/conquest/engine/game/saves";
+import { estimateOdds, type BattleModifiers } from "@/model/battle/battle";
+import { valueModifier } from "@/data/saves-helpers";
 import { Military } from "@/model/political/military-generator";
 import {
   armyHp,

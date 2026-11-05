@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentContent } from "@/conquest/content/store";
+import { currentContent } from "@/data/roster-store";
 import {
   createProvinceLair,
   getLairDef,

@@ -1,9 +1,9 @@
 // Living World Threats Engine: manages troubles, lairs, danger markers, and emergent sovereign ascension.
-import { currentContent } from "@/conquest/content/store";
-import { assignStateRoster, type UnitType } from "@/conquest/engine/common/content";
-import type { ArmyBlock, ArmyUnit } from "@/conquest/engine/common/types";
-import { finalizeBattle, initBattleSession, stepBattleRound } from "@/conquest/engine/game/battle";
-import { valueModifier } from "@/conquest/engine/game/saves";
+import { currentContent } from "@/data/roster-store";
+import { assignStateRoster, type UnitType } from "@/data/roster-content";
+import type { ArmyBlock, ArmyUnit } from "@/types/battle";
+import { finalizeBattle, initBattleSession, stepBattleRound } from "@/model/battle/battle";
+import { valueModifier } from "@/data/saves-helpers";
 import {
   type Alignment,
   aggressiveTraits,

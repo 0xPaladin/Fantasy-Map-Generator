@@ -1,0 +1,257 @@
+{
+  "id": "elementalBase",
+  "name": "Primordial Elemental Nexus",
+  "roster": {
+    "id": "elementalBase",
+    "units": {
+      "cinder_spears": {
+        "name": "Cinder-Forged Spearmen",
+        "category": "melee",
+        "quantity": 160,
+        "attack": 7,
+        "defense": 12,
+        "charge": 3,
+        "missile": 0,
+        "cost": 12,
+        "upkeep": 0.092,
+        "capacityCost": {
+          "m": 2,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "terralith_guard": {
+        "name": "Basalt & Granite-Heart Infantry",
+        "category": "melee",
+        "quantity": 140,
+        "attack": 8,
+        "defense": 17,
+        "charge": 4,
+        "missile": 0,
+        "cost": 21,
+        "upkeep": 0.166,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.06
+        },
+        "resistArcane": 0.2
+      },
+      "ignis_blademasters": {
+        "name": "Cinder-Blade Flame Dancers",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 14,
+        "defense": 10,
+        "charge": 8,
+        "missile": 0,
+        "cost": 24,
+        "upkeep": 0.191,
+        "capacityCost": {
+          "m": 2,
+          "w": 2,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "hex": 0.05
+        }
+      },
+      "spark_bowmen": {
+        "name": "Storm-Arc & Ember Bowmen",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 4,
+        "defense": 7,
+        "charge": 1,
+        "missile": 15,
+        "cost": 20,
+        "upkeep": 0.16,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "zephyr_striders": {
+        "name": "Gale-Steed Wind-Riders",
+        "category": "cavalry",
+        "quantity": 70,
+        "attack": 11,
+        "defense": 10,
+        "charge": 14,
+        "missile": 6,
+        "cost": 30,
+        "upkeep": 0.24,
+        "capacityCost": {
+          "m": 2,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.06
+        }
+      },
+      "magma_myrmidons": {
+        "name": "Bound Frost & Magma Myrmidons",
+        "category": "monster",
+        "quantity": 50,
+        "attack": 14,
+        "defense": 14,
+        "charge": 11,
+        "missile": 0,
+        "cost": 33,
+        "upkeep": 0.265,
+        "capacityCost": {
+          "m": 3,
+          "w": 3,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.08,
+          "terror": 0.04
+        }
+      },
+      "primordial_titan": {
+        "name": "Colossal Caldera & Storm Titan",
+        "category": "monster",
+        "quantity": 20,
+        "attack": 18,
+        "defense": 17,
+        "charge": 15,
+        "missile": 12,
+        "cost": 52,
+        "upkeep": 0.415,
+        "capacityCost": {
+          "m": 4,
+          "w": 4,
+          "s": 2,
+          "c": 0
+        },
+        "powers": {
+          "ward": 0.1,
+          "terror": 0.08,
+          "arcaneSiege": 1
+        },
+        "resistArcane": 0.25
+      },
+      "nexus_conclave": {
+        "name": "Primordial Elementalist Conclave",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 4,
+        "defense": 7,
+        "charge": 1,
+        "missile": 18,
+        "cost": 43,
+        "upkeep": 0.345,
+        "capacityCost": {
+          "m": 1,
+          "w": 2,
+          "s": 3,
+          "c": 1
+        },
+        "powers": {
+          "hex": 0.14,
+          "ward": 0.08,
+          "arcaneSiege": 2
+        },
+        "resistArcane": 0.2
+      },
+      "tempest_catapult": {
+        "name": "Fulminating Lightning-Thrower",
+        "category": "artillery",
+        "quantity": 40,
+        "attack": 2,
+        "defense": 5,
+        "charge": 0,
+        "missile": 18,
+        "cost": 33,
+        "upkeep": 0.262,
+        "capacityCost": {
+          "m": 2,
+          "w": 4,
+          "s": 1,
+          "c": 0
+        },
+        "powers": {
+          "arcaneSiege": 1
+        }
+      },
+      "stone_watch": {
+        "name": "Stone-Guard Watch",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 4,
+        "defense": 7,
+        "charge": 1,
+        "missile": 0,
+        "cost": 5,
+        "upkeep": 0.025,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      },
+      "cinder_slings": {
+        "name": "Cinder Sling Skirmishers",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 2,
+        "defense": 4,
+        "charge": 1,
+        "missile": 7,
+        "cost": 5,
+        "upkeep": 0.028,
+        "capacityCost": {
+          "m": 0,
+          "w": 1,
+          "s": 0,
+          "c": 0
+        }
+      }
+    },
+    "recruitable": [
+      "cinder_spears",
+      "terralith_guard",
+      "ignis_blademasters",
+      "spark_bowmen",
+      "zephyr_striders",
+      "magma_myrmidons",
+      "primordial_titan",
+      "nexus_conclave",
+      "tempest_catapult"
+    ],
+    "garrison": {
+      "melee": "stone_watch",
+      "ranged": "cinder_slings"
+    },
+    "regimentMap": {
+      "infantry": "terralith_guard",
+      "archers": "spark_bowmen",
+      "cavalry": "zephyr_striders",
+      "artillery": "tempest_catapult"
+    },
+    "caps": {
+      "ignis_blademasters": 4,
+      "spark_bowmen": 4,
+      "zephyr_striders": 3,
+      "magma_myrmidons": 3,
+      "primordial_titan": 2,
+      "nexus_conclave": 2,
+      "tempest_catapult": 3
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

@@ -1,5 +1,5 @@
 // Living World seasonal simulation engine. See docs/plans/living-world.md
-import { currentContent } from "@/conquest/content/store";
+import { currentContent } from "@/data/roster-store";
 import {
   assignStateRoster,
   type BuildingDef,
@@ -7,9 +7,9 @@ import {
   MEN_PER_BLOCK,
   type ResolvedRoster,
   type UnitType
-} from "@/conquest/engine/common/content";
-import type { ArmyBlock, ArmyUnit, CapacityPoints } from "@/conquest/engine/common/types";
-import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/conquest/engine/compiler";
+} from "@/data/roster-content";
+import type { ArmyBlock, ArmyUnit, CapacityPoints } from "@/types/battle";
+import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/data/tiers";
 import {
   type BattleModifiers,
   type BattleOutcome,
@@ -19,9 +19,9 @@ import {
   finalizeBattle,
   initBattleSession,
   stepBattleRound
-} from "@/conquest/engine/game/battle";
-import { assetCheckDifficulties, valueModifier } from "@/conquest/engine/game/saves";
-import { garrisonUnits, minorGarrisonUnits } from "@/conquest/engine/game/units";
+} from "@/model/battle/battle";
+import { assetCheckDifficulties, valueModifier } from "@/data/saves-helpers";
+import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
 import type { Alignment } from "@/data/culture-traits";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
