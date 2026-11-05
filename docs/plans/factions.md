@@ -1,7 +1,7 @@
 # Plan — Factions: First-Class Non-Polity Organizations, Outposts, Assets & Emergent Power
 
-**Updated:** 2026-11-04  
-**Status:** Approved Architecture — Ready for Implementation  
+**Updated:** 2026-11-05  
+**Status:** Completed (Phases 1–5 Implemented & Verified; see [factions-plan.md](factions-plan.md))  
 **Branch:** `factions`  
 **Companions:** [living-world.md](living-world.md), [living-openciv.md](living-openciv.md), [living-openciv-armies.md](living-openciv-armies.md), [lair-ascension.md](lair-ascension.md), [culture-traits.md](culture-traits.md), [unified-figures.md](unified-figures.md)  
 **Supersedes:** `GuildState` (`living.guild`) in [living-idle-guild.md](living-idle-guild.md) and standalone `ProvinceLair` / organizational `ProvinceTrouble` structs in `src/types/living.ts`.
