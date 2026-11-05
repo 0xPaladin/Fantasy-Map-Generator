@@ -36,7 +36,7 @@ Unlike sovereign states whose power scales with tile count, a faction's operatio
 
 ### Headquarters and Outposts
 
-Every faction maintains a single primary base:
+Every HQ and outpost is an embedded [`BurgSimState`](#) city-node (`citizens`, `workedCells`, `foodStored`/`cultureStored`, `productionQueue`, `civBuildings`, `cityYields`, `hp`/`maxHp`): wilderness HQs simulate in place without creating a `pack.burgs` entry until ascension promotes them to a sovereign burg/state. Every faction maintains a single primary base:
 * **Urban Headquarters**: Situated in a populated burg or capital, benefiting from local commerce and population.
 * **Wilderness Headquarters**: Anchored to a danger marker (`dungeon`, `lair`, `ruins`, `cave`, `volcano`, etc.), serving as a stronghold for hostile warbands, cults, or outcasts.
 
@@ -49,7 +49,7 @@ A faction expands into settlements within its reach by establishing **Burg Outpo
 
 ### Faction Assets
 
-Factions construct and upgrade specialized assets at their HQ and outposts across six tracks (18 distinct structures):
+Factions construct buildings at their HQ and outposts across six tracks (18 distinct structures) using the unified OpenCiv production system. The old `FACTION_ASSETS_CATALOG` is now a backward-compatible view over `CIV_BUILDINGS`: every faction asset is a standard `CivBuildingDef` with production `cost`, gold `maintenance`, `requiredTech` and yield `stats`, and factions build them alongside OpenCiv staples (`walls`, `market`, `library`, `workshop`, `forge`, `temple`):
 
 | Track | Tier 1 | Tier 2 | Tier 3 | Primary Benefits |
 | :--- | :--- | :--- | :--- | :--- |
@@ -60,20 +60,25 @@ Factions construct and upgrade specialized assets at their HQ and outposts acros
 | **Arcane** | Scriptorium | Laboratory | Arcane Sanctum | +Science per season, tech research speed |
 | **Statecraft** | Embassy | Chancery | Grand Chancellery | +Diplomatic influence, patron state stability |
 
+Buildings are produced from city-node `production` (Production queue), not bought outright with treasury; `hurryProduction()` can rush them for gold.
+
 ---
 
 ### The Living World Simulation
 
+Factions run on the same OpenCiv engine as states and burgs. Every **HQ and outpost is a city-node** (`BurgSimState`) that works cells, gathers the seven yields, grows citizens, and produces buildings and units.
+
 When the Living World advances each season (`Living.tick()`):
 
-1. **Economy & Yields**: Factions collect seasonal revenue (`Gold`, `Science`, `Influence`) from their HQ, outposts, built assets, and patron subsidies.
-2. **Civic Tech Advancement**: Factions research technologies from the OpenCiv tech tree. Host burgs receive a `+25%` science spillover bonus from scholarly faction assets.
-3. **Autonomous Agendas**: Factions autonomously pursue agendas based on their category, alignment, and expansionism:
-   * **Outpost Expansion**: Spreading along trade routes to prosperous or vulnerable settlements.
-   * **Asset Upgrades**: Investing treasury into higher-tier structures.
-   * **Turf Clashes**: Clashing with rival outposts sharing the same burg for dominance.
-   * **State Defection**: State-arm agencies or noble factions may defect and turn insurgent if their patron state's unravel exceeds threshold (`unravel >= 60`).
-4. **Seasonal Raids**: Hostile warlords and wilder lairs launch raids against neighboring provinces and trade roads, resolved through the combined-arms battle simulator.
+1. **City-Node Loop** — Each HQ/outpost competes for worked cells with the host burg and rival factions within 3 hops. Allegiance decides the draft: `state_arm` works after the state (cooperative), `chartered` alternates after the state's food floor and pays a 15% tithe, `autonomous` interleaves by local `influence` vs state `order`, `clandestine`/`hostile` pre-draft and siphon up to 50% of the host burg's centre gold. Food surplus grows citizens (`15 + 8 × citizens`), culture raises `influence` (urban) or claims wilderness territory (wilderness HQ), and production completes buildings/units.
+2. **Empire Rollup** — Yields are summed across HQ + outposts (science via library/university multipliers), minus building maintenance and army upkeep, banked into the faction treasury (negative treasury disbands the newest block). Happiness is `9 + 4 × unique worked luxuries + buildings − 3 per node − citizens`. Research advances on the 80-tech OpenCiv tree with +25% host-state spillover, plus free technologies.
+3. **Tactical Layer** — Utility and combat regiments use the same 1UPT / `ArmyBlock[]` system as states, keyed `f{id}-{regimentId}`:
+   * **Builders** improve unimproved cells worked by the faction.
+   * **Settlers/Envoys** march to target burgs and found outposts on arrival (no teleport expansion).
+   * **Combat armies** engage enemy State or rival Faction armies (`resolveArmyBattle()`), pillage tiles, and siege burgs — a successful sovereign-ambition siege triggers state ascension.
+   * State-arm agencies defect when their patron's `unravel >= 60`; rival outposts still clash for turf influence.
+
+The legacy flat economy (`outpost.tier * 2`, instant gold asset purchases, teleport raids, `u: { spear: 50 }` musters) is retired — assets, units and outposts all flow through the production/tactical queues.
 
 ---
 
@@ -89,8 +94,8 @@ Factions can evolve into recognized sovereign nations:
 
 ### User Interface and Tools
 
-* **Factions Overview** (_Tools_ → _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV.
-* **Faction Editor Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments.
-* **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect all resident faction outposts, their local influence, secrecy, and built assets.
+* **Factions Overview** (_Tools_ → _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV. Columns show yields (Food/Prod/Gold/Sci/Cult/Faith/Hap), total citizens, worked cells, and the HQ production queue head.
+* **Faction Editor Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The Outposts & Assets dialog shows per-node citizens, worked cells, city yields and the full production queue for the HQ and each outpost.
+* **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect all resident faction HQs/outposts at that burg — citizens, worked cells, city yields and production queue, plus local influence and secrecy.
 * **Map Layer (`#factions`, Hotkey: `Shift+F`)**: Displays faction HQ badges, outpost pins, and field regiments on the SVG map.
 * **Living HUD & Player Guild**: Choose any faction as your **Player Faction** to guide its contracts, hero missions, relic vaults, and expeditions, or observe autonomously in God Mode.

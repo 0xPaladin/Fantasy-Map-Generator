@@ -1336,6 +1336,319 @@ export const CIV_BUILDINGS: readonly CivBuildingDef[] = [
       culture: 2,
       happiness: 2
     }
+  },
+  {
+    id: "trade_depot",
+    name: "Trade Depot",
+    cost: 50,
+    maintenance: 0,
+    requiredTech: "pottery",
+    factionCategory: "commercial",
+    factionTier: 1,
+    factionLocation: "any",
+    stats: {
+      gold: 3,
+      production: 1,
+      culture: 1
+    }
+  },
+  {
+    id: "counting_house",
+    name: "Counting House",
+    cost: 120,
+    maintenance: 1,
+    requiredTech: "currency",
+    factionCategory: "commercial",
+    factionTier: 2,
+    factionLocation: "burg",
+    stats: {
+      gold: 6,
+      science: 1,
+      culture: 2
+    }
+  },
+  {
+    id: "grand_exchange",
+    name: "Grand Exchange",
+    cost: 300,
+    maintenance: 2,
+    requiredTech: "banking",
+    factionCategory: "commercial",
+    factionTier: 3,
+    factionLocation: "burg",
+    stats: {
+      gold: 12,
+      production: 1,
+      science: 2,
+      culture: 4
+    }
+  },
+  {
+    id: "chapter_lodge",
+    name: "Chapter Lodge",
+    cost: 40,
+    maintenance: 1,
+    factionCategory: "adventuring",
+    factionTier: 1,
+    factionLocation: "any",
+    stats: {
+      gold: 2,
+      science: 1,
+      culture: 2,
+      happiness: 1
+    }
+  },
+  {
+    id: "seeker_archives",
+    name: "Seeker Archives",
+    cost: 100,
+    maintenance: 1,
+    requiredTech: "writing",
+    factionCategory: "adventuring",
+    factionTier: 2,
+    factionLocation: "any",
+    stats: {
+      science: 3,
+      culture: 3
+    }
+  },
+  {
+    id: "grand_conclave",
+    name: "Grand Conclave",
+    cost: 250,
+    maintenance: 2,
+    requiredTech: "education",
+    factionCategory: "adventuring",
+    factionTier: 3,
+    factionLocation: "hq_only",
+    stats: {
+      science: 6,
+      culture: 6,
+      happiness: 2
+    }
+  },
+  {
+    id: "safe_house",
+    name: "Safe House",
+    cost: 35,
+    maintenance: 0,
+    factionCategory: "underworld",
+    factionTier: 1,
+    factionLocation: "burg",
+    stats: {
+      gold: 3,
+      defense: 1
+    }
+  },
+  {
+    id: "smuggler_tunnel",
+    name: "Smuggler Warren",
+    cost: 90,
+    maintenance: 1,
+    requiredTech: "masonry",
+    factionCategory: "underworld",
+    factionTier: 2,
+    factionLocation: "any",
+    stats: {
+      gold: 6,
+      science: 1,
+      production: 1
+    }
+  },
+  {
+    id: "shadow_court",
+    name: "Shadow Court",
+    cost: 220,
+    maintenance: 2,
+    requiredTech: "guilds",
+    factionCategory: "underworld",
+    factionTier: 3,
+    factionLocation: "hq_only",
+    stats: {
+      gold: 10,
+      science: 3,
+      culture: 4
+    }
+  },
+  {
+    id: "wayside_shrine",
+    name: "Wayside Shrine",
+    cost: 30,
+    maintenance: 1,
+    factionCategory: "religious",
+    factionTier: 1,
+    factionLocation: "any",
+    stats: {
+      gold: 2,
+      faith: 2,
+      culture: 2,
+      happiness: 1
+    }
+  },
+  {
+    id: "monastic_scriptorium",
+    name: "Scriptorium",
+    cost: 80,
+    maintenance: 1,
+    requiredTech: "philosophy",
+    factionCategory: "religious",
+    factionTier: 2,
+    factionLocation: "any",
+    stats: {
+      science: 4,
+      faith: 2,
+      culture: 3
+    }
+  },
+  {
+    id: "ritual_sanctum",
+    name: "Ritual Sanctum",
+    cost: 200,
+    maintenance: 2,
+    requiredTech: "theology",
+    factionCategory: "religious",
+    factionTier: 3,
+    factionLocation: "any",
+    stats: {
+      gold: 4,
+      science: 4,
+      faith: 4,
+      culture: 5
+    }
+  },
+  {
+    id: "informant_ring",
+    name: "Informant Ring",
+    cost: 45,
+    maintenance: 1,
+    factionCategory: "political",
+    factionTier: 1,
+    factionLocation: "burg",
+    stats: {
+      science: 1,
+      culture: 2
+    }
+  },
+  {
+    id: "printing_cell",
+    name: "Pamphlet Press",
+    cost: 110,
+    maintenance: 1,
+    requiredTech: "machinery",
+    factionCategory: "political",
+    factionTier: 2,
+    factionLocation: "burg",
+    stats: {
+      science: 3,
+      culture: 5,
+      happiness: 1
+    }
+  },
+  {
+    id: "shadow_directorate",
+    name: "Directorate HQ",
+    cost: 260,
+    maintenance: 2,
+    requiredTech: "civil_service",
+    factionCategory: "political",
+    factionTier: 3,
+    factionLocation: "hq_only",
+    stats: {
+      gold: 6,
+      science: 4,
+      culture: 6,
+      defense: 2
+    }
+  },
+  {
+    id: "muster_camp",
+    name: "Muster Camp",
+    cost: 50,
+    maintenance: 1,
+    factionCategory: "martial",
+    factionTier: 1,
+    factionLocation: "any",
+    stats: {
+      gold: 2,
+      production: 1,
+      defense: 2
+    },
+    effects: {
+      trainedUnitExperience: {
+        amount: 10,
+        landOnly: true
+      }
+    }
+  },
+  {
+    id: "armory_forge",
+    name: "Armory & Forge",
+    cost: 120,
+    maintenance: 1,
+    requiredTech: "iron_working",
+    factionCategory: "martial",
+    factionTier: 2,
+    factionLocation: "any",
+    stats: {
+      gold: 2,
+      production: 2,
+      science: 2,
+      defense: 3
+    },
+    effects: {
+      trainedUnitExperience: {
+        amount: 15,
+        landOnly: true
+      }
+    }
+  },
+  {
+    id: "war_citadel",
+    name: "War Citadel",
+    cost: 300,
+    maintenance: 2,
+    requiredTech: "chivalry",
+    factionCategory: "martial",
+    factionTier: 3,
+    factionLocation: "hq_only",
+    cityHealth: 25,
+    stats: {
+      gold: 4,
+      production: 2,
+      science: 3,
+      defense: 6
+    }
+  },
+  {
+    id: "alchemical_lab",
+    name: "Alchemical Lab",
+    cost: 130,
+    maintenance: 1,
+    requiredTech: "chemistry",
+    factionCategory: "scholarly",
+    factionTier: 2,
+    factionLocation: "any",
+    stats: {
+      gold: 2,
+      science: 5,
+      production: 1
+    }
+  },
+  {
+    id: "subterranean_delve",
+    name: "Deep Delve",
+    cost: 100,
+    maintenance: 1,
+    requiredTech: "mining",
+    factionCategory: "wilder",
+    factionTier: 2,
+    factionLocation: "wilderness",
+    stats: {
+      gold: 5,
+      production: 2,
+      science: 2,
+      defense: 2
+    }
   }
 ];
 
@@ -1376,7 +1689,7 @@ export function civBuildingCapacity(bDefOrId: CivBuildingDef | string | undefine
     id === "armory" ||
     id === "stables" ||
     id === "forge" ||
-    Boolean(bDef.effects?.trainedUnitExperience)
+    bDef.effects?.trainedUnitExperience
   ) {
     cap.m += 1;
   }

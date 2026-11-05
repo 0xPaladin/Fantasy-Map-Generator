@@ -645,6 +645,17 @@ export interface CivBuildingDef {
   uniqueTo?: string;
   replaces?: string;
   cityHealth?: number;
+  factionCategory?:
+    | "commercial"
+    | "adventuring"
+    | "underworld"
+    | "religious"
+    | "political"
+    | "martial"
+    | "scholarly"
+    | "wilder";
+  factionTier?: 1 | 2 | 3;
+  factionLocation?: "any" | "burg" | "wilderness" | "hq_only";
   stats: CivBuildingStats;
   effects?: CivBuildingEffects;
   notYet?: readonly string[];

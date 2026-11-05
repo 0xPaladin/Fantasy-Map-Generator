@@ -120,7 +120,6 @@ describe("living-threats", () => {
       name: "Free Brotherhood",
       category: "martial",
       type: "rebel_front",
-      scale: "province",
       allegiance: "hostile",
       sovereignAmbition: true,
       color: "#ef4444",

@@ -3695,6 +3695,407 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.provinces[1].order).toBeGreaterThan(0);
     });
   });
+
+  describe("OpenCiv Faction City-Node Loop & Competitive Cell Draft (Phase 2)", () => {
+    beforeEach(() => {
+      setupCityWorld();
+      pack.factions = [{ i: 0 } as Faction];
+    });
+
+    it("competes for worked cells: clandestine outpost pre-drafts cells before State Burg and siphons gold", () => {
+      const living = Living.init();
+      living.burgs[1].civBuildings = ["palace", "market"];
+
+      const shadowFaction = Factions.add({
+        name: "Nightblade Syndicate",
+        category: "underworld",
+        type: "thieves_guild",
+        allegiance: "clandestine",
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 70, assets: ["safe_house"] },
+        outposts: [
+          {
+            burgId: 1,
+            cell: 5,
+            tier: 2,
+            influence: 60,
+            secrecy: 60,
+            assets: [],
+            establishedYear: 990
+          }
+        ]
+      });
+      shadowFaction.hq.sim!.citizens = 1;
+      shadowFaction.outposts[0].sim!.citizens = 2;
+
+      Living.tick(1);
+
+      const b1 = living.burgs[1];
+      const hqWorked = shadowFaction.hq.sim?.workedCells ?? [];
+      const outWorked = shadowFaction.outposts[0].sim?.workedCells ?? [];
+      const stateWorked = b1.workedCells ?? [];
+
+      expect(hqWorked.length).toBeGreaterThanOrEqual(1);
+      expect(outWorked.length).toBeGreaterThanOrEqual(1);
+      expect(stateWorked.length).toBeLessThan(5);
+
+      for (const c of stateWorked) {
+        expect(hqWorked).not.toContain(c);
+        expect(outWorked).not.toContain(c);
+      }
+
+      expect(shadowFaction.outposts[0].sim?.cityYields?.gold ?? 0).toBeGreaterThan(1);
+    });
+
+    it("chartered faction alternates cell picks after state food floor and pays 15% charter tax to host burg", () => {
+      const living = Living.init();
+      const baseGoldBefore = living.burgs[1].cityYields?.gold ?? 0;
+
+      const consortium = Factions.add({
+        name: "Golden Scales Charter",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "chartered",
+        patronStateId: 1,
+        stateRelations: { 1: "Friendly" },
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
+      });
+      consortium.hq.sim!.citizens = 2;
+
+      Living.tick(1);
+
+      const b1 = living.burgs[1];
+      const hqYields = consortium.hq.sim?.cityYields;
+      expect(hqYields).toBeDefined();
+      expect(hqYields!.gold).toBeLessThan(4);
+      expect(b1.cityYields!.gold).toBeGreaterThan(baseGoldBefore);
+    });
+
+    it("grows faction node citizens from food, boosts local influence from culture, and completes queued buildings", () => {
+      Living.init();
+      const guild = Factions.add({
+        name: "Silver Compass",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        researchedTechs: ["pottery", "currency"],
+        hq: { cell: 11, burgId: 2, fortified: false, secrecy: 0, assets: [] },
+        outposts: [
+          {
+            burgId: 1,
+            cell: 5,
+            tier: 1,
+            influence: 40,
+            secrecy: 0,
+            assets: ["wayside_shrine"],
+            establishedYear: 995
+          }
+        ]
+      });
+
+      const rival = Factions.add({
+        name: "Rival Peddlers",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+        outposts: [
+          {
+            burgId: 1,
+            cell: 5,
+            tier: 1,
+            influence: 35,
+            secrecy: 0,
+            assets: [],
+            establishedYear: 996
+          }
+        ]
+      });
+
+      const hqSim = guild.hq.sim!;
+      hqSim.citizens = 2;
+      hqSim.foodStored = foodNeededForGrowth(2);
+      hqSim.productionQueue = [{ kind: "building", id: "trade_depot" }];
+      hqSim.productionProgress = { "building:trade_depot": 79 };
+
+      const outSim = guild.outposts[0].sim!;
+      outSim.cultureStored = 20;
+
+      Living.tick(1);
+
+      expect(hqSim.citizens).toBe(3);
+      expect(hqSim.civBuildings).toContain("trade_depot");
+      expect(guild.hq.assets).toContain("trade_depot");
+
+      expect(guild.outposts[0].influence).toBe(50);
+      expect(rival.outposts[0].influence).toBe(30);
+    });
+
+    it("rolls up empire yields, luxury happiness, and research with host spillover", () => {
+      const living = Living.init();
+      living.states[1].researchedTechs = ["pottery"];
+
+      const faction = Factions.add({
+        name: "Golden Crest Syndicate",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        treasury: 100,
+        researchedTechs: [],
+        researchedProgress: {},
+        currentTechId: "pottery",
+        researchQueue: ["writing"],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
+        outposts: [
+          { burgId: 2, cell: 11, tier: 1, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+        ]
+      });
+
+      pack.cells.good[2] = 1;
+      living.cells[2] = { improvement: "farm" };
+      faction.hq.sim!.workedCells = [2];
+      faction.hq.sim!.cityYields = { food: 8, production: 5, gold: 12, science: 4, culture: 2, faith: 1, happiness: 0 };
+      faction.outposts[0].sim!.cityYields = { food: 4, production: 3, gold: 8, science: 2, culture: 1, faith: 0, happiness: 0 };
+      faction.hq.sim!.civBuildings = ["trade_depot"];
+      faction.outposts[0].sim!.civBuildings = [];
+
+      Living.stepFactionEmpire(living);
+
+      expect(faction.yieldsPerTurn?.food).toBe(12);
+      expect(faction.yieldsPerTurn?.production).toBe(8);
+      expect(faction.yieldsPerTurn?.gold).toBe(20);
+      expect(faction.yieldsPerTurn?.culture).toBe(3);
+      expect(faction.yieldsPerTurn?.faith).toBe(1);
+      expect(faction.yieldsPerTurn?.science).toBe(6);
+      expect(faction.science).toBe(6);
+      expect(faction.treasury).toBe(120);
+      expect(faction.happinessBreakdown?.luxuries).toBeGreaterThan(0);
+      expect(faction.happinessBreakdown?.luxuries).toBe(4);
+      expect(faction.seasonsActive).toBeGreaterThan(0);
+      expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(7.5);
+    });
+
+    it("grants free techs, completes research, and disbands a block on bankruptcy", () => {
+      const living = Living.init();
+
+      const scholar = Factions.add({
+        name: "Test Scholars",
+        category: "adventuring",
+        type: "arcane_college",
+        allegiance: "autonomous",
+        treasury: 50,
+        researchedTechs: [],
+        researchedProgress: {},
+        currentTechId: null,
+        researchQueue: [],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      scholar.freeTechs = 1;
+      scholar.hq.sim!.cityYields = { food: 5, production: 2, gold: 5, science: 1, culture: 1, faith: 0, happiness: 0 };
+
+      Living.stepFactionEmpire(living);
+      expect(scholar.researchedTechs).toContain("pottery");
+
+      const debtor = Factions.add({
+        name: "Test Debtors",
+        category: "martial",
+        type: "raider_clan",
+        allegiance: "hostile",
+        treasury: 1,
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      debtor.military = [
+        {
+          i: 1,
+          name: "Debtor Guard",
+          a: 100,
+          cell: 5,
+          x: 50,
+          y: 50,
+          bx: 50,
+          by: 50,
+          u: { spear: 100 },
+          units: [
+            { type: "spear", hp: 1, exp: 0 },
+            { type: "spear", hp: 1, exp: 0 }
+          ],
+          n: 0,
+          state: 0,
+          icon: "⚔️",
+          rosterId: debtor.rosterId
+        } as unknown as (typeof debtor.military)[number]
+      ];
+      debtor.hq.sim!.cityYields = { food: 5, production: 2, gold: 0, science: 1, culture: 1, faith: 0, happiness: 0 };
+      debtor.hq.sim!.civBuildings = ["grand_exchange", "counting_house"];
+
+      const blocksBefore = debtor.military[0]?.units?.length ?? 0;
+      Living.stepFactionEmpire(living);
+      expect(debtor.treasury).toBe(0);
+      expect((debtor.military[0]?.units?.length ?? 0)).toBeLessThan(blocksBefore);
+    });
+
+    it("faction builders improve worked cells", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Builder Guild",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        researchedTechs: ["pottery"],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      faction.hq.sim!.productionQueue = [{ kind: "unit", id: "builder" }];
+      faction.hq.sim!.productionProgress = { "unit:builder": 49 };
+
+      Living.tick(10);
+
+      expect(faction.military.some(r => r.type === "builder")).toBe(true);
+      const improved = Object.values(living.cells ?? {}).filter(cell => cell.improvement);
+      expect(improved.length).toBeGreaterThan(0);
+    });
+
+    it("faction settlers march to a burg and establish an outpost", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Settler Guild",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        researchedTechs: [],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      faction.hq.sim!.productionQueue = [{ kind: "unit", id: "settler" }];
+      faction.hq.sim!.productionProgress = { "unit:settler": 105 };
+
+      Living.tick(10);
+
+      expect(faction.outposts.length).toBeGreaterThan(0);
+      expect(faction.outposts.some(o => o.burgId !== 1)).toBe(true);
+      expect(faction.military.some(r => r.type === "settler")).toBe(false);
+      expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("established a new outpost"))).toBe(
+        true
+      );
+    });
+
+    it("faction armies fight adjacent enemy armies and siege burgs", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Raider Warband",
+        category: "martial",
+        type: "raider_clan",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        stateRelations: { 1: "Enemy", 2: "Enemy" },
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      // State regiment south of the HQ, faction regiment at the HQ cell.
+      pack.states[1].military = [
+        {
+          i: 0,
+          name: "Aeloria Regiment",
+          a: 100,
+          cell: 9,
+          x: 90,
+          y: 90,
+          bx: 90,
+          by: 90,
+          u: { spear: 100 },
+          units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+          n: 0,
+          state: 1,
+          icon: "⚔️"
+        } as unknown as (typeof pack.states[1].military)[number]
+      ];
+      faction.military = [
+        {
+          i: 1,
+          name: "Raider Guard",
+          a: 100,
+          cell: 5,
+          x: 50,
+          y: 50,
+          bx: 50,
+          by: 50,
+          u: { spear: 100 },
+          units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+          n: 0,
+          state: 0,
+          icon: "⚔️",
+          rosterId: faction.rosterId
+        } as unknown as (typeof faction.military)[number]
+      ];
+
+      const stateHpBefore = (pack.states[1].military[0]?.units ?? []).reduce((sum, b) => sum + b.hp, 0);
+      Living.tick(1);
+
+      const stateHpAfter = (pack.states[1].military[0]?.units ?? []).reduce((sum, b) => sum + b.hp, 0);
+      const factionHpAfter = (faction.military.find(r => r.i === 1)?.units ?? []).reduce((sum, b) => sum + b.hp, 0);
+      expect(stateHpAfter).toBeLessThan(stateHpBefore);
+      expect(living.armies?.[Living.factionUnitKey(faction.i, 1)]?.lastBattle).toBeDefined();
+      expect(factionHpAfter).toBeGreaterThan(0);
+    });
+
+    it("faction armies siege a non-capital burg and pillage it", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Siege Warband",
+        category: "martial",
+        type: "raider_clan",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        stateRelations: { 1: "Enemy", 2: "Enemy" },
+        treasury: 0,
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      // Place the faction army adjacent to Millbrook (burg 5, cell 4, state 1, non-capital).
+      faction.military = [
+        {
+          i: 1,
+          name: "Siege Guard",
+          a: 100,
+          cell: 5,
+          x: 50,
+          y: 50,
+          bx: 50,
+          by: 50,
+          u: { spear: 100 },
+          units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+          n: 0,
+          state: 0,
+          icon: "⚔️",
+          rosterId: faction.rosterId
+        } as unknown as (typeof faction.military)[number]
+      ];
+      const unrestBefore = living.burgs[5]?.unrest ?? 0;
+
+      Living.tick(1);
+
+      expect(faction.treasury).toBeGreaterThan(0);
+      expect(living.burgs[5]?.unrest ?? 0).toBeGreaterThan(unrestBefore);
+    });
+
+    it("autonomous faction competes for worked cells against the host State Burg", () => {
+      const living = Living.init();
+      const faction = Factions.add({
+        name: "Independent Traders",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        stateRelations: { 1: "Neutral" },
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      faction.hq.sim!.citizens = 2;
+
+      Living.tick(1);
+
+      const stateWorked = living.burgs[1]?.workedCells ?? [];
+      const factionWorked = faction.hq.sim?.workedCells ?? [];
+      expect(stateWorked.length).toBeGreaterThan(0);
+      expect(factionWorked.length).toBeGreaterThan(0);
+      expect(new Set([...stateWorked, ...factionWorked]).size).toBe(stateWorked.length + factionWorked.length);
+      expect(faction.hq.sim?.cityYields?.food ?? 0).toBeGreaterThan(0);
+      expect(faction.hq.sim?.cityYields?.gold ?? 0).toBeGreaterThanOrEqual(0);
+    });
+  });
 });
 
 describe("Unified Figures slice 1: specialist commanders", () => {
@@ -4364,19 +4765,19 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
   });
 
   it("advances faction economy, applies yields, upkeeps, and progresses tech research with host-state spillover", () => {
+    buildStubPack();
     const living = Living.init();
     pack.factions = [{ i: 0 } as Faction];
+    (pack.cells as unknown as { h: Uint8Array }).h = new Uint8Array((pack.cells.i as number[]).length).fill(25);
+    (pack.cells as unknown as { biome: Uint8Array }).biome = new Uint8Array((pack.cells.i as number[]).length).fill(4);
 
     // Host state 1 has researched pottery
-    pack.states[1].researchedTechs = ["pottery"];
-    if (living.states[1]) living.states[1].researchedTechs = ["pottery"];
+    living.states[1].researchedTechs = ["pottery"];
 
     const faction = Factions.add({
       name: "Golden Crest Trading",
       category: "commercial",
       type: "merchant_consortium",
-      scale: "burg",
-      tier: 1,
       allegiance: "autonomous",
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
       outposts: [
@@ -4399,20 +4800,28 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       researchedProgress: {}
     });
 
+    faction.hq.sim!.cityYields = { food: 5, production: 3, gold: 12, science: 4, culture: 2, faith: 1, happiness: 0 };
+    faction.outposts[0].sim!.cityYields = { food: 3, production: 2, gold: 8, science: 2, culture: 1, faith: 0, happiness: 0 };
+    faction.hq.sim!.civBuildings = ["trade_depot"];
+    faction.outposts[0].sim!.civBuildings = ["trade_depot"];
+
     const initTreasury = faction.treasury;
-    Living.stepFactionEconomyAndTech(living);
+    Living.stepFactionEmpire(living);
 
-    // Economy: trade_depot yield (gold: 6, influence: 2) x 2 (HQ + outpost) + outpost tier*2 (2) + outpost influence (1) = gold +14, minus outpost upkeep (-1)
-    expect(faction.treasury).toBeGreaterThan(initTreasury);
-    expect(faction.influence).toBeGreaterThan(20);
+    expect(faction.yieldsPerTurn?.food).toBe(8);
+    expect(faction.yieldsPerTurn?.production).toBe(5);
+    expect(faction.yieldsPerTurn?.gold).toBe(20);
+    expect(faction.treasury).toBe(initTreasury + 20);
+    expect(faction.science).toBe(6);
+    expect(Number.isFinite(faction.happiness ?? NaN)).toBe(true);
+    expect(faction.happinessBreakdown).toBeDefined();
 
-    // Tech research: progress accumulated
-    expect(faction.researchedProgress.pottery ?? 0).toBeGreaterThan(0);
+    // Tech research: progress accumulated with +25% host spillover (6 * 1.25 = 7.5)
+    expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(7.5);
 
     // Trigger completion
     faction.researchedProgress.pottery = 34;
-    faction.science = 5;
-    Living.stepFactionEconomyAndTech(living);
+    Living.stepFactionEmpire(living);
     expect(faction.researchedTechs).toContain("pottery");
     expect(faction.currentTechId).toBe("writing");
   });
@@ -4425,8 +4834,6 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       name: "Shadow Syndicate",
       category: "underworld",
       type: "thieves_guild",
-      scale: "province",
-      tier: 2,
       expansionism: 2.0,
       treasury: 250,
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 50, assets: ["safe_house"] },
@@ -4447,8 +4854,6 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       name: "Nightblades",
       category: "underworld",
       type: "thieves_guild",
-      scale: "burg",
-      tier: 1,
       treasury: 50,
       hq: { cell: 3, burgId: 2, fortified: false, secrecy: 50, assets: ["safe_house"] },
       outposts: [
@@ -4503,7 +4908,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(faction.stateRelations[1]).toBe("Enemy");
   });
 
-  it("musters military regiments, conducts raids and ascends to sovereign state", () => {
+  it("ascends to sovereign state when sovereignty conditions are met", () => {
     const living = Living.init();
     pack.factions = [{ i: 0 } as Faction];
 
@@ -4512,8 +4917,6 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       category: "martial",
       type: "raider_clan",
       allegiance: "hostile",
-      scale: "province",
-      tier: 2,
       treasury: 300,
       seasonsActive: 10,
       sovereignAmbition: true,
@@ -4521,9 +4924,27 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       hq: { cell: 4, fortified: true, secrecy: 0, assets: ["muster_camp"] }
     });
 
-    // Step military: musters regiment
+    // Legacy instant muster is retired: Phase 4 regiments come from the production queue.
     Living.stepFactionMilitaryAndRaids(living);
-    expect(raiderFaction.military.length).toBeGreaterThan(0);
+    expect(raiderFaction.military.length).toBe(0);
+
+    // Seed a combat regiment with blocks for the ascension check.
+    raiderFaction.military.push({
+      i: 1,
+      name: "Ironfang Vanguard",
+      a: 100,
+      cell: 4,
+      x: 0,
+      y: 0,
+      bx: 0,
+      by: 0,
+      u: { spear: 100 },
+      units: [{ type: "spear", hp: 1, exp: 0 }],
+      n: 0,
+      state: 0,
+      icon: "⚔️",
+      rosterId: raiderFaction.rosterId
+    } as unknown as (typeof raiderFaction.military)[number]);
     expect(raiderFaction.military[0].u).toHaveProperty("spear");
 
     // Direct ascension test: ascendFactionToState

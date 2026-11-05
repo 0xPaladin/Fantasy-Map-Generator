@@ -1,3 +1,4 @@
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import type { FactionAssetDef } from "@/types/factions";
 
 export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
@@ -239,7 +240,26 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
 };
 
 export function getFactionAsset(id: string): FactionAssetDef | undefined {
-  return FACTION_ASSETS_CATALOG[id];
+  if (FACTION_ASSETS_CATALOG[id]) return FACTION_ASSETS_CATALOG[id];
+  const civ = CIV_BUILDING_BY_ID[id];
+  if (!civ) return undefined;
+  const cost = civ.cost ?? 60;
+  const tier: 1 | 2 | 3 = civ.factionTier ?? (cost >= 200 ? 3 : cost >= 100 ? 2 : 1);
+  return {
+    id: civ.id,
+    name: civ.name,
+    track: civ.factionCategory ?? "commercial",
+    tier,
+    cost,
+    requiredTech: civ.requiredTech,
+    location: civ.factionLocation ?? "any",
+    description: civ.name,
+    yields: {
+      gold: civ.stats.gold,
+      science: civ.stats.science,
+      influence: civ.stats.culture
+    }
+  };
 }
 
 export function getAllFactionAssets(): FactionAssetDef[] {

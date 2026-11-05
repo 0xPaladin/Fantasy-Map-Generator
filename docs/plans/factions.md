@@ -2,6 +2,7 @@
 
 **Updated:** 2026-11-05  
 **Status:** Completed (Phases 1–5 Implemented & Verified; see [factions-plan.md](factions-plan.md))  
+**Note:** The legacy `stepFactionEconomyAndTech` / instant-buy / teleport-raid loop described in Phase 3 below is superseded by the unified OpenCiv engine in [factions-civ-engine.md](factions-civ-engine.md) (Phases 1–5 complete). Factions now run on `stepCities`/`stepEmpire`/`stepTactical` — see the wiki [Factions](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Factions) and [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) pages.
 **Branch:** `factions`  
 **Companions:** [living-world.md](living-world.md), [living-openciv.md](living-openciv.md), [living-openciv-armies.md](living-openciv-armies.md), [lair-ascension.md](lair-ascension.md), [culture-traits.md](culture-traits.md), [unified-figures.md](unified-figures.md)  
 **Supersedes:** `GuildState` (`living.guild`) in [living-idle-guild.md](living-idle-guild.md) and standalone `ProvinceLair` / organizational `ProvinceTrouble` structs in `src/types/living.ts`.

@@ -1,20 +1,110 @@
 import { hcl } from "d3";
+import { assignStateRoster } from "@/data/roster-content";
 import { rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
-import { getFactionAsset } from "@/data/faction-assets";
 import { FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
-import type { Regiment } from "@/model/political/military-generator";
 import {
-  computeFactionScale,
+  Military,
+  type Regiment,
+  reconcileRegimentBlocks,
+  syncRegimentTotals
+} from "@/model/political/military-generator";
+import {
   type Faction,
   type FactionAllegiance,
   type FactionCategory,
   type FactionHq,
   type FactionOutpost,
-  type FactionRelation,
-  type FactionScale
+  type FactionRelation
 } from "@/types/factions";
+import type { BurgSimState, YieldValues } from "@/types/living";
 import { createRng, type Rng } from "@/utils/rng";
+
+function createEmptyYields(): YieldValues {
+  return { food: 0, production: 0, gold: 0, science: 0, culture: 0, faith: 0, happiness: 0 };
+}
+
+/** Initialize or reconcile the OpenCiv BurgSimState for a Faction HQ or Outpost */
+export function ensureFactionNodeSim(node: FactionHq | FactionOutpost, isHq: boolean): BurgSimState {
+  const burgId = node.burgId ?? 0;
+  const tier = "tier" in node ? node.tier : 2;
+  const civBuildings = Array.from(new Set([...(node.assets ?? []), ...(node.sim?.civBuildings ?? [])]));
+  node.assets = [...civBuildings];
+  const baseHp = isHq ? 200 : 100;
+
+  if (!node.sim) {
+    node.sim = {
+      burgId,
+      baseTier: tier,
+      development: 0,
+      developmentProgress: 0,
+      buildings: [],
+      civBuildings,
+      construction: null,
+      unrest: 0,
+      isMajor: true,
+      citizens: isHq ? 2 : Math.max(1, tier),
+      foodStored: 0,
+      cultureStored: 0,
+      tilesAcquired: 0,
+      workedCells: node.cell >= 0 ? [node.cell] : [],
+      lockedCells: [],
+      productionQueue: [],
+      productionProgress: {},
+      cityYields: createEmptyYields(),
+      hp: baseHp,
+      maxHp: baseHp
+    };
+  } else {
+    node.sim.burgId = burgId;
+    node.sim.baseTier = tier;
+    node.sim.buildings ??= [];
+    node.sim.civBuildings = civBuildings;
+    node.sim.construction ??= null;
+    node.sim.unrest ??= 0;
+    node.sim.isMajor = true;
+    node.sim.citizens = Math.max(1, node.sim.citizens ?? (isHq ? 2 : Math.max(1, tier)));
+    node.sim.foodStored ??= 0;
+    node.sim.cultureStored ??= 0;
+    node.sim.tilesAcquired ??= 0;
+    node.sim.workedCells = node.sim.workedCells?.length ? node.sim.workedCells : node.cell >= 0 ? [node.cell] : [];
+    node.sim.lockedCells ??= [];
+    node.sim.productionQueue ??= [];
+    node.sim.productionProgress ??= {};
+    node.sim.cityYields ??= createEmptyYields();
+    node.sim.maxHp ??= baseHp;
+    node.sim.hp ??= node.sim.maxHp;
+  }
+  return node.sim;
+}
+
+/** Reconcile a Faction's HQ/Outpost BurgSimState nodes, OpenCiv empire fields, and ArmyBlock[] regiments */
+export function syncFactionState(faction: Faction): void {
+  if (!faction.rosterId) {
+    faction.rosterId =
+      faction.stateRosterId || assignStateRoster({ culture: faction.culture || 0, type: "Generic" }, pack?.cultures);
+  }
+  faction.freeTechs ??= 0;
+  faction.happiness ??= 0;
+  faction.yieldsPerTurn ??= createEmptyYields();
+
+  if (faction.hq) {
+    ensureFactionNodeSim(faction.hq, true);
+  }
+  for (const outpost of faction.outposts ?? []) {
+    ensureFactionNodeSim(outpost, false);
+  }
+
+  const unitTypes = Military.getUnitTypes();
+  for (const regiment of faction.military ?? []) {
+    regiment.rosterId ??= faction.rosterId;
+    if (!regiment.units?.length && regiment.u && Object.keys(regiment.u).length > 0) {
+      reconcileRegimentBlocks(regiment, unitTypes);
+    } else if (regiment.units?.length) {
+      syncRegimentTotals(regiment, unitTypes);
+    }
+  }
+}
 
 const ADJECTIVES = [
   "Crimson",
@@ -206,7 +296,9 @@ class FactionsModule {
 
     const seed = (typeof options !== "undefined" && options?.map?.seed) || "factions";
     const masterRng = createRng(`${seed}:factions:master`);
-    const currentYear = (typeof options !== "undefined" && options?.map?.lore?.calendar?.year) ?? 1000;
+    const currentYear = Number(
+      (typeof options !== "undefined" ? options?.map?.lore?.calendar?.year : undefined) ?? 1000
+    );
 
     const burgs = pack.burgs?.filter(b => b?.i && !b.removed) ?? [];
     const states = pack.states?.filter(s => s?.i && !s.removed) ?? [];
@@ -302,7 +394,6 @@ class FactionsModule {
         name,
         category,
         type,
-        scale: "burg", // Calculated below
         allegiance,
         patronStateId: optionsOverride.patronStateId,
         color,
@@ -320,7 +411,6 @@ class FactionsModule {
         stateRosterId: arch?.stateRosterId,
         hq,
         outposts,
-        tier: 1,
         science: 2,
         currentTechId: researchQueue[0] ?? null,
         researchQueue,
@@ -336,7 +426,7 @@ class FactionsModule {
         seasonsActive: foundingAge * 4
       };
 
-      (faction as { scale: FactionScale }).scale = computeFactionScale(faction, pack, getFactionAsset);
+      syncFactionState(faction);
       pack.factions.push(faction);
       return faction;
     };
@@ -585,7 +675,6 @@ class FactionsModule {
       name: params.name || `Faction ${id}`,
       category: params.category || "adventuring",
       type: params.type || "adventurer_guild",
-      scale: "burg",
       allegiance: params.allegiance || "autonomous",
       patronStateId: params.patronStateId,
       color: params.color || getFactionColor(id, params.category || "adventuring"),
@@ -604,7 +693,6 @@ class FactionsModule {
       stateRosterId: params.stateRosterId,
       hq: params.hq || { cell: 0, fortified: false, secrecy: 0, assets: [] },
       outposts: params.outposts || [],
-      tier: params.tier || 1,
       science: params.science || 2,
       currentTechId: params.currentTechId ?? null,
       researchQueue: params.researchQueue || [],
@@ -629,7 +717,7 @@ class FactionsModule {
       note: params.note
     };
 
-    (faction as { scale: FactionScale }).scale = computeFactionScale(faction, pack, getFactionAsset);
+    syncFactionState(faction);
     pack.factions.push(faction);
     return faction;
   }
@@ -640,13 +728,6 @@ class FactionsModule {
     if (!f || f.removed) return false;
     f.removed = true;
     return true;
-  }
-
-  /** Recomputes and updates a faction's dynamic scale */
-  recomputeScale(faction: Faction): FactionScale {
-    const newScale = computeFactionScale(faction, pack, getFactionAsset);
-    (faction as { scale: FactionScale }).scale = newScale;
-    return newScale;
   }
 }
 
