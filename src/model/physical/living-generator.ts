@@ -68,7 +68,7 @@ import {
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
-import { Factions } from "@/model/political/factions-generator";
+import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
   Military,
   type Regiment,
@@ -1691,6 +1691,7 @@ class LivingModel {
     this.syncBurgs(living);
     this.syncProvinces(living);
     this.syncStates(living);
+    this.syncFactions(living);
     this.syncArmies(living);
     this.syncDangerMarkers(living);
     this.ensureCommanders();
@@ -2110,6 +2111,12 @@ class LivingModel {
         existing.faith ??= 0;
         existing.prophetsEarned ??= 0;
       }
+    }
+  }
+
+  syncFactions(_living: LivingWorldState): void {
+    for (const faction of Factions.active()) {
+      syncFactionState(faction);
     }
   }
 
@@ -2658,6 +2665,7 @@ class LivingModel {
     living: LivingWorldState
   ): boolean {
     if (def.uniqueTo) return false;
+    if (def.factionCategory) return false;
     if (held.has(def.id)) return false;
     if (def.requiredTech && !techs.has(def.requiredTech)) return false;
     if (def.requiresBuilding && !held.has(def.requiresBuilding)) return false;

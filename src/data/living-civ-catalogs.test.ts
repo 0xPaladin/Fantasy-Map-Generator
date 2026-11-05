@@ -119,7 +119,8 @@ describe("living-civ catalogs (Slice 1)", () => {
 
   describe("buildings", () => {
     it("ports buildings with resolvable tech and building requirements", () => {
-      expect(CIV_BUILDINGS).toHaveLength(94);
+      expect(CIV_BUILDINGS).toHaveLength(114);
+      expect(CIV_BUILDINGS.filter(building => building.factionCategory !== undefined)).toHaveLength(20);
       expectUniqueIds(CIV_BUILDINGS, "building");
 
       const buildingIds = new Set(CIV_BUILDINGS.map(building => building.id));
@@ -156,6 +157,7 @@ describe("living-civ catalogs (Slice 1)", () => {
       expect(CIV_BUILDINGS.filter(building => building.nationalWonder).length).toBeGreaterThan(0);
       expect(CIV_BUILDING_BY_ID.palace).toBe(CIV_BUILDINGS[0]);
       expect(getCivBuilding("palace")).toBe(CIV_BUILDINGS[0]);
+      expect(getCivBuilding("trade_depot")?.factionCategory).toBe("commercial");
       expect(getCivBuilding("not_a_building")).toBeUndefined();
     });
   });

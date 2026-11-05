@@ -1,7 +1,13 @@
 import type { Alignment } from "@/data/culture-traits";
 import type { Regiment } from "@/model/political/military-generator";
 import type { Emblem } from "@/types/emblems";
-import type { ActiveGuildMission, HistoricalRelic } from "@/types/living";
+import type {
+  ActiveGuildMission,
+  BurgSimState,
+  HappinessBreakdown,
+  HistoricalRelic,
+  YieldValues
+} from "@/types/living";
 import type { PackedGraph } from "@/types/packed-graph";
 
 export type FactionScale = "burg" | "province" | "state" | "world";
@@ -50,6 +56,7 @@ export interface FactionHq {
   fortified: boolean;
   secrecy: number; // 0..100
   assets: string[];
+  sim?: BurgSimState;
 }
 
 export interface FactionOutpost {
@@ -61,6 +68,7 @@ export interface FactionOutpost {
   assets: string[];
   establishedYear: number;
   pillaged?: boolean;
+  sim?: BurgSimState;
 }
 
 export interface Faction {
@@ -90,6 +98,7 @@ export interface Faction {
   expansionScope: FactionExpansionScope;
   sovereignAmbition: boolean;
   stateForm?: string;
+  stateRosterId?: string;
 
   // HQ & Outposts
   hq: FactionHq;
@@ -102,6 +111,10 @@ export interface Faction {
   researchQueue: string[];
   researchedTechs: string[];
   researchedProgress: Record<string, number>;
+  freeTechs?: number;
+  yieldsPerTurn?: YieldValues;
+  happiness?: number;
+  happinessBreakdown?: HappinessBreakdown;
 
   // Economy, Diplomacy & Military
   treasury: number;
@@ -186,7 +199,11 @@ export function computeFactionScale(
   const techs = faction.researchedTechs ?? [];
   const totalOutposts = outposts.length;
 
-  const allAssetIds = [...(faction.hq?.assets ?? []), ...outposts.flatMap(o => o.assets ?? [])];
+  const hqAssets = Array.from(new Set([...(faction.hq?.assets ?? []), ...(faction.hq?.sim?.civBuildings ?? [])]));
+  const outpostAssets = outposts.flatMap(o =>
+    Array.from(new Set([...(o.assets ?? []), ...(o.sim?.civBuildings ?? [])]))
+  );
+  const allAssetIds = [...hqAssets, ...outpostAssets];
   const totalAssets = allAssetIds.length;
 
   let hasT2 = false;

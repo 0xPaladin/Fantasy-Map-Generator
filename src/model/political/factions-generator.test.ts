@@ -161,4 +161,34 @@ describe("FactionsGenerator", () => {
     expect(Factions.get(added.i)).toBeUndefined();
     expect(Factions.active().length).toBe(initialCount);
   });
+
+  it("initializes BurgSimState on HQs/Outposts and ArmyBlock[] on military regiments", () => {
+    Factions.generate();
+    for (const faction of Factions.active()) {
+      expect(faction.rosterId).toBeDefined();
+      expect(faction.yieldsPerTurn).toBeDefined();
+
+      // HQ BurgSimState
+      expect(faction.hq.sim).toBeDefined();
+      expect(faction.hq.sim?.citizens).toBeGreaterThanOrEqual(2);
+      expect(faction.hq.sim?.civBuildings).toEqual(faction.hq.assets);
+      expect(faction.hq.sim?.workedCells).toContain(faction.hq.cell);
+      expect(faction.hq.sim?.hp).toBeGreaterThan(0);
+
+      // Outpost BurgSimState
+      for (const outpost of faction.outposts) {
+        expect(outpost.sim).toBeDefined();
+        expect(outpost.sim?.citizens).toBeGreaterThanOrEqual(1);
+        expect(outpost.sim?.civBuildings).toEqual(outpost.assets);
+        expect(outpost.sim?.workedCells).toContain(outpost.cell);
+      }
+
+      // Military regiments have ArmyBlock[] populated
+      for (const reg of faction.military) {
+        expect(reg.units).toBeDefined();
+        expect(reg.units?.length).toBeGreaterThan(0);
+        expect(reg.units?.[0].hp).toBeGreaterThan(0);
+      }
+    }
+  });
 });

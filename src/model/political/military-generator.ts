@@ -815,11 +815,11 @@ class MilitaryModule {
     return units.map(unit => ({ ...unit, icon: Icons.glyph(unit.icon) }));
   }
 
-  getRoster(state: State): ResolvedRoster | undefined {
+  getRoster(polity: { rosterId?: string; stateRosterId?: string }): ResolvedRoster | undefined {
     try {
       const content = currentContent()?.content;
       if (!content) return undefined;
-      const rosterId = state.rosterId || content.defaultRoster || "commonBase";
+      const rosterId = polity.rosterId || polity.stateRosterId || content.defaultRoster || "commonBase";
       return content.rosters[rosterId] || content.rosters[content.defaultRoster] || Object.values(content.rosters)[0];
     } catch {
       return undefined;
