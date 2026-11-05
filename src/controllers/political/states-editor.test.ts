@@ -185,4 +185,17 @@ describe("StatesEditor", () => {
     expect(tagsInput.value).toBe("empire, militarist, coastal");
     expect(valoriaRow.dataset.tags).toBe("empire, militarist, coastal");
   });
+
+  it("opens StateCitiesDialog when clicking stateBurgs cell", () => {
+    StatesEditor.open();
+
+    const valoriaRow = document.querySelector('#statesBodySection .states[data-id="1"]') as HTMLElement;
+    const burgsCell = valoriaRow.querySelector(".stateBurgs") as HTMLElement;
+    expect(burgsCell).not.toBeNull();
+    burgsCell.click();
+
+    const dialog = document.querySelector("#stateCitiesDialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog?.innerHTML).toContain("Valoria");
+  });
 });

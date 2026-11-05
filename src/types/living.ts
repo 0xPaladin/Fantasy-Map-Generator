@@ -502,6 +502,30 @@ export type CivYieldId = "food" | "production" | "gold" | "science" | "culture" 
 export type YieldValues = Record<CivYieldId, number>;
 export type YieldDelta = Partial<YieldValues>;
 
+export interface StateCityYieldBreakdown {
+  burgId: number;
+  name: string;
+  isCapital: boolean;
+  yields: YieldValues;
+  grossGold: number;
+  maintenance: number;
+  science: number;
+  citizens: number;
+  workedCells: number;
+  buildings: string[];
+}
+
+export interface StateYieldBreakdown {
+  total: YieldValues;
+  totalCitizens: number;
+  totalWorkedCells: number;
+  upkeep: number;
+  maintenance: number;
+  relicTribute: number;
+  cities: StateCityYieldBreakdown[];
+  capital: StateCityYieldBreakdown | null;
+}
+
 export type CivEraId =
   | "ancient"
   | "classical"

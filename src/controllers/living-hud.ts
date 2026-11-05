@@ -1,7 +1,6 @@
 // The Living World HUD: a seasonal clock, a live news ticker and a god-mode inspector.
 // See docs/plans/living-world.md (slice 5)
 import { select } from "d3";
-import { currentContent } from "@/data/roster-store";
 import { Controllers } from "@/controllers";
 import { ACTION_DEFS, DIE_SIDES } from "@/data/character-actions";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
@@ -26,7 +25,8 @@ import {
   PACIFY_MISSION_TAGS,
   troubleMissionTags
 } from "@/data/mission-tags";
-import { estimateOdds, type BattleModifiers } from "@/model/battle/battle";
+import { currentContent } from "@/data/roster-store";
+import { type BattleModifiers, estimateOdds } from "@/model/battle/battle";
 import { Pack } from "@/model/graph/pack-generator";
 import {
   armyHp,
@@ -1986,6 +1986,7 @@ function renderEconomy(sSim: StatePolitySim, stateId?: number): string {
 
   const buttons = stateId
     ? `<div class="livingButtons" style="margin-top: 0.35em;">
+        <button type="button" data-open="cities" data-id="${stateId}">Cities &amp; Yields</button>
         <button type="button" data-open="provinces" data-id="${stateId}">Provinces</button>
         <button type="button" data-open="burgs" data-id="${stateId}">Burgs</button>
         <button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>
@@ -2305,6 +2306,9 @@ function bindInspectorButtons(panel: HTMLElement): void {
     button.addEventListener("click", () => {
       const id = Number(button.dataset.id ?? 0);
       switch (button.dataset.open) {
+        case "cities":
+          void Controllers.StateCitiesDialog.open(id);
+          break;
         case "states":
         case "state": {
           const state = pack.states[id];

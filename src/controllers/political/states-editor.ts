@@ -1,7 +1,7 @@
 import { type HierarchyCircularNode, max, pack as packLayout, select, stratify } from "d3";
-import { getRosterOptions } from "@/data/roster-store";
 import { Controllers } from "@/controllers";
 import { CULTURE_TYPE_LABELS } from "@/data/id-labels";
+import { getRosterOptions } from "@/data/roster-store";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
 import { Pack } from "@/model/graph/pack-generator";
@@ -46,6 +46,7 @@ import { applyOption, ensureEl, findEl, getPointer } from "@/utils/node-utils";
 import { rn, si } from "@/utils/number-utils";
 import { rand } from "@/utils/probability-utils";
 import { errorText } from "@/utils/string-utils";
+import { openStateCitiesDialog } from "./state-cities-dialog";
 
 const dialogId = "statesEditor" as const;
 const LEGEND_NAME = "States"; // the legend box this editor toggles
@@ -328,6 +329,7 @@ function renderDialog(): void {
       void Controllers.EmblemsEditor.open("state", `stateCOA${stateId}`, pack.states[stateId]);
     else if (classList.contains("icon-star-empty")) stateCapitalZoomIn(stateId);
     else if (classList.contains("icon-dot-circled")) Controllers.BurgsOverview.open({ stateId });
+    else if (classList.contains("stateBurgs")) openStateCitiesDialog(stateId);
     else if (classList.contains("statePopulation")) changePopulation(stateId);
     else if (classList.contains("stateTreasury")) openTreasuryDialog(stateId);
     else if (classList.contains("icon-book")) void Controllers.NotesEditor.open({ type: "state", id: stateId });
@@ -517,7 +519,7 @@ function renderStatesPage(view: TableView<State>): void {
       )}</select>
       <div data-col="burgs">
         <span data-tip="${t("Click to overview state burgs")}" style="padding-right: 1px" class="icon-dot-circled pointer"></span>
-        <div data-tip="${t("Number of burgs")}" class="stateBurgs">${s.burgs}</div>
+        <div data-tip="${t("Click to view state cities & yields")}" class="stateBurgs pointer">${s.burgs}</div>
       </div>
       <div data-col="cells">
         <span data-tip="${t("Number of cells")}" class="icon-check-empty"></span>
@@ -1784,4 +1786,4 @@ function updateLockStatus(stateId: number, classList: DOMTokenList): void {
   classList.toggle("icon-lock");
 }
 
-export const StatesEditor = { open, showChart: showStatesChart };
+export const StatesEditor = { open, showChart: showStatesChart, openStateCitiesDialog };

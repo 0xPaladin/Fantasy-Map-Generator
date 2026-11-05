@@ -124,7 +124,9 @@ import {
   SEASON_NAMES,
   type SeasonId,
   type StateAgenda,
+  type StateCityYieldBreakdown,
   type StatePolitySim,
+  type StateYieldBreakdown,
   type TreatyKind,
   type TroubleTheme,
   type TroubleUnitRole,
@@ -3632,27 +3634,83 @@ class LivingModel {
   // Slice 4: OpenCiv empire rollup — Science, Gold, Happiness & Unravel.
   // -------------------------------------------------------------------------
 
-  /** Empire-wide yields for every state: city totals, science multipliers, upkeep and maintenance. */
-  private recomputeStateYields(state: State, living: LivingWorldState): YieldValues {
+  /** Detailed breakdown of yields for a state and each of its major cities. */
+  getStateYieldBreakdown(state: State, livingState?: LivingWorldState): StateYieldBreakdown {
+    const living = livingState ?? this.getState();
+    const cities: StateCityYieldBreakdown[] = [];
     const totals = emptyYields();
-    let science = 0;
-    let gold = 0;
-    let maintenance = 0;
+    let totalGrossGold = 0;
+    let totalMaintenance = 0;
+    let totalScience = 0;
+    let totalCitizens = 0;
+    let totalWorkedCells = 0;
+    let capitalBreakdown: StateCityYieldBreakdown | null = null;
 
     for (const burg of this.majorBurgsOfState(state.i, living)) {
       const bSim = living.burgs[burg.i];
       if (!bSim) continue;
-      const yields = bSim.cityYields ?? emptyYields();
-      totals.food += yields.food;
-      totals.production += yields.production;
-      totals.culture += yields.culture;
-      totals.faith += yields.faith;
-      gold += yields.gold;
-      science += this.citySciencePerTick(bSim);
 
+      let cityYields = bSim.cityYields;
+      if (
+        !cityYields ||
+        (cityYields.food === 0 &&
+          cityYields.production === 0 &&
+          cityYields.gold === 0 &&
+          cityYields.science === 0 &&
+          cityYields.culture === 0 &&
+          cityYields.faith === 0)
+      ) {
+        cityYields = this.refreshStateBurgYields(state, burg);
+      }
+
+      let maintenance = 0;
       for (const id of bSim.civBuildings ?? []) {
         maintenance += CIV_BUILDING_BY_ID[id]?.maintenance ?? 0;
       }
+
+      const grossGold = cityYields.gold;
+      const cityScience = this.citySciencePerTick(bSim);
+      const netGold = Math.round((grossGold - maintenance) * 100) / 100;
+      const roundedScience = Math.round(cityScience * 100) / 100;
+      const citizens = bSim.citizens ?? citizensFromPopulation(burg.population ?? 0);
+      const workedCells = bSim.workedCells?.length ?? 1;
+      const isCapital = state.capital === burg.i;
+
+      const nodeYields: YieldValues = {
+        food: cityYields.food,
+        production: cityYields.production,
+        gold: netGold,
+        science: roundedScience,
+        culture: cityYields.culture,
+        faith: cityYields.faith,
+        happiness: 0
+      };
+
+      const breakdown: StateCityYieldBreakdown = {
+        burgId: burg.i,
+        name: burg.name || `Burg ${burg.i}`,
+        isCapital,
+        yields: nodeYields,
+        grossGold,
+        maintenance,
+        science: roundedScience,
+        citizens,
+        workedCells,
+        buildings: [...(bSim.civBuildings ?? [])]
+      };
+
+      cities.push(breakdown);
+      if (isCapital) capitalBreakdown = breakdown;
+
+      totals.food += cityYields.food;
+      totals.production += cityYields.production;
+      totals.culture += cityYields.culture;
+      totals.faith += cityYields.faith;
+      totalGrossGold += grossGold;
+      totalMaintenance += maintenance;
+      totalScience += cityScience;
+      totalCitizens += citizens;
+      totalWorkedCells += workedCells;
     }
 
     // Belief yields (pantheon, founder, follower, enhancer).
@@ -3666,13 +3724,14 @@ class LivingModel {
     }
 
     // Leased relic perks: charter boosts capital Gold, tome capital Science,
-    // idol adds Faith/Culture. Regalia (Happiness/unravel) and weapon (combat)
-    // are applied by the happiness and combat paths.
+    // idol adds Faith/Culture.
     const capitalSim = state.capital ? living.burgs[state.capital] : undefined;
     const charterShare = RELIC_YIELD_PERCENT / 100;
     if (capitalSim) {
-      gold += Math.round((capitalSim.cityYields?.gold ?? 0) * charterShare * this.stateRelicCount(state.i, "charter"));
-      science += this.citySciencePerTick(capitalSim) * charterShare * this.stateRelicCount(state.i, "tome");
+      totalGrossGold += Math.round(
+        (capitalSim.cityYields?.gold ?? 0) * charterShare * this.stateRelicCount(state.i, "charter")
+      );
+      totalScience += this.citySciencePerTick(capitalSim) * charterShare * this.stateRelicCount(state.i, "tome");
     }
     totals.faith += IDOL_FAITH * this.stateRelicCount(state.i, "idol");
     totals.culture += IDOL_CULTURE * this.stateRelicCount(state.i, "idol");
@@ -3695,11 +3754,39 @@ class LivingModel {
     ).length;
     const relicTribute = leasedRelics * RELIC_LEASE_TRIBUTE;
 
-    totals.science = Math.round(science * 100) / 100;
-    totals.gold = Math.round((gold - maintenance - upkeep + relicTribute) * 100) / 100;
-    // Empire Happiness is stored on `sSim.happiness` with its full breakdown.
+    totals.science = Math.round(totalScience * 100) / 100;
+    totals.gold = Math.round((totalGrossGold - totalMaintenance - upkeep + relicTribute) * 100) / 100;
     totals.happiness = 0;
-    return totals;
+
+    return {
+      total: totals,
+      totalCitizens,
+      totalWorkedCells,
+      upkeep,
+      maintenance: totalMaintenance,
+      relicTribute,
+      cities,
+      capital: capitalBreakdown
+    };
+  }
+
+  /** Recalculate worked cells and cityYields for a single state major burg. */
+  refreshStateBurgYields(state: State, burg: Burg): YieldValues {
+    const living = this.getState();
+    const bSim = living.burgs[burg.i];
+    if (!bSim) return emptyYields();
+    if (!pack?.cells?.c || !pack?.cells?.state) {
+      bSim.cityYields ??= emptyYields();
+      return bSim.cityYields;
+    }
+    const yields = this.updateWorkedCells(burg, bSim, state, living);
+    bSim.cityYields = yields;
+    return yields;
+  }
+
+  /** Empire-wide yields for every state: city totals, science multipliers, upkeep and maintenance. */
+  recomputeStateYields(state: State, living?: LivingWorldState): YieldValues {
+    return this.getStateYieldBreakdown(state, living).total;
   }
 
   /** §6.1 Science per city: flat yields plus the Library / School / University / Observatory multipliers. */
