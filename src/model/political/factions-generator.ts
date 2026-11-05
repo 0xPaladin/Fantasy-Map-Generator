@@ -2,7 +2,6 @@ import { hcl } from "d3";
 import { assignStateRoster } from "@/conquest/engine/common/content";
 import { rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
-import { getFactionAsset } from "@/data/faction-assets";
 import { FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
 import {
   Military,
@@ -11,14 +10,12 @@ import {
   syncRegimentTotals
 } from "@/model/political/military-generator";
 import {
-  computeFactionScale,
   type Faction,
   type FactionAllegiance,
   type FactionCategory,
   type FactionHq,
   type FactionOutpost,
-  type FactionRelation,
-  type FactionScale
+  type FactionRelation
 } from "@/types/factions";
 import type { BurgSimState, YieldValues } from "@/types/living";
 import { createRng, type Rng } from "@/utils/rng";
@@ -397,7 +394,6 @@ class FactionsModule {
         name,
         category,
         type,
-        scale: "burg", // Calculated below
         allegiance,
         patronStateId: optionsOverride.patronStateId,
         color,
@@ -415,7 +411,6 @@ class FactionsModule {
         stateRosterId: arch?.stateRosterId,
         hq,
         outposts,
-        tier: 1,
         science: 2,
         currentTechId: researchQueue[0] ?? null,
         researchQueue,
@@ -432,7 +427,6 @@ class FactionsModule {
       };
 
       syncFactionState(faction);
-      (faction as { scale: FactionScale }).scale = computeFactionScale(faction, pack, getFactionAsset);
       pack.factions.push(faction);
       return faction;
     };
@@ -681,7 +675,6 @@ class FactionsModule {
       name: params.name || `Faction ${id}`,
       category: params.category || "adventuring",
       type: params.type || "adventurer_guild",
-      scale: "burg",
       allegiance: params.allegiance || "autonomous",
       patronStateId: params.patronStateId,
       color: params.color || getFactionColor(id, params.category || "adventuring"),
@@ -700,7 +693,6 @@ class FactionsModule {
       stateRosterId: params.stateRosterId,
       hq: params.hq || { cell: 0, fortified: false, secrecy: 0, assets: [] },
       outposts: params.outposts || [],
-      tier: params.tier || 1,
       science: params.science || 2,
       currentTechId: params.currentTechId ?? null,
       researchQueue: params.researchQueue || [],
@@ -726,7 +718,6 @@ class FactionsModule {
     };
 
     syncFactionState(faction);
-    (faction as { scale: FactionScale }).scale = computeFactionScale(faction, pack, getFactionAsset);
     pack.factions.push(faction);
     return faction;
   }
@@ -737,14 +728,6 @@ class FactionsModule {
     if (!f || f.removed) return false;
     f.removed = true;
     return true;
-  }
-
-  /** Recomputes and updates a faction's dynamic scale */
-  recomputeScale(faction: Faction): FactionScale {
-    syncFactionState(faction);
-    const newScale = computeFactionScale(faction, pack, getFactionAsset);
-    (faction as { scale: FactionScale }).scale = newScale;
-    return newScale;
   }
 }
 

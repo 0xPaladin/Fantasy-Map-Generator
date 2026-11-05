@@ -95,10 +95,12 @@ describe("FactionsGenerator", () => {
     expect(brigandFaction?.military[0].cell).toBe(15);
   });
 
-  it("calculates dynamic scale for generated factions", () => {
+  it("generates factions without scale or tier", () => {
     Factions.generate();
     for (const faction of pack.factions.slice(1)) {
-      expect(["burg", "province", "state", "world"]).toContain(faction.scale);
+      expect(faction).toBeDefined();
+      expect((faction as unknown as { scale?: unknown }).scale).toBeUndefined();
+      expect((faction as unknown as { tier?: unknown }).tier).toBeUndefined();
     }
   });
 
@@ -121,7 +123,7 @@ describe("FactionsGenerator", () => {
     expect(state1Factions.length).toBeGreaterThan(0);
   });
 
-  it("adds and removes factions with scale recalculation", () => {
+  it("adds and removes factions", () => {
     Factions.generate();
     const initialCount = Factions.active().length;
 
@@ -138,22 +140,7 @@ describe("FactionsGenerator", () => {
     });
 
     expect(added.i).toBeGreaterThan(0);
-    expect(added.scale).toBe("province");
     expect(Factions.active().length).toBe(initialCount + 1);
-
-    // Dynamic scale recompute when outposts expand
-    added.outposts.push({
-      burgId: 4,
-      cell: 40,
-      tier: 1,
-      influence: 50,
-      secrecy: 0,
-      assets: ["trade_depot", "counting_house"],
-      establishedYear: 998
-    });
-    added.researchedTechs.push("sailing", "writing", "masonry");
-    const updatedScale = Factions.recomputeScale(added);
-    expect(updatedScale).toBe("state");
 
     // Removal
     const removed = Factions.remove(added.i);

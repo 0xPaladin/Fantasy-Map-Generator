@@ -8,9 +8,6 @@ import type {
   HistoricalRelic,
   YieldValues
 } from "@/types/living";
-import type { PackedGraph } from "@/types/packed-graph";
-
-export type FactionScale = "burg" | "province" | "state" | "world";
 
 export type FactionCategory = "commercial" | "adventuring" | "underworld" | "religious" | "political" | "martial";
 
@@ -76,7 +73,6 @@ export interface Faction {
   name: string;
   category: FactionCategory;
   type: string;
-  readonly scale: FactionScale;
   allegiance: FactionAllegiance;
   patronStateId?: number;
 
@@ -105,7 +101,6 @@ export interface Faction {
   outposts: FactionOutpost[];
 
   // Advancement & OpenCiv Tech Tree
-  tier: number; // 1..5
   science: number;
   currentTechId?: string | null;
   researchQueue: string[];
@@ -183,74 +178,4 @@ export interface FactionArchetypeDef {
   desiredAssets: readonly string[];
   desiredTechs: readonly string[];
   defaultValues: readonly string[];
-}
-
-/** Computes dynamic scale from outpost footprint, asset milestones, and tech advancement */
-export function computeFactionScale(
-  faction: {
-    hq?: FactionHq;
-    outposts?: FactionOutpost[];
-    researchedTechs?: string[];
-  },
-  graph?: Pick<PackedGraph, "burgs" | "provinces">,
-  assetLookup?: (assetId: string) => { tier: number } | undefined
-): FactionScale {
-  const outposts = faction.outposts ?? [];
-  const techs = faction.researchedTechs ?? [];
-  const totalOutposts = outposts.length;
-
-  const hqAssets = Array.from(new Set([...(faction.hq?.assets ?? []), ...(faction.hq?.sim?.civBuildings ?? [])]));
-  const outpostAssets = outposts.flatMap(o =>
-    Array.from(new Set([...(o.assets ?? []), ...(o.sim?.civBuildings ?? [])]))
-  );
-  const allAssetIds = [...hqAssets, ...outpostAssets];
-  const totalAssets = allAssetIds.length;
-
-  let hasT2 = false;
-  let hasT3 = false;
-  if (assetLookup) {
-    for (const id of allAssetIds) {
-      const def = assetLookup(id);
-      if (def?.tier === 2) hasT2 = true;
-      if (def?.tier === 3) {
-        hasT2 = true;
-        hasT3 = true;
-      }
-    }
-  } else {
-    hasT2 = totalAssets >= 5;
-    hasT3 = totalAssets >= 10;
-  }
-
-  const stateIds = new Set<number>();
-  const provinceIds = new Set<number>();
-
-  if (faction.hq?.provinceId) provinceIds.add(faction.hq.provinceId);
-  if (faction.hq?.burgId && graph?.burgs?.[faction.hq.burgId]?.state) {
-    stateIds.add(graph.burgs[faction.hq.burgId].state!);
-  }
-
-  if (graph?.burgs) {
-    for (const outpost of outposts) {
-      const b = graph.burgs[outpost.burgId];
-      if (b?.state) stateIds.add(b.state);
-      if (b?.cell && graph.provinces && graph.burgs[outpost.burgId]) {
-        // Track provinces if known
-      }
-    }
-  }
-
-  if (stateIds.size >= 2 && totalOutposts >= 7 && totalAssets >= 10 && hasT3 && techs.length >= 10) {
-    return "world";
-  }
-
-  if ((provinceIds.size >= 2 || totalOutposts >= 3) && totalAssets >= 5 && hasT2 && techs.length >= 5) {
-    return "state";
-  }
-
-  if (totalOutposts >= 2 && totalAssets >= 2 && techs.length >= 2) {
-    return "province";
-  }
-
-  return "burg";
 }

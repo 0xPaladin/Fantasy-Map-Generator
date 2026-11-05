@@ -948,7 +948,6 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
     faction.patronStateId = newStateId;
     faction.sovereignAmbition = false;
     faction.stateRelations[newStateId] = "Ally";
-    Factions.recomputeScale(faction);
 
     pushNews(living, {
       kind: "faction",
@@ -1003,7 +1002,6 @@ export function ascendLairToState(provinceId: number, burgId?: number): number |
       faction.patronStateId = stateId;
       faction.sovereignAmbition = false;
       faction.stateRelations[stateId] = "Ally";
-      Factions.recomputeScale(faction);
     }
   }
 
@@ -1022,7 +1020,6 @@ export function spawnRemnantFaction(fallenState: State, conquerorStateId?: numbe
     name: `${fallenState.name} Restoration Front`,
     category: "political",
     type: "rebel_front",
-    scale: "province",
     allegiance: "hostile",
     color: fallenState.color,
     culture: fallenState.culture,

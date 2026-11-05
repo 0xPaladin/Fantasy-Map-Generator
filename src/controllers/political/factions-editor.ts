@@ -1,4 +1,5 @@
 import { Controllers } from "@/controllers";
+import { ALIGNMENTS, type Alignment } from "@/data/culture-traits";
 import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
@@ -6,7 +7,7 @@ import { Factions } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
-import type { Faction, FactionScale } from "@/types/factions";
+import type { Faction, FactionAllegiance, FactionCategory } from "@/types/factions";
 import type { YieldValues } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
@@ -16,6 +17,7 @@ import {
   initColumnVisibility,
   initEditorTable,
   renderEditorHeader,
+  renderEditorPagination,
   type TableView
 } from "@/ui/dialog/table";
 import type { FillBoxElement } from "@/ui/elements/fill-box";
@@ -32,14 +34,12 @@ const CSV_COLUMNS = [
   "Name",
   "Category",
   "Type",
-  "Scale",
-  "Tier",
   "Allegiance",
+  "Alignment",
   "HQ Cell",
   "HQ Burg",
   "Outposts Count",
   "Treasury",
-  "Influence",
   "Food",
   "Production",
   "Gold",
@@ -49,7 +49,6 @@ const CSV_COLUMNS = [
   "Happiness",
   "Citizens",
   "Worked Cells",
-  "Alignment",
   "Expansionism",
   "Color"
 ];
@@ -112,7 +111,7 @@ function nodeDetailsText(faction: Faction, node: NonNullable<Faction["hq"]> | Fa
   return `${isHq ? "HQ" : "Outpost"} · ${sim.citizens ?? 0} citizens · ${workedCount} worked cells · ${yieldText}${queue ? ` · Queue: ${queue}` : ""}`;
 }
 
-let filterState: { search: string; category: string; scale: string };
+let filterState: { search: string; category: string; allegiance: string; alignment: string };
 
 const columns: EditorColumn<Faction>[] = [
   { key: "locate", width: "1.2em", permanent: true },
@@ -134,24 +133,17 @@ const columns: EditorColumn<Faction>[] = [
     sortType: "alpha"
   },
   {
-    key: "scale",
-    label: t("Scale"),
-    width: "5em",
-    sortBy: f => f.scale || "",
-    sortType: "alpha"
-  },
-  {
-    key: "tier",
-    label: t("Tier"),
-    width: "3em",
-    sortBy: f => f.tier || 1,
-    sortType: "numeric"
-  },
-  {
     key: "allegiance",
     label: t("Allegiance"),
     width: "7em",
     sortBy: f => f.allegiance || "",
+    sortType: "alpha"
+  },
+  {
+    key: "alignment",
+    label: t("Alignment"),
+    width: "7em",
+    sortBy: f => f.alignment || "",
     sortType: "alpha"
   },
   {
@@ -173,13 +165,6 @@ const columns: EditorColumn<Faction>[] = [
     label: t("Treasury"),
     width: "5em",
     sortBy: f => f.treasury || 0,
-    sortType: "numeric"
-  },
-  {
-    key: "influence",
-    label: t("Influence"),
-    width: "5em",
-    sortBy: f => f.influence || 0,
     sortType: "numeric"
   },
   {
@@ -227,17 +212,18 @@ function open(focusId?: number): void {
   Dialog.closeAll("#factionsEditor, .stable");
   Layers.show("factions");
 
-  filterState = dialogState.get(dialogId, "filters", () => ({ search: "", category: "all", scale: "all" }));
+  filterState = dialogState.get(dialogId, "filters", () => ({ search: "", category: "all", allegiance: "all", alignment: "all" }));
   filterState.search ??= "";
   filterState.category ??= "all";
-  filterState.scale ??= "all";
+  filterState.allegiance ??= "all";
+  filterState.alignment ??= "all";
 
   renderDialog();
   updateFilters();
   factionsTable.reset();
 
   Dialog.open("factionsEditor", {
-    title: t("Factions Overview & Editor"),
+    title: t("Factions Overview"),
     onClose: closeFactionsEditor,
     position
   });
@@ -266,15 +252,19 @@ function getFactionsData(): Faction[] {
   if (!pack.factions) return [];
   const search = filterState.search.toLowerCase().trim();
   const categoryFilter = filterState.category;
-  const scaleFilter = filterState.scale;
+  const allegianceFilter = filterState.allegiance;
+  const alignmentFilter = filterState.alignment;
 
   let list = Factions.active();
 
   if (categoryFilter !== "all") {
     list = list.filter(f => f.category === categoryFilter);
   }
-  if (scaleFilter !== "all") {
-    list = list.filter(f => f.scale === scaleFilter);
+  if (allegianceFilter !== "all") {
+    list = list.filter(f => f.allegiance === allegianceFilter);
+  }
+  if (alignmentFilter !== "all") {
+    list = list.filter(f => f.alignment === alignmentFilter);
   }
   if (search) {
     list = list.filter(f => {
@@ -283,6 +273,8 @@ function getFactionsData(): Faction[] {
         f.name.toLowerCase().includes(search) ||
         f.type.toLowerCase().includes(search) ||
         f.category.toLowerCase().includes(search) ||
+        f.allegiance.toLowerCase().includes(search) ||
+        f.alignment.toLowerCase().includes(search) ||
         burgName.includes(search)
       );
     });
@@ -298,12 +290,12 @@ function renderDialog(): void {
     <div id="factionsEditor" class="dialog stable editorDialog">
       ${renderEditorHeader({ dialogId, columns })}
       <div id="factionsBodySection" class="table" data-type="absolute" style="max-height: 480px; overflow-y: auto;"></div>
-      <div id="factionsFilters" class="editorFilters" style="display: flex; gap: 8px; align-items: center; padding: 6px;">
-        <label for="factionsSearch">
-          ${t("Search")}: <input id="factionsSearch" type="search" style="width: 120px;" />
-        </label>
-        <label for="factionsCategoryFilter">
-          ${t("Category")}:
+      <div id="factionsFilters" data-tip="${t("Apply a filter")}" class="editorFilters">
+        <label for="factionsSearch" data-tip="${t("Filter by name, type, category, allegiance, alignment, or HQ burg")}"
+          >${t("Search")}: <input id="factionsSearch" type="search"
+        /></label>
+        <label for="factionsCategoryFilter"
+          >${t("Category")}:
           <select id="factionsCategoryFilter">
             <option value="all">${t("All")}</option>
             <option value="commercial">${t("Commercial")}</option>
@@ -314,27 +306,51 @@ function renderDialog(): void {
             <option value="martial">${t("Martial")}</option>
           </select>
         </label>
-        <label for="factionsScaleFilter">
-          ${t("Scale")}:
-          <select id="factionsScaleFilter">
+        <label for="factionsAllegianceFilter"
+          >${t("Allegiance")}:
+          <select id="factionsAllegianceFilter">
             <option value="all">${t("All")}</option>
-            <option value="burg">${t("Burg")}</option>
-            <option value="province">${t("Province")}</option>
-            <option value="state">${t("State")}</option>
-            <option value="world">${t("World")}</option>
+            <option value="state_arm">${t("State-Arm")}</option>
+            <option value="chartered">${t("Chartered")}</option>
+            <option value="autonomous">${t("Autonomous")}</option>
+            <option value="clandestine">${t("Clandestine")}</option>
+            <option value="hostile">${t("Hostile")}</option>
+          </select>
+        </label>
+        <label for="factionsAlignmentFilter"
+          >${t("Alignment")}:
+          <select id="factionsAlignmentFilter">
+            <option value="all">${t("All")}</option>
+            <option value="good">${t("Good")}</option>
+            <option value="lawful">${t("Lawful")}</option>
+            <option value="neutral">${t("Neutral")}</option>
+            <option value="chaotic">${t("Chaotic")}</option>
+            <option value="evil">${t("Evil")}</option>
           </select>
         </label>
       </div>
-      <div id="factionsFooter" class="totalLine" style="display: flex; justify-content: space-between; align-items: center; padding: 6px;">
-        <div>
-          ${t("Factions")}:&nbsp;<span id="factionsFooterCount">0</span> |
+      <div id="factionsFooter" class="totalLine">
+        <div data-tip="${t("Factions displayed")}" style="margin-left: 5px">
+          ${t("Factions")}:&nbsp;<span id="factionsFooterCount">${t("{{shown}} of {{total}}", { shown: 0, total: 0 })}</span>
+        </div>
+        <div data-tip="${t("Average treasury (gold balance from yields minus upkeep)")}" style="margin-left: 12px">
+          ${t("Avg treasury")}:&nbsp;<span id="factionsFooterTreasury">0</span> 🟡
+        </div>
+        <div data-tip="${t("Average citizens across HQs and outposts")}" style="margin-left: 12px">
+          ${t("Avg citizens")}:&nbsp;<span id="factionsFooterCitizens">0</span>
+        </div>
+        <div data-tip="${t("Average gold per season from yields")}" style="margin-left: 12px">
+          ${t("Avg gold")}:&nbsp;<span id="factionsFooterGold">0</span> 🪙
+        </div>
+        <div data-tip="${t("Total outposts")}" style="margin-left: 12px">
           ${t("Outposts")}:&nbsp;<span id="factionsFooterOutposts">0</span>
         </div>
-        <div style="display: flex; gap: 4px;">
-          <button id="addFactionButton" class="btn" data-tip="${t("Add a new custom faction")}">${t("+ Faction")}</button>
-          <button id="regenerateFactionsButton" class="btn" data-tip="${t("Regenerate all procedural factions")}">${t("Regenerate")}</button>
-          <button id="exportFactionsCsv" class="btn icon-download" data-tip="${t("Download CSV data")}"></button>
-        </div>
+      </div>
+      <div id="factionsBottom" class="editorToolbar">
+        <button id="factionsRefresh" data-tip="${t("Refresh")}" class="icon-cw"></button>
+        <button id="addFactionButton" data-tip="${t("Add a new custom faction")}" class="icon-plus"></button>
+        <button id="regenerateFactionsButton" data-tip="${t("Regenerate all procedural factions")}" class="icon-retweet"></button>
+        <button id="exportFactionsCsv" data-tip="${t("Save data as a CSV file")}" class="icon-download"></button>
       </div>
     </div>
   `;
@@ -357,11 +373,20 @@ function renderDialog(): void {
     factionsTable.refresh();
   });
 
-  ensureEl<HTMLSelectElement>("factionsScaleFilter").addEventListener("change", function () {
-    filterState.scale = this.value;
+  ensureEl<HTMLSelectElement>("factionsAllegianceFilter").addEventListener("change", function () {
+    filterState.allegiance = this.value;
     factionsTable.refresh();
   });
 
+  ensureEl<HTMLSelectElement>("factionsAlignmentFilter").addEventListener("change", function () {
+    filterState.alignment = this.value;
+    factionsTable.refresh();
+  });
+
+  ensureEl("factionsRefresh").addEventListener("click", () => {
+    updateFilters();
+    factionsTable.reset();
+  });
   ensureEl("addFactionButton").addEventListener("click", addNewFaction);
   ensureEl("regenerateFactionsButton").addEventListener("click", regenerateAllFactions);
   ensureEl("exportFactionsCsv").addEventListener("click", exportCsv);
@@ -370,7 +395,8 @@ function renderDialog(): void {
 function updateFilters(): void {
   ensureEl<HTMLInputElement>("factionsSearch").value = filterState.search;
   ensureEl<HTMLSelectElement>("factionsCategoryFilter").value = filterState.category;
-  ensureEl<HTMLSelectElement>("factionsScaleFilter").value = filterState.scale;
+  ensureEl<HTMLSelectElement>("factionsAllegianceFilter").value = filterState.allegiance;
+  ensureEl<HTMLSelectElement>("factionsAlignmentFilter").value = filterState.alignment;
 }
 
 function renderFactionsPage(view: TableView<Faction>): void {
@@ -378,7 +404,14 @@ function renderFactionsPage(view: TableView<Faction>): void {
   if (!container) return;
 
   const totalOutposts = view.all.reduce((sum, f) => sum + (f.outposts?.length ?? 0), 0);
-  ensureEl("factionsFooterCount").textContent = String(view.all.length);
+  const validCount = pack.factions?.filter(f => f && f.i > 0 && !f.removed).length ?? view.all.length;
+  const avgTreasury = view.all.length ? view.all.reduce((sum, f) => sum + (f.treasury ?? 0), 0) / view.all.length : 0;
+  const avgCitizens = view.all.length ? view.all.reduce((sum, f) => sum + totalCitizens(f), 0) / view.all.length : 0;
+  const avgGold = view.all.length ? view.all.reduce((sum, f) => sum + (f.yieldsPerTurn?.gold ?? 0), 0) / view.all.length : 0;
+  ensureEl("factionsFooterCount").innerHTML = t("{{shown}} of {{total}}", { shown: view.all.length, total: validCount });
+  ensureEl("factionsFooterTreasury").textContent = String(Math.round(avgTreasury * 100) / 100);
+  ensureEl("factionsFooterCitizens").textContent = String(Math.round(avgCitizens * 100) / 100);
+  ensureEl("factionsFooterGold").textContent = String(Math.round(avgGold * 100) / 100);
   ensureEl("factionsFooterOutposts").textContent = String(totalOutposts);
 
   const categories: FactionCategory[] = [
@@ -390,6 +423,7 @@ function renderFactionsPage(view: TableView<Faction>): void {
     "martial"
   ];
   const allegiances: FactionAllegiance[] = ["state_arm", "chartered", "autonomous", "clandestine", "hostile"];
+  const alignments = ALIGNMENTS;
 
   const rows = view.rows
     .map(f => {
@@ -407,6 +441,10 @@ function renderFactionsPage(view: TableView<Faction>): void {
         .map(a => `<option value="${a}" ${f.allegiance === a ? "selected" : ""}>${capitalize(a)}</option>`)
         .join("");
 
+      const alignmentOptions = alignments
+        .map(a => `<option value="${a}" ${f.alignment === a ? "selected" : ""}>${capitalize(a)}</option>`)
+        .join("");
+
       return /* html */ `
       <div id="factionRow-${f.i}" class="states" data-id="${f.i}">
         <div data-col="locate" class="pointer icon-dot-circled" data-action="locate" data-tip="${t("Locate HQ on map")}"></div>
@@ -414,13 +452,11 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <input class="name" value="${escapeHtml(f.name)}" data-col="name" data-action="rename" data-tip="${t("Click to rename")}" />
         <span data-col="icon" class="pointer" data-action="icon" data-tip="${t("Change icon")}" style="text-align: center; font-size: 1.1em;">${f.icon || "⚔️"}</span>
         <select data-col="category" data-action="category">${catOptions}</select>
-        <span data-col="scale" class="badge" data-tip="${t("Calculated scale: burg, province, state, or world")}">${capitalize(f.scale)}</span>
-        <span data-col="tier" style="text-align: center;">T${f.tier}</span>
         <select data-col="allegiance" data-action="allegiance">${allgOptions}</select>
+        <select data-col="alignment" data-action="alignment">${alignmentOptions}</select>
         <span data-col="hq" class="pointer" data-action="locate" data-tip="${t("Click to zoom to HQ")}" style="text-decoration: underline;">${escapeHtml(hqName)}</span>
         <span data-col="outposts" class="badge pointer" data-action="outposts" data-tip="${t("Click to manage outposts and assets")}">${f.outposts?.length || 0}</span>
         <input type="number" min="0" max="99999" value="${f.treasury || 0}" data-col="treasury" data-action="treasury" style="width: 4.5em;" />
-        <input type="number" min="0" max="99999" value="${f.influence || 0}" data-col="influence" data-action="influence" style="width: 4.5em;" />
         <span data-col="yields" data-tip="${escapeHtml(formatYields(f))}">${escapeHtml(formatYields(f))}</span>
         <span data-col="citizens" style="text-align: center;">${totalCitizens(f)}</span>
         <span data-col="worked" style="text-align: center;">${totalWorkedCells(f)}</span>
@@ -434,6 +470,8 @@ function renderFactionsPage(view: TableView<Faction>): void {
     .join("");
 
   container.innerHTML = rows;
+
+  renderEditorPagination(ensureEl("factionsFooter"), view, factionsTable.goto);
 
   // Event delegation on table body
   container.addEventListener("click", handleTableClick);
@@ -504,10 +542,11 @@ function handleTableChange(event: Event): void {
   } else if (action === "allegiance") {
     faction.allegiance = (target as HTMLSelectElement).value as FactionAllegiance;
     Layers.draw("factions");
+  } else if (action === "alignment") {
+    faction.alignment = (target as HTMLSelectElement).value as Alignment;
+    Layers.draw("factions");
   } else if (action === "treasury") {
     faction.treasury = Math.max(0, Number((target as HTMLInputElement).value) || 0);
-  } else if (action === "influence") {
-    faction.influence = Math.max(0, Number((target as HTMLInputElement).value) || 0);
   }
 }
 
@@ -565,14 +604,12 @@ function exportCsv(): void {
     f.name,
     f.category,
     f.type,
-    f.scale,
-    f.tier,
     f.allegiance,
+    f.alignment,
     f.hq.cell,
     f.hq.burgId ?? "",
     f.outposts?.length ?? 0,
     f.treasury,
-    f.influence,
     f.yieldsPerTurn?.food ?? 0,
     f.yieldsPerTurn?.production ?? 0,
     f.yieldsPerTurn?.gold ?? 0,
@@ -582,7 +619,6 @@ function exportCsv(): void {
     f.happiness ?? 0,
     totalCitizens(f),
     totalWorkedCells(f),
-    f.alignment,
     f.expansionism,
     f.color
   ]);
@@ -644,7 +680,7 @@ export function openOutpostsDialog(factionId: number): void {
     <div id="${dialogDomId}" class="dialog" style="min-width: 380px; max-width: 500px; padding: 10px;">
       <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 8px;">
         <span style="color: ${faction.color};">${faction.icon || "⚔️"}</span> ${escapeHtml(faction.name)}
-        <span class="badge" style="float: right;">${capitalize(faction.scale)} (T${faction.tier})</span>
+        <span class="badge" style="float: right;">${capitalize(faction.category)} • ${capitalize(faction.allegiance)} • ${capitalize(faction.alignment)}</span>
       </div>
       <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${escapeHtml(formatYields(faction))} · ${totalCitizens(faction)} citizens · ${totalWorkedCells(faction)} worked cells</div>
       <div style="font-size: 0.82em; opacity: 0.75; margin-bottom: 8px;">${escapeHtml(nodeDetailsText(faction, faction.hq, true))}</div>
@@ -682,7 +718,6 @@ export function openOutpostsDialog(factionId: number): void {
     const sel = ensureEl<HTMLSelectElement>("newHqAssetSelect");
     if (sel.value) {
       faction.hq.assets.push(sel.value);
-      Factions.recomputeScale(faction);
       Layers.draw("factions");
       openOutpostsDialog(factionId);
       factionsTable.refresh();
@@ -695,7 +730,6 @@ export function openOutpostsDialog(factionId: number): void {
       btn.addEventListener("click", function () {
         const idx = Number((this as HTMLElement).dataset.index);
         faction.hq.assets.splice(idx, 1);
-        Factions.recomputeScale(faction);
         Layers.draw("factions");
         openOutpostsDialog(factionId);
         factionsTable.refresh();
@@ -716,7 +750,6 @@ export function openOutpostsDialog(factionId: number): void {
         assets: [],
         establishedYear: options?.map?.lore?.calendar?.year ?? 1000
       });
-      Factions.recomputeScale(faction);
       Layers.draw("factions");
       openOutpostsDialog(factionId);
       factionsTable.refresh();
@@ -729,7 +762,6 @@ export function openOutpostsDialog(factionId: number): void {
       btn.addEventListener("click", function () {
         const idx = Number((this as HTMLElement).dataset.index);
         faction.outposts.splice(idx, 1);
-        Factions.recomputeScale(faction);
         Layers.draw("factions");
         openOutpostsDialog(factionId);
         factionsTable.refresh();

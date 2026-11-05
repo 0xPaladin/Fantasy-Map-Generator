@@ -385,7 +385,6 @@ export function setPlayerFaction(factionId: number): boolean {
   if (guild) {
     guild.gold = faction.treasury;
     guild.renown = faction.influence;
-    guild.tier = Math.min(3, Math.max(1, faction.tier)) as 1 | 2 | 3;
     guild.roster = faction.memberIds ? [...faction.memberIds] : [];
     guild.candidates = faction.candidateIds ? [...faction.candidateIds] : [];
     guild.missions = faction.missions ? [...faction.missions] : [];
@@ -406,9 +405,6 @@ export function syncPlayerFaction(living: LivingWorldState): void {
     if (faction.influence > 0 && guild.renown === 0) guild.renown = faction.influence;
     else faction.influence = guild.renown;
 
-    if (guild.tier > faction.tier) faction.tier = guild.tier;
-    else guild.tier = Math.min(3, Math.max(1, faction.tier)) as 1 | 2 | 3;
-
     if (guild.roster.length > 0) faction.memberIds = [...guild.roster];
     else if (faction.memberIds?.length) guild.roster = [...faction.memberIds];
 
@@ -428,8 +424,6 @@ export function syncGuildTier(living: LivingWorldState, guild: GuildState): void
   if (tier <= guild.tier) return;
 
   guild.tier = tier;
-  const faction = getPlayerFaction();
-  if (faction) faction.tier = tier;
   pushNews(living, {
     kind: "muster",
     text: `The Guild Hall was raised to tier ${tier}: ${GUILD_TIER_TITLES[tier - 1]}.`
@@ -1899,7 +1893,6 @@ export function stepPlayerFactionMissions(living: LivingWorldState): void {
   if (faction) {
     faction.treasury = guild.gold;
     faction.influence = guild.renown;
-    faction.tier = Math.min(5, Math.max(1, guild.tier));
     faction.memberIds = [...guild.roster];
     faction.candidateIds = [...guild.candidates];
     faction.missions = [...guild.missions];

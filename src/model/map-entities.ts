@@ -505,7 +505,7 @@ class EntityLookup {
       },
       context: ref => {
         const faction = this.byId(pack.factions, ref.id);
-        return faction ? `${capitalize(faction.category)} • ${faction.scale}` : "";
+        return faction ? `${capitalize(faction.category)} • ${capitalize(faction.alignment)}` : "";
       },
       editor: "FactionsEditor"
     },

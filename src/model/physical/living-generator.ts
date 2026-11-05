@@ -3637,7 +3637,7 @@ class LivingModel {
       const freeTechs = def?.effects?.freeTechs ?? 0;
       if (freeTechs > 0) faction.freeTechs = (faction.freeTechs ?? 0) + freeTechs;
 
-      Factions.recomputeScale(faction);
+
 
       const name = def?.name ?? item.id;
       const locName = node.burgId ? (pack.burgs[node.burgId]?.name ?? faction.name) : faction.name;
@@ -4225,7 +4225,7 @@ class LivingModel {
       cell: faction.hq?.cell,
       ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
     });
-    Factions.recomputeScale(faction);
+
   }
 
   /** Research with +25% spillover when the host state already knows the tech. */
@@ -4330,11 +4330,6 @@ class LivingModel {
       this.recomputeFactionHappiness(faction, living);
       this.applyFactionResearch(faction, living);
       this.applyFactionTreasury(faction, living);
-      Factions.recomputeScale(faction);
-      if (faction.scale === "burg") faction.tier = 1;
-      else if (faction.scale === "province") faction.tier = 2;
-      else if (faction.scale === "state") faction.tier = 3;
-      else if (faction.scale === "world") faction.tier = faction.researchedTechs.length >= 8 ? 5 : 4;
     }
   }
 
@@ -5601,7 +5596,7 @@ class LivingModel {
   }
 
   private captureFactionBurg(faction: Faction, burg: Burg, living: LivingWorldState): void {
-    if (faction.sovereignAmbition && !burg.capital && (faction.seasonsActive >= 4 || faction.tier >= 2)) {
+    if (faction.sovereignAmbition && !burg.capital && (faction.seasonsActive >= 4 || faction.researchedTechs.length >= 2)) {
       const ascStateId = this.ascendFactionToState(faction.i, burg.i);
       if (ascStateId !== null) return;
     }
@@ -6202,7 +6197,7 @@ class LivingModel {
       establishedYear: currentYear
     });
     ensureFactionNodeSim(faction.outposts[faction.outposts.length - 1]!, false);
-    Factions.recomputeScale(faction);
+
     this.pushNews(living, {
       kind: "faction",
       text: `${faction.name} established a new outpost in ${burg.name ?? "a settlement"}!`,
@@ -9166,8 +9161,8 @@ class LivingModel {
             (faction.category === "underworld" && rival.category === "underworld");
 
           if (isEnemy) {
-            const myPower = outpost.influence + faction.tier * 10 + rng.d(20);
-            const rivalPower = rivalOutpost.influence + rival.tier * 10 + rng.d(20);
+            const myPower = outpost.influence + rng.d(20);
+            const rivalPower = rivalOutpost.influence + rng.d(20);
 
             const burg = pack.burgs?.[outpost.burgId];
             if (myPower >= rivalPower) {
@@ -9204,7 +9199,7 @@ class LivingModel {
         faction.sovereignAmbition &&
         faction.allegiance === "hostile" &&
         (faction.seasonsActive ?? 0) >= 8 &&
-        faction.tier >= 2
+        (faction.researchedTechs?.length ?? 0) >= 2
       ) {
         const provId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
         const pSim = provId ? living.provinces?.[provId] : undefined;

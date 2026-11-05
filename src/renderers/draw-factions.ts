@@ -115,7 +115,7 @@ function reconcileFactions({ root, bounds }: ViewportRenderContext): void {
         : faction.hq.markerId !== undefined
           ? (pack.markers?.[faction.hq.markerId]?.legend ?? `Marker ${faction.hq.markerId}`)
           : `Cell ${faction.hq.cell}`;
-      const hqTip = `<b>${escapeHtml(faction.name)}</b><br/>${capitalize(faction.category)} • ${capitalize(faction.scale)} (${t("Tier")} ${faction.tier})<br/>${t("Allegiance")}: ${capitalize(faction.allegiance)}<br/>HQ: ${escapeHtml(hqLocationName)}<br/>${t("Treasury")}: ${faction.treasury}g • ${t("Influence")}: ${faction.influence}`;
+      const hqTip = `<b>${escapeHtml(faction.name)}</b><br/>${capitalize(faction.category)} • ${capitalize(faction.alignment)}<br/>${t("Allegiance")}: ${capitalize(faction.allegiance)}<br/>HQ: ${escapeHtml(hqLocationName)}<br/>${t("Treasury")}: ${faction.treasury}g • ${t("Influence")}: ${faction.influence}`;
 
       hqsMarkup.push(
         `<svg id="faction-hq-${faction.i}" class="faction-hq" data-id="${faction.i}" data-type="faction" data-tip="${hqTip}" viewBox="0 0 32 38" width="${drawn}px" height="${(drawn * 38) / 32}px" x="${hx - drawn / 2}" y="${hy - (drawn * 38) / 32}" overflow="visible" style="cursor: pointer;" pointer-events="all">` +
@@ -125,9 +125,6 @@ function reconcileFactions({ root, bounds }: ViewportRenderContext): void {
           // Inner badge
           `<circle cx="16" cy="14" r="8.5" fill="#f8fafc" stroke="#334155" stroke-width="0.8"/>` +
           `<text x="16" y="16.5" font-size="10" text-anchor="middle" dominant-baseline="central">${faction.icon || "⚔️"}</text>` +
-          // Tier pill
-          `<rect x="8.5" y="24" width="15" height="6.5" rx="2" fill="#0f172a" stroke="#cbd5e1" stroke-width="0.6"/>` +
-          `<text x="16" y="28.8" font-size="4.8" font-weight="bold" fill="#f8fafc" text-anchor="middle">T${faction.tier}</text>` +
           `</g></svg>`
       );
     }
