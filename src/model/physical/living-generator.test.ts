@@ -3837,6 +3837,109 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(guild.outposts[0].influence).toBe(50);
       expect(rival.outposts[0].influence).toBe(30);
     });
+
+    it("rolls up empire yields, luxury happiness, and research with host spillover", () => {
+      const living = Living.init();
+      living.states[1].researchedTechs = ["pottery"];
+
+      const faction = Factions.add({
+        name: "Golden Crest Syndicate",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "autonomous",
+        treasury: 100,
+        researchedTechs: [],
+        researchedProgress: {},
+        currentTechId: "pottery",
+        researchQueue: ["writing"],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
+        outposts: [
+          { burgId: 2, cell: 11, tier: 1, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+        ]
+      });
+
+      pack.cells.good[2] = 1;
+      living.cells[2] = { improvement: "farm" };
+      faction.hq.sim!.workedCells = [2];
+      faction.hq.sim!.cityYields = { food: 8, production: 5, gold: 12, science: 4, culture: 2, faith: 1, happiness: 0 };
+      faction.outposts[0].sim!.cityYields = { food: 4, production: 3, gold: 8, science: 2, culture: 1, faith: 0, happiness: 0 };
+      faction.hq.sim!.civBuildings = ["trade_depot"];
+      faction.outposts[0].sim!.civBuildings = [];
+
+      Living.stepFactionEmpire(living);
+
+      expect(faction.yieldsPerTurn?.food).toBe(12);
+      expect(faction.yieldsPerTurn?.production).toBe(8);
+      expect(faction.yieldsPerTurn?.gold).toBe(20);
+      expect(faction.yieldsPerTurn?.culture).toBe(3);
+      expect(faction.yieldsPerTurn?.faith).toBe(1);
+      expect(faction.yieldsPerTurn?.science).toBe(6);
+      expect(faction.science).toBe(6);
+      expect(faction.treasury).toBe(120);
+      expect(faction.happinessBreakdown?.luxuries).toBeGreaterThan(0);
+      expect(faction.happinessBreakdown?.luxuries).toBe(4);
+      expect(faction.seasonsActive).toBeGreaterThan(0);
+      expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(7.5);
+    });
+
+    it("grants free techs, completes research, and disbands a block on bankruptcy", () => {
+      const living = Living.init();
+
+      const scholar = Factions.add({
+        name: "Test Scholars",
+        category: "adventuring",
+        type: "arcane_college",
+        allegiance: "autonomous",
+        treasury: 50,
+        researchedTechs: [],
+        researchedProgress: {},
+        currentTechId: null,
+        researchQueue: [],
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      scholar.freeTechs = 1;
+      scholar.hq.sim!.cityYields = { food: 5, production: 2, gold: 5, science: 1, culture: 1, faith: 0, happiness: 0 };
+
+      Living.stepFactionEmpire(living);
+      expect(scholar.researchedTechs).toContain("pottery");
+
+      const debtor = Factions.add({
+        name: "Test Debtors",
+        category: "martial",
+        type: "raider_clan",
+        allegiance: "hostile",
+        treasury: 1,
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      debtor.military = [
+        {
+          i: 1,
+          name: "Debtor Guard",
+          a: 100,
+          cell: 5,
+          x: 50,
+          y: 50,
+          bx: 50,
+          by: 50,
+          u: { spear: 100 },
+          units: [
+            { type: "spear", hp: 1, exp: 0 },
+            { type: "spear", hp: 1, exp: 0 }
+          ],
+          n: 0,
+          state: 0,
+          icon: "⚔️",
+          rosterId: debtor.rosterId
+        } as unknown as (typeof debtor.military)[number]
+      ];
+      debtor.hq.sim!.cityYields = { food: 5, production: 2, gold: 0, science: 1, culture: 1, faith: 0, happiness: 0 };
+      debtor.hq.sim!.civBuildings = ["grand_exchange", "counting_house"];
+
+      const blocksBefore = debtor.military[0]?.units?.length ?? 0;
+      Living.stepFactionEmpire(living);
+      expect(debtor.treasury).toBe(0);
+      expect((debtor.military[0]?.units?.length ?? 0)).toBeLessThan(blocksBefore);
+    });
   });
 });
 
@@ -4546,12 +4649,14 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
   });
 
   it("advances faction economy, applies yields, upkeeps, and progresses tech research with host-state spillover", () => {
+    buildStubPack();
     const living = Living.init();
     pack.factions = [{ i: 0 } as Faction];
+    (pack.cells as unknown as { h: Uint8Array }).h = new Uint8Array((pack.cells.i as number[]).length).fill(25);
+    (pack.cells as unknown as { biome: Uint8Array }).biome = new Uint8Array((pack.cells.i as number[]).length).fill(4);
 
     // Host state 1 has researched pottery
-    pack.states[1].researchedTechs = ["pottery"];
-    if (living.states[1]) living.states[1].researchedTechs = ["pottery"];
+    living.states[1].researchedTechs = ["pottery"];
 
     const faction = Factions.add({
       name: "Golden Crest Trading",
@@ -4581,20 +4686,28 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       researchedProgress: {}
     });
 
+    faction.hq.sim!.cityYields = { food: 5, production: 3, gold: 12, science: 4, culture: 2, faith: 1, happiness: 0 };
+    faction.outposts[0].sim!.cityYields = { food: 3, production: 2, gold: 8, science: 2, culture: 1, faith: 0, happiness: 0 };
+    faction.hq.sim!.civBuildings = ["trade_depot"];
+    faction.outposts[0].sim!.civBuildings = ["trade_depot"];
+
     const initTreasury = faction.treasury;
-    Living.stepFactionEconomyAndTech(living);
+    Living.stepFactionEmpire(living);
 
-    // Economy: trade_depot yield (gold: 6, influence: 2) x 2 (HQ + outpost) + outpost tier*2 (2) + outpost influence (1) = gold +14, minus outpost upkeep (-1)
-    expect(faction.treasury).toBeGreaterThan(initTreasury);
-    expect(faction.influence).toBeGreaterThan(20);
+    expect(faction.yieldsPerTurn?.food).toBe(8);
+    expect(faction.yieldsPerTurn?.production).toBe(5);
+    expect(faction.yieldsPerTurn?.gold).toBe(20);
+    expect(faction.treasury).toBe(initTreasury + 20);
+    expect(faction.science).toBe(6);
+    expect(Number.isFinite(faction.happiness ?? NaN)).toBe(true);
+    expect(faction.happinessBreakdown).toBeDefined();
 
-    // Tech research: progress accumulated
-    expect(faction.researchedProgress.pottery ?? 0).toBeGreaterThan(0);
+    // Tech research: progress accumulated with +25% host spillover (6 * 1.25 = 7.5)
+    expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(7.5);
 
     // Trigger completion
     faction.researchedProgress.pottery = 34;
-    faction.science = 5;
-    Living.stepFactionEconomyAndTech(living);
+    Living.stepFactionEmpire(living);
     expect(faction.researchedTechs).toContain("pottery");
     expect(faction.currentTechId).toBe("writing");
   });

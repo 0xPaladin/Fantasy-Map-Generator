@@ -24,8 +24,6 @@ import { assetCheckDifficulties, valueModifier } from "@/conquest/engine/game/sa
 import { garrisonUnits, minorGarrisonUnits } from "@/conquest/engine/game/units";
 import type { Alignment } from "@/data/culture-traits";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
-import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
-import { getFactionArchetype } from "@/data/factions-catalog";
 import type { GuildOperationKind } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines } from "@/data/hero-archetypes";
 import {
@@ -4083,6 +4081,263 @@ class LivingModel {
     sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
   }
 
+  /** Active HQ/outpost nodes of a faction, skipping pillaged outposts. */
+  private factionEmpireNodes(faction: Faction): { node: FactionHq | FactionOutpost; isHq: boolean }[] {
+    const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
+    if (faction.hq) nodes.push({ node: faction.hq, isHq: true });
+    for (const outpost of faction.outposts ?? []) {
+      if (outpost.pillaged) continue;
+      nodes.push({ node: outpost, isHq: false });
+    }
+    return nodes;
+  }
+
+  /** Empire-wide yields for a faction: sum of city-node yields plus science multipliers minus upkeep. */
+  private recomputeFactionYields(faction: Faction): YieldValues {
+    const totals = emptyYields();
+    let science = 0;
+    let gold = 0;
+    let maintenance = 0;
+
+    for (const { node, isHq } of this.factionEmpireNodes(faction)) {
+      const sim = ensureFactionNodeSim(node, isHq);
+      const yields = sim.cityYields ?? emptyYields();
+      totals.food += yields.food;
+      totals.production += yields.production;
+      totals.culture += yields.culture;
+      totals.faith += yields.faith;
+      gold += yields.gold;
+      science += this.citySciencePerTick(sim);
+      for (const id of sim.civBuildings ?? []) {
+        maintenance += CIV_BUILDING_BY_ID[id]?.maintenance ?? 0;
+      }
+    }
+
+    const unitTypes = Military.getUnitTypes();
+    let blockUpkeep = 0;
+    let civilianUpkeep = 0;
+    for (const regiment of faction.military ?? []) {
+      if (isCivilianUnit((regiment.type ?? "").toLowerCase())) {
+        civilianUpkeep += CIVILIAN_UPKEEP;
+        continue;
+      }
+      for (const block of regiment.units ?? []) {
+        if (block.hp > 0) blockUpkeep += (unitTypes[block.type]?.upkeep ?? 0) * block.hp;
+      }
+    }
+    const upkeep = Math.max(0, blockUpkeep + civilianUpkeep - UPKEEP_FREE);
+
+    totals.science = Math.round(science * 100) / 100;
+    totals.gold = Math.round((gold - maintenance - upkeep) * 100) / 100;
+    totals.happiness = 0;
+    return totals;
+  }
+
+  /** Unique luxury resources worked by any faction node, for Empire Happiness. */
+  private factionUniqueLuxuries(faction: Faction, living: LivingWorldState): Set<string> {
+    const luxuries = new Set<string>();
+    for (const { node, isHq } of this.factionEmpireNodes(faction)) {
+      const sim = ensureFactionNodeSim(node, isHq);
+      const worked = [...(sim.workedCells ?? [])];
+      if (!worked.includes(node.cell)) worked.push(node.cell);
+      const hostStateId = node.burgId ? (pack.burgs[node.burgId]?.state ?? 0) : (pack.cells.state?.[node.cell] ?? 0);
+      for (const cell of worked) {
+        const resource = getCellResource(cell, hostStateId, living);
+        if (resource?.class !== "luxury") continue;
+        const cellSim = living.cells?.[cell];
+        const improved = Boolean(cellSim?.improvement && !cellSim.pillaged);
+        const burgId = Number(pack.cells.burg?.[cell] ?? 0);
+        const burg = burgId ? pack.burgs?.[burgId] : undefined;
+        const village = Boolean(burg?.i && !isBurgPillaged(burg, living));
+        if (!improved && !village) continue;
+        luxuries.add(resource.resourceId ?? resource.goodName);
+      }
+    }
+    return luxuries;
+  }
+
+  /** Faction Empire Happiness: base + luxuries + buildings − nodes − citizens. */
+  private recomputeFactionHappiness(faction: Faction, living: LivingWorldState): void {
+    const breakdown: HappinessBreakdown = {
+      base: BASE_EMPIRE_HAPPINESS,
+      luxuries: 0,
+      buildings: 0,
+      religion: 0,
+      relics: 0,
+      cityUnhappiness: 0,
+      citizenUnhappiness: 0,
+      unrestUnhappiness: 0
+    };
+    breakdown.luxuries = LUXURY_HAPPINESS * this.factionUniqueLuxuries(faction, living).size;
+
+    let localHappiness = 0;
+    for (const { node, isHq } of this.factionEmpireNodes(faction)) {
+      const sim = ensureFactionNodeSim(node, isHq);
+      const citizens = sim.citizens ?? 1;
+      let local = 0;
+      for (const id of sim.civBuildings ?? []) {
+        const def = CIV_BUILDING_BY_ID[id];
+        const happiness = def?.stats.happiness ?? 0;
+        if (happiness === 0) continue;
+        if (def?.isWonder) breakdown.buildings += happiness;
+        else local += happiness;
+      }
+      localHappiness += Math.min(local, citizens);
+      breakdown.cityUnhappiness += 3;
+      breakdown.citizenUnhappiness += citizens;
+      breakdown.unrestUnhappiness += Math.ceil((sim.unrest ?? 0) / 2);
+    }
+    breakdown.buildings += localHappiness;
+
+    faction.happinessBreakdown = breakdown;
+    faction.happiness =
+      breakdown.base +
+      breakdown.luxuries +
+      breakdown.buildings +
+      breakdown.religion +
+      breakdown.relics -
+      breakdown.cityUnhappiness -
+      breakdown.citizenUnhappiness -
+      breakdown.unrestUnhappiness;
+  }
+
+  /** Host state used for the +25% research spillover. */
+  private factionHostStateId(faction: Faction): number {
+    if (faction.patronStateId) return faction.patronStateId;
+    if (faction.hq?.burgId) return pack.burgs[faction.hq.burgId]?.state ?? 0;
+    const first = (faction.outposts ?? [])[0];
+    if (first?.burgId) return pack.burgs[first.burgId]?.state ?? 0;
+    return 0;
+  }
+
+  private completeFactionTech(faction: Faction, tech: CivTechDef, living: LivingWorldState, free: boolean): void {
+    faction.researchedTechs ??= [];
+    if (!faction.researchedTechs.includes(tech.id)) faction.researchedTechs.push(tech.id);
+    faction.researchedProgress ??= {};
+    delete faction.researchedProgress[tech.id];
+    faction.researchQueue = (faction.researchQueue ?? []).filter(id => id !== tech.id);
+    faction.currentTechId = null;
+
+    const name = resolveCivTechName(activeCivThemeId(), tech);
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${faction.name} discovered ${name}${free ? " through foreign scholars" : ""}.`,
+      cell: faction.hq?.cell,
+      ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
+    });
+    Factions.recomputeScale(faction);
+  }
+
+  /** Research with +25% spillover when the host state already knows the tech. */
+  private applyFactionResearch(faction: Faction, living: LivingWorldState): void {
+    const theme = activeCivThemeId();
+    faction.researchedTechs ??= [];
+    faction.researchedProgress ??= {};
+    faction.researchQueue ??= [];
+    const researched = new Set(faction.researchedTechs);
+
+    let freeTechs = faction.freeTechs ?? 0;
+    while (freeTechs > 0) {
+      const free = this.nextTech(researched, theme);
+      if (!free) break;
+      this.completeFactionTech(faction, free, living, true);
+      researched.add(free.id);
+      freeTechs -= 1;
+    }
+    faction.freeTechs = freeTechs;
+
+    let current: CivTechDef | undefined = faction.currentTechId ? CIV_TECH_BY_ID[faction.currentTechId] : undefined;
+    if (!current || !isTechSelectable(current, researched, theme)) {
+      const queued = faction.researchQueue
+        .map(id => CIV_TECH_BY_ID[id])
+        .find(tech => tech !== undefined && isTechSelectable(tech, researched, theme));
+      current = queued ?? this.nextTech(researched, theme) ?? undefined;
+      faction.currentTechId = current?.id ?? null;
+    }
+    if (!current) return;
+
+    let science = Math.max(0, faction.yieldsPerTurn?.science ?? 0);
+    const hostId = this.factionHostStateId(faction);
+    if (hostId > 0) {
+      const hostTechs = living.states[hostId]?.researchedTechs ?? [];
+      if (hostTechs.includes(current.id)) science = Math.round(science * 1.25 * 100) / 100;
+    }
+
+    const cost = Math.max(1, current.cost);
+    const banked = (faction.researchedProgress[current.id] ?? 0) + science;
+    if (banked < cost) {
+      faction.researchedProgress[current.id] = Math.round(banked * 100) / 100;
+      return;
+    }
+    this.completeFactionTech(faction, current, living, false);
+
+    const advanced = new Set(faction.researchedTechs ?? []);
+    const queued = faction.researchQueue
+      .map(id => CIV_TECH_BY_ID[id])
+      .find(tech => tech !== undefined && isTechSelectable(tech, advanced, theme));
+    faction.currentTechId = (queued ?? this.nextTech(advanced, theme))?.id ?? null;
+  }
+
+  /** Bank net Gold into the faction treasury; a negative balance disbands a block. */
+  private applyFactionTreasury(faction: Faction, living: LivingWorldState): void {
+    const goldPerTurn = faction.yieldsPerTurn?.gold ?? 0;
+    faction.treasury = Math.round((Number(faction.treasury ?? 0) + goldPerTurn) * 100) / 100;
+    faction.science = Math.max(0, faction.yieldsPerTurn?.science ?? 0);
+    if (living.playerFactionId === faction.i && living.guild) {
+      living.guild.gold = faction.treasury;
+    }
+    if (faction.treasury < 0) this.settleFactionDebt(faction, living);
+  }
+
+  /** Bankruptcy: disband the newest block, not the whole regiment. */
+  private settleFactionDebt(faction: Faction, living: LivingWorldState): void {
+    faction.treasury = 0;
+    if (living.playerFactionId === faction.i && living.guild) {
+      living.guild.gold = 0;
+    }
+    const military = faction.military ?? [];
+    const newest = military[military.length - 1];
+    if (!newest) return;
+
+    const blocks = newest.units ?? [];
+    if (blocks.length > 0) {
+      blocks.pop();
+      newest.units = blocks;
+      syncRegimentTotals(newest, Military.getUnitTypes());
+    }
+    if (blocks.length === 0) {
+      military.pop();
+      const key = this.factionUnitKey(faction.i, newest.i);
+      if (living.units) delete living.units[key];
+      if (living.armies) delete living.armies[key];
+    }
+
+    this.pushNews(living, {
+      kind: "muster",
+      text: `${faction.name} could not pay its forces; its newest block was disbanded.`,
+      cell: newest.cell,
+      ...(newest.cell !== undefined ? { burgId: Number(pack.cells.burg?.[newest.cell] ?? 0) || undefined } : {})
+    });
+  }
+
+  /** One seasonal faction empire tick: yields, happiness, research and treasury. */
+  stepFactionEmpire(living: LivingWorldState): void {
+    if (!this.hasCityTerrain()) return;
+    for (const faction of Factions.active()) {
+      faction.seasonsActive = (faction.seasonsActive || 0) + 1;
+      syncFactionState(faction);
+      faction.yieldsPerTurn = this.recomputeFactionYields(faction);
+      this.recomputeFactionHappiness(faction, living);
+      this.applyFactionResearch(faction, living);
+      this.applyFactionTreasury(faction, living);
+      Factions.recomputeScale(faction);
+      if (faction.scale === "burg") faction.tier = 1;
+      else if (faction.scale === "province") faction.tier = 2;
+      else if (faction.scale === "state") faction.tier = 3;
+      else if (faction.scale === "world") faction.tier = faction.researchedTechs.length >= 8 ? 5 : 4;
+    }
+  }
+
   /** One seasonal empire tick: yields, happiness, research, treasury and unravel. */
   private stepEmpire(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
@@ -4098,6 +4353,8 @@ class LivingModel {
       this.applyTreasury(state, sSim, living);
       this.applyHappinessPressure(sSim);
     }
+
+    this.stepFactionEmpire(living);
   }
 
   /** Choose the technology a state researches next (public for HUD and Sandbox controls). */
@@ -7942,7 +8199,6 @@ class LivingModel {
   stepFactions(living: LivingWorldState): void {
     if (pack.factions && pack.factions.length > 1) {
       this.syncPlayerFaction(living);
-      this.stepFactionEconomyAndTech(living);
       this.stepFactionAgendas(living);
       this.stepFactionMilitaryAndRaids(living);
     }
@@ -7950,173 +8206,7 @@ class LivingModel {
     this.stepLairs(living);
   }
 
-  /** Calculate per-season faction revenue, science, tech research, and burg/province impact */
-  stepFactionEconomyAndTech(living: LivingWorldState): void {
-    const activeFactions = Factions.active();
-
-    for (const faction of activeFactions) {
-      faction.seasonsActive = (faction.seasonsActive || 0) + 1;
-
-      // 1. Calculate Incomes
-      let goldIncome = 0;
-      let scienceIncome = 1;
-      let influenceIncome = 1;
-
-      for (const assetId of faction.hq.assets) {
-        const asset = getFactionAsset(assetId);
-        if (asset) {
-          goldIncome += asset.yields?.gold ?? 0;
-          scienceIncome += asset.yields?.science ?? 0;
-          influenceIncome += asset.yields?.influence ?? 0;
-        }
-      }
-
-      for (const outpost of faction.outposts) {
-        if (outpost.pillaged) continue;
-
-        goldIncome += outpost.tier * 2;
-        influenceIncome += outpost.tier;
-
-        for (const assetId of outpost.assets) {
-          const asset = getFactionAsset(assetId);
-          if (asset) {
-            goldIncome += asset.yields?.gold ?? 0;
-            scienceIncome += asset.yields?.science ?? 0;
-            influenceIncome += asset.yields?.influence ?? 0;
-          }
-        }
-
-        const bBurg = pack.burgs?.[outpost.burgId];
-        const provId = bBurg ? (pack.cells.province?.[bBurg.cell] ?? 0) : 0;
-        const pSim = provId ? living.provinces?.[provId] : null;
-        const floor = Math.max(pSim?.trouble?.level ?? 0, pSim?.lair?.level ?? 0);
-        const bSim = living.burgs?.[outpost.burgId];
-        if (bSim) {
-          if (
-            outpost.assets.some(a => a === "chapter_lodge" || a === "sanctuary" || a === "grand_temple") &&
-            (faction.category === "commercial" ||
-              faction.category === "adventuring" ||
-              (faction.category === "religious" && faction.alignment !== "evil"))
-          ) {
-            bSim.unrest = Math.max(floor, (bSim.unrest ?? 0) - 1);
-          } else if (
-            faction.category === "underworld" ||
-            faction.allegiance === "hostile" ||
-            faction.alignment === "evil"
-          ) {
-            if (outpost.secrecy < 30 || outpost.influence > 50) {
-              bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 1);
-            }
-          }
-        }
-      }
-
-      // Patron State Stipends
-      if (faction.patronStateId) {
-        const patron = pack.states?.[faction.patronStateId];
-        const pStateSim = living.states?.[faction.patronStateId];
-        if (patron && !patron.removed && (pStateSim?.unravel ?? 0) < 60) {
-          if (faction.allegiance === "state_arm") {
-            goldIncome += 8;
-            scienceIncome += 2;
-          } else if (faction.allegiance === "chartered") {
-            goldIncome += 4;
-          }
-        }
-      }
-
-      // Underworld Illicit Siphoning
-      if (faction.category === "underworld") {
-        for (const outpost of faction.outposts) {
-          if (!outpost.pillaged) {
-            const burg = pack.burgs?.[outpost.burgId];
-            if (burg) {
-              const siphon = Math.min(12, Math.max(2, Math.round((burg.population || 10) * 0.1)));
-              goldIncome += siphon;
-            }
-          }
-        }
-      }
-
-      // Upkeep
-      const militaryUpkeep = (faction.military ?? []).reduce(
-        (acc, r) => acc + Math.max(2, Math.round((r.a || 50) * 0.05)),
-        0
-      );
-      const outpostUpkeep = faction.outposts.length;
-      const totalUpkeep = militaryUpkeep + outpostUpkeep;
-
-      faction.treasury = Math.max(0, faction.treasury + goldIncome - totalUpkeep);
-      faction.influence = Math.min(1000, Math.max(0, faction.influence + influenceIncome));
-      faction.science = Math.max(1, scienceIncome);
-
-      // 2. Tech Progression & Spillover (+25%)
-      if (faction.currentTechId) {
-        let researchPower = faction.science;
-
-        const hostBurgId = faction.hq.burgId ?? faction.outposts[0]?.burgId;
-        const hostBurg = hostBurgId ? pack.burgs?.[hostBurgId] : undefined;
-        const hostState = hostBurg?.state ? pack.states?.[hostBurg.state] : undefined;
-        const hostStateSim = hostBurg?.state ? living.states?.[hostBurg.state] : undefined;
-        if (
-          hostStateSim?.researchedTechs?.includes(faction.currentTechId) ||
-          hostState?.researchedTechs?.includes(faction.currentTechId)
-        ) {
-          researchPower = Number((researchPower * 1.25).toFixed(1));
-        }
-
-        faction.researchedProgress ??= {};
-        const currentProg = (faction.researchedProgress[faction.currentTechId] || 0) + researchPower;
-        const techCost = CIV_TECH_BY_ID[faction.currentTechId]?.cost ?? 50;
-
-        if (currentProg >= techCost) {
-          if (!faction.researchedTechs.includes(faction.currentTechId)) {
-            faction.researchedTechs.push(faction.currentTechId);
-          }
-          delete faction.researchedProgress[faction.currentTechId];
-
-          const techName = CIV_TECH_BY_ID[faction.currentTechId]?.name ?? faction.currentTechId;
-          this.pushNews(living, {
-            kind: "faction",
-            text: `${faction.name} mastered the secrets of ${techName}!`,
-            cell: faction.hq.cell,
-            burgId: faction.hq.burgId
-          });
-
-          const nextTech = faction.researchQueue.find(t => !faction.researchedTechs.includes(t));
-          if (nextTech) {
-            faction.currentTechId = nextTech;
-          } else {
-            const arch = getFactionArchetype(faction.type);
-            const candidates = (arch?.desiredTechs ?? []).filter(t => !faction.researchedTechs.includes(t));
-            faction.currentTechId = candidates[0] ?? null;
-          }
-        } else {
-          faction.researchedProgress[faction.currentTechId] = currentProg;
-        }
-      } else {
-        const nextTech = faction.researchQueue.find(t => !faction.researchedTechs.includes(t));
-        if (nextTech) {
-          faction.currentTechId = nextTech;
-        } else {
-          const arch = getFactionArchetype(faction.type);
-          const candidates = (arch?.desiredTechs ?? []).filter(t => !faction.researchedTechs.includes(t));
-          if (candidates.length > 0) {
-            faction.currentTechId = candidates[0];
-          }
-        }
-      }
-
-      // 3. Dynamic Scale & Tier Re-evaluation
-      Factions.recomputeScale(faction);
-      if (faction.scale === "burg") faction.tier = 1;
-      else if (faction.scale === "province") faction.tier = 2;
-      else if (faction.scale === "state") faction.tier = 3;
-      else if (faction.scale === "world") faction.tier = faction.researchedTechs.length >= 8 ? 5 : 4;
-    }
-  }
-
-  /** Step autonomous faction agendas: outpost expansion, asset building, and turf clashes */
+  /** Step faction agendas: patron severance, teleport expansion (until Settlers in Phase 4), and turf clashes */
   stepFactionAgendas(living: LivingWorldState): void {
     const activeFactions = Factions.active();
     const rng = this.rng("faction:agendas", living.tick);
@@ -8201,30 +8291,6 @@ class LivingModel {
               burgId: targetBurg.i
             });
           }
-        }
-      }
-
-      if (faction.treasury >= 80) {
-        const unbuilt = Object.values(FACTION_ASSETS_CATALOG).filter(asset => {
-          if (faction.hq.assets.includes(asset.id)) return false;
-          if (asset.tier > faction.tier) return false;
-          if (
-            asset.track &&
-            asset.track !== faction.category &&
-            asset.track !== "scholarly" &&
-            asset.track !== "wilder"
-          )
-            return false;
-          if (asset.requiredTech && !faction.researchedTechs.includes(asset.requiredTech)) return false;
-          if (faction.treasury < asset.cost) return false;
-          return true;
-        });
-
-        if (unbuilt.length > 0) {
-          const chosen = unbuilt[0];
-          faction.treasury -= chosen.cost;
-          faction.hq.assets.push(chosen.id);
-          Factions.recomputeScale(faction);
         }
       }
 
