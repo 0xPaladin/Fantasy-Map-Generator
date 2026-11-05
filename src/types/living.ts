@@ -320,9 +320,7 @@ export type GuildMissionKind = "trouble" | "lair" | "excavate" | "pacify";
 export interface MissionPhase {
   id: string;
   label: string;
-  /** @deprecated use `action` */
-  pool: HeroPool;
-  action?: ActionId;
+  action: ActionId;
   tags: MissionTag[];
   dc: number;
   required: boolean;
@@ -335,6 +333,8 @@ export interface MissionPhaseResult {
   total: number;
   success: boolean;
   untrained?: boolean;
+  critical?: boolean;
+  complication?: boolean;
 }
 
 export type MissionOutcome = "full" | "partial" | "failed";
@@ -347,9 +347,7 @@ export interface ActiveGuildMission {
   provinceId?: number;
   burgId?: number;
   markerId?: number;
-  /** @deprecated use `action` */
-  pool: "m" | "w" | "s" | "c";
-  action?: ActionId;
+  action: ActionId;
   dc: number;
   progress: number;
   required: number;

@@ -135,6 +135,7 @@ export function attributesFromSkills(skills: { m: number; w: number; s: number; 
   };
 }
 
+/** @deprecated adapter for guild operations and trouble resolution. */
 export function legacyActionForPool(pool: "m" | "w" | "s" | "c"): ActionId {
   if (pool === "m") return "strike";
   if (pool === "w") return "investigate";

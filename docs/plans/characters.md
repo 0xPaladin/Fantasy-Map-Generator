@@ -1,7 +1,7 @@
 # Plan — Characters: One Roster for People, Heroes & Historical Figures
 
 **Updated:** 2026-11-05  
-**Status:** In progress — Phases 1-4 implemented  
+**Status:** In progress — Phases 1-5 implemented  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 
@@ -58,7 +58,7 @@ The design has three layers:
 - [x] **Phase 2 - Characters facade and lifecycle** (2026-11-05)
 - [x] **Phase 3 - Serialization and legacy migration** (2026-11-05)
 - [x] **Phase 4 - Generators and manual preservation** (2026-11-05)
-- [ ] Phase 5 — Hero checks and missions
+- [x] **Phase 5 - Hero checks and missions** (2026-11-05)
 - [ ] Phase 6 — Characters editor
 - [ ] Phase 7 — Layer, map entity, omnibar, tool button
 - [ ] Phase 8 — Docs, glossary, cleanup
@@ -847,27 +847,35 @@ Keep the existing trait rendering.
 
 ---
 
-### Phase 5 — Hero Checks & Missions
+### Phase 5 — Hero Checks & Missions ✅
 
+**Status:** Implemented 2026-11-05.  
 **Goal:** Replace pool checks with action checks on the character-facing surface.
 
-1. `src/data/character-actions.ts`
-   - wire the Phase 1 `actionCheck` into mission resolution.
+1. `src/data/mission-phases.ts`
+   - Every phase now carries a required `action`.
+   - Lair: scout / strike / infiltrate.
+   - Excavation: investigate / scout / survive.
+   - Pacify: persuade / command / persuade.
+   - Trouble: investigate / strike / persuade.
 2. Mission types and dispatch
-   - make `MissionPhase.action` and `ActiveGuildMission.action` required and remove the deprecated `pool`;
-   - mission fit and DC use actions;
-   - dispatch calls `actionCheck`.
+   - `MissionPhase.action` and `ActiveGuildMission.action` are required; the deprecated `pool` is gone.
+   - Old mission saves fall back through `legacyActionForPool` when resolving.
+   - `missionPhaseInput` converts legacy d20 DCs onto the action ladder (`4`–`10`).
+   - `resolveMission` calls `actionCheck`; phase results store critical/complication.
+   - `phaseScore`, `pickPhaseHero`, and `missionChance` use action dice and attributes.
 3. Legacy adapters
-   - `legacyActionForPool` for guild operations, operator scoring, and trouble resolution;
-   - mark the adapters deprecated.
-4. Tests
-   - advantage takes the best of two dice; disadvantage takes the worst;
-   - crit/complication boundaries;
-   - attribute bounds;
-   - mission phase resolves with an action;
-   - legacy pool adapter is deterministic.
+   - `legacyActionForPool` and `figureCheckRoll` are marked deprecated for guild operations and trouble resolution.
+   - Guild operations, operator scoring, and trouble conversion keep the old d20 surface until the progress conversion.
+4. UI and tests
+   - `living-hud` shows action labels instead of pool letters.
+   - `mission-phases.test.ts` asserts actions.
+   - `character-actions.test.ts` covers advantage/disadvantage, criticals, complications, attribute bounds, and the legacy adapter.
+   - `living-generator.test.ts` covers mission dispatch and action-based resolution.
 
-**Acceptance:** no character-facing code reads `skills.m/w/s/c`; missions resolve with action dice; troubles still run through the temporary adapter until the progress conversion.
+**Verification:** 189 living tests pass; the mission-phase and HUD suites pass. No new `tsc --noEmit` errors from the mission changes.
+
+**Acceptance:** character-facing missions resolve with action dice and attributes; guild operations and troubles still run through the deprecated pool adapter until their progress conversion.
 
 ---
 

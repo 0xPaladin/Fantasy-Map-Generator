@@ -1331,8 +1331,8 @@ describe("LivingHud", () => {
     mocks.living.getPartyPreview.mockReturnValue({
       party: [1, 2],
       phases: [
-        { id: "lair_approach", label: "Approach", pool: "c", tags: ["ruin"], dc: 19, required: true },
-        { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 20, required: true }
+        { id: "lair_approach", label: "Approach", action: "scout", tags: ["ruin"], dc: 19, required: true },
+        { id: "lair_breach", label: "Breach", action: "strike", tags: ["combat"], dc: 20, required: true }
       ],
       members: [
         { figureId: 1, name: "Bran Quickfoot", score: 4, bestPhaseId: "lair_breach" },
@@ -1346,7 +1346,7 @@ describe("LivingHud", () => {
     expect(inspector?.querySelector<HTMLElement>("[data-god]")).toBeNull();
     expect(inspector?.textContent).toContain("Expedition Party");
     expect(inspector?.textContent).toContain("Bran Quickfoot");
-    expect(inspector?.textContent).toContain("Approach C");
+    expect(inspector?.textContent).toContain("Approach Scout");
     inspector?.querySelector<HTMLElement>('[data-guild="dispatch"]')?.click();
     expect(Living.dispatchBestHero).toHaveBeenCalledWith(1);
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("guild hero");
@@ -1369,7 +1369,7 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Scout");
     expect(inspector?.textContent).toContain("Survival");
     expect(inspector?.textContent).toContain("Archery");
-    expect(inspector?.textContent).toContain("M d10 · W d6 · S d4 · C d8");
+    expect(inspector?.textContent).toContain("Strike d10 · Guard d10 · Maneuver d10");
 
     inspector?.querySelector<HTMLElement>('[data-guild="retire"]')?.click();
     expect(Living.retireHero).toHaveBeenCalledWith(1);
@@ -1473,7 +1473,7 @@ describe("LivingHud", () => {
           kind: "lair",
           figureId: 1,
           targetCell: 1,
-          pool: "m",
+          action: "strike",
           dc: 15,
           progress: 1,
           required: 2,
@@ -1482,8 +1482,8 @@ describe("LivingHud", () => {
           party: [1, 2],
           tags: ["lair", "combat"],
           phases: [
-            { id: "lair_approach", label: "Approach", pool: "c", tags: ["lair"], dc: 14, required: true },
-            { id: "lair_breach", label: "Breach", pool: "m", tags: ["combat"], dc: 15, required: true }
+            { id: "lair_approach", label: "Approach", action: "scout", tags: ["lair"], dc: 14, required: true },
+            { id: "lair_breach", label: "Breach", action: "strike", tags: ["combat"], dc: 15, required: true }
           ],
           phaseResults: [{ phaseId: "lair_approach", heroId: 1, roll: 12, total: 18, success: true }]
         }
@@ -1496,8 +1496,8 @@ describe("LivingHud", () => {
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("On expedition: Phase 2/2");
-    expect(inspector?.textContent).toContain("Approach C");
-    expect(inspector?.textContent).toContain("Breach M");
+    expect(inspector?.textContent).toContain("Approach Scout");
+    expect(inspector?.textContent).toContain("Breach Strike");
   });
 
   it("recruits a tavern candidate from the figure card", () => {

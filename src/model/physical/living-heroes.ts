@@ -27,7 +27,6 @@ import type { HeroSheet } from "@/types/character";
 import type { Die } from "@/types/character-actions";
 import type { HistoricalFigure } from "@/types/history";
 import type {
-  DisciplineId,
   GuildState,
   HeroArchetypeId,
   HeroDoctrine,
@@ -74,7 +73,6 @@ export function ensureHeroSheet(figure: HistoricalFigure): HeroSheet {
   hero.progression ??= {};
 
   figure.archetype ??= hero.archetype;
-  figure.disciplines ??= [...hero.abilities] as DisciplineId[];
   figure.progression ??= hero.progression;
   figure.xp ??= hero.xp;
   return hero;
