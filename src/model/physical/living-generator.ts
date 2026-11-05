@@ -25,6 +25,8 @@ import { garrisonUnits, minorGarrisonUnits } from "@/conquest/engine/game/units"
 import type { Alignment } from "@/data/culture-traits";
 import { aggressiveTraits, drawVice, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { convertDangerMarkerToRuins, createLairFromMarker, isDangerMarker } from "@/data/danger-markers";
+import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
+import { getFactionArchetype } from "@/data/factions-catalog";
 import { GUILD_OPERATIONS, type GuildOperationKind } from "@/data/guild-operations";
 import {
   defaultPathForDoctrine,
@@ -125,6 +127,7 @@ import {
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
+import { Factions } from "@/model/political/factions-generator";
 import {
   Military,
   type Regiment,
@@ -136,6 +139,7 @@ import { type State, States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { isAstralView } from "@/renderers/view-mode";
+import type { Faction, FactionScale } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import {
   type ActiveGuildMission,
@@ -1385,7 +1389,73 @@ class LivingModel {
       const figure = this.findFigure(id);
       if (figure) this.ensureHeroGuildState(guild, figure);
     }
+
+    const faction = this.getPlayerFaction();
+    if (faction) {
+      if (guild.gold > 0 && faction.treasury === 0) faction.treasury = guild.gold;
+      else if (faction.treasury > 0) guild.gold = faction.treasury;
+
+      if (guild.renown > 0 && faction.influence === 0) faction.influence = guild.renown;
+      else if (faction.influence > 0) guild.renown = faction.influence;
+
+      if (faction.memberIds?.length && !guild.roster.length) guild.roster = [...faction.memberIds];
+      else if (guild.roster.length) faction.memberIds = [...guild.roster];
+
+      if (faction.missions?.length) guild.missions = faction.missions;
+      if (faction.relics?.length) guild.relics = faction.relics;
+    }
     return guild;
+  }
+
+  /** Return the active player-controlled faction in pack.factions */
+  getPlayerFaction(): Faction {
+    const living = this.getState();
+    pack.factions ??= [{ i: 0 } as Faction];
+    let faction = living.playerFactionId ? pack.factions[living.playerFactionId] : undefined;
+    if (!faction || faction.removed) {
+      faction =
+        pack.factions.find(f => f && f.i > 0 && !f.removed && f.type === "adventurer_guild") ||
+        pack.factions.find(f => f && f.i > 0 && !f.removed);
+      if (!faction) {
+        faction = Factions.add({
+          name: "The Adventurers' Fellowship",
+          category: "adventuring",
+          type: "adventurer_guild",
+          allegiance: "autonomous",
+          hq: { cell: 0, fortified: false, secrecy: 0, assets: ["chapter_lodge"] },
+          treasury: 150
+        });
+      }
+      living.playerFactionId = faction.i;
+    }
+    return faction;
+  }
+
+  /** Change the active player-controlled faction */
+  setPlayerFaction(factionId: number): boolean {
+    const faction = pack.factions?.[factionId];
+    if (!faction || faction.removed) return false;
+    const living = this.getState();
+    living.playerFactionId = factionId;
+    this.syncPlayerFaction(living);
+    return true;
+  }
+
+  /** Synchronize the legacy GuildState with the active player faction */
+  syncPlayerFaction(living: LivingWorldState): void {
+    const faction = this.getPlayerFaction();
+    if (!faction) return;
+    const guild = living.guild;
+    if (guild) {
+      guild.gold = faction.treasury;
+      guild.renown = faction.influence;
+      guild.tier = Math.min(3, Math.max(1, faction.tier)) as 1 | 2 | 3;
+      if (faction.doctrine) guild.doctrine = faction.doctrine;
+      if (faction.memberIds) guild.roster = faction.memberIds;
+      if (faction.candidateIds) guild.candidates = faction.candidateIds;
+      if (faction.missions) guild.missions = faction.missions;
+      if (faction.relics) guild.relics = faction.relics;
+    }
   }
 
   /** On-map popups currently waiting to be claimed */
@@ -2076,6 +2146,7 @@ class LivingModel {
     }
     state.removed = true;
     delete living.states[state.i];
+    this.spawnRemnantFaction(state);
 
     if (ruler && ruler.death === undefined) {
       ruler.death = year;
@@ -2275,12 +2346,11 @@ class LivingModel {
       this.stepTactical(living);
       this.stepBurgUnrest(living);
       this.stepProvinces(living);
-      this.stepLairs(living);
+      this.stepFactions(living);
       this.stepStates(living);
       this.stepDiplomacy(living);
       this.stepRebellions(living);
       this.recomputeAllCapacities(living);
-      this.stepGuild(living);
       this.stepRelics(living);
       this.stepEschaton(living);
       this.refreshPopups(living);
@@ -3482,13 +3552,14 @@ class LivingModel {
     }
   }
 
-  /** One season of guild bookkeeping: dues, tier, cooldowns, mission travel and idle dispatch. */
-  private stepGuild(living: LivingWorldState): void {
+  /** One season of player faction / guild bookkeeping: missions, hero recovery, candidates, and dispatch. */
+  stepPlayerFactionMissions(living: LivingWorldState): void {
     const guild = this.getGuild();
+    const faction = this.getPlayerFaction();
 
     const hq = guild.hqBurgId !== undefined ? pack.burgs?.[guild.hqBurgId] : undefined;
     if (!hq || hq.removed) {
-      guild.hqBurgId = this.pickGuildHq();
+      guild.hqBurgId = faction.hq.burgId ?? this.pickGuildHq();
       if (guild.hqBurgId !== undefined && !guild.chapterBurgIds.includes(guild.hqBurgId)) {
         guild.chapterBurgIds.push(guild.hqBurgId);
       }
@@ -3517,6 +3588,16 @@ class LivingModel {
 
     if (living.season === 0) this.refreshCandidates(living);
     this.autoDispatch(living);
+
+    if (faction) {
+      faction.treasury = guild.gold;
+      faction.influence = guild.renown;
+      faction.tier = Math.min(5, Math.max(1, guild.tier));
+      faction.memberIds = [...guild.roster];
+      faction.candidateIds = [...guild.candidates];
+      faction.missions = [...guild.missions];
+      faction.relics = [...guild.relics];
+    }
   }
 
   /** Spring: refresh the tavern with up to three free adventurers. */
@@ -8247,6 +8328,91 @@ class LivingModel {
     });
   }
 
+  /** Ascend an ambitious faction into an emergent sovereign state. */
+  ascendFactionToState(factionId: number, targetBurgId?: number): number | null {
+    const faction = pack.factions?.[factionId];
+    if (!faction || faction.removed) return null;
+
+    const living = this.getState();
+    const targetBurg = targetBurgId
+      ? pack.burgs?.[targetBurgId]
+      : faction.hq.burgId
+        ? pack.burgs?.[faction.hq.burgId]
+        : undefined;
+    const targetCell = targetBurg?.cell ?? faction.hq.cell;
+    const provinceId = faction.hq.provinceId ?? pack.cells?.province?.[targetCell] ?? 0;
+    const province = provinceId ? pack.provinces?.[provinceId] : undefined;
+    const pSim = provinceId ? living.provinces?.[provinceId] : undefined;
+
+    const _unitTypes = Military.getUnitTypes();
+    const units: ArmyUnit[] = [];
+    for (const reg of faction.military ?? []) {
+      for (const [uType, count] of Object.entries(reg.u ?? {})) {
+        units.push({ type: uType as UnitType, count });
+      }
+    }
+    if (units.length === 0) {
+      units.push({ type: "spear", count: 60 }, { type: "archers", count: 40 });
+    }
+
+    const dummyProv = {
+      i: provinceId,
+      name: "Frontier",
+      state: targetBurg?.state ?? 0,
+      center: targetCell
+    } as Province;
+    const dummyPSim = { order: 50, stability: 1 } as ProvinceSimState;
+
+    const newStateId = this.spawnEmergentState({
+      province: province ?? dummyProv,
+      pSim: pSim ?? dummyPSim,
+      living,
+      originKind: "faction",
+      originName: faction.name,
+      originCell: targetCell,
+      requestedBurgId: targetBurg?.i,
+      markerId: faction.hq.markerId,
+      rosterId: faction.stateRosterId,
+      stateForm: faction.stateForm,
+      alignment: faction.alignment,
+      units
+    });
+
+    if (newStateId !== null) {
+      const newState = pack.states?.[newStateId];
+      if (newState) {
+        newState.name = faction.name;
+        newState.formName = faction.stateForm;
+        newState.fullName = faction.stateForm ? `${faction.stateForm} of ${newState.name}` : faction.name;
+        newState.color = faction.color;
+        newState.treasury = faction.treasury;
+        newState.researchedTechs = [...faction.researchedTechs];
+        newState.military = [...(faction.military ?? [])];
+
+        if (faction.leaderId) {
+          const sSim = living.states?.[newStateId];
+          if (sSim) sSim.rulerId = faction.leaderId;
+        }
+      }
+
+      faction.allegiance = "state_arm";
+      faction.patronStateId = newStateId;
+      faction.sovereignAmbition = false;
+      faction.stateRelations[newStateId] = "Ally";
+      Factions.recomputeScale(faction);
+
+      this.pushNews(living, {
+        kind: "faction",
+        text: `${faction.name} has proclaimed sovereign independence, founding ${newState?.fullName ?? "a new realm"}!`,
+        cell: targetCell,
+        stateId: newStateId,
+        burgId: targetBurg?.i
+      });
+    }
+
+    return newStateId;
+  }
+
   /** Ascend an eligible entrenched lair into an emergent sovereign state. */
   ascendLairToState(provinceId: number, burgId?: number): number | null {
     const province = pack.provinces?.[provinceId];
@@ -8264,7 +8430,7 @@ class LivingModel {
     }
     const originCell = lair.cell || province.center || pack.states[province.state]?.center || 0;
 
-    return this.spawnEmergentState({
+    const stateId = this.spawnEmergentState({
       province,
       pSim,
       living,
@@ -8278,13 +8444,28 @@ class LivingModel {
       alignment: lairDef.defaultAlignment,
       units
     });
+
+    if (stateId !== null) {
+      const faction = pack.factions?.find(
+        f => f && f.i > 0 && !f.removed && lair.markerId !== undefined && f.hq?.markerId === lair.markerId
+      );
+      if (faction) {
+        faction.allegiance = "state_arm";
+        faction.patronStateId = stateId;
+        faction.sovereignAmbition = false;
+        faction.stateRelations[stateId] = "Ally";
+        Factions.recomputeScale(faction);
+      }
+    }
+
+    return stateId;
   }
 
   private spawnEmergentState(opts: {
     province: Province;
     pSim: ProvinceSimState;
     living: LivingWorldState;
-    originKind: "trouble" | "lair";
+    originKind: "trouble" | "lair" | "faction";
     originName: string;
     originCell: number;
     requestedBurgId?: number;
@@ -8501,25 +8682,74 @@ class LivingModel {
     return newStateId;
   }
 
+  /** Spawn a remnant rebel front when a state collapses or is annexed */
+  spawnRemnantFaction(fallenState: State, conquerorStateId?: number): Faction | null {
+    if (!fallenState?.i) return null;
+
+    const stateRelations: Record<number, "Enemy" | "Ally" | "Friendly" | "Neutral"> = {};
+    if (conquerorStateId) {
+      stateRelations[conquerorStateId] = "Enemy";
+    }
+
+    const remnant = Factions.add({
+      name: `${fallenState.name} Restoration Front`,
+      category: "political",
+      type: "rebel_front",
+      scale: "province",
+      allegiance: "hostile",
+      color: fallenState.color,
+      culture: fallenState.culture,
+      alignment: "chaotic",
+      values: ["freedom", "justice"],
+      expansionism: 1.2,
+      expansionScope: "state",
+      sovereignAmbition: true,
+      stateForm: fallenState.formName || "Restored Republic",
+      stateRosterId: fallenState.rosterId,
+      hq: {
+        cell: fallenState.center || 0,
+        fortified: false,
+        secrecy: 50,
+        assets: ["safe_house", "muster_camp"]
+      },
+      treasury: 120,
+      influence: 40,
+      researchedTechs: fallenState.researchedTechs
+        ? [...fallenState.researchedTechs]
+        : ["pottery", "mining", "iron_working"],
+      stateRelations
+    });
+
+    const living = this.getState();
+    this.pushNews(living, {
+      kind: "faction",
+      text: `Loyalists of the fallen ${fallenState.name} formed the ${remnant.name}!`,
+      cell: fallenState.center || 0,
+      stateId: conquerorStateId
+    });
+
+    return remnant;
+  }
+
   private resolveEmergentCapital(
     province: Province,
-    originKind: "trouble" | "lair",
+    originKind: "trouble" | "lair" | "faction",
     originCell: number,
     rng: Rng,
     requestedBurgId?: number
   ): Burg | null {
     if (requestedBurgId) {
       const target = pack.burgs?.[requestedBurgId];
-      if (target?.i && !target.removed && !target.capital) return target;
+      if (target?.i && !target.removed && (!target.capital || originKind === "faction")) return target;
     }
 
     const cellBurgId = pack.cells.burg?.[originCell];
     if (cellBurgId) {
       const cellBurg = pack.burgs?.[cellBurgId];
-      if (cellBurg?.i && !cellBurg.removed && !cellBurg.capital) return cellBurg;
+      if (cellBurg?.i && !cellBurg.removed && (!cellBurg.capital || originKind === "faction")) return cellBurg;
     }
 
-    if (originKind === "trouble") {
+    if (originKind === "trouble" || originKind === "faction") {
       if (province.burg) {
         const pBurg = pack.burgs?.[province.burg];
         if (pBurg?.i && !pBurg.removed && !pBurg.capital) return pBurg;
@@ -9037,7 +9267,10 @@ class LivingModel {
     // a major state losing its last holding collapses — and hastens the eschaton
     if (previousState > 0 && previousState !== stateId) {
       const stillHolds = pack.burgs.some(entry => entry?.i && !entry.removed && entry.state === previousState);
-      if (!stillHolds && loserProvinces >= 4) this.exaltEschaton(living, 5);
+      if (!stillHolds) {
+        if (loserProvinces >= 4) this.exaltEschaton(living, 5);
+        this.spawnRemnantFaction(pack.states[previousState], stateId);
+      }
     }
 
     // conquests by evil sovereigns push the world toward its finale
@@ -10264,6 +10497,501 @@ class LivingModel {
         }
       }
     }
+  }
+
+  /** Seasonal simulation step for autonomous and player factions */
+  stepFactions(living: LivingWorldState): void {
+    if (!pack.factions || pack.factions.length <= 1) {
+      if (typeof Factions?.generate === "function" && (pack.burgs?.length ?? 0) > 0) {
+        Factions.generate();
+      }
+    }
+    if (pack.factions && pack.factions.length > 1) {
+      this.syncPlayerFaction(living);
+      this.stepFactionEconomyAndTech(living);
+      this.stepFactionAgendas(living);
+      this.stepFactionMilitaryAndRaids(living);
+      this.stepPlayerFactionMissions(living);
+    }
+    this.stepLairs(living);
+  }
+
+  /** Calculate per-season faction revenue, science, tech research, and burg/province impact */
+  stepFactionEconomyAndTech(living: LivingWorldState): void {
+    const activeFactions = Factions.active();
+
+    for (const faction of activeFactions) {
+      faction.seasonsActive = (faction.seasonsActive || 0) + 1;
+
+      // 1. Calculate Incomes
+      let goldIncome = 0;
+      let scienceIncome = 1;
+      let influenceIncome = 1;
+
+      for (const assetId of faction.hq.assets) {
+        const asset = getFactionAsset(assetId);
+        if (asset) {
+          goldIncome += asset.yields?.gold ?? 0;
+          scienceIncome += asset.yields?.science ?? 0;
+          influenceIncome += asset.yields?.influence ?? 0;
+        }
+      }
+
+      for (const outpost of faction.outposts) {
+        if (outpost.pillaged) continue;
+
+        goldIncome += outpost.tier * 2;
+        influenceIncome += outpost.tier;
+
+        for (const assetId of outpost.assets) {
+          const asset = getFactionAsset(assetId);
+          if (asset) {
+            goldIncome += asset.yields?.gold ?? 0;
+            scienceIncome += asset.yields?.science ?? 0;
+            influenceIncome += asset.yields?.influence ?? 0;
+          }
+        }
+
+        const bSim = living.burgs?.[outpost.burgId];
+        if (bSim) {
+          if (
+            faction.category === "commercial" ||
+            faction.category === "adventuring" ||
+            (faction.category === "religious" && faction.alignment !== "evil")
+          ) {
+            bSim.unrest = Math.max(0, (bSim.unrest ?? 0) - 1);
+          } else if (
+            faction.category === "underworld" ||
+            faction.allegiance === "hostile" ||
+            faction.alignment === "evil"
+          ) {
+            if (outpost.secrecy < 30 || outpost.influence > 50) {
+              bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 1);
+            }
+          }
+        }
+      }
+
+      // Patron State Stipends
+      if (faction.patronStateId) {
+        const patron = pack.states?.[faction.patronStateId];
+        const pStateSim = living.states?.[faction.patronStateId];
+        if (patron && !patron.removed && (pStateSim?.unravel ?? 0) < 60) {
+          if (faction.allegiance === "state_arm") {
+            goldIncome += 8;
+            scienceIncome += 2;
+          } else if (faction.allegiance === "chartered") {
+            goldIncome += 4;
+          }
+        }
+      }
+
+      // Underworld Illicit Siphoning
+      if (faction.category === "underworld") {
+        for (const outpost of faction.outposts) {
+          if (!outpost.pillaged) {
+            const burg = pack.burgs?.[outpost.burgId];
+            if (burg) {
+              const siphon = Math.min(12, Math.max(2, Math.round((burg.population || 10) * 0.1)));
+              goldIncome += siphon;
+            }
+          }
+        }
+      }
+
+      // Upkeep
+      const militaryUpkeep = (faction.military ?? []).reduce(
+        (acc, r) => acc + Math.max(2, Math.round((r.a || 50) * 0.05)),
+        0
+      );
+      const outpostUpkeep = faction.outposts.length;
+      const totalUpkeep = militaryUpkeep + outpostUpkeep;
+
+      faction.treasury = Math.max(0, faction.treasury + goldIncome - totalUpkeep);
+      faction.influence = Math.min(1000, Math.max(0, faction.influence + influenceIncome));
+      faction.science = Math.max(1, scienceIncome);
+
+      // 2. Tech Progression & Spillover (+25%)
+      if (faction.currentTechId) {
+        let researchPower = faction.science;
+
+        const hostBurgId = faction.hq.burgId ?? faction.outposts[0]?.burgId;
+        const hostBurg = hostBurgId ? pack.burgs?.[hostBurgId] : undefined;
+        const hostState = hostBurg?.state ? pack.states?.[hostBurg.state] : undefined;
+        const hostStateSim = hostBurg?.state ? living.states?.[hostBurg.state] : undefined;
+        if (
+          hostStateSim?.researchedTechs?.includes(faction.currentTechId) ||
+          hostState?.researchedTechs?.includes(faction.currentTechId)
+        ) {
+          researchPower = Number((researchPower * 1.25).toFixed(1));
+        }
+
+        faction.researchedProgress ??= {};
+        const currentProg = (faction.researchedProgress[faction.currentTechId] || 0) + researchPower;
+        const techCost = CIV_TECH_BY_ID[faction.currentTechId]?.cost ?? 50;
+
+        if (currentProg >= techCost) {
+          if (!faction.researchedTechs.includes(faction.currentTechId)) {
+            faction.researchedTechs.push(faction.currentTechId);
+          }
+          delete faction.researchedProgress[faction.currentTechId];
+
+          const techName = CIV_TECH_BY_ID[faction.currentTechId]?.name ?? faction.currentTechId;
+          this.pushNews(living, {
+            kind: "faction",
+            text: `${faction.name} mastered the secrets of ${techName}!`,
+            cell: faction.hq.cell,
+            burgId: faction.hq.burgId
+          });
+
+          const nextTech = faction.researchQueue.find(t => !faction.researchedTechs.includes(t));
+          if (nextTech) {
+            faction.currentTechId = nextTech;
+          } else {
+            const arch = getFactionArchetype(faction.type);
+            const candidates = (arch?.desiredTechs ?? []).filter(t => !faction.researchedTechs.includes(t));
+            faction.currentTechId = candidates[0] ?? null;
+          }
+        } else {
+          faction.researchedProgress[faction.currentTechId] = currentProg;
+        }
+      } else {
+        const nextTech = faction.researchQueue.find(t => !faction.researchedTechs.includes(t));
+        if (nextTech) {
+          faction.currentTechId = nextTech;
+        } else {
+          const arch = getFactionArchetype(faction.type);
+          const candidates = (arch?.desiredTechs ?? []).filter(t => !faction.researchedTechs.includes(t));
+          if (candidates.length > 0) {
+            faction.currentTechId = candidates[0];
+          }
+        }
+      }
+
+      // 3. Dynamic Scale & Tier Re-evaluation
+      Factions.recomputeScale(faction);
+      if (faction.scale === "burg") faction.tier = 1;
+      else if (faction.scale === "province") faction.tier = 2;
+      else if (faction.scale === "state") faction.tier = 3;
+      else if (faction.scale === "world") faction.tier = faction.researchedTechs.length >= 8 ? 5 : 4;
+    }
+  }
+
+  /** Step autonomous faction agendas: outpost expansion, asset building, and turf clashes */
+  stepFactionAgendas(living: LivingWorldState): void {
+    const activeFactions = Factions.active();
+    const rng = this.rng("faction:agendas", living.tick);
+    const currentYear = options.map?.lore?.calendar?.year ?? 1000;
+
+    for (const faction of activeFactions) {
+      if (faction.allegiance === "state_arm" && faction.patronStateId) {
+        const patronSim = living.states?.[faction.patronStateId];
+        const patron = pack.states?.[faction.patronStateId];
+        if (!patron || patron.removed || (patronSim?.unravel ?? 0) >= 60) {
+          faction.allegiance =
+            faction.alignment === "evil" || faction.alignment === "chaotic" ? "hostile" : "autonomous";
+          faction.stateRelations[faction.patronStateId] = "Enemy";
+          faction.patronStateId = undefined;
+          this.pushNews(living, {
+            kind: "faction",
+            text: `${faction.name} severed allegiance from its crumbling patron!`,
+            cell: faction.hq.cell,
+            burgId: faction.hq.burgId
+          });
+        }
+      }
+
+      const maxOutposts: Record<FactionScale, number> = {
+        burg: 2,
+        province: 4,
+        state: 8,
+        world: 25
+      };
+
+      const shouldExpand = rng.next() <= (faction.expansionism || 1) * 0.5;
+      if (shouldExpand && faction.treasury >= 100 && faction.outposts.length < (maxOutposts[faction.scale] ?? 2)) {
+        const candidateBurgs =
+          pack.burgs?.filter(b => {
+            if (!b?.i || b.removed) return false;
+            if (b.i === faction.hq.burgId) return false;
+            if (faction.outposts.some(o => o.burgId === b.i)) return false;
+            return true;
+          }) ?? [];
+
+        if (candidateBurgs.length > 0) {
+          let targetBurg = candidateBurgs[0];
+          if (faction.category === "commercial") {
+            targetBurg = [...candidateBurgs].sort(
+              (a, b) => (b.population || 0) + (b.port ? 20 : 0) - ((a.population || 0) + (a.port ? 20 : 0))
+            )[0];
+          } else if (faction.category === "underworld") {
+            targetBurg = [...candidateBurgs].sort((a, b) => (b.population || 0) - (a.population || 0))[0];
+          } else {
+            targetBurg = candidateBurgs[Math.floor(rng.next() * candidateBurgs.length)];
+          }
+
+          if (targetBurg) {
+            faction.treasury -= 100;
+            const startingAsset =
+              faction.category === "commercial"
+                ? "trade_depot"
+                : faction.category === "adventuring"
+                  ? "chapter_lodge"
+                  : faction.category === "underworld"
+                    ? "safe_house"
+                    : faction.category === "religious"
+                      ? "wayside_shrine"
+                      : "muster_camp";
+
+            faction.outposts.push({
+              burgId: targetBurg.i,
+              cell: targetBurg.cell,
+              tier: 1,
+              influence: 35,
+              secrecy: faction.allegiance === "clandestine" ? 60 : 0,
+              assets: [startingAsset],
+              establishedYear: currentYear
+            });
+
+            Factions.recomputeScale(faction);
+
+            this.pushNews(living, {
+              kind: "faction",
+              text: `${faction.name} established a new outpost in ${targetBurg.name}!`,
+              cell: targetBurg.cell,
+              burgId: targetBurg.i
+            });
+          }
+        }
+      }
+
+      if (faction.treasury >= 80) {
+        const unbuilt = Object.values(FACTION_ASSETS_CATALOG).filter(asset => {
+          if (faction.hq.assets.includes(asset.id)) return false;
+          if (asset.tier > faction.tier) return false;
+          if (
+            asset.track &&
+            asset.track !== faction.category &&
+            asset.track !== "scholarly" &&
+            asset.track !== "wilder"
+          )
+            return false;
+          if (asset.requiredTech && !faction.researchedTechs.includes(asset.requiredTech)) return false;
+          if (faction.treasury < asset.cost) return false;
+          return true;
+        });
+
+        if (unbuilt.length > 0) {
+          const chosen = unbuilt[0];
+          faction.treasury -= chosen.cost;
+          faction.hq.assets.push(chosen.id);
+          Factions.recomputeScale(faction);
+        }
+      }
+
+      for (const outpost of faction.outposts) {
+        if (outpost.pillaged) continue;
+        const otherFactions = Factions.atBurg(outpost.burgId).filter(f => f.i !== faction.i);
+        for (const rival of otherFactions) {
+          const rivalOutpost = rival.outposts.find(o => o.burgId === outpost.burgId && !o.pillaged);
+          if (!rivalOutpost) continue;
+
+          const isEnemy =
+            faction.factionRelations[rival.i] === "Enemy" ||
+            rival.factionRelations[faction.i] === "Enemy" ||
+            (faction.category === "underworld" && rival.category === "underworld");
+
+          if (isEnemy) {
+            const myPower = outpost.influence + faction.tier * 10 + rng.d(20);
+            const rivalPower = rivalOutpost.influence + rival.tier * 10 + rng.d(20);
+
+            const burg = pack.burgs?.[outpost.burgId];
+            if (myPower >= rivalPower) {
+              rivalOutpost.influence = Math.max(0, rivalOutpost.influence - 20);
+              if (rivalOutpost.influence <= 0) rivalOutpost.pillaged = true;
+              outpost.influence = Math.min(100, outpost.influence + 10);
+              faction.treasury += 25;
+              this.pushNews(living, {
+                kind: "faction",
+                text: `${faction.name} outmaneuvered ${rival.name} in the streets of ${burg?.name ?? "the city"}!`,
+                cell: outpost.cell,
+                burgId: outpost.burgId
+              });
+            } else {
+              outpost.influence = Math.max(0, outpost.influence - 20);
+              if (outpost.influence <= 0) outpost.pillaged = true;
+              rivalOutpost.influence = Math.min(100, rivalOutpost.influence + 10);
+              rival.treasury += 25;
+            }
+
+            const bSim = living.burgs?.[outpost.burgId];
+            if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 2);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  /** Step faction regiment mustering and seasonal raids */
+  stepFactionMilitaryAndRaids(living: LivingWorldState): void {
+    const activeFactions = Factions.active();
+
+    for (const faction of activeFactions) {
+      const maxRegs: Record<FactionScale, number> = {
+        burg: 1,
+        province: 2,
+        state: 4,
+        world: 8
+      };
+      let limit = maxRegs[faction.scale] ?? 1;
+      if (faction.hq.assets.includes("muster_camp")) limit += 1;
+      if (faction.hq.assets.includes("war_citadel")) limit += 2;
+
+      faction.military ??= [];
+      if (
+        faction.military.length < limit &&
+        faction.treasury >= 120 &&
+        (faction.category === "martial" || faction.allegiance === "hostile" || faction.sovereignAmbition)
+      ) {
+        faction.treasury -= 120;
+        const regId = faction.military.length + 1;
+        const [x, y] = pack.cells?.p?.[faction.hq.cell] ?? [0, 0];
+
+        const unitsComposition: Record<string, number> = { spear: 50 };
+        if (faction.researchedTechs.includes("archery")) unitsComposition.archers = 30;
+        if (faction.researchedTechs.includes("iron_working")) unitsComposition.swordsmen = 25;
+        if (faction.researchedTechs.includes("horseback_riding")) unitsComposition.cavalry = 20;
+
+        faction.military.push({
+          i: regId,
+          name: `${faction.name} Regiment ${regId}`,
+          a: 100,
+          cell: faction.hq.cell,
+          x,
+          y,
+          bx: x,
+          by: y,
+          u: unitsComposition,
+          n: faction.hq.maritime ? 1 : 0,
+          state: 0,
+          icon: faction.icon || "⚔️"
+        });
+      }
+
+      if (faction.allegiance === "hostile" && faction.military.length > 0) {
+        this.tickFactionRaid(faction, living);
+      }
+
+      // Check entrenched wilderness sovereignty
+      if (
+        faction.sovereignAmbition &&
+        faction.allegiance === "hostile" &&
+        (faction.seasonsActive ?? 0) >= 8 &&
+        faction.tier >= 2
+      ) {
+        const provId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
+        const pSim = provId ? living.provinces?.[provId] : undefined;
+        const sSim =
+          provId && pack.provinces?.[provId]?.state ? living.states?.[pack.provinces[provId].state] : undefined;
+        const localBurgs =
+          pack.burgs?.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === provId) ?? [];
+        const noBurgs = localBurgs.length === 0;
+        const collapsedOrder = Boolean(pSim && pSim.order <= 15);
+        const stateInTurmoil = Boolean(sSim && (sSim.unravel >= 50 || sSim.warExhaustion >= 50));
+        if (noBurgs || collapsedOrder || stateInTurmoil) {
+          const nonCapBurg = collapsedOrder ? localBurgs.find(b => !b.capital) : undefined;
+          this.ascendFactionToState(faction.i, nonCapBurg?.i);
+        }
+      }
+    }
+  }
+
+  /** Execute a seasonal raid by a hostile martial/underworld faction */
+  tickFactionRaid(faction: Faction, living: LivingWorldState): void {
+    const rng = this.rng("faction:raid", faction.i, living.tick);
+    const raidThreshold = faction.raidThreshold ?? 5;
+    const shouldRaid = faction.raidPending || rng.d(6) >= raidThreshold;
+    if (!shouldRaid) return;
+
+    const [lx, ly] = pack.cells?.p?.[faction.hq.cell] ?? [0, 0];
+    const targets = (pack.burgs ?? [])
+      .filter(b => b?.i && !b.removed && b.cell !== faction.hq.cell)
+      .map(b => ({ burg: b, dist: Math.hypot(b.x - lx, b.y - ly) }))
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 5)
+      .map(t => t.burg);
+
+    if (targets.length === 0) return;
+    const target = targets[0];
+    faction.raidPending = false;
+
+    const { config } = currentContent();
+    const raidUnits: ArmyUnit[] = [];
+    for (const reg of faction.military) {
+      for (const [unitName, count] of Object.entries(reg.u ?? {})) {
+        raidUnits.push({ type: unitName as UnitType, count });
+      }
+    }
+    if (raidUnits.length === 0) raidUnits.push({ type: "spear", count: 50 });
+
+    const defenders = this.burgDefenders(target);
+    const ownerState = pack.states?.[target.state ?? 0];
+    const stationedReg = (ownerState?.military ?? []).find(r => r.cell === target.cell && r.a > 0);
+    const unitTypes = Military.getUnitTypes();
+    const stationedBlocks = (stationedReg?.units ?? []).filter(u => u.hp > 0 && unitTypes[u.type]);
+    for (const u of toBattleUnitsMen(stationedBlocks, unitTypes)) defenders.push(u);
+
+    const session = initBattleSession({
+      config,
+      unitTypes,
+      attacker: { factionId: faction.i, armyId: null, units: raidUnits },
+      defender: { factionId: target.state ?? 0, armyId: null, units: defenders },
+      cell: target.cell,
+      regionId: pack.cells?.province?.[target.cell] ?? 0,
+      assault: Number(target.walls ?? 0) > 0,
+      modifiers: this.assaultModifiers(target)
+    });
+
+    while (session.status === "active" && session.round < config.battle.maxRounds) {
+      stepBattleRound(session, rng.next);
+    }
+    const outcome = finalizeBattle(session, rng.next);
+    this.addBattleMarker(target);
+
+    if (outcome.winner === "defender") {
+      this.pushNews(living, {
+        kind: "faction",
+        text: `${target.name} garrison repelled raiders from ${faction.name}!`,
+        cell: target.cell,
+        burgId: target.i
+      });
+      return;
+    }
+
+    const loot = 50 + rng.d(50);
+    faction.treasury += loot;
+
+    const bSim = living.burgs?.[target.i];
+    const provId = pack.cells?.province?.[target.cell] ?? 0;
+    const pSim = provId ? living.provinces?.[provId] : undefined;
+
+    if (faction.sovereignAmbition && !target.capital && (faction.seasonsActive >= 4 || faction.tier >= 2)) {
+      const ascStateId = this.ascendFactionToState(faction.i, target.i);
+      if (ascStateId !== null) {
+        return;
+      }
+    }
+
+    if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 8);
+    if (pSim) pSim.order = Math.max(0, pSim.order - 5);
+
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${faction.name} raided ${target.name} and pillaged ${loot} gold!`,
+      cell: target.cell,
+      burgId: target.i
+    });
   }
 
   /** Step seasonal raids and lair activity. */

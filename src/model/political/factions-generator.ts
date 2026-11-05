@@ -204,9 +204,9 @@ class FactionsModule {
   generate(): void {
     pack.factions = [{ i: 0 } as Faction];
 
-    const seed = options.map.seed || "factions";
+    const seed = (typeof options !== "undefined" && options?.map?.seed) || "factions";
     const masterRng = createRng(`${seed}:factions:master`);
-    const currentYear = options.map?.lore?.calendar?.year ?? 1000;
+    const currentYear = (typeof options !== "undefined" && options?.map?.lore?.calendar?.year) ?? 1000;
 
     const burgs = pack.burgs?.filter(b => b?.i && !b.removed) ?? [];
     const states = pack.states?.filter(s => s?.i && !s.removed) ?? [];

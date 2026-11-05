@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { currentContent } from "@/conquest/content/store";
-import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { valueModifier } from "@/conquest/engine/game/saves";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
-import type { Burg } from "@/model/political/burgs-generator";
 import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
+import type { Burg } from "@/model/political/burgs-generator";
+import { Factions } from "@/model/political/factions-generator";
 import { Military, syncRegimentTotals } from "@/model/political/military-generator";
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
+import type { Faction } from "@/types/factions";
 import type { HistoricalFigure } from "@/types/history";
 import type { HistoricalRelic } from "@/types/living";
 import { createRng } from "@/utils/rng";
@@ -38,7 +40,6 @@ import {
   isMajorBurg,
   isMinorBurg,
   isTechSelectable,
-  UPKEEP_FREE,
   Living,
   LUXURY_HAPPINESS,
   maxHeroesForTier,
@@ -51,6 +52,7 @@ import {
   syncCivBuildingsFromFlags,
   syncCivFlagsFromBuildings,
   terrainDefenseMultiplier,
+  UPKEEP_FREE,
   unitMovementCost
 } from "./living-generator";
 
@@ -3967,135 +3969,135 @@ describe("Unified Figures slice 2: named dispatch", () => {
   });
 });
 
-describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => {
-  const buildStubPack = () => {
-    globalThis.options = {
-      map: {
-        seed: "test-emergent-state-seed",
-        population: { ruralFactor: 1, urbanization: 1 },
-        lore: {
-          name: "Test World",
-          description: "",
-          calendar: { year: 1000, era: "Age of Dawn", eraShort: "AD" },
-          history: { span: 500, realms: 0, density: 1, echoes: false, renames: false, mode: "archaeologist" }
-        }
-      },
-      generation: {
-        cultures: { traits: true },
-        states: { limit: 4, sizeVariety: 2, growthRate: 1 }
+const buildStubPack = () => {
+  globalThis.options = {
+    map: {
+      seed: "test-emergent-state-seed",
+      population: { ruralFactor: 1, urbanization: 1 },
+      lore: {
+        name: "Test World",
+        description: "",
+        calendar: { year: 1000, era: "Age of Dawn", eraShort: "AD" },
+        history: { span: 500, realms: 0, density: 1, echoes: false, renames: false, mode: "archaeologist" }
       }
-    } as unknown as typeof options;
+    },
+    generation: {
+      cultures: { traits: true },
+      states: { limit: 4, sizeVariety: 2, growthRate: 1 }
+    }
+  } as unknown as typeof options;
 
-    globalThis.pack = {
-      cells: {
-        i: [0, 1, 2, 3, 4, 5],
-        state: new Uint16Array([0, 1, 1, 1, 1, 2]),
-        province: new Uint16Array([0, 1, 1, 2, 3, 4]),
-        pop: [0, 120, 100, 90, 60, 80],
-        culture: [0, 1, 1, 1, 2, 2],
-        religion: [0, 1, 1, 1, 2, 2],
-        c: [[1], [0, 2], [1, 3], [2, 4], [3, 5], [4]],
-        p: [
-          [0, 0],
-          [10, 10],
-          [20, 20],
-          [30, 30],
-          [40, 40],
-          [50, 50]
-        ],
-        r: [0, 0, 0, 0, 0, 0]
+  globalThis.pack = {
+    cells: {
+      i: [0, 1, 2, 3, 4, 5],
+      state: new Uint16Array([0, 1, 1, 1, 1, 2]),
+      province: new Uint16Array([0, 1, 1, 2, 3, 4]),
+      pop: [0, 120, 100, 90, 60, 80],
+      culture: [0, 1, 1, 1, 2, 2],
+      religion: [0, 1, 1, 1, 2, 2],
+      c: [[1], [0, 2], [1, 3], [2, 4], [3, 5], [4]],
+      p: [
+        [0, 0],
+        [10, 10],
+        [20, 20],
+        [30, 30],
+        [40, 40],
+        [50, 50]
+      ],
+      r: [0, 0, 0, 0, 0, 0]
+    },
+    cultures: [
+      { i: 0, name: "Wildlands", base: 0, center: 0 },
+      { i: 1, name: "Aeloran (Human)", base: 0, center: 1, alignment: "good" },
+      { i: 2, name: "Kazad (Dwarven)", base: 0, center: 5, alignment: "lawful" }
+    ],
+    religions: [
+      { i: 0, name: "No religion" },
+      { i: 1, name: "Solar Church" },
+      { i: 2, name: "Stone Ancestors" }
+    ],
+    burgs: [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Aelor",
+        cell: 1,
+        x: 10,
+        y: 10,
+        state: 1,
+        culture: 1,
+        population: 18,
+        capital: 1,
+        walls: 1,
+        plaza: 1,
+        temple: 1,
+        citadel: 1
       },
-      cultures: [
-        { i: 0, name: "Wildlands", base: 0, center: 0 },
-        { i: 1, name: "Aeloran (Human)", base: 0, center: 1, alignment: "good" },
-        { i: 2, name: "Kazad (Dwarven)", base: 0, center: 5, alignment: "lawful" }
-      ],
-      religions: [
-        { i: 0, name: "No religion" },
-        { i: 1, name: "Solar Church" },
-        { i: 2, name: "Stone Ancestors" }
-      ],
-      burgs: [
-        { i: 0 },
-        {
-          i: 1,
-          name: "Aelor",
-          cell: 1,
-          x: 10,
-          y: 10,
-          state: 1,
-          culture: 1,
-          population: 18,
-          capital: 1,
-          walls: 1,
-          plaza: 1,
-          temple: 1,
-          citadel: 1
-        },
-        {
-          i: 2,
-          name: "Oakhaven",
-          cell: 3,
-          x: 30,
-          y: 30,
-          state: 1,
-          culture: 1,
-          population: 5,
-          capital: 0,
-          walls: 0,
-          plaza: 1,
-          temple: 0,
-          citadel: 0
-        },
-        {
-          i: 3,
-          name: "Khazad",
-          cell: 5,
-          x: 50,
-          y: 50,
-          state: 2,
-          culture: 2,
-          population: 10,
-          capital: 1,
-          walls: 1,
-          plaza: 1,
-          temple: 0,
-          citadel: 0
-        }
-      ],
-      states: [
-        { i: 0, name: "Neutrals" },
-        {
-          i: 1,
-          name: "Aeloria",
-          culture: 1,
-          capital: 1,
-          center: 1,
-          provinces: [1, 2, 3],
-          military: []
-        },
-        {
-          i: 2,
-          name: "Khazadia",
-          culture: 2,
-          capital: 3,
-          center: 5,
-          provinces: [4],
-          military: []
-        }
-      ],
-      provinces: [
-        { i: 0 },
-        { i: 1, name: "Heartland", state: 1, burg: 1, center: 1 },
-        { i: 2, name: "Oakshire", state: 1, burg: 2, center: 3 },
-        { i: 3, name: "Wildreach", state: 1, burg: 0, center: 4 },
-        { i: 4, name: "Ironpeak", state: 2, burg: 3, center: 5 }
-      ],
-      markers: [],
-      history: { events: [], realms: [], eras: [{ name: "Age of Dawn", from: 500, to: 1000 }], figures: [] }
-    } as unknown as typeof pack;
-  };
+      {
+        i: 2,
+        name: "Oakhaven",
+        cell: 3,
+        x: 30,
+        y: 30,
+        state: 1,
+        culture: 1,
+        population: 5,
+        capital: 0,
+        walls: 0,
+        plaza: 1,
+        temple: 0,
+        citadel: 0
+      },
+      {
+        i: 3,
+        name: "Khazad",
+        cell: 5,
+        x: 50,
+        y: 50,
+        state: 2,
+        culture: 2,
+        population: 10,
+        capital: 1,
+        walls: 1,
+        plaza: 1,
+        temple: 0,
+        citadel: 0
+      }
+    ],
+    states: [
+      { i: 0, name: "Neutrals" },
+      {
+        i: 1,
+        name: "Aeloria",
+        culture: 1,
+        capital: 1,
+        center: 1,
+        provinces: [1, 2, 3],
+        military: []
+      },
+      {
+        i: 2,
+        name: "Khazadia",
+        culture: 2,
+        capital: 3,
+        center: 5,
+        provinces: [4],
+        military: []
+      }
+    ],
+    provinces: [
+      { i: 0 },
+      { i: 1, name: "Heartland", state: 1, burg: 1, center: 1 },
+      { i: 2, name: "Oakshire", state: 1, burg: 2, center: 3 },
+      { i: 3, name: "Wildreach", state: 1, burg: 0, center: 4 },
+      { i: 4, name: "Ironpeak", state: 2, burg: 3, center: 5 }
+    ],
+    markers: [],
+    history: { events: [], realms: [], eras: [{ name: "Age of Dawn", from: 500, to: 1000 }], figures: [] }
+  } as unknown as typeof pack;
+};
 
+describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => {
   beforeEach(() => {
     buildStubPack();
   });
@@ -4364,5 +4366,239 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     const first = runScenario();
     const second = runScenario();
     expect(second).toEqual(first);
+  });
+});
+
+describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & Ascension)", () => {
+  beforeEach(() => {
+    buildStubPack();
+  });
+
+  it("bridges getGuild with getPlayerFaction and synchronizes roster, missions, and relics", () => {
+    const living = Living.init();
+    const playerFaction = Living.getPlayerFaction();
+    expect(playerFaction).toBeDefined();
+    expect(playerFaction.i).toBeGreaterThan(0);
+    expect(living.playerFactionId).toBe(playerFaction.i);
+
+    // Guild getters and setters mirror player faction
+    const guild = Living.getGuild();
+    expect(guild.gold).toBe(playerFaction.treasury);
+
+    playerFaction.treasury = 500;
+    playerFaction.influence = 200;
+    playerFaction.memberIds = [101, 102];
+    Living.syncPlayerFaction(living);
+
+    const updatedGuild = Living.getGuild();
+    expect(updatedGuild.gold).toBe(500);
+    expect(updatedGuild.renown).toBe(200);
+    expect(updatedGuild.roster).toEqual([101, 102]);
+
+    // Switching player faction
+    const newFaction = Factions.add({
+      name: "Iron Vanguard",
+      category: "martial",
+      type: "mercenary_company",
+      allegiance: "autonomous",
+      hq: { cell: 1, fortified: true, secrecy: 0, assets: ["muster_camp"] },
+      treasury: 750,
+      influence: 350
+    });
+    expect(Living.setPlayerFaction(newFaction.i)).toBe(true);
+    expect(Living.getPlayerFaction().i).toBe(newFaction.i);
+    expect(Living.getGuild().gold).toBe(750);
+  });
+
+  it("advances faction economy, applies yields, upkeeps, and progresses tech research with host-state spillover", () => {
+    const living = Living.init();
+    pack.factions = [{ i: 0 } as Faction];
+
+    // Host state 1 has researched pottery
+    pack.states[1].researchedTechs = ["pottery"];
+    if (living.states[1]) living.states[1].researchedTechs = ["pottery"];
+
+    const faction = Factions.add({
+      name: "Golden Crest Trading",
+      category: "commercial",
+      type: "merchant_consortium",
+      scale: "burg",
+      tier: 1,
+      allegiance: "autonomous",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
+      outposts: [
+        {
+          burgId: 2,
+          cell: 3,
+          tier: 1,
+          influence: 40,
+          secrecy: 0,
+          assets: ["trade_depot"],
+          establishedYear: 1000
+        }
+      ],
+      treasury: 100,
+      science: 2,
+      influence: 20,
+      currentTechId: "pottery",
+      researchQueue: ["writing"],
+      researchedTechs: [],
+      researchedProgress: {}
+    });
+
+    const initTreasury = faction.treasury;
+    Living.stepFactionEconomyAndTech(living);
+
+    // Economy: trade_depot yield (gold: 6, influence: 2) x 2 (HQ + outpost) + outpost tier*2 (2) + outpost influence (1) = gold +14, minus outpost upkeep (-1)
+    expect(faction.treasury).toBeGreaterThan(initTreasury);
+    expect(faction.influence).toBeGreaterThan(20);
+
+    // Tech research: progress accumulated
+    expect(faction.researchedProgress.pottery ?? 0).toBeGreaterThan(0);
+
+    // Trigger completion
+    faction.researchedProgress.pottery = 34;
+    faction.science = 5;
+    Living.stepFactionEconomyAndTech(living);
+    expect(faction.researchedTechs).toContain("pottery");
+    expect(faction.currentTechId).toBe("writing");
+  });
+
+  it("handles autonomous agendas: expands outposts and Clashes in contested burgs", () => {
+    const living = Living.init();
+    pack.factions = [{ i: 0 } as Faction];
+
+    const f1 = Factions.add({
+      name: "Shadow Syndicate",
+      category: "underworld",
+      type: "thieves_guild",
+      scale: "province",
+      tier: 2,
+      expansionism: 2.0,
+      treasury: 250,
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 50, assets: ["safe_house"] },
+      outposts: [
+        {
+          burgId: 2,
+          cell: 3,
+          tier: 1,
+          influence: 50,
+          secrecy: 40,
+          assets: ["safe_house"],
+          establishedYear: 1000
+        }
+      ]
+    });
+
+    const f2 = Factions.add({
+      name: "Nightblades",
+      category: "underworld",
+      type: "thieves_guild",
+      scale: "burg",
+      tier: 1,
+      treasury: 50,
+      hq: { cell: 3, burgId: 2, fortified: false, secrecy: 50, assets: ["safe_house"] },
+      outposts: [
+        {
+          burgId: 2,
+          cell: 3,
+          tier: 1,
+          influence: 30,
+          secrecy: 40,
+          assets: ["safe_house"],
+          establishedYear: 1000
+        }
+      ],
+      factionRelations: { [f1.i]: "Enemy" }
+    });
+    f1.factionRelations[f2.i] = "Enemy";
+
+    // Step agendas - turf clash in burg 2
+    Living.stepFactionAgendas(living);
+
+    // The two rivals clashed in burg 2; influence shifted
+    const o1 = f1.outposts.find(o => o.burgId === 2)!;
+    const o2 = f2.outposts.find(o => o.burgId === 2)!;
+    expect(o1.influence !== 50 || o2.influence !== 30).toBe(true);
+
+    // Burg unrest should have risen due to the clash
+    const burg2Sim = living.burgs[2];
+    expect(burg2Sim?.unrest ?? 0).toBeGreaterThan(0);
+  });
+
+  it("defects from crumbling patron state when unravel exceeds threshold", () => {
+    const living = Living.init();
+    pack.factions = [{ i: 0 } as Faction];
+
+    const faction = Factions.add({
+      name: "Imperial Guard Auxiliary",
+      category: "martial",
+      type: "knightly_order",
+      allegiance: "state_arm",
+      patronStateId: 1,
+      alignment: "neutral",
+      hq: { cell: 1, burgId: 1, fortified: true, secrecy: 0, assets: ["muster_camp"] }
+    });
+
+    // Make patron state 1 collapse / unravel >= 60
+    if (living.states[1]) living.states[1].unravel = 65;
+
+    Living.stepFactionAgendas(living);
+
+    expect(faction.allegiance).toBe("autonomous");
+    expect(faction.patronStateId).toBeUndefined();
+    expect(faction.stateRelations[1]).toBe("Enemy");
+  });
+
+  it("musters military regiments, conducts raids and ascends to sovereign state", () => {
+    const living = Living.init();
+    pack.factions = [{ i: 0 } as Faction];
+
+    const raiderFaction = Factions.add({
+      name: "Ironfang Warband",
+      category: "martial",
+      type: "raider_clan",
+      allegiance: "hostile",
+      scale: "province",
+      tier: 2,
+      treasury: 300,
+      seasonsActive: 10,
+      sovereignAmbition: true,
+      stateForm: "Warband Realm",
+      hq: { cell: 4, fortified: true, secrecy: 0, assets: ["muster_camp"] }
+    });
+
+    // Step military: musters regiment
+    Living.stepFactionMilitaryAndRaids(living);
+    expect(raiderFaction.military.length).toBeGreaterThan(0);
+    expect(raiderFaction.military[0].u).toHaveProperty("spear");
+
+    // Direct ascension test: ascendFactionToState
+    const stateCountBefore = pack.states.length;
+    const ascStateId = Living.ascendFactionToState(raiderFaction.i, 2);
+    expect(ascStateId).not.toBeNull();
+    expect(pack.states.length).toBe(stateCountBefore + 1);
+
+    const createdState = pack.states[ascStateId!];
+    expect(createdState.name).toBe("Ironfang Warband");
+    expect(createdState.formName).toBe("Warband Realm");
+    expect(raiderFaction.allegiance).toBe("state_arm");
+    expect(raiderFaction.patronStateId).toBe(ascStateId);
+  });
+
+  it("spawns remnant faction on state collapse with inherited identity and hostilities", () => {
+    Living.init();
+    const fallenState = pack.states[1];
+    fallenState.researchedTechs = ["mining", "pottery", "masonry"];
+
+    const remnant = Living.spawnRemnantFaction(fallenState, 2);
+    expect(remnant).not.toBeNull();
+    expect(remnant!.name).toContain("Aeloria Restoration Front");
+    expect(remnant!.category).toBe("political");
+    expect(remnant!.type).toBe("rebel_front");
+    expect(remnant!.allegiance).toBe("hostile");
+    expect(remnant!.sovereignAmbition).toBe(true);
+    expect(remnant!.stateRelations[2]).toBe("Enemy");
+    expect(remnant!.researchedTechs).toEqual(fallenState.researchedTechs);
   });
 });
