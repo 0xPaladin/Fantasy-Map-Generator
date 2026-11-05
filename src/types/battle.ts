@@ -32,14 +32,3 @@ export interface ArmyBlock {
   /** Trouble-resolution fatigue carried over from `ArmyUnit` (0..3). */
   disruption?: number;
 }
-
-/**
- * Capacity points per pool (M/W/S/C). Retained here during the MWSC
- * retirement transition; dies with MWSC in Phase E.
- */
-export interface CapacityPoints {
-  m: number;
-  w: number;
-  s: number;
-  c: number;
-}

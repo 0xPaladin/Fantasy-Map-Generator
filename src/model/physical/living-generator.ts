@@ -4,11 +4,10 @@ import {
   assignStateRoster,
   type BuildingDef,
   inferRosterForCulture,
-  MEN_PER_BLOCK,
   type ResolvedRoster,
   type UnitType
 } from "@/data/roster-content";
-import type { ArmyBlock, ArmyUnit, CapacityPoints } from "@/types/battle";
+import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import { REGION_TIER_STEPS, SETTLEMENT_TIER_STEPS } from "@/data/tiers";
 import {
   type BattleModifiers,
@@ -20,7 +19,6 @@ import {
   initBattleSession,
   stepBattleRound
 } from "@/model/battle/battle";
-import { assetCheckDifficulties, valueModifier } from "@/data/saves-helpers";
 import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
 import type { Alignment } from "@/data/culture-traits";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
@@ -36,7 +34,7 @@ import {
   CIV_PANTHEONS,
   CIV_RELIGION_NAMES
 } from "@/data/living-civ-beliefs";
-import { CIV_BUILDING_BY_ID, CIV_BUILDINGS, civBuildingCapacity } from "@/data/living-civ-buildings";
+import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
 import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
@@ -88,7 +86,6 @@ import {
   type ArmySimState,
   type ArmyStance,
   type BurgSimState,
-  type CapacityLedger,
   type CellResourceInfo,
   type CellSimState,
   type CellTerrainInfo,
@@ -299,16 +296,13 @@ export function regionTierFromPop(populationThousands: number): number {
   return tier;
 }
 
-export function emptyCapacityLedger(): CapacityLedger {
-  return {
-    m: { gen: 0, load: 0 },
-    w: { gen: 0, load: 0 },
-    s: { gen: 0, load: 0 },
-    c: { gen: 0, load: 0 }
-  };
+export interface FigureBias {
+  martial: number;
+  civic: number;
+  pious: number;
+  cruel: number;
 }
 
-/** how much each remembered humiliation weighs on the casus belli ledger */
 const GRUDGE_WEIGHTS: Record<GrudgeReason, number> = {
   conquest: 40,
   sacked: 30,
@@ -316,13 +310,6 @@ const GRUDGE_WEIGHTS: Record<GrudgeReason, number> = {
   slain_general: 35,
   repulsed: 20
 };
-
-export interface FigureBias {
-  martial: number;
-  civic: number;
-  pious: number;
-  cruel: number;
-}
 
 const MARTIAL_TRAITS = ["brave", "daring", "decisive", "wrathful", "vengeful", "boastful", "reckless"];
 const CIVIC_TRAITS = ["just", "diligent", "temperate", "thrifty", "methodical", "prudent"];
@@ -1667,7 +1654,6 @@ class LivingModel {
       this.stepStates(living);
       this.stepDiplomacy(living);
       this.stepRebellions(living);
-      this.recomputeAllCapacities(living);
       this.stepRelics(living);
       this.stepEschaton(living);
       this.refreshPopups(living);
@@ -1695,7 +1681,6 @@ class LivingModel {
     this.syncArmies(living);
     this.syncDangerMarkers(living);
     this.ensureCommanders();
-    this.recomputeAllCapacities(living);
   }
 
   /** Synchronize active lairs with all danger markers on the map */
@@ -1722,176 +1707,6 @@ class LivingModel {
     const capitalCell = state.capital ? pack.burgs[state.capital]?.cell : undefined;
     const cell = capitalCell ?? state.center ?? 0;
     return pack.cells.religion[cell] ?? 0;
-  }
-
-  /** Recompute a single state's M / W / S / C capacity pools from live pack holdings, buildings, and regiments */
-  recomputeStateCapacity(stateId: number): CapacityLedger {
-    const ledger = emptyCapacityLedger();
-    const state = pack.states[stateId];
-    if (!state?.i || state.removed) return ledger;
-
-    const living = pack.history?.living;
-    const sSim = living?.states?.[stateId];
-    const { content, config } = currentContent();
-    const capacityConfig = config.capacity;
-    const buildingById = new Map<string, BuildingDef>(content.buildings.map(b => [b.id, b]));
-    const unitTypes: Record<string, UnitType> = Military.getUnitTypes();
-
-    // 1. Group owned cells and population by province (or state fallback if no provinces)
-    const provincePop = new Map<number, number>();
-    const cellCount = pack.cells.i.length;
-
-    for (let c = 0; c < cellCount; c++) {
-      if (pack.cells.state[c] !== stateId) continue;
-      const provId = pack.cells.province?.[c] || -stateId;
-      const pop = pack.cells.pop?.[c] ?? 0;
-      provincePop.set(provId, (provincePop.get(provId) ?? 0) + pop);
-    }
-
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || burg.state !== stateId) continue;
-      const provId = pack.cells.province?.[burg.cell] || -stateId;
-      const pop = burg.population ?? 0;
-      provincePop.set(provId, (provincePop.get(provId) ?? 0) + pop);
-    }
-
-    // Every held province/region grants +1 M levy base and +regionTier W & S
-    provincePop.forEach(popThousands => {
-      ledger.m.gen += 1;
-      const rTier = regionTierFromPop(popThousands);
-      ledger.w.gen += rTier;
-      ledger.s.gen += rTier;
-    });
-
-    // Earned province development adds +1 W and +1 S per point; a running
-    // development commits `developWPerTurn` Wealth until it completes.
-    for (const provId of provincePop.keys()) {
-      if (provId <= 0) continue;
-      const pSim = living?.provinces?.[provId];
-      if (!pSim) continue;
-      if (pSim.development > 0) {
-        ledger.w.gen += pSim.development;
-        ledger.s.gen += pSim.development;
-      }
-      if (pSim.developmentProgress) ledger.w.load += capacityConfig.developWPerTurn;
-      if (pSim.trouble) {
-        const troubleLoad = Math.ceil(pSim.trouble.level / 2);
-        ledger.m.load += troubleLoad;
-        ledger.w.load += troubleLoad;
-        ledger.s.load += troubleLoad;
-      }
-      if (pSim.lair) {
-        const lairLoad = Math.ceil(pSim.lair.level / 2);
-        ledger.m.load += lairLoad;
-        ledger.w.load += lairLoad;
-        ledger.s.load += lairLoad;
-      }
-    }
-
-    // Capital court grants +2 C
-    if (state.capital && pack.burgs[state.capital]?.state === stateId) {
-      ledger.c.gen += 2;
-    }
-
-    // Active adventurer contract commits +1 Wealth load
-    if (sSim?.agenda?.kind === "hire_adventurers") {
-      ledger.w.load += 1;
-    }
-
-    // 2. Burgs: earned development, standing buildings, and occupation unrest
-    let freeGarrisonWaiver = 0;
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || burg.state !== stateId) continue;
-      const bSim = living?.burgs[burg.i];
-      if (!bSim) continue;
-
-      // A running construction commits Wealth until it completes.
-      if (bSim.construction) ledger.w.load += capacityConfig.constructionWPerTurn;
-
-      // Occupation unrest drains -1 S and suppresses earned W bonus while unrest > 4
-      if (bSim.unrest > 0) {
-        ledger.s.load += 1;
-      }
-      if (bSim.development > 0) {
-        if (bSim.unrest <= 4) ledger.w.gen += bSim.development;
-        ledger.s.gen += bSim.development;
-      }
-
-      for (const bid of bSim.civBuildings ?? []) {
-        const cap = civBuildingCapacity(bid);
-        ledger.m.gen += cap.m;
-        if (bSim.unrest <= 4) ledger.w.gen += cap.w;
-        ledger.s.gen += cap.s;
-        ledger.c.gen += cap.c;
-        if (bid === "barracks" || bid === "armory" || bid === "castle" || bid === "arsenal") {
-          freeGarrisonWaiver += 1;
-        } else if (bid === "military_base") {
-          freeGarrisonWaiver += 2;
-        }
-      }
-
-      for (const bid of bSim.buildings ?? []) {
-        const bDef = buildingById.get(bid);
-        if (!bDef) continue;
-        const gen = bDef.effects.capacity;
-        if (gen) {
-          ledger.m.gen += gen.m ?? 0;
-          if (bSim.unrest <= 4) ledger.w.gen += gen.w ?? 0;
-          ledger.s.gen += gen.s ?? 0;
-          ledger.c.gen += gen.c ?? 0;
-        }
-        const up = bDef.effects.upkeep;
-        if (up) {
-          ledger.m.load += up.m ?? 0;
-          ledger.w.load += up.w ?? 0;
-          ledger.s.load += up.s ?? 0;
-          ledger.c.load += up.c ?? 0;
-        }
-        if (bDef.effects.freeGarrisonUnits) {
-          freeGarrisonWaiver += bDef.effects.freeGarrisonUnits;
-        }
-      }
-    }
-
-    // 3. Regiments: load capacity per unit block, waiving up to `freeGarrisonWaiver` units
-    let waivedUnits = 0;
-    for (const reg of state.military ?? []) {
-      if (!reg.units || reg.units.length === 0) {
-        reconcileRegimentBlocks(reg, unitTypes);
-      }
-      for (const unit of reg.units ?? []) {
-        if (unit.hp <= 0) continue;
-        if (waivedUnits < freeGarrisonWaiver) {
-          waivedUnits += 1;
-          continue;
-        }
-        const uType = unitTypes[unit.type];
-        const cost = uType?.capacityCost;
-        if (!cost) continue;
-        const blocks = unit.hp * (uType.quantity / MEN_PER_BLOCK);
-        ledger.m.load += (cost.m ?? 0) * blocks;
-        ledger.w.load += (cost.w ?? 0) * blocks;
-        ledger.s.load += (cost.s ?? 0) * blocks;
-        ledger.c.load += (cost.c ?? 0) * blocks;
-      }
-    }
-
-    // 4. Relics leased to this state add straight to generation
-    for (const relic of living?.guild?.relics ?? []) {
-      if (relic.holder.kind !== "state" || relic.holder.id !== stateId) continue;
-      ledger.m.gen += relic.bonuses.m ?? 0;
-      ledger.w.gen += relic.bonuses.w ?? 0;
-      ledger.s.gen += relic.bonuses.s ?? 0;
-      ledger.c.gen += relic.bonuses.c ?? 0;
-    }
-
-    // Round to 2 decimal places for clean display and deterministic comparisons
-    for (const pool of ["m", "w", "s", "c"] as const) {
-      ledger[pool].gen = Math.round(ledger[pool].gen * 100) / 100;
-      ledger[pool].load = Math.round(ledger[pool].load * 100) / 100;
-    }
-
-    return ledger;
   }
 
   /** Append a headline to the seasonal news ticker */
@@ -2088,7 +1903,6 @@ class LivingModel {
           agenda: null,
           unravel: 0,
           warExhaustion: 0,
-          capacity: emptyCapacityLedger(),
           claims: [],
           grudges: [],
           currentTechId: null,
@@ -2255,7 +2069,7 @@ class LivingModel {
   }
 
   private successionCrisis(sSim: StatePolitySim, successor: HistoricalFigure | undefined): boolean {
-    if (sSim.capacity.s.load > sSim.capacity.s.gen) return true;
+    if (sSim.warExhaustion >= 50) return true;
     const vices = new Set(successor?.vices ?? []);
     return ["cruel", "greedy", "slothful", "cowardly", "vengeful", "wrathful", "paranoid"].some(vice =>
       vices.has(vice)
@@ -2306,16 +2120,6 @@ class LivingModel {
       snapshot: history.snapshots.length - 1
     });
     living.lastSnapshotTick = living.tick;
-  }
-
-  private recomputeAllCapacities(living: LivingWorldState): void {
-    for (const key of Object.keys(living.states)) {
-      const stateId = Number(key);
-      const sSim = living.states[stateId];
-      if (sSim) {
-        sSim.capacity = this.recomputeStateCapacity(stateId);
-      }
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -2750,6 +2554,10 @@ class LivingModel {
 
   /** Production price: civilians keep their Civ cost, combat blocks use the roster's. */
   private productionCost(state: State, item: ProductionItem): number {
+    if (item.kind === "trouble") {
+      // Environmental-trouble work order (Phase E): progress like a building.
+      return 80;
+    }
     const cost =
       item.kind === "unit"
         ? isCivilianUnit(item.id)
@@ -2806,6 +2614,34 @@ class LivingModel {
   ): void {
     const year = options.map?.lore?.calendar?.year ?? 1000;
     bSim.civBuildings ??= [];
+
+    if (item.kind === "trouble") {
+      // Phase E: the burg worked off an environmental affliction.
+      const provinceId = pack.cells.province?.[burg.cell] ?? 0;
+      const province = pack.provinces?.[provinceId];
+      const pSim = provinceId ? living.provinces[provinceId] : undefined;
+      if (pSim?.trouble) {
+        const troubleName = pSim.trouble.name ?? "trouble";
+        pSim.trouble = null;
+        pSim.order = Math.min(100, pSim.order + 10);
+        pSim.stability += 1;
+        const name = province?.name ?? "the province";
+        this.pushNews(living, {
+          kind: "trouble",
+          text: `${burg.name ?? state.name} worked through ${name}'s afflictions.`,
+          cell: burg.cell,
+          stateId: state.i,
+          burgId: burg.i
+        });
+        this.pushHistory(
+          "pacify",
+          [{ kind: "state", id: state.i }],
+          burg.cell,
+          `${burg.name ?? state.name} cleared the ${troubleName} afflicting ${name}.`
+        );
+      }
+      return;
+    }
 
     if (item.kind === "building" || item.kind === "wonder") {
       if (!bSim.civBuildings.includes(item.id)) bSim.civBuildings.push(item.id);
@@ -4332,7 +4168,7 @@ class LivingModel {
     }
 
     // Decide: assault or continue besieging.
-    const odds = this.estimateSiegeOdds(state, army, garrison, types);
+    const odds = this.estimateSiegeOdds(state, army, garrison, types, burg);
     const shouldAssault = (bSim.siegeProgress ?? 0) >= 2 || odds >= 40;
     if (!shouldAssault) {
       bSim.hp = Math.max(1, bSim.hp ?? 1);
@@ -5373,7 +5209,7 @@ class LivingModel {
       if (!sSim) continue;
 
       const restiveCount = restiveCountByState.get(sSim.stateId) ?? 0;
-      const sDeficit = sSim.capacity.s.load > sSim.capacity.s.gen;
+      const sDeficit = (sSim.happiness ?? 0) <= VERY_UNHAPPY_HAPPINESS;
 
       let delta = 0;
       if (restiveCount > 0) delta += restiveCount * 4;
@@ -5417,11 +5253,12 @@ class LivingModel {
     const capacityConfig = currentContent().config.capacity;
     if (pSim.stability < capacityConfig.developStabilityCost) return false;
     if (pSim.development >= this.provinceDevelopmentCap(provinceId)) return false;
+    if ((state.treasury ?? 0) < 20) return false; // Civ economy: development is paid in Gold
 
     const settlementId = this.pickProvinceSettlement(provinceId, stateId);
     if (!settlementId) return false;
-    if (this.freeCapacity(sSim).w < capacityConfig.developWPerTurn) return false;
 
+    state.treasury = (state.treasury ?? 0) - 20;
     pSim.stability -= capacityConfig.developStabilityCost;
     pSim.developmentProgress = { settlementId, turnsLeft: capacityConfig.developTurns };
     const settlement = pack.burgs[settlementId];
@@ -5454,8 +5291,6 @@ class LivingModel {
     bSim.construction = {
       buildingId,
       turnsLeft: building.turns ?? 1,
-      checks: { m: false, w: false, s: false },
-      pityBonus: 0
     };
     sSim.agenda = {
       kind: "build",
@@ -6421,7 +6256,6 @@ class LivingModel {
     const ai = pack.states[aiId];
     const from = pack.states[fromId];
     if (!ai?.i || ai.removed || !from?.i || from.removed) return { accept: false, reason: "not alive" };
-    const living = this.getState();
     const relation = ai.diplomacy?.[fromId] ?? "Unknown";
     const atWar = this.isAtWar(aiId, fromId);
     const myStrength = this.stateStrength(aiId);
@@ -6515,7 +6349,7 @@ class LivingModel {
         if (otherId <= state.i) continue; // one roll per pair
         const roll = this.rng(`treaty:${state.i}:${otherId}`, living.tick);
         if (!roll.chance(0.06)) continue;
-        const kind = roll.pick<TreatyKind>(["nonAggression", "trade", "defensiveAlliance", "militaryAccess"]);
+        const kind = roll.choice<TreatyKind>(["nonAggression", "trade", "defensiveAlliance", "militaryAccess"]);
         if (this.hasTreaty(state.i, otherId, kind)) continue;
         if (this.isAtWar(state.i, otherId)) continue;
         this.offerTreaty(state.i, otherId, kind);
@@ -6526,12 +6360,11 @@ class LivingModel {
   /** Directly adjacent states (shared border), neighbours only. */
   private neighbourStates(stateId: number): number[] {
     const out = new Set<number>();
-    for (const province of this.ownedProvinces(stateId)) {
-      for (const neighbour of pack.provinces ?? []) {
-        if (!neighbour?.i || neighbour.i === province.i) continue;
-        for (const cell of neighbour.cells ?? []) {
-          if ((pack.cells.state?.[cell] ?? 0) === stateId) out.add(neighbour.state);
-        }
+    for (let cell = 0; cell < pack.cells.state.length; cell++) {
+      if ((pack.cells.state[cell] ?? 0) !== stateId) continue;
+      for (const neighbour of pack.cells.c?.[cell] ?? []) {
+        const owner = pack.cells.state[neighbour] ?? 0;
+        if (owner && owner !== stateId) out.add(owner);
       }
     }
     return [...out].filter(id => id > 0 && pack.states[id] && !pack.states[id].removed);
@@ -6652,7 +6485,7 @@ class LivingModel {
       const biomeId = pack.cells.biome?.[cell];
       total += (biomeId !== undefined ? pack.biomes?.[biomeId]?.habitability : undefined) ?? 50;
     }
-    const perPoint = Math.max(1, currentContent().config.capacity.growthPerHabitability);
+    const perPoint = 20; // Civ economy: shipped growthPerHabitability, kept as a constant
     return Math.floor(total / cells.length / perPoint);
   }
 
@@ -6692,23 +6525,6 @@ class LivingModel {
     return undefined;
   }
 
-  private freeCapacity(sSim: { capacity: CapacityLedger }): CapacityPoints {
-    const out = { m: 0, w: 0, s: 0, c: 0 };
-    for (const pool of ["m", "w", "s", "c"] as const) {
-      out[pool] = sSim.capacity[pool].gen - sSim.capacity[pool].load;
-    }
-    return out;
-  }
-
-  private hasFreeCapacity(sSim: { capacity: CapacityLedger }, load?: CapacityPoints): boolean {
-    if (!load) return true;
-    const free = this.freeCapacity(sSim);
-    for (const pool of ["m", "w", "s", "c"] as const) {
-      if (free[pool] - (load[pool] ?? 0) < 0) return false;
-    }
-    return true;
-  }
-
   private pickMusterUnit(state: State): { unit: UnitType; regiment: Regiment | null } | null {
     const roster = Military.getRoster(state);
     const unitTypes = Military.getUnitTypes();
@@ -6720,7 +6536,6 @@ class LivingModel {
 
     const { content, config } = currentContent();
     const maxUnits = config.military.maxUnitsPerArmy;
-    const free = this.freeCapacity(sSim);
     const heldBuildings = this.heldBuildings(state.i);
     const unlockSources = new Map<string, string[]>();
     for (const building of content.buildings) {
@@ -6741,19 +6556,10 @@ class LivingModel {
       if (unit.requiresGood !== undefined && !heldGoods.has(unit.requiresGood)) continue;
       if (unit.requiresWallTier !== undefined && maxWalls < unit.requiresWallTier) continue;
 
-      const cost = unit.capacityCost;
-      if (cost) {
-        let refused = false;
-        for (const pool of ["m", "w", "s", "c"] as const) {
-          if (free[pool] - (cost[pool] ?? 0) * unit.blocks < 0) {
-            refused = true;
-            break;
-          }
-        }
-        if (refused) continue;
-      }
-
       const regiment = this.findRegimentForUnit(state, unitId, maxUnits, roster.caps[unitId]);
+      // Civ-economy recruitment gate (replaces the retired MWSC capacity gate):
+      // a state must hold at least 20 Gold to raise new troops.
+      if ((state.treasury ?? 0) < 20) continue;
       return { unit, regiment };
     }
     return null;
@@ -6836,7 +6642,7 @@ class LivingModel {
   }
 
   private canBuild(state: State, burg: Burg, bSim: BurgSimState, building: BuildingDef): boolean {
-    const { content, config } = currentContent();
+    const { content } = currentContent();
     if (building.kind && building.kind !== "structure") return false;
     if (building.group && building.group !== state.rosterId) return false;
 
@@ -6854,8 +6660,7 @@ class LivingModel {
 
     const sSim = pack.history?.living?.states[state.i];
     if (!sSim) return false;
-    if (!this.hasFreeCapacity(sSim, building.effects.upkeep)) return false;
-    return this.freeCapacity(sSim).w >= config.capacity.constructionWPerTurn;
+    return true;
   }
 
   private pickBuildTarget(state: State): { burgId: number; buildingId: string } | null {
@@ -6883,7 +6688,7 @@ class LivingModel {
     return false;
   }
 
-  private pickDevelopProvince(stateId: number, sSim: StatePolitySim, living: LivingWorldState): number | undefined {
+  private pickDevelopProvince(stateId: number, living: LivingWorldState): number | undefined {
     const capacityConfig = currentContent().config.capacity;
     for (const province of this.ownedProvinces(stateId)) {
       const pSim = living.provinces[province.i];
@@ -6891,7 +6696,6 @@ class LivingModel {
       if (pSim.stability < capacityConfig.developStabilityCost) continue;
       if (pSim.development >= this.provinceDevelopmentCap(province.i)) continue;
       if (!this.pickProvinceSettlement(province.i, stateId)) continue;
-      if (this.freeCapacity(sSim).w < capacityConfig.developWPerTurn) continue;
       return province.i;
     }
     return undefined;
@@ -7139,7 +6943,7 @@ class LivingModel {
           required: 1
         };
       }
-      if (sSim.capacity.w.gen >= sSim.capacity.w.load || sSim.capacity.c.gen >= 4) {
+      if ((state.treasury ?? 0) >= 40) {
         return {
           kind: "hire_adventurers",
           label: `Hiring adventurers against ${lairProvince.lair.name} in ${lairProvince.province.name}`,
@@ -7169,7 +6973,7 @@ class LivingModel {
     const war = this.warAgenda(state, sSim);
     if (war) return war;
 
-    const provinceId = this.pickDevelopProvince(state.i, sSim, living);
+    const provinceId = this.pickDevelopProvince(state.i, living);
     if (provinceId !== undefined) {
       const province = pack.provinces?.[provinceId];
       return {
@@ -7261,7 +7065,7 @@ class LivingModel {
       }
       case "develop": {
         if (this.hasDevelopment(living, state.i)) return;
-        const provinceId = agenda.targetProvinceId ?? this.pickDevelopProvince(state.i, sSim, living);
+        const provinceId = agenda.targetProvinceId ?? this.pickDevelopProvince(state.i, living);
         if (provinceId === undefined || !this.startDevelop(state.i, provinceId)) sSim.agenda = null;
         return;
       }
@@ -7418,29 +7222,10 @@ class LivingModel {
       }
 
       construction.turnsLeft = Math.max(0, construction.turnsLeft - 1);
-      const checks = construction.checks;
-      // One value check per season: pass the next unfinished pool.
-      const pool = (["m", "w", "s"] as const).find(entry => !checks[entry]);
-      if (pool) {
-        const dcs = assetCheckDifficulties(building, construction.pityBonus);
-        const modifier = valueModifier(sSim.capacity[pool].gen);
-        const roll = this.rng(
-          "build-check",
-          state.i * 10000 + burg.i * 10 + (pool === "m" ? 1 : pool === "w" ? 2 : 3)
-        ).d(20);
 
-        if (roll + modifier >= dcs[pool]) {
-          checks[pool] = true;
-          if (sSim.agenda?.kind === "build" && sSim.agenda.targetBurgId === burg.i) {
-            sSim.agenda.progress = Math.min(sSim.agenda.required, sSim.agenda.progress + 1);
-          }
-        } else {
-          construction.pityBonus += 1;
-        }
-      }
-
-      // Building time is a floor: all three saves and the advertised turns must pass.
-      if (checks.m && checks.w && checks.s && construction.turnsLeft === 0) {
+      // Building time is the whole gate now: the Civ economy owns construction
+      // (Phase E retired the 3-check value rolls).
+      if (construction.turnsLeft === 0) {
         this.completeConstruction(state, sSim, living, burg, bSim, building);
       }
     }
@@ -7530,7 +7315,7 @@ class LivingModel {
       }
 
       if (this.isProvinceGarrisoned(province.state, province.i)) {
-        if (!pSim.trouble && !pSim.lair) pSim.stability += config.capacity.stabilityPerGarrison;
+        if (!pSim.trouble && !pSim.lair) pSim.stability += 1;
         pSim.order = Math.min(100, pSim.order + 2);
       } else if (pSim.order < config.economy.startOrder) {
         pSim.order = Math.min(config.economy.startOrder, pSim.order + 1);
@@ -7688,12 +7473,8 @@ class LivingModel {
 
         const hostBurgId = faction.hq.burgId ?? faction.outposts[0]?.burgId;
         const hostBurg = hostBurgId ? pack.burgs?.[hostBurgId] : undefined;
-        const hostState = hostBurg?.state ? pack.states?.[hostBurg.state] : undefined;
         const hostStateSim = hostBurg?.state ? living.states?.[hostBurg.state] : undefined;
-        if (
-          hostStateSim?.researchedTechs?.includes(faction.currentTechId) ||
-          hostState?.researchedTechs?.includes(faction.currentTechId)
-        ) {
+        if (hostStateSim?.researchedTechs?.includes(faction.currentTechId)) {
           researchPower = Number((researchPower * 1.25).toFixed(1));
         }
 
@@ -8001,10 +7782,10 @@ class LivingModel {
     const raidUnits: ArmyUnit[] = [];
     for (const reg of faction.military) {
       for (const [unitName, count] of Object.entries(reg.u ?? {})) {
-        raidUnits.push({ type: unitName as UnitType, count });
+        raidUnits.push({ type: unitName, count, exp: 0 });
       }
     }
-    if (raidUnits.length === 0) raidUnits.push({ type: "spear", count: 50 });
+    if (raidUnits.length === 0) raidUnits.push({ type: "spear", count: 50, exp: 0 });
 
     const defenders = this.burgDefenders(target);
     const ownerState = pack.states?.[target.state ?? 0];
@@ -8233,7 +8014,6 @@ class LivingModel {
       const bName = bDef?.name ?? destroyed;
       pSim.order = Math.max(0, pSim.order - 6);
       if (target.state && living.states[target.state]) {
-        living.states[target.state].capacity = this.recomputeStateCapacity(target.state);
       }
       this.pushNews(living, {
         kind: "lair",
@@ -8259,7 +8039,6 @@ class LivingModel {
       pSim.development = Math.max(0, pSim.development - 1);
       pSim.order = Math.max(0, pSim.order - 10);
       if (target.state && living.states[target.state]) {
-        living.states[target.state].capacity = this.recomputeStateCapacity(target.state);
       }
       this.pushNews(living, {
         kind: "lair",
@@ -8287,7 +8066,6 @@ class LivingModel {
     const marker = lair.markerId !== undefined ? pack.markers?.[lair.markerId] : undefined;
     if (marker) marker.name = `${lair.name} (Lair Lvl ${lair.level})`;
     if (province.state && living.states[province.state]) {
-      living.states[province.state].capacity = this.recomputeStateCapacity(province.state);
     }
     this.pushNews(living, {
       kind: "lair",
@@ -8337,3 +8115,5 @@ window.Living = Living;
 export { LivingGuild } from "./living-guild";
 export { LivingHeroes } from "./living-heroes";
 export { LivingThreats } from "./living-threats";
+
+

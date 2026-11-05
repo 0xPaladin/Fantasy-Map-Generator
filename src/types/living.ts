@@ -192,23 +192,9 @@ export interface ClaimRecord {
   heldByStateId: number;
 }
 
-export interface CapacityPoolEntry {
-  gen: number;
-  load: number;
-}
-
-export interface CapacityLedger {
-  m: CapacityPoolEntry;
-  w: CapacityPoolEntry;
-  s: CapacityPoolEntry;
-  c: CapacityPoolEntry;
-}
-
 export interface BurgConstructionState {
   buildingId: string;
   turnsLeft: number;
-  checks: { m: boolean; w: boolean; s: boolean };
-  pityBonus: number;
 }
 
 export interface BurgSimState {
@@ -282,7 +268,6 @@ export interface StatePolitySim {
   agenda: StateAgenda | null;
   unravel: number;
   warExhaustion: number;
-  capacity: CapacityLedger;
   claims: ClaimRecord[];
   grudges: GrudgeRecord[];
   // OpenCiv empire fields; lazily initialized by later Living World 2.0 slices.
@@ -806,7 +791,7 @@ export interface CivThemeProfile {
 }
 
 export interface ProductionItem {
-  kind: "unit" | "building" | "wonder";
+  kind: "unit" | "building" | "wonder" | "trouble";
   id: string;
 }
 

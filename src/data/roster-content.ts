@@ -11,7 +11,14 @@
  */
 import type { TroubleUnitRole } from "@/types/living";
 import { canonicalHash } from "./prng";
-import type { CapacityPoints } from "@/types/battle";
+
+/** Capacity points per pool (M/W/S/C) — the roster's legacy asset currency. */
+interface CapacityPoints {
+  m: number;
+  w: number;
+  s: number;
+  c: number;
+}
 
 // ---------------------------------------------------------------------------
 // Contract types

@@ -661,7 +661,7 @@ describe("LivingHud", () => {
     expect(inspector?.style.display).toBe("none");
   });
 
-  it("renders Capacity with Military, Wealth, Social, Cunning and inline Stability meters", () => {
+  it("renders the Economy strip and inline Stability meters", () => {
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
     ];
@@ -669,15 +669,9 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const inspector = document.getElementById("livingInspector");
-    expect(inspector?.textContent).toContain("Capacity");
-    expect(inspector?.textContent).toContain("Military");
-    expect(inspector?.textContent).toContain("Wealth");
-    expect(inspector?.textContent).toContain("Social");
-    expect(inspector?.textContent).toContain("Cunning");
-
-    const militaryRow = inspector?.querySelector<HTMLElement>(".livingCapacityRow[title*='Military']");
-    expect(militaryRow).toBeTruthy();
-    expect(militaryRow?.getAttribute("title")).toContain("10 gen / 4 load");
+    expect(inspector?.textContent).toContain("Economy");
+    expect(inspector?.textContent).toContain("Gold");
+    expect(inspector?.textContent).toContain("Production");
 
     const unravelRow = inspector?.querySelector<HTMLElement>(".livingMeterRow[title*='Unravel']");
     expect(unravelRow).toBeTruthy();

@@ -26,7 +26,7 @@ import {
   troubleMissionTags
 } from "@/data/mission-tags";
 import { estimateOdds, type BattleModifiers } from "@/model/battle/battle";
-import { valueModifier } from "@/data/saves-helpers";
+
 import { Military } from "@/model/political/military-generator";
 import {
   armyHp,
@@ -1517,7 +1517,7 @@ function renderStateCard(stateId: number): string {
     ${renderRuler(ruler, age)}
     ${renderCivState(sSim, stateId)}
     ${renderStateProvinces(stateId)}
-    ${renderCapacity(sSim, stateId)}
+    ${renderEconomy(sSim, stateId)}
     ${renderAgenda(sSim)}
     <div class="livingSection">
       <div class="livingSectionTitle">Stability</div>
@@ -1791,7 +1791,7 @@ interface CitySimView {
   foodStored?: number;
   cultureStored?: number;
   tilesAcquired?: number;
-  productionQueue?: { kind: "unit" | "building" | "wonder"; id: string }[];
+  productionQueue?: { kind: "unit" | "building" | "wonder" | "trouble"; id: string }[];
   productionProgress?: Record<string, number>;
   hp?: number;
   maxHp?: number;
@@ -1959,27 +1959,22 @@ function renderProvinceCard(provinceId: number): string {
   </div>`;
 }
 
-function renderCapacity(sSim: StatePolitySim, stateId?: number): string {
-  const pools = [
-    ["m", "Military"],
-    ["w", "Wealth"],
-    ["s", "Social"],
-    ["c", "Cunning"]
-  ] as const;
-
-  const rows = pools
-    .map(([key, label]) => {
-      const pool = sSim.capacity[key];
-      const over = pool.load > pool.gen;
-      const ratio = pool.gen > 0 ? Math.min(100, Math.round((pool.load / pool.gen) * 100)) : 0;
-      const mod = valueModifier(pool.gen);
-      const signMod = mod >= 0 ? `+${mod}` : `${mod}`;
-      const tip = `${label}: ${pool.gen} gen / ${pool.load} load (${signMod} check mod)${over ? " (over capacity)" : ""}`;
-      return `<div class="livingCapacityRow${over ? " over" : ""}" title="${escapeHtml(tip)}" tabindex="0">
-        <span class="livingCapacityLabel">${label} <small style="opacity:0.75; font-size:0.85em;">(${signMod})</small></span>
-        <div class="livingBar${over ? " danger" : ""}"><i style="width:${ratio}%"></i></div>
-      </div>`;
-    })
+function renderEconomy(sSim: StatePolitySim, stateId?: number): string {
+  const yields = sSim.yieldsPerTurn;
+  const treasury = stateId ? (pack.states[stateId]?.treasury ?? 0) : 0;
+  const num = (value: number): string => String(Math.round(value * 10) / 10);
+  const rows: [string, string][] = [
+    ["Gold", `${num(yields?.gold ?? 0)}/season · ${num(treasury)} banked`],
+    ["Production", `${num(yields?.production ?? 0)}/season`],
+    ["Science", `${num(yields?.science ?? 0)}/season`],
+    ["Culture", `${num(yields?.culture ?? 0)}/season`],
+    ["Faith", `${num(yields?.faith ?? 0)}/season`]
+  ];
+  const list = rows
+    .map(
+      ([label, value]) =>
+        `<div class="livingMeterRow"><span class="livingCapacityLabel">${label}</span><span class="livingMuted">${value}</span></div>`
+    )
     .join("");
 
   const buttons = stateId
@@ -1990,7 +1985,7 @@ function renderCapacity(sSim: StatePolitySim, stateId?: number): string {
       </div>`
     : "";
 
-  return `<div class="livingSection"><div class="livingSectionTitle">Capacity</div>${rows}${buttons}</div>`;
+  return `<div class="livingSection"><div class="livingSectionTitle">Economy</div>${list}${buttons}</div>`;
 }
 
 function renderAgenda(sSim: StatePolitySim): string {

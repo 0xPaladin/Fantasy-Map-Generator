@@ -161,6 +161,17 @@ Troubles that survive the PR-27 faction absorption (pure environmental: blight, 
 - Progress in Production/season (existing `stepCities` machinery); completion clears the trouble, seeds a chronicle event, awards order/stability.
 - `living-troubles.ts` shrinks to: catalog + spawn + the action mint. Lair logic is already faction territory (PR-27).
 
+### 6.3 Phase E delivery notes
+
+- Deleted from `living-generator.ts`: `emptyCapacityLedger`, `recomputeStateCapacity`, `recomputeAllCapacities`, `freeCapacity`, `hasFreeCapacity`, the `freeGarrisonWaiver` math, and the `valueModifier`/`assetCheckDifficulties` imports. `CapacityLedger`/`CapacityPoolEntry` are gone from `src/types/living.ts`; `CapacityPoints` is now a private type inside `roster-content.ts` (roster parsing only).
+- `StatePolitySim.capacity` is deleted; the load path simply drops the field from old saves.
+- Recruitment and development now use the Civ economy: a state needs **≥20 Gold** to muster, and development costs **20 Gold + 4 stability**.
+- Autonomous construction no longer rolls the 3-check dice; a roster building completes when its turn count elapses (the Civ production queue owns buildings).
+- Environmental trouble is minted as `{ kind: "trouble", id }` in the province's burg production queue (80 Production); completion clears it, awards order/stability and writes a chronicle entry.
+- The state card's M/W/S/C meter is replaced by an **Economy** strip (Gold/season + banked, Production, Science, Culture, Faith).
+- Guild/trouble/lair check modifiers now read the state's **Gold income** as the domain value instead of the retired MWSC pool generation.
+- Stale capacity tests were removed; a new test covers the trouble-to-production-action flow.
+
 ---
 
 ## 7. Phase G — the deletion itself
@@ -187,7 +198,7 @@ After A–F, `src/conquest/` contains only the campaign shell. Remove in one com
 | **B** | Siege progression + capture policies in living | medium | Besieging weakens garrisons seasonally; policies alter capture outcomes; tests |
 | **C** | Goals for states & factions; absorb ai.ts heuristics; delete `tacticalTarget` ad-hoc path | large | Armies act from goals; state card shows goals; ai/commands files unreferenced |
 | **D** | Treaties (peace/nonAggression/trade/defensiveAlliance/militaryAccess), acceptance thresholds, confederation, calls-to-arms; rebellion gap-check vs `checkRebellions` | medium | Treaties appear/expire in the chronicle; alliances drag allies into wars |
-| **E** | Delete MWSC (checklist §6.1); trouble → burg production actions (§6.2); HUD meter swap | medium | No `CapacityPoints`/capacity ledger anywhere; troubles resolve via queues |
+| **E** ✅ | Delete MWSC (checklist §6.1); trouble → burg production actions (§6.2); HUD meter swap | medium | No `CapacityPoints`/capacity ledger in civ code; troubles resolve via queues |
 | **F** | Stance polish: march ×1.5 (no attack), ambush +30% initiation, raid plunder → Gold + unrest; `riverCrossing` modifier | small | Stances measurably change movement/combat |
 | **G** | Delete `src/conquest/` + seams (§7) | medium | grep clean; suite green; MERGING/architecture updated |
 | **H** | Docs: wiki battle-engine page, README fork blurb, data-model updates, this plan marked done | small | — |

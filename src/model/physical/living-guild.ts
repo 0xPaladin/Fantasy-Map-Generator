@@ -1,5 +1,4 @@
 // Living World Guild Engine: manages guild state, operations, missions, relics, petitions, and player faction bridging.
-import { valueModifier } from "@/data/saves-helpers";
 import { GUILD_OPERATIONS, type GuildOperationKind } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines } from "@/data/hero-archetypes";
 import { aspectBonus } from "@/data/hero-aspects";
@@ -51,7 +50,6 @@ import type { Faction } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import type {
   ActiveGuildMission,
-  CapacityLedger,
   DisciplineId,
   GuildMissionKind,
   GuildState,
@@ -76,6 +74,7 @@ import type { Province } from "@/types/subdivided-pack";
 import { minmax } from "@/utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
+import { valueModifier } from "@/data/saves-helpers";
 
 export const GUILD_RENOWN_THRESHOLDS = [0, 50, 150, 350, 700] as const;
 export const GUILD_TIER_TITLES = [
@@ -141,7 +140,6 @@ export interface GuildHost {
   sparkRebellion?(stateId: number, burgId?: number): boolean;
   promoteTroubleToState?(provinceId: number, capitalBurgId?: number): number | null;
   smiteRuler?(stateId: number): boolean;
-  recomputeStateCapacity?(stateId: number): CapacityLedger;
   relieveEschaton?(living: LivingWorldState, amount?: number): void;
   addRuinMarker?(cell: number, name: string): number;
   spawnProtege?(living: LivingWorldState, veteran: HistoricalFigure): HistoricalFigure | undefined;
@@ -609,7 +607,7 @@ export function guildAssassinateRuler(stateId: number): boolean {
   if (sSim.rulerId === undefined || findFigure(sSim.rulerId)?.death !== undefined) return false;
   if (!chargeOperation(living, guild, operator, kind)) return false;
 
-  const poolGen = sSim.capacity?.c?.gen ?? 0;
+  const poolGen = sSim.yieldsPerTurn?.gold ?? 0;
   const rng = getRng("guild:operation", stateId * 1000 + operator.i);
   const check = figureCheckRoll(
     rng,
@@ -659,7 +657,7 @@ export function guildBrokerWar(stateId: number, otherId?: number): boolean {
       ? otherId
       : state.diplomacy?.findIndex((relation, index) => relation === "Enemy" && index !== stateId);
   const pool = checkPool(operator, def.check!.pool);
-  const poolGen = living.states?.[stateId]?.capacity[pool]?.gen ?? 0;
+  const poolGen = living.states?.[stateId]?.yieldsPerTurn?.gold ?? 0;
   const rng = getRng("guild:operation", stateId * 1000 + operator.i);
   const check = figureCheckRoll(
     rng,
@@ -815,8 +813,6 @@ export function dropStateRelicsToRuin(stateId: number, burg: Burg): HistoricalRe
     : 0;
   for (const relic of dropped) relic.holder = { kind: "ruin", markerId, cell: burg.cell };
 
-  const sSim = living.states?.[stateId];
-  if (sSim && host.recomputeStateCapacity) sSim.capacity = host.recomputeStateCapacity(stateId);
 
   pushNews(living, {
     kind: "develop",
@@ -882,8 +878,6 @@ export function leaseRelic(relicId: number, stateId: number): boolean {
   if (relic?.holder.kind !== "vault") return false;
 
   relic.holder = { kind: "state", id: stateId };
-  const sSim = host.getState().states?.[stateId];
-  if (sSim && host.recomputeStateCapacity) sSim.capacity = host.recomputeStateCapacity(stateId);
   return true;
 }
 
@@ -898,7 +892,6 @@ export function recallRelic(relicId: number): boolean {
   relic.holder = vaultHasRoom(guild) ? { kind: "vault" } : { kind: "reserve" };
   if (previous.kind === "state") {
     const sSim = host.getState().states?.[previous.id];
-    if (sSim && host.recomputeStateCapacity) sSim.capacity = host.recomputeStateCapacity(previous.id);
   }
   return true;
 }
@@ -1046,7 +1039,7 @@ export function missionChance(
 ): number {
   const province = target.provinceId !== undefined ? pack.provinces?.[target.provinceId] : undefined;
   const sSim = province?.state ? living.states?.[province.state] : undefined;
-  const poolGen = sSim?.capacity[target.pool]?.gen ?? 0;
+  const poolGen = sSim?.yieldsPerTurn?.gold ?? 0;
   const carried = equippedRelic(guild.relics ?? [], figure.i);
   const tags = target.tags ?? [];
   const fit = heroMissionFit(figure, tags);
@@ -1729,9 +1722,6 @@ export function finalizeMission(
   }
 
   const host = getHost();
-  if (sSim && province?.state && host.recomputeStateCapacity) {
-    sSim.capacity = host.recomputeStateCapacity(province.state);
-  }
   syncGuildTier(living, guild);
 }
 
@@ -1793,7 +1783,7 @@ export function resolveMission(living: LivingWorldState, mission: ActiveGuildMis
   const state = ensureHeroGuildState(guild, choice.figure);
   const injuries = injuryPenalty(state.injuries, phase.tags, living.tick) + (choice.untrained ? 2 : 0);
   const synergy = partySynergy(guild, party);
-  const poolGen = province?.state ? (living.states?.[province.state]?.capacity[phase.pool]?.gen ?? 0) : 0;
+  const poolGen = province?.state ? (living.states?.[province.state]?.yieldsPerTurn?.gold ?? 0) : 0;
   const carried = equippedRelic(guild.relics ?? [], choice.figure.i);
   const rng = getRng("guild:phase", mission.id * 1000 + phaseIndex * 100 + choice.figure.i);
   const check = figureCheckRoll(
@@ -2403,3 +2393,8 @@ export const LivingGuild = {
   applyPetitionEffects,
   resolvePetition
 };
+
+
+
+
+
