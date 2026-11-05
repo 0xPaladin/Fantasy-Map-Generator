@@ -78,6 +78,7 @@ function handleKeyup(event: KeyboardEvent): void {
   else if ((shift || altShift) && code === "KeyF") Controllers.FeaturesOverview.open();
   else if ((shift || altShift) && code === "KeyV") Controllers.RiversOverview.open();
   else if ((shift || altShift) && code === "KeyM") Controllers.MilitaryOverview.open();
+  else if ((shift || altShift) && code === "KeyI") Controllers.CharactersEditor.open();
   else if ((shift || altShift) && code === "KeyK") Controllers.MarkersOverview.open();
   else if ((shift || altShift) && code === "KeyE") Controllers.CellInfo.open();
   else if ((shift || altShift) && code === "KeyG") Controllers.GoodsEditor.open();

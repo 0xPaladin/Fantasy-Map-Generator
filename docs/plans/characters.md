@@ -1,7 +1,7 @@
 # Plan — Characters: One Roster for People, Heroes & Historical Figures
 
 **Updated:** 2026-11-05  
-**Status:** In progress — Phases 1-6 implemented  
+**Status:** In progress — Phases 1-7 implemented  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 
@@ -60,7 +60,7 @@ The design has three layers:
 - [x] **Phase 4 - Generators and manual preservation** (2026-11-05)
 - [x] **Phase 5 - Hero checks and missions** (2026-11-05)
 - [x] **Phase 6 - Characters editor** (2026-11-05)
-- [ ] Phase 7 — Layer, map entity, omnibar, tool button
+- [x] **Phase 7 - Layer, map entity, omnibar, tool button** (2026-11-05)
 - [ ] Phase 8 — Docs, glossary, cleanup
 
 ---
@@ -915,24 +915,34 @@ Keep the existing trait rendering.
 
 ---
 
-### Phase 7 — Layer, Map Entity, Omnibar, Tool Button
+### Phase 7 — Layer, Map Entity, Omnibar, Tool Button ✅
 
+**Status:** Implemented 2026-11-05.  
 **Goal:** Characters are visible and reachable like every other FMG entity.
 
-1. `src/renderers/draw-characters.ts` and `layers.ts`
-   - `characters` layer, `#characters` group.
+1. `src/renderers/draw-characters.ts`, `layers.ts`, `viewport.ts`, `layer-labels.ts`
+   - `characters` layer and `#characters` group.
+   - Background characters use a role glyph; heroes use the star marker.
+   - Markers are culled to the viewport and open the character sheet on click.
+   - The layer is user-controlled and off by default; the editor shows it on open.
 2. `src/model/map-entities.ts`
-   - `character` entity, `#characters` selector, `figure` alias.
-3. Omnibar
-   - character results and focus.
-4. Tool wiring
-   - `editCharactersButton` in `map-commands.ts`;
-   - Characters button in `tools-tab.ts`;
+   - `character` entity backed by `pack.history.figures`.
+   - `#characters` data target and `character<id>` element pattern.
+   - Omnibar results resolve through `CharactersEditor`.
+3. Tool wiring
+   - `editCharactersButton` in `map-commands.ts`.
+   - Characters button in `tools-tab.ts`.
    - `Shift+I` in `hotkeys.ts`.
-5. Legends
-   - link figure rows to the character detail and hero summary.
+4. Legends
+   - Figure names link to the character sheet.
+   - Hero rows show their top three actions.
+5. Tests
+   - `draw-characters.test.ts`: marker types, click-to-open, teardown.
+   - `map-entities.test.ts`: character resolution, position, layer, editor.
 
-**Acceptance:** the Characters button opens the editor and enables the layer; a character is searchable in the omnibar; clicking its marker opens the detail; the layer is optional elsewhere.
+**Verification:** 79 tests pass across the layer, map-entity, and editor suites. `biome check` is clean on the changed files; no new `tsc --noEmit` errors.
+
+**Acceptance:** the Characters button opens the editor and enables the layer; characters appear in the omnibar; clicking a marker opens the sheet; the layer stays optional elsewhere.
 
 ---
 
