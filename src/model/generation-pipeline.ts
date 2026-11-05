@@ -20,6 +20,7 @@ import { Rivers } from "@/model/physical/river-generator";
 import { Temperature } from "@/model/physical/temperature-generator";
 import { Pipeline, type PipelineStep } from "@/model/pipeline";
 import { Burgs } from "@/model/political/burgs-generator";
+import { Factions } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { States } from "@/model/political/states-generator";
@@ -70,6 +71,7 @@ const generationPipelineSteps = [
   { id: "taxes", run: () => States.collectTaxes() },
   { id: "military", run: () => Military.generate() },
   { id: "markers", run: () => Markers.generate() },
+  { id: "factions", run: () => Factions.generate() },
   { id: "zones", run: () => Zones.generate() },
   { id: "addedLabels", run: () => AddedLabels.initiate() },
   { id: "journeys", run: () => Journeys.generate() },
@@ -119,6 +121,7 @@ const erasePipelineSteps = [
   { id: "taxes", run: () => States.collectTaxes() },
   { id: "military", run: () => Military.generate() },
   { id: "markers", run: () => Markers.generate() },
+  { id: "factions", run: () => Factions.generate() },
   { id: "zones", run: () => Zones.generate() },
   { id: "history", run: () => Chronicle.generate() }
 ] as const satisfies PipelineStep<GenerationPipelineStepId, EraseContext>[];

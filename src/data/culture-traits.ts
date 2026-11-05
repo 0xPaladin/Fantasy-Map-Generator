@@ -338,7 +338,11 @@ const ANTONYMS = new Map<string, string>(
 const WORD_DRAWS = 5;
 
 /** one reproducible stream per entity, so traits never depend on the roll order around them */
-export function traitsRng(seed: string, kind: "culture" | "figure" | "adventurer" | "campaign", id: number): Rng {
+export function traitsRng(
+  seed: string,
+  kind: "culture" | "figure" | "adventurer" | "campaign" | "faction",
+  id: number
+): Rng {
   return createRng(`${seed}:traits:${kind}:${id}`);
 }
 

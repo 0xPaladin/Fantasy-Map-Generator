@@ -27,7 +27,6 @@ import { MapEntities } from "@/model/map-entities";
 import { mapHistory } from "@/model/map-history";
 import { MapIntegrity } from "@/model/map-integrity";
 import { MapRestoration } from "@/model/map-restoration";
-import { SolarSystem } from "@/model/system/solar-system";
 import { Options } from "@/model/options/options-model";
 import { Pins } from "@/model/options/pins";
 import { Biomes } from "@/model/physical/biomes-generator";
@@ -44,6 +43,7 @@ import { Rivers } from "@/model/physical/river-generator";
 import { Temperature } from "@/model/physical/temperature-generator";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Emblems } from "@/model/political/emblems-generator";
+import { Factions } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { States } from "@/model/political/states-generator";
@@ -58,6 +58,7 @@ import { Lore } from "@/model/story/lore";
 import { Markers } from "@/model/story/markers-generator";
 import { Notes } from "@/model/story/notes";
 import { Styles } from "@/model/styles/styles";
+import { SolarSystem } from "@/model/system/solar-system";
 import { Tags } from "@/model/tags";
 import * as units from "@/model/units";
 import { fitLegendBox } from "@/renderers/draw-legend";
@@ -138,6 +139,7 @@ const FMG = {
   CustomIcons,
   Emblems,
   ErasePipeline,
+  Factions,
   Features,
   GenerationPipeline,
   Goods,
