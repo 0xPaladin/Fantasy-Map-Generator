@@ -1,9 +1,8 @@
 import { Controllers } from "@/controllers";
-import { currentContent } from "@/conquest/content/store";
-import type { BuildingDef } from "@/conquest/engine/common/content";
-import { poiCapacityType } from "@/conquest/engine/compiler";
-import { valueModifier } from "@/conquest/engine/game/saves";
-import { currentSession } from "@/conquest/store/session";
+import { currentContent } from "@/data/roster-store";
+import type { BuildingDef } from "@/data/roster-content";
+import { poiCapacityType } from "@/data/tiers";
+import { valueModifier } from "@/data/saves-helpers";
 import { civBuildingCapacity } from "@/data/living-civ-buildings";
 import { isLairStateCapable } from "@/data/living-lairs";
 import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
@@ -95,13 +94,6 @@ export interface ProvinceCapacity {
 
 function getProvinceBuildings(provinceId: number, living?: LivingWorldState): string[] {
   const result: string[] = [];
-  try {
-    const session = currentSession();
-    const campaignReg = session?.store?.state?.regions?.[String(provinceId)];
-    if (campaignReg?.buildings?.length) {
-      result.push(...campaignReg.buildings);
-    }
-  } catch {}
 
   const pSim = living?.provinces?.[provinceId] as
     | (ProvinceSimState & { buildings?: string[]; assets?: string[] })
@@ -133,12 +125,6 @@ function getProvinceBuildings(provinceId: number, living?: LivingWorldState): st
 }
 
 function getProvinceConstruction(provinceId: number, living?: LivingWorldState) {
-  try {
-    const session = currentSession();
-    const campaignReg = session?.store?.state?.regions?.[String(provinceId)];
-    if (campaignReg?.construction) return campaignReg.construction;
-  } catch {}
-
   const pSim = living?.provinces?.[provinceId] as (ProvinceSimState & { construction?: any }) | undefined;
   if (pSim?.construction) return pSim.construction;
   return null;

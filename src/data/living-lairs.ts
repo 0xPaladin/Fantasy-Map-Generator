@@ -1,6 +1,6 @@
-import { currentContent } from "@/conquest/content/store";
-import { MEN_PER_BLOCK, type UnitType } from "@/conquest/engine/common/content";
-import type { ArmyUnit } from "@/conquest/engine/common/types";
+import { currentContent } from "@/data/roster-store";
+import { MEN_PER_BLOCK, type UnitType } from "@/data/roster-content";
+import type { ArmyUnit } from "@/types/battle";
 import type { Alignment } from "@/data/culture-traits";
 import type { ProvinceLair, TroubleTheme } from "@/types/living";
 

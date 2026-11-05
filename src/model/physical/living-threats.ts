@@ -1,9 +1,8 @@
 // Living World Threats Engine: manages troubles, lairs, danger markers, and emergent sovereign ascension.
-import { currentContent } from "@/conquest/content/store";
-import { assignStateRoster, type UnitType } from "@/conquest/engine/common/content";
-import type { ArmyBlock, ArmyUnit } from "@/conquest/engine/common/types";
-import { finalizeBattle, initBattleSession, stepBattleRound } from "@/conquest/engine/game/battle";
-import { valueModifier } from "@/conquest/engine/game/saves";
+import { currentContent } from "@/data/roster-store";
+import { assignStateRoster, type UnitType } from "@/data/roster-content";
+import type { ArmyBlock, ArmyUnit } from "@/types/battle";
+import { finalizeBattle, initBattleSession, stepBattleRound } from "@/model/battle/battle";
 import {
   type Alignment,
   aggressiveTraits,
@@ -37,7 +36,6 @@ import { Names } from "@/model/society/names-generator";
 import type { Faction } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef } from "@/types/history";
 import type {
-  CapacityLedger,
   LivingWorldState,
   ProvinceLair,
   ProvinceSimState,
@@ -50,6 +48,7 @@ import { minmax } from "@/utils/number-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
 import { syncBurgFlagsFromBuildings } from "./living-generator";
+import { valueModifier } from "@/data/saves-helpers";
 
 export interface ThreatHost {
   getState(): LivingWorldState;
@@ -58,7 +57,6 @@ export interface ThreatHost {
     news: { kind: string; text: string; cell?: number; burgId?: number; stateId?: number; provinceId?: number }
   ): void;
   pushHistory?(type: HistoryEventType, actors: HistRef[], cell: number | undefined, text: string): void;
-  recomputeStateCapacity?(stateId: number): CapacityLedger;
   relieveEschaton?(living: LivingWorldState, amount?: number): void;
   addBattleMarker?(burgOrCell: Burg | number, label?: string): void;
   fieldArmy?(state: State): Regiment | null;
@@ -129,19 +127,6 @@ function pushHistory(type: HistoryEventType, actors: HistRef[], cell: number | u
     loc: cell,
     text
   });
-}
-
-function recomputeStateCapacity(stateId: number): CapacityLedger {
-  const host = getHost();
-  if (typeof host?.recomputeStateCapacity === "function") {
-    return host.recomputeStateCapacity(stateId);
-  }
-  return {
-    m: { gen: 30, load: 15 },
-    w: { gen: 30, load: 15 },
-    c: { gen: 30, load: 15 },
-    s: { gen: 30, load: 15 }
-  };
 }
 
 function relieveEschaton(living: LivingWorldState, amount?: number): void {
@@ -487,8 +472,19 @@ export function spawnTrouble(
     cell
   };
 
-  if (province.state && living.states[province.state]) {
-    living.states[province.state].capacity = recomputeStateCapacity(province.state);
+  // Phase E: mint the civic response as a burg production action — the
+  // province's major burg works the trouble off like any building asset.
+  const major = pack.burgs.find(
+    b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
+  ) ?? pack.burgs.find(b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId);
+  if (major) {
+    const bSim = living.burgs[major.i];
+    if (bSim) {
+      bSim.productionQueue ??= [];
+      if (!bSim.productionQueue.some(item => item.kind === "trouble" && item.id === finalTroubleId)) {
+        bSim.productionQueue.push({ kind: "trouble", id: finalTroubleId });
+      }
+    }
   }
 
   pushNews(living, {
@@ -511,7 +507,6 @@ export function quellTrouble(provinceId: number): boolean {
 
   pSim.trouble = null;
   if (province.state && living.states[province.state]) {
-    living.states[province.state].capacity = recomputeStateCapacity(province.state);
   }
   pushNews(living, {
     kind: "trouble",
@@ -574,7 +569,6 @@ export function assaultLair(stateId: number, provinceId: number): boolean {
     const lairName = lair.name;
     clearLair(lair, state.name);
     sSim.warExhaustion = Math.max(0, sSim.warExhaustion - 2);
-    sSim.capacity = recomputeStateCapacity(stateId);
     relieveEschaton(living);
 
     pushNews(living, {
@@ -596,7 +590,6 @@ export function assaultLair(stateId: number, provinceId: number): boolean {
   if (lair.defenders.length === 0) {
     const lairName = lair.name;
     clearLair(lair, state.name);
-    sSim.capacity = recomputeStateCapacity(stateId);
     pushNews(living, {
       kind: "lair",
       text: `${state.name}'s army destroyed ${lairName} in ${province.name} at immense cost!`,
@@ -666,10 +659,10 @@ export function sendAdventurersToLair(stateId: number, provinceId: number): bool
     history.figures.push(adventurer);
   }
 
-  const domainMod = valueModifier(Math.max(sSim.capacity.w.gen, sSim.capacity.c.gen));
   const traitBonus = (adventurer.virtues?.length ?? 0) - (adventurer.vices?.length ?? 0);
   const rng = getRng("adventurer:delve", stateId * 500 + provinceId, living.tick);
   const roll = rng.d(20);
+  const domainMod = valueModifier(living.states[stateId]?.yieldsPerTurn?.gold ?? 0);
   const total = roll + domainMod + traitBonus;
   const dc = 14 + lair.level;
 
@@ -679,7 +672,6 @@ export function sendAdventurersToLair(stateId: number, provinceId: number): bool
     pSim.lair = null;
     pSim.order = Math.min(100, pSim.order + 12);
     pSim.stability += 1;
-    sSim.capacity = recomputeStateCapacity(stateId);
     relieveEschaton(living);
 
     pushNews(living, {
@@ -705,7 +697,6 @@ export function sendAdventurersToLair(stateId: number, provinceId: number): bool
       u.count = Math.max(1, Math.round(u.count * (0.5 + rng.next() * 0.25)));
     }
     lair.level = Math.max(4, lair.level - 1);
-    sSim.capacity = recomputeStateCapacity(stateId);
 
     pushNews(living, {
       kind: "lair",
@@ -762,7 +753,6 @@ export function metastasizeTroubleToLair(provinceId: number, lairId?: string): P
       if (sSim.agenda?.kind === "resolve_trouble" && sSim.agenda.targetProvinceId === provinceId) {
         sSim.agenda = null;
       }
-      sSim.capacity = recomputeStateCapacity(province.state);
     }
   }
 
@@ -807,7 +797,6 @@ export function spawnLair(provinceId: number, lairId?: string, level?: number, c
   pSim.trouble = null;
 
   if (province.state && living.states[province.state]) {
-    living.states[province.state].capacity = recomputeStateCapacity(province.state);
   }
 
   const lairDef = getLairDef(chosenLairId);
@@ -834,7 +823,6 @@ export function smiteLair(provinceId: number): boolean {
   pSim.lair = null;
 
   if (province.state && living.states[province.state]) {
-    living.states[province.state].capacity = recomputeStateCapacity(province.state);
   }
 
   pushNews(living, {
@@ -1103,7 +1091,7 @@ export function resolveTrouble(stateId: number, provinceId: number): boolean {
 
   const troubleLevel = pSim.trouble.level;
   const dc = 16 + bestMult * troubleLevel;
-  const poolGen = sSim.capacity[troubleDef.pool]?.gen ?? 0;
+  const poolGen = sSim.yieldsPerTurn?.gold ?? 0;
   const domainMod = valueModifier(poolGen);
   const skillBonus = commander?.skills?.[troubleDef.pool] ?? 0;
   const traitBonus = commander ? (commander.virtues?.length ?? 0) - (commander.vices?.length ?? 0) : 0;
@@ -1203,7 +1191,6 @@ export function resolveTrouble(stateId: number, provinceId: number): boolean {
     }
   }
 
-  sSim.capacity = recomputeStateCapacity(stateId);
   return success;
 }
 
@@ -1483,7 +1470,7 @@ function spawnEmergentState(opts: {
     }
   }
 
-  // Form 1st Regiment at capital and trim excess blocks to guarantee capacity viability
+  // Form 1st Regiment at capital
   const unitTypes = Military.getUnitTypes();
   const regiment = createRegiment(newState);
   regiment.name = `1st Host of ${newState.name}`;
@@ -1492,19 +1479,7 @@ function spawnEmergentState(opts: {
   syncRegimentTotals(regiment, unitTypes);
   ensureCommanders();
 
-  let capacity = recomputeStateCapacity(newStateId);
-  while (
-    (capacity.m.load > capacity.m.gen || capacity.w.load > capacity.w.gen || capacity.s.load > capacity.s.gen) &&
-    regiment.units &&
-    regiment.units.length > 1
-  ) {
-    regiment.units.pop();
-    syncRegimentTotals(regiment, unitTypes);
-    capacity = recomputeStateCapacity(newStateId);
-  }
-  if (sSim) sSim.capacity = capacity;
   if (oldOwnerId && living.states[oldOwnerId]) {
-    living.states[oldOwnerId]!.capacity = recomputeStateCapacity(oldOwnerId);
   }
 
   // Claims and mutual high-weight grudges with the former sovereign
@@ -1572,3 +1547,6 @@ export const LivingThreats = {
   spawnRemnantFaction,
   resolveTrouble
 };
+
+
+

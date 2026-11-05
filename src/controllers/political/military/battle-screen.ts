@@ -1,17 +1,17 @@
 import { select, sum } from "d3";
-import { currentContent } from "@/conquest/content/store";
-import type { UnitType } from "@/conquest/engine/common/content";
+import { currentContent } from "@/data/roster-store";
+import type { UnitType } from "@/data/roster-content";
 import {
   type BattleModifiers,
   type BattleOutcome,
   type BattleSession,
   type BattleTacticalOrder,
-  type BattleSide as ConquestBattleSide,
+  type BattleSide,
   estimateOdds,
   finalizeBattle,
   initBattleSession,
   stepBattleRound
-} from "@/conquest/engine/game/battle";
+} from "@/model/battle/battle";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import { fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";
@@ -87,13 +87,13 @@ function open(attacker: Regiment, defender: Regiment): void {
   const attackers = [createRegimentEntry(attacker, x, y, unitTypes)];
   const defenders = [createRegimentEntry(defender, x, y, unitTypes)];
 
-  const attackerSide: ConquestBattleSide = {
+  const attackerSide: BattleSide = {
     factionId: attacker.state,
     armyId: `fm-${attacker.state}-${attacker.i}`,
     units: attackers.flatMap(r => r.currentUnits)
   };
 
-  const defenderSide: ConquestBattleSide = {
+  const defenderSide: BattleSide = {
     factionId: defender.state,
     armyId: `fm-${defender.state}-${defender.i}`,
     units: defenders.flatMap(r => r.currentUnits)
@@ -207,12 +207,12 @@ function rebuildSession(): void {
   const b = activeBattle;
   const config = currentContent().config;
 
-  const attackerSide: ConquestBattleSide = {
+  const attackerSide: BattleSide = {
     factionId: b.attackers[0]?.state.i ?? 1,
     armyId: b.attackers[0] ? `fm-${b.attackers[0].state.i}-${b.attackers[0].regiment.i}` : null,
     units: b.attackers.flatMap(r => r.currentUnits)
   };
-  const defenderSide: ConquestBattleSide = {
+  const defenderSide: BattleSide = {
     factionId: b.defenders[0]?.state.i ?? 1,
     armyId: b.defenders[0] ? `fm-${b.defenders[0].state.i}-${b.defenders[0].regiment.i}` : null,
     units: b.defenders.flatMap(r => r.currentUnits)

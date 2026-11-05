@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { assignStateRoster, resolveForPack } from "@/conquest/engine/common/content";
+import { assignStateRoster, resolveForPack } from "@/data/roster-content";
 
 describe("Phase 1: State Roster Binding", () => {
   describe("inferRosterForCulture & assignStateRoster", () => {

@@ -10,9 +10,9 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { currentContent } from "@/conquest/content/store";
+import { currentContent } from "@/data/roster-store";
 
-const raw = JSON.parse(readFileSync("src/conquest/test-data/sample-world.json", "utf8"));
+const raw = JSON.parse(readFileSync("tests/fixtures/sample-world.json", "utf8"));
 
 const median = (values: number[]): number => {
   const sorted = [...values].sort((a, b) => a - b);

@@ -36,7 +36,6 @@ import "@/services/url-params";
 import "@/services/versioning";
 import "@/services/io/styles-legacy";
 import "./fmg";
-import "@/conquest/entry"; // registers the conquest layers before a map can load
 import "@/model/physical/history-generator"; // installs the Chronicle global
 import "@/model/physical/living-generator"; // installs the Living global
 import "@/model/physical/astral-naming"; // installs the Astral global

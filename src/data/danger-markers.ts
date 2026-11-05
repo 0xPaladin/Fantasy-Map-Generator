@@ -1,5 +1,5 @@
 // Mapping and lifecycle utilities to turn danger markers into active Living World threats and lairs
-import type { UnitType } from "@/conquest/engine/common/content";
+import type { UnitType } from "@/data/roster-content";
 import { getLairDef, instantiateLairUnits } from "@/data/living-lairs";
 import type { Marker } from "@/model/story/markers-generator";
 import type { ProvinceLair, TroubleTheme } from "@/types/living";

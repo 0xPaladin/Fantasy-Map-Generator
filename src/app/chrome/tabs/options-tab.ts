@@ -15,7 +15,6 @@ import { heightmapTemplates } from "@/data/heightmap-templates";
 import { isLanguage, LANGUAGES } from "@/data/languages";
 import { precreatedHeightmaps } from "@/data/precreated-heightmaps";
 import type { Sampling } from "@/model/graph/lattice";
-import { Coordinates } from "@/model/physical/coordinates";
 import { DEFAULT_THEME_COLOR, Options } from "@/model/options/options-model";
 import type { OptionsData } from "@/model/options/options-schema";
 import { Pins } from "@/model/options/pins";
@@ -247,6 +246,7 @@ const TEMPLATE = /* html */ `
   </p>
   <table>
     <tr data-tip="${t("The part of the world the map covers, or whether it is an Astral star chart. Astral cannot be undone")}">
+      <td><i data-locked="0" id="lock_extents" class="icon-lock-open"></i></td>
       <td>${t("Extents")}</td>
       <td>
         <select id="extentsInput" data-option="extents">
@@ -743,14 +743,8 @@ function onOptionInput(event: Event): void {
 }
 
 /** The part of the world the next map covers: Whole / Northern / Tropical / Southern mirror the
- * Configure World presets; Astral switches the map to the star chart and cannot be undone. */
-const EXTENT_PRESETS: Record<string, [number, number]> = {
-  whole: [100, 50],
-  northern: [33, 25],
-  tropical: [33, 50],
-  southern: [33, 75]
-};
-
+ * Configure World presets; Astral switches the map to the star chart and cannot be undone.
+ * Changing this only sets a preference for the next map: it never alters the current map. */
 async function applyExtents(value: string): Promise<void> {
   // once astral there is no going back to a standard extent
   if (options.map.astral === true && value !== "astral") {
@@ -760,16 +754,8 @@ async function applyExtents(value: string): Promise<void> {
   if (value === options.map.extents) return;
   Options.set(o => {
     o.map.extents = value as OptionsData["map"]["extents"];
+    if (value === "astral") o.map.astral = true;
   });
-  if (value === "astral") {
-    await Controllers.AstralMode.enter();
-  } else {
-    options.map.astral = false;
-    const [size, latitude] = EXTENT_PRESETS[value];
-    options.map.geography.mapSize = size;
-    options.map.geography.latitude = latitude;
-    Coordinates.calculate();
-  }
   syncExtentsLock();
 }
 

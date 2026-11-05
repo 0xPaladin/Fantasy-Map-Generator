@@ -1,5 +1,5 @@
 // Living World simulation state types. See docs/plans/living-world.md
-import type { ArmyUnit } from "@/conquest/engine/common/types";
+import type { ArmyUnit } from "@/types/battle";
 import type { ActionId } from "./character-actions";
 
 export type SeasonId = 0 | 1 | 2 | 3;
@@ -16,7 +16,16 @@ export type AgendaKind =
   | "pacify"
   | "resolve_trouble"
   | "clear_lair"
-  | "hire_adventurers";
+  | "hire_adventurers"
+  | "defend"
+  | "raid";
+
+/**
+ * Diplomatic treaties (Phase D of the army integration). War and peace stay
+ * on the FMG diplomacy matrix ("Enemy" or not); these are the *positive*
+ * agreements layered on top of it. Symmetric — recorded on both sides.
+ */
+export type TreatyKind = "nonAggression" | "trade" | "defensiveAlliance" | "militaryAccess";
 
 export type TroubleTheme = "burg" | "ruin" | "resource";
 export type TroublePool = "m" | "w" | "s";
@@ -184,23 +193,9 @@ export interface ClaimRecord {
   heldByStateId: number;
 }
 
-export interface CapacityPoolEntry {
-  gen: number;
-  load: number;
-}
-
-export interface CapacityLedger {
-  m: CapacityPoolEntry;
-  w: CapacityPoolEntry;
-  s: CapacityPoolEntry;
-  c: CapacityPoolEntry;
-}
-
 export interface BurgConstructionState {
   buildingId: string;
   turnsLeft: number;
-  checks: { m: boolean; w: boolean; s: boolean };
-  pityBonus: number;
 }
 
 export interface BurgSimState {
@@ -237,6 +232,12 @@ export interface BurgSimState {
   cityYields?: YieldValues;
   hp?: number;
   maxHp?: number;
+  /** state besieging this burg (0 = none) */
+  siegeStateId?: number;
+  /** seasons of ongoing siege (for garrison weakening) */
+  siegeProgress?: number;
+  /** siege supply HD remaining (buffers attrition) */
+  siegeSupplies?: number;
   hasStruckThisTurn?: boolean;
   soldBuildingThisTurn?: boolean;
   religionPressure?: Record<number, number>;
@@ -268,7 +269,6 @@ export interface StatePolitySim {
   agenda: StateAgenda | null;
   unravel: number;
   warExhaustion: number;
-  capacity: CapacityLedger;
   claims: ClaimRecord[];
   grudges: GrudgeRecord[];
   // OpenCiv empire fields; lazily initialized by later Living World 2.0 slices.
@@ -286,6 +286,8 @@ export interface StatePolitySim {
   freeTechs?: number;
   warTurns?: Record<number, number>;
   peaceTreatyTurns?: Record<number, number>;
+  /** Diplomatic treaties (Phase D): other-state id → active treaty kinds. Symmetric. */
+  treaties?: Record<number, TreatyKind[]>;
 }
 
 /** On-map popups queued by the simulation and claimed by the player (idle bonus). */
@@ -439,7 +441,8 @@ export type LivingNewsKind =
   | "lair"
   | "tech"
   | "religion"
-  | "faction";
+  | "faction"
+  | "raid";
 
 export interface LivingNewsItem {
   tick: number;
@@ -791,7 +794,7 @@ export interface CivThemeProfile {
 }
 
 export interface ProductionItem {
-  kind: "unit" | "building" | "wonder";
+  kind: "unit" | "building" | "wonder" | "trouble";
   id: string;
 }
 
