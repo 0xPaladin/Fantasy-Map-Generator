@@ -1,7 +1,7 @@
 # Plan — Characters: One Roster for People, Heroes & Historical Figures
 
 **Updated:** 2026-11-05  
-**Status:** In progress — Phases 1-7 implemented  
+**Status:** Complete — Phases 1-8 implemented; deprecated guild shims await faction cleanup  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 
@@ -61,7 +61,7 @@ The design has three layers:
 - [x] **Phase 5 - Hero checks and missions** (2026-11-05)
 - [x] **Phase 6 - Characters editor** (2026-11-05)
 - [x] **Phase 7 - Layer, map entity, omnibar, tool button** (2026-11-05)
-- [ ] Phase 8 — Docs, glossary, cleanup
+- [x] **Phase 8 - Docs, glossary, cleanup** (2026-11-05)
 
 ---
 
@@ -946,25 +946,31 @@ Keep the existing trait rendering.
 
 ---
 
-### Phase 8 — Docs, Glossary, Cleanup
+### Phase 8 — Docs, Glossary, Cleanup ✅
 
+**Status:** Implemented 2026-11-05.  
 **Goal:** Lock the contract and leave no stale claims.
 
 1. `docs/domain/glossary.md`
-   - Character, Background Character, Hero, Hero Sheet, Action, Die, Check, Relationship Matrix.
+   - Added Character, Background Character, Hero, Hero Sheet, Action, Die, Check, Relationship Matrix.
+   - Updated Historical Figure, Hero Archetype, Ability, Resolve/Stamina, Injury and Mission Phase.
+   - Noted that the Grand Guild is a deprecated stub.
 2. `docs/architecture/data-model.md`
-   - `pack.history.figures` as the character registry; hero sheet; no M/W/S/C.
+   - Added the Characters section: `pack.history.figures` as the registry, base fields, hero sheet, relations and the transitional legacy fields.
+   - States that characters do not use `FigureSkills`; missions carry `action`.
 3. `docs/plans/unified-figures.md`
-   - mark the M/W/S/C and `FigureSkills` sections superseded by this plan.
+   - Marked partly superseded; the pool/`FigureSkills`/1d20 parts point at [characters.md](characters.md).
 4. `docs/plans/hero-diversity.md`
-   - mark pool/skill sections superseded; keep archetype/path flavour.
+   - Marked pool/skill sections superseded; kept archetype, path, aspect and party-expedition flavour.
 5. `docs/plans/living-idle-guild.md`
-   - mark `GuildState` as a deprecated stub.
+   - Marked `GuildState` as a deprecated stub and `guild.heroes` as migration-only.
 6. `docs/wiki/Living-World.md`
-   - character roster and hero sheet.
-7. Remove `@deprecated` code only when the guild/faction work lands, not in this plan.
+   - Rewrote the hero section for the one character registry, hero sheet, action checks, growth and party play.
+7. Deprecated code removal was intentionally not done: it waits for the guild/faction cleanup, as the plan requires.
 
-**Acceptance:** no doc claims characters use M/W/S/C or that the guild owns hero stats.
+**Verification:** documentation-only change; no test suite was run, per the repo's markdown rule.
+
+**Acceptance:** the edited docs no longer claim characters use M/W/S/C or that the guild owns hero stats; the remaining legacy mentions are explicitly marked as migration shims.
 
 ---
 
