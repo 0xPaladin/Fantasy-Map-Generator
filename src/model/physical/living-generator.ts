@@ -124,6 +124,7 @@ import {
   type SeasonId,
   type StateAgenda,
   type StatePolitySim,
+  type TreatyKind,
   type TroubleTheme,
   type TroubleUnitRole,
   type UnitSimState,
@@ -3661,10 +3662,11 @@ class LivingModel {
     return target.movementCost;
   }
 
-  /** Closed borders: an army may only enter foreign land when at war. */
+  /** Closed borders: an army may enter foreign land when at war, or under a military-access treaty. */
   private canEnterForeignCellFor(stateId: number, cell: number): boolean {
     const owner = pack.cells.state?.[cell] ?? 0;
     if (!owner || owner === stateId) return true;
+    if (this.hasTreaty(stateId, owner, "militaryAccess")) return true;
     return this.isAtWar(stateId, owner);
   }
 
@@ -5207,6 +5209,9 @@ class LivingModel {
         if (this.signPeace(state.i, otherId)) break;
       }
     }
+
+    // Treaties: AI states occasionally offer pacts to their neighbours (Phase D).
+    this.stepTreaties(living);
   }
 
   /** Sign a peace treaty once the war has lasted the minimum number of seasons. */
@@ -6266,10 +6271,19 @@ class LivingModel {
     if (!subject?.i || subject.removed || !object?.i || object.removed) return;
     if ((pack.history?.living?.states?.[stateId]?.peaceTreatyTurns?.[otherId] ?? 0) > 0) return;
 
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    // A non-aggression pact binds (Phase D): the war cannot start while it stands.
+    if (this.hasTreaty(stateId, otherId, "nonAggression")) return;
+
     subject.diplomacy ??= [];
     object.diplomacy ??= [];
     subject.diplomacy[otherId] = "Enemy";
     object.diplomacy[stateId] = "Enemy";
+    // War voids every treaty between the pair.
+    if (sSim?.treaties) delete sSim.treaties[otherId];
+    const oSim = living.states[otherId];
+    if (oSim?.treaties) delete oSim.treaties[stateId];
 
     const text = `${subject.name} declared war on ${object.name}.`;
     this.pushNews(this.getState(), {
@@ -6288,6 +6302,239 @@ class LivingModel {
       object.center,
       text
     );
+
+    // Defensive call-to-arms (Phase D): allies of the defender join the war.
+    for (const other of pack.states) {
+      if (!other?.i || other.removed || other.i === stateId || other.i === otherId) continue;
+      if (!this.hasTreaty(otherId, other.i, "defensiveAlliance")) continue;
+      if (this.isAtWar(stateId, other.i)) continue;
+      other.diplomacy ??= [];
+      subject.diplomacy ??= [];
+      other.diplomacy[stateId] = "Enemy";
+      subject.diplomacy[other.i] = "Enemy";
+      this.pushNews(living, {
+        kind: "war",
+        text: `${other.name} answered ${object.name}'s call to arms against ${subject.name}.`,
+        cell: object.center,
+        stateId: other.i
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Diplomacy: treaties on top of FMG's native matrix (Phase D)
+  // ---------------------------------------------------------------------------
+
+  /** Does an active treaty of this kind bind the pair? */
+  hasTreaty(stateId: number, otherId: number, kind: TreatyKind): boolean {
+    const treaties = pack.history?.living?.states?.[stateId]?.treaties?.[otherId];
+    return Array.isArray(treaties) && treaties.includes(kind);
+  }
+
+  private recordTreaty(aId: number, bId: number, kind: TreatyKind): void {
+    const living = this.getState();
+    for (const id of [aId, bId]) {
+      const sSim = living.states[id];
+      if (!sSim) continue;
+      sSim.treaties ??= {};
+      const list = sSim.treaties[id === aId ? bId : aId] ?? [];
+      if (!list.includes(kind)) sSim.treaties[id === aId ? bId : aId] = [...list, kind];
+    }
+  }
+
+  /**
+   * FMG matrix floor for a treaty: positive treaties can't coexist with cold
+   * relations, so signing lifts the matrix to at least the treaty's floor.
+   * (Builds on FMG's native diplomacy rather than a parallel numeric relation.)
+   */
+  private treatyFloor(kind: TreatyKind): string {
+    if (kind === "defensiveAlliance" || kind === "militaryAccess") return "Ally";
+    return "Friendly";
+  }
+
+  private applyTreaty(aId: number, bId: number, kind: TreatyKind): void {
+    const a = pack.states[aId];
+    const b = pack.states[bId];
+    if (!a?.i || !b?.i) return;
+    this.recordTreaty(aId, bId, kind);
+
+    const floor = this.treatyFloor(kind);
+    a.diplomacy ??= [];
+    b.diplomacy ??= [];
+    if (!a.diplomacy[bId] || a.diplomacy[bId] === "Neutral" || a.diplomacy[bId] === "Unknown") a.diplomacy[bId] = "Friendly";
+    if (!b.diplomacy[aId] || b.diplomacy[aId] === "Neutral" || b.diplomacy[aId] === "Unknown") b.diplomacy[aId] = "Friendly";
+    if (floor === "Ally" && a.diplomacy[bId] !== "Enemy") a.diplomacy[bId] = "Ally";
+    if (floor === "Ally" && b.diplomacy[aId] !== "Enemy") b.diplomacy[aId] = "Ally";
+  }
+
+  /**
+   * Offer a treaty. AI targets answer instantly via their utility; the offer is
+   * idempotent — a rejected offer just sours the FMG relation one step.
+   */
+  offerTreaty(fromId: number, toId: number, kind: TreatyKind): boolean {
+    const from = pack.states[fromId];
+    const to = pack.states[toId];
+    if (!from?.i || from.removed || !to?.i || to.removed || fromId === toId) return false;
+    if (this.isAtWar(fromId, toId) && kind !== "nonAggression") return false;
+    if (this.hasTreaty(fromId, toId, kind)) return true; // already in force
+
+    const verdict = this.aiAcceptsTreaty(toId, fromId, kind);
+    if (verdict.accept) {
+      this.applyTreaty(fromId, toId, kind);
+      const living = this.getState();
+      this.pushNews(living, {
+        kind: "war",
+        text: `${from.name} and ${to.name} signed a ${kind === "defensiveAlliance" ? "defensive alliance" : kind.replace(/([A-Z])/g, " $1").toLowerCase()} pact.`,
+        cell: to.center,
+        stateId: fromId
+      });
+      this.pushHistory(
+        "war",
+        [
+          { kind: "state", id: fromId },
+          { kind: "state", id: toId }
+        ],
+        to.center,
+        `${from.name} and ${to.name} signed a ${kind} pact.`
+      );
+      return true;
+    }
+
+    // Pushy envoys cost goodwill: step the FMG relation one rung colder.
+    from.diplomacy ??= [];
+    to.diplomacy ??= [];
+    if (from.diplomacy[toId] === "Friendly") {
+      from.diplomacy[toId] = "Neutral";
+      to.diplomacy[fromId] = "Neutral";
+    } else if (from.diplomacy[toId] === "Neutral") {
+      from.diplomacy[toId] = "Suspicion";
+      to.diplomacy[fromId] = "Suspicion";
+    }
+    return false;
+  }
+
+  /**
+   * AI treaty acceptance, ported from conquest aiAccepts and re-expressed over
+   * FMG's native relation strings + living's own war-exhaustion bookkeeping.
+   */
+  private aiAcceptsTreaty(aiId: number, fromId: number, kind: TreatyKind): { accept: boolean; reason: string } {
+    const ai = pack.states[aiId];
+    const from = pack.states[fromId];
+    if (!ai?.i || ai.removed || !from?.i || from.removed) return { accept: false, reason: "not alive" };
+    const living = this.getState();
+    const relation = ai.diplomacy?.[fromId] ?? "Unknown";
+    const atWar = this.isAtWar(aiId, fromId);
+    const myStrength = this.stateStrength(aiId);
+    const theirStrength = Math.max(1, this.stateStrength(fromId));
+    const ratio = myStrength / theirStrength;
+
+    switch (kind) {
+      case "nonAggression":
+        if (atWar) return { accept: false, reason: "we are at war" };
+        return {
+          accept: relation === "Neutral" || relation === "Friendly" || relation === "Ally",
+          reason: relation === "Friendly" || relation === "Ally" ? "a cautious calm" : "we do not trust them"
+        };
+      case "trade":
+        return {
+          accept: !atWar && relation !== "Enemy" && relation !== "Rival" && relation !== "Suspicion",
+          reason: "coin is coin"
+        };
+      case "defensiveAlliance":
+      case "militaryAccess":
+        if (atWar) return { accept: false, reason: "we are at war" };
+        if (relation !== "Ally" && relation !== "Friendly") return { accept: false, reason: "alliances need trust" };
+        if (ratio < 0.5) return { accept: false, reason: "you cannot shield us" };
+        return { accept: true, reason: "shared interests" };
+      default:
+        return { accept: false, reason: "unknown treaty" };
+    }
+  }
+
+  /** Total army strength of a state (men under arms). */
+  private stateStrength(stateId: number): number {
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed) return 0;
+    return (state.military ?? []).reduce((sum, regiment) => sum + armyMen(regiment, Military.getUnitTypes()), 0);
+  }
+
+  /**
+   * Confederation: a dying or devoted culture-mate peacefully merges into a
+   * stronger cousin (ported from conquest aiAcceptsConfederation).
+   */
+  offerConfederation(byId: number, targetId: number): boolean {
+    const by = pack.states[byId];
+    const target = pack.states[targetId];
+    if (!by?.i || by.removed || !target?.i || target.removed || byId === targetId) return false;
+    if (target.culture !== by.culture) return false;
+
+    const provinces = this.ownedProvinces(targetId).length;
+    const living = this.getState();
+    const tSim = living.states[targetId];
+    const relation = target.diplomacy?.[byId] ?? "Unknown";
+    const dying = provinces <= 2;
+    const devoted = relation === "Ally" && this.stateStrength(targetId) * 2 <= this.stateStrength(byId);
+    if (!dying && !devoted) return false;
+
+    // Peaceful annexation of every target burg.
+    for (const province of this.ownedProvinces(targetId)) {
+      for (const burg of pack.burgs) {
+        if (!burg?.i || burg.removed || burg.state !== targetId) continue;
+        if (pack.cells.province?.[burg.cell] !== province.i) continue;
+        this.annexBurg(byId, burg, false);
+      }
+    }
+    if (tSim) tSim.agenda = null;
+    this.pushNews(living, {
+      kind: "conquest",
+      text: `${target.name} confederated into ${by.name}.`,
+      cell: by.center,
+      stateId: byId
+    });
+    this.pushHistory(
+      "conquest",
+      [
+        { kind: "state", id: byId },
+        { kind: "state", id: targetId }
+      ],
+      by.center,
+      `${target.name} joined ${by.name} in confederation.`
+    );
+    return true;
+  }
+
+  /**
+   * AI states occasionally offer treaties to their neighbours (Phase D).
+   * Deterministic per pair per season through the living PRNG.
+   */
+  private stepTreaties(living: LivingWorldState): void {
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const neighbours = this.neighbourStates(state.i);
+      for (const otherId of neighbours) {
+        if (otherId <= state.i) continue; // one roll per pair
+        const roll = this.rng(`treaty:${state.i}:${otherId}`, living.tick);
+        if (!roll.chance(0.06)) continue;
+        const kind = roll.pick<TreatyKind>(["nonAggression", "trade", "defensiveAlliance", "militaryAccess"]);
+        if (this.hasTreaty(state.i, otherId, kind)) continue;
+        if (this.isAtWar(state.i, otherId)) continue;
+        this.offerTreaty(state.i, otherId, kind);
+      }
+    }
+  }
+
+  /** Directly adjacent states (shared border), neighbours only. */
+  private neighbourStates(stateId: number): number[] {
+    const out = new Set<number>();
+    for (const province of this.ownedProvinces(stateId)) {
+      for (const neighbour of pack.provinces ?? []) {
+        if (!neighbour?.i || neighbour.i === province.i) continue;
+        for (const cell of neighbour.cells ?? []) {
+          if ((pack.cells.state?.[cell] ?? 0) === stateId) out.add(neighbour.state);
+        }
+      }
+    }
+    return [...out].filter(id => id > 0 && pack.states[id] && !pack.states[id].removed);
   }
 
   private logConquest(state: State, burg: Burg, forced: boolean): void {

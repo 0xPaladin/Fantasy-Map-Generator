@@ -19,6 +19,13 @@ export type AgendaKind =
   | "defend"
   | "raid";
 
+/**
+ * Diplomatic treaties (Phase D of the conquest retirement). War and peace stay
+ * on the FMG diplomacy matrix ("Enemy" or not); these are the *positive*
+ * agreements layered on top of it. Symmetric — recorded on both sides.
+ */
+export type TreatyKind = "nonAggression" | "trade" | "defensiveAlliance" | "militaryAccess";
+
 export type TroubleTheme = "burg" | "ruin" | "resource";
 export type TroublePool = "m" | "w" | "s";
 export type TroubleSaveKind = "disorder" | "uprising" | "poverty" | "ignorance" | "despair" | "corruption";
@@ -293,6 +300,8 @@ export interface StatePolitySim {
   freeTechs?: number;
   warTurns?: Record<number, number>;
   peaceTreatyTurns?: Record<number, number>;
+  /** Diplomatic treaties (Phase D): other-state id → active treaty kinds. Symmetric. */
+  treaties?: Record<number, TreatyKind[]>;
 }
 
 /** On-map popups queued by the simulation and claimed by the player (idle bonus). */
