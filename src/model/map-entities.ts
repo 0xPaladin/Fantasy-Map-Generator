@@ -36,7 +36,7 @@ export type EntityType = (typeof ENTITY_TYPES)[number] | (typeof RECORD_TYPES)[n
 export const isEntityType = (value: string): value is EntityType =>
   (ENTITY_TYPES as readonly string[]).includes(value) || (RECORD_TYPES as readonly string[]).includes(value);
 
-type EntityEditor = "GoodsEditor" | "MeasurersEditor" | "TransportEditor" | "NamesbaseEditor";
+type EntityEditor = "GoodsEditor" | "MeasurersEditor" | "TransportEditor" | "NamesbaseEditor" | "FactionsEditor";
 
 export interface EntityRef {
   type: EntityType;
@@ -121,6 +121,7 @@ const DATA_TARGETS: [layer: string, attribute: string, type: EntityType][] = [
   ["#provinceEmblems", "data-i", "province"],
   ["#stateEmblems", "data-i", "state"],
   ["#goodsIcons", "data-i", "good"],
+  ["#factions", "data-id", "faction"],
   ["#ice", "data-id", "ice"],
   ["#terrain", "data-id", "relief"],
   ["#lakes, #coastline", "data-f", "feature"]
@@ -481,7 +482,7 @@ class EntityLookup {
       kind: t("Faction"),
       icon: "icon-shield",
       scale: 6,
-      layers: ["burgIcons", "markers"],
+      layers: ["factions", "burgIcons", "markers"],
       collection: {
         field: "factions",
         indexed: true,
@@ -505,7 +506,8 @@ class EntityLookup {
       context: ref => {
         const faction = this.byId(pack.factions, ref.id);
         return faction ? `${capitalize(faction.category)} • ${faction.scale}` : "";
-      }
+      },
+      editor: "FactionsEditor"
     },
     cell: {
       label: t("Cells"),
