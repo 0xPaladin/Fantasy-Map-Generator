@@ -2634,7 +2634,7 @@ class LivingModel {
           burgId: burg.i
         });
         this.pushHistory(
-          "pacify",
+          "deed",
           [{ kind: "state", id: state.i }],
           burg.cell,
           `${burg.name ?? state.name} cleared the ${troubleName} afflicting ${name}.`
@@ -3376,7 +3376,9 @@ class LivingModel {
           this.removeRegiment(state, regiment, living);
           continue;
         }
-        army.movement = army.maxMovement;
+        // The stance carries from the previous tick: a forced march covers more
+        // ground but cannot open a fight; an army lying in wait is concealed.
+        army.movement = army.maxMovement * this.stanceMovementMultiplier(army.stance);
         army.hasFought = false;
         const acted = this.stepArmyOrders(state, regiment, army, living, occupancy);
         army.stance = acted ? "march" : this.restStance(state, regiment, army);
@@ -3391,12 +3393,23 @@ class LivingModel {
     this.stepCityStrikes(living);
   }
 
+  /** Movement points a stance grants: march 1.5x, encamp/ambush 0.7x, everything else 1x. */
+  private stanceMovementMultiplier(stance: ArmyStance): number {
+    return currentContent().config.movement.stanceMultipliers[stance] ?? 1;
+  }
+
   /** A resting army entrenches in a friendly city when badly hurt, otherwise fortifies. */
   private restStance(state: State, regiment: Regiment, army: ArmySimState): ArmyStance {
     const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
     const burg = burgId ? pack.burgs[burgId] : undefined;
     const inCity = Boolean(burg?.i && !burg.removed && burg.state === state.i);
     if (inCity && armyHp(regiment) < 0.6) return "encamp";
+
+    // A war army resting in the open outside its own land is a concealed force:
+    // the attack it opens next tick gets the ambush bonus (§F).
+    const inFriendlyLand = pack.cells.state?.[regiment.cell] === state.i;
+    if (!inCity && !inFriendlyLand && this.stateAtWar(state)) return "ambush";
+
     return army.stance === "encamp" && inCity ? "encamp" : "fortify";
   }
 
@@ -3463,15 +3476,18 @@ class LivingModel {
     living: LivingWorldState,
     occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
   ): boolean {
-    const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
-    if (enemy) {
-      // No heroic suicides (absorbs conquest ai.ts): a badly outmatched army
-      // holds position unless its goal orders the attack anyway.
-      const agenda = living.states[state.i]?.agenda;
-      const ordered = agenda?.kind === "conquer" || agenda?.kind === "raid" || agenda?.kind === "defend";
-      if (!ordered && this.armyOutmatched(regiment, enemy.regiment)) return false;
-      this.resolveArmyBattle(state, regiment, enemy.state, enemy.regiment, living);
-      return true;
+    // A forced march cannot open a fight (§F).
+    if (army.stance !== "march") {
+      const enemy = this.findEnemyArmyInRange(state.i, regiment.cell, regiment, living);
+      if (enemy) {
+        // No heroic suicides (absorbs conquest ai.ts): a badly outmatched army
+        // holds position unless its goal orders the attack anyway.
+        const agenda = living.states[state.i]?.agenda;
+        const ordered = agenda?.kind === "conquer" || agenda?.kind === "raid" || agenda?.kind === "defend";
+        if (!ordered && this.armyOutmatched(regiment, enemy.regiment)) return false;
+        this.resolveArmyBattle(state, regiment, enemy.state, enemy.regiment, living);
+        return true;
+      }
     }
 
     const target = this.tacticalTarget(state, living, regiment.cell);
@@ -3730,10 +3746,10 @@ class LivingModel {
     defenderRegiment: Regiment
   ): BattleModifiers {
     const living = this.getState();
+    const attackerArmy = living.armies?.[this.unitKey(attackerState.i, attackerRegiment.i)];
     const defenderArmy = living.armies?.[this.unitKey(defenderState.i, defenderRegiment.i)];
 
-    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
-    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);    const burg = burgId ? pack.burgs[burgId] : undefined;
     const walls = burg?.i && !burg.removed && burg.state === defenderState.i ? Number(burg.walls ?? 0) : 0;
     const attackerCrossedRiver =
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
@@ -3749,7 +3765,8 @@ class LivingModel {
     return {
       walls,
       defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
-      defenderAmbushed: defenderArmy?.stance === "ambush",
+      // battle.ts reads this as "the attacker is ambushing": +30% on contact.
+      defenderAmbushed: attackerArmy?.stance === "ambush",
       attackerCrossedRiver,
       defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
       labels: [],

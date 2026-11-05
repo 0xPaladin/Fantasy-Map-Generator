@@ -172,6 +172,15 @@ Troubles that survive the PR-27 faction absorption (pure environmental: blight, 
 - Guild/trouble/lair check modifiers now read the state's **Gold income** as the domain value instead of the retired MWSC pool generation.
 - Stale capacity tests were removed; a new test covers the trouble-to-production-action flow.
 
+### 6.4 Phase F delivery notes
+
+- `stanceMovementMultiplier` reads `config.movement.stanceMultipliers`: **march ×1.5**, **encamp/ambush ×0.7**, everything else ×1. `stepTactical` grants `maxMovement × multiplier` before orders run, so a marching army genuinely covers more ground.
+- A **forced march cannot open a battle**: `stepArmyOrders` skips the engagement branch entirely while the stance is `march`.
+- **Ambush** is the attacker's bonus, not the defender's: `armyBattleModifiers` now sources `defenderAmbushed` from the *attacker's* stance (the field name is legacy in `battle.ts`; conquest's own `commands.ts` does the same). An army that rests in the open outside its own land while at war becomes `ambush`, so the next attack it opens lands `+30%`.
+- **Raid plunder** (already wired in Phase C) pays `citizens × 2 + 10` Gold into the treasury, seeds `+8` burg unrest, declares war and files a chronicle entry.
+- **River crossing** already drains the remainder of an army's movement (`armyMovementCost`) and gives the defender `+15%` (`attackerCrossedRiver`).
+- Tests: march/encamp/fortify grant compared on identical paths; a marching army does not attack; a war army resting on hostile soil conceals itself.
+
 ---
 
 ## 7. Phase G — the deletion itself
@@ -199,7 +208,7 @@ After A–F, `src/conquest/` contains only the campaign shell. Remove in one com
 | **C** | Goals for states & factions; absorb ai.ts heuristics; delete `tacticalTarget` ad-hoc path | large | Armies act from goals; state card shows goals; ai/commands files unreferenced |
 | **D** | Treaties (peace/nonAggression/trade/defensiveAlliance/militaryAccess), acceptance thresholds, confederation, calls-to-arms; rebellion gap-check vs `checkRebellions` | medium | Treaties appear/expire in the chronicle; alliances drag allies into wars |
 | **E** ✅ | Delete MWSC (checklist §6.1); trouble → burg production actions (§6.2); HUD meter swap | medium | No `CapacityPoints`/capacity ledger in civ code; troubles resolve via queues |
-| **F** | Stance polish: march ×1.5 (no attack), ambush +30% initiation, raid plunder → Gold + unrest; `riverCrossing` modifier | small | Stances measurably change movement/combat |
+| **F** ✅ | Stance polish: march ×1.5 (no attack), ambush +30% initiation, raid plunder → Gold + unrest; `riverCrossing` modifier | small | Stances measurably change movement/combat |
 | **G** | Delete `src/conquest/` + seams (§7) | medium | grep clean; suite green; MERGING/architecture updated |
 | **H** | Docs: wiki battle-engine page, README fork blurb, data-model updates, this plan marked done | small | — |
 

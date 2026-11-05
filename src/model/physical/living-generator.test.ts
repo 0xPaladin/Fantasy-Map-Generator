@@ -3122,6 +3122,51 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(regiment.a).toBe(13 * 150);
     });
 
+    it("grants a marching army 1.5x movement and an entrenching one 0.7x", () => {
+      const grantFor = (stance: "march" | "encamp" | "fortify"): number => {
+        delete (pack.history as { living?: unknown }).living;
+        pack.states[1].military = [makeRegiment(0, 9)];
+        const living = Living.init();
+        const army = living.armies![unitKey(1, 0)]!;
+        army.stance = stance;
+        Living.tick(1);
+        return army.movement;
+      };
+
+      const march = grantFor("march");
+      const fortify = grantFor("fortify");
+      const encamp = grantFor("encamp");
+
+      // Same position, same path: the stance scales the points granted before it.
+      expect(march).toBeCloseTo(fortify * 1.5, 5);
+      expect(encamp).toBeCloseTo(fortify * 0.7, 5);
+    });
+
+    it("does not let a forced march open a battle", () => {
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 5)];
+      pack.states[2].military = [makeRegiment(0, 6, 2)];
+      const living = Living.init();
+      const key = unitKey(1, 0);
+      living.armies![key]!.stance = "march";
+
+      Living.tick(1);
+
+      // A marching army passes by: no battle is fought this tick.
+      expect(living.armies![key]!.lastBattle?.role).not.toBe("attacker");
+    });
+
+    it("conceals a war army resting in the open outside its own land", () => {
+      Living.forceWar(1, 2);
+      pack.states[1].military = [makeRegiment(0, 7)]; // cell 7 is enemy ground
+      const living = Living.init();
+
+      Living.tick(1);
+
+      // Waiting in the open on hostile soil is an ambush: the next attack lands +30%.
+      expect(living.armies![unitKey(1, 0)]!.stance).toBe("ambush");
+    });
+
     it("fights adjacent armies, damages the lead block and removes the dead", () => {
       Living.forceWar(1, 2);
       pack.states[1].military = [makeRegiment(0, 5)];
