@@ -38,6 +38,18 @@ const dLossRate = Math.min(0.45, (aEff / totalEff) * pressure);
 An army breaks when it falls below `routThreshold` (25% by default, raised by enemy `terror`), so
 a decisive winner usually routs the loser instead of annihilating it.
 
+### Lanchester background
+
+The engine sits between Lanchester's two classical laws:
+
+- **Linear law** (limited frontage, melee, unaimed area fire): casualties scale with the fighting
+  line, `dB/dt = -k_R · R · B`, so combat power is proportional to `N`.
+- **Square law** (aimed fire, concentration of fire): `dB/dt = -a · R`, with the invariant
+  `b(B₀² − B²) = a(R₀² − R²)`, so combat power is proportional to `N²`.
+
+Melee categories lean linear, ranged and artillery lean square, and `MATCHUP` shifts the effective
+mix; walls, river crossings and entrenchment compress the attacker's usable frontage.
+
 ## Modifiers
 
 `BattleModifiers` (`src/model/battle/battle.ts`) carries the strategic situation into the fight:
@@ -72,5 +84,6 @@ Magic bends the attrition rate rather than adding headcount:
 
 ## Further reading
 
-The full derivation of Lanchester's laws is in
-[`docs/plans/living-openciv-armies.md`](../plans/living-openciv-armies.md).
+- Army model and economy: [`docs/plans/living-openciv-armies.md`](../plans/living-openciv-armies.md)
+- Seasonal simulation: [`docs/plans/living-world.md`](../plans/living-world.md)
+- Living World player guide: [`Living-World.md`](Living-World.md)

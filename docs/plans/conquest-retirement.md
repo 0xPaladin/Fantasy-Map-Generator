@@ -1,6 +1,6 @@
 # Plan — Retiring OpenConquest: Folding the Campaign Engine into Civ/Living
 
-**Status:** Draft for review
+**Status:** ✅ Complete (Phases A–H delivered)
 **Goal:** Delete `src/conquest/` entirely. The Living World (OpenCiv economy + PR-27 factions + combined-arms armies) becomes the single simulation. No more "documented exception" vertical — one engine, one tick, one history.
 
 ---
@@ -207,6 +207,15 @@ After A–F, `src/conquest/` contains only the campaign shell. Remove in one com
 - `docs/openconquest/` replaced by `docs/wiki/Battle-Engine.md`; `MERGING.md` now documents the battle engine as core; `mod-merge-plan.md` drops the layering exception.
 - Remaining `conquest` strings in `src/` are domain words (history event kind, grudge reason, realm cause, a campaign name in the political generator), not module references.
 
+### 7.2 Phase H delivery notes
+
+- `README.md`: the Living World blurb now describes one shared battle engine, goal-driven states/factions, treaties and capture policies; the stale `src/conquest/.../battle.ts` path is gone.
+- `docs/wiki/Battle-Engine.md` is the canonical battle reference; linked from the wiki Home page and the Living World page.
+- `docs/wiki/OpenConquest.md` is now a short retirement notice that maps each old feature to its Living World home.
+- `docs/wiki/Living-World.md`: combat, sieges/policies, diplomacy/treaties, agendas (`defend`, `raid`), stances and the production-queue economy updated; `docs/wiki/History.md` no longer mentions Conquest layers.
+- `docs/architecture/architecture.md`: `battle/` added to the domain table and the Living World/chronicle simulation listed under `physical/`.
+- `docs/architecture/data-model.md`: new **Living World** section documenting `pack.history.living`, `StatePolitySim` agendas/treaties, `BurgSimState` production, `ProvinceSimState`, `ArmySimState` stances, and the split between pack data and simulation state.
+
 ---
 
 ## 8. Build order
@@ -220,7 +229,7 @@ After A–F, `src/conquest/` contains only the campaign shell. Remove in one com
 | **E** ✅ | Delete MWSC (checklist §6.1); trouble → burg production actions (§6.2); HUD meter swap | medium | No `CapacityPoints`/capacity ledger in civ code; troubles resolve via queues |
 | **F** ✅ | Stance polish: march ×1.5 (no attack), ambush +30% initiation, raid plunder → Gold + unrest; `riverCrossing` modifier | small | Stances measurably change movement/combat |
 | **G** ✅ | Delete `src/conquest/` + seams (§7) | medium | grep clean; suite green; MERGING/architecture updated |
-| **H** | Docs: wiki battle-engine page, README fork blurb, data-model updates, this plan marked done | small | — |
+| **H** ✅ | Docs: wiki battle-engine page, README fork blurb, data-model updates, this plan marked done | small | — |
 
 Order rationale: A unlocks everything (G cannot happen while living imports conquest). B–F are independent enough to land serially in this order (C is largest; E removes imports B/C might otherwise trip over). Characters (Rule 3) are untouched throughout.
 

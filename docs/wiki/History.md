@@ -98,7 +98,7 @@ When the map has epochs and snapshots, a slider appears under the timeline. It s
 
 ## The historical view
 
-Scrubbing swaps `pack.cells.state` and `pack.states` for the epoch's snapshot and polity records, remapped to compact state ids, then redraws states, borders, labels and markers. Emblems, military and Conquest layers that are on are hidden, and a shown _States_ legend is replaced by the epoch's polities under a "States · era" title. Markers dated after the viewed epoch's start are hidden, so a past does not show its own future.
+Scrubbing swaps `pack.cells.state` and `pack.states` for the epoch's snapshot and polity records, remapped to compact state ids, then redraws states, borders, labels and markers. Emblems and military layers that are on are hidden, and a shown _States_ legend is replaced by the epoch's polities under a "States · era" title. Markers dated after the viewed epoch's start are hidden, so a past does not show its own future.
 
 The view is read-only: a customization guard stops every editor from changing a world that is not the present. Leaving the slider at the present, pressing **Now**, closing the browser, or generating, loading or regenerating the map restores the live `pack` exactly and brings the hidden layers and legend back.
 
