@@ -3,7 +3,7 @@ import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
-import { activeCivThemeId, Living } from "@/model/physical/living-generator";
+import { activeCivThemeId, factionSuppressionProductionCost, Living } from "@/model/physical/living-generator";
 import { Military } from "@/model/political/military-generator";
 import type { YieldValues } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
@@ -61,13 +61,25 @@ export function openStateCitiesDialog(stateId: number): void {
           const prodItem = bSim?.productionQueue?.[0];
           let queueText = "";
           if (prodItem) {
-            const def =
-              prodItem.kind === "unit"
-                ? (CIV_CIVILIAN_BY_ID[prodItem.id] ?? Military.getUnitTypes()[prodItem.id])
-                : CIV_BUILDING_BY_ID[prodItem.id];
-            const prog = Math.round(bSim?.productionProgress?.[`${prodItem.kind}:${prodItem.id}`] ?? 0);
-            const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 0);
-            queueText = `<div style="font-size: 0.8em; opacity: 0.75; margin-top: 2px;">🔨 ${escapeHtml(def?.name ?? prodItem.id)} (${prog}/${cost})</div>`;
+            if (prodItem.kind === "operation" && prodItem.id === "faction-suppression") {
+              const targetFaction = prodItem.targetFactionId !== undefined ? pack.factions?.[prodItem.targetFactionId] : undefined;
+              const targetNode =
+                prodItem.targetNodeKey === "hq"
+                  ? targetFaction?.hq
+                  : targetFaction?.outposts?.find(outpost => `outpost:${outpost.burgId}` === prodItem.targetNodeKey);
+              const tier = "tier" in (targetNode ?? {}) ? (targetNode as { tier: number }).tier : 2;
+              const prog = Math.round(bSim?.productionProgress?.[`${prodItem.kind}:${prodItem.id}`] ?? 0);
+              const cost = factionSuppressionProductionCost({ tier });
+              queueText = `<div style="font-size: 0.8em; opacity: 0.75; margin-top: 2px;">🔨 Suppressing ${escapeHtml(targetFaction?.name ?? "faction")} (${prog}/${cost})</div>`;
+            } else {
+              const def =
+                prodItem.kind === "unit"
+                  ? (CIV_CIVILIAN_BY_ID[prodItem.id] ?? Military.getUnitTypes()[prodItem.id])
+                  : CIV_BUILDING_BY_ID[prodItem.id];
+              const prog = Math.round(bSim?.productionProgress?.[`${prodItem.kind}:${prodItem.id}`] ?? 0);
+              const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 0);
+              queueText = `<div style="font-size: 0.8em; opacity: 0.75; margin-top: 2px;">🔨 ${escapeHtml(def?.name ?? prodItem.id)} (${prog}/${cost})</div>`;
+            }
           }
 
           const popText = burg?.population ? burg.population.toLocaleString() : "—";

@@ -3,7 +3,7 @@ import { ALIGNMENTS, type Alignment } from "@/data/culture-traits";
 import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
-import { Living } from "@/model/physical/living-generator";
+import { factionSuppressionProductionCost, Living } from "@/model/physical/living-generator";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
 import { Layers } from "@/renderers/layers";
@@ -634,6 +634,19 @@ export function openOutpostsDialog(factionId: number): void {
   const dialogDomId = "factionOutpostsDialog";
   Dialog.destroy(dialogDomId);
 
+  const hqHostSim = pack.history?.living?.burgs?.[faction.hq.burgId ?? 0];
+  const hqSuppressionItem = (hqHostSim?.productionQueue ?? []).find(
+    item =>
+      item.kind === "operation" &&
+      item.id === "faction-suppression" &&
+      item.targetFactionId === faction.i &&
+      item.targetNodeKey === "hq"
+  );
+  const hqStatus = faction.hq.pillaged
+    ? "Pillaged"
+    : hqSuppressionItem
+      ? `Suppressing ${Math.round(hqHostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: 2 })}`
+      : `Influence ${Math.round(faction.hq.influence ?? 70)}%`;
   const burgOptions = (pack.burgs ?? [])
     .filter(b => b?.i && !b.removed && b.i !== faction.hq.burgId && !faction.outposts.some(o => o.burgId === b.i))
     .map(b => `<option value="${b.i}">${escapeHtml(b.name)} (Pop: ${b.population || 0})</option>`)
@@ -654,11 +667,23 @@ export function openOutpostsDialog(factionId: number): void {
           const yields = formatYields(nodeBreakdown?.yields ?? op.sim?.cityYields);
           const citizens = nodeBreakdown?.citizens ?? op.sim?.citizens ?? 0;
           const cells = nodeBreakdown?.workedCells ?? op.sim?.workedCells?.length ?? 0;
+          const hostSim = pack.history?.living?.burgs?.[op.burgId];
+          const suppressionItem = (hostSim?.productionQueue ?? []).find(
+            item =>
+              item.kind === "operation" &&
+              item.id === "faction-suppression" &&
+              item.targetFactionId === faction.i &&
+              item.targetNodeKey === `outpost:${op.burgId}`
+          );
+          const suppressionText = suppressionItem
+            ? `<div style="opacity: 0.8;">Suppressing ${Math.round(hostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: op.tier })}</div>`
+            : "";
+          const statusText = op.pillaged ? `<div style="opacity: 0.7;">Pillaged</div>` : "";
           return /* html */ `
           <tr style="border-bottom: 1px solid #444;">
             <td style="padding: 4px;"><b>${escapeHtml(burgName)}</b></td>
             <td style="padding: 4px; text-align: center;">${op.tier}</td>
-            <td style="padding: 4px; text-align: center;">${op.influence}%</td>
+            <td style="padding: 4px; text-align: center;">${op.influence}%${statusText}${suppressionText}</td>
             <td style="padding: 4px;">${assetsText}</td>
             <td style="padding: 4px;">${yields}</td>
             <td style="padding: 4px; text-align: center;">${citizens}</td>
@@ -696,7 +721,7 @@ export function openOutpostsDialog(factionId: number): void {
         <span class="badge">${capitalize(faction.alignment)}</span>
       </div>
       <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 4px;">${escapeHtml(formatYields(breakdown.total))}</div>
-      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${breakdown.totalCitizens} citizens · ${breakdown.totalWorkedCells} cells</div>
+      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${breakdown.totalCitizens} citizens · ${breakdown.totalWorkedCells} cells · HQ: ${hqStatus}</div>
 
       <div style="margin-bottom: 12px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
         <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ Assets")}:</div>

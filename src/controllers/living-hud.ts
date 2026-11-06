@@ -39,6 +39,7 @@ import {
 } from "@/model/physical/living-armies";
 import {
   activeCivThemeId,
+  factionSuppressionProductionCost,
   figureLevel,
   GUILD_TIER_TITLES,
   Living,
@@ -1525,7 +1526,8 @@ function renderStateCard(stateId: number): string {
     ${renderCivState(sSim, stateId)}
     ${renderStateProvinces(stateId)}
     ${renderEconomy(sSim, stateId)}
-    ${renderAgenda(sSim)}
+    ${renderAgenda(sSim, stateId, living)}
+    ${renderSuppressionTargets(stateId, sSim)}
     <div class="livingSection">
       <div class="livingSectionTitle">Stability</div>
       ${renderMeter("Unravel", sSim.unravel, true)}
@@ -1798,7 +1800,12 @@ interface CitySimView {
   foodStored?: number;
   cultureStored?: number;
   tilesAcquired?: number;
-  productionQueue?: { kind: "unit" | "building" | "wonder" | "trouble"; id: string }[];
+  productionQueue?: {
+    kind: "unit" | "building" | "wonder" | "trouble" | "operation";
+    id: string;
+    targetFactionId?: number;
+    targetNodeKey?: string;
+  }[];
   productionProgress?: Record<string, number>;
   hp?: number;
   maxHp?: number;
@@ -1813,6 +1820,12 @@ function renderCivCity(bSim: CitySimView, burgId: number): string {
   const queue = (bSim.productionQueue ?? [])
     .slice(0, 4)
     .map(item => {
+      if (item.kind === "operation" && item.id === "faction-suppression") {
+        const factionName = pack.factions?.[item.targetFactionId ?? 0]?.name ?? "faction";
+        const cost = factionSuppressionProductionCost({ tier: 2 });
+        const progress = Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
+        return `<li>Suppressing ${escapeHtml(factionName)} <span class="livingGuildChipStatus">${progress} / ${cost}</span></li>`;
+      }
       const def =
         item.kind === "unit"
           ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
@@ -1996,10 +2009,36 @@ function renderEconomy(sSim: StatePolitySim, stateId?: number): string {
   return `<div class="livingSection"><div class="livingSectionTitle">Economy</div>${list}${buttons}</div>`;
 }
 
-function renderAgenda(sSim: StatePolitySim): string {
+function renderAgenda(
+  sSim: StatePolitySim,
+  stateId?: number,
+  living?: ReturnType<typeof Living.getState>
+): string {
   const agenda = sSim.agenda;
   if (!agenda)
     return `<div class="livingSection"><div class="livingSectionTitle">Agenda</div><span class="livingMuted">No active agenda</span></div>`;
+
+  if (agenda.kind === "suppress_faction") {
+    const factionId = agenda.targetFactionId;
+    const faction = factionId !== undefined ? pack.factions?.[factionId] : undefined;
+    const burg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
+    const node =
+      faction && burg
+        ? (faction.hq?.burgId === burg.i && !faction.hq.pillaged
+            ? faction.hq
+            : (faction.outposts ?? []).find(outpost => outpost.burgId === burg.i && !outpost.pillaged))
+        : undefined;
+    const influence =
+      node !== undefined ? ("tier" in node ? node.influence : (node.influence ?? undefined)) : undefined;
+    const tick = living?.tick ?? 0;
+    const stalled = agenda.stallUntilTick !== undefined && agenda.stallUntilTick > tick;
+    return /* html */ `
+    <div class="livingSection">
+      <div class="livingSectionTitle">Agenda</div>
+      <div>Suppressing ${escapeHtml(faction?.name ?? "a faction")} in ${escapeHtml(burg?.name ?? "a burg")}</div>
+      <div class="livingMuted">Influence ${influence !== undefined ? `${Math.round(influence)}%` : "—"}${stalled ? " · stalled (defending army or failed storm)" : ""}</div>
+    </div>`;
+  }
 
   const ratio = agenda.required > 0 ? Math.min(100, Math.round((agenda.progress / agenda.required) * 100)) : 0;
   return /* html */ `
@@ -2008,6 +2047,25 @@ function renderAgenda(sSim: StatePolitySim): string {
       <div>${escapeHtml(agenda.label)} <span class="livingMuted">${agenda.progress} / ${agenda.required}</span></div>
       <div class="livingBar"><i style="width:${ratio}%"></i></div>
     </div>`;
+}
+
+function renderSuppressionTargets(stateId: number, sSim: StatePolitySim): string {
+  const targets = Living.eligibleFactionSuppressionTargets?.(stateId) ?? [];
+  const suppressing = sSim.agenda?.kind === "suppress_faction";
+  if (targets.length === 0 && !suppressing) return "";
+  const rows = targets
+    .map(target => {
+      const influence = "tier" in target.node ? target.node.influence : (target.node.influence ?? undefined);
+      return `<li>
+        <span class="livingMuted">${escapeHtml(target.faction.name)} · ${escapeHtml(target.burg.name ?? "a burg")} · Influence ${influence !== undefined ? `${Math.round(influence)}%` : "—"}</span>
+        ${suppressing && sSim.agenda?.targetFactionId === target.faction.i ? `<span class="livingMuted"> (suppressing)</span>` : `<button type="button" data-guild="suppress-faction" data-state="${stateId}" data-faction="${target.faction.i}">Suppress faction</button>`}
+      </li>`;
+    })
+    .join("");
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Suppression</div>
+    ${rows ? `<ul>${rows}</ul>` : `<span class="livingMuted">No eligible local factions</span>`}
+  </div>`;
 }
 
 function renderMeter(label: string, value: number, danger: boolean): string {
@@ -2406,6 +2464,12 @@ function runGuildOperation(button: HTMLElement): void {
       } else {
         message = "No trouble or lair to dispatch against.";
       }
+      break;
+    }
+    case "suppress-faction": {
+      const factionId = Number(button.dataset.faction ?? 0);
+      ok = Living.startFactionSuppression(stateId, factionId);
+      message = ok ? "The state has begun suppressing the faction." : "No eligible local faction node to suppress.";
       break;
     }
     case "patron":

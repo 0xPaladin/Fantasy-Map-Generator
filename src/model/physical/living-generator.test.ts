@@ -15,7 +15,7 @@ import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { Faction } from "@/types/factions";
 import type { HistoricalFigure } from "@/types/history";
-import type { HistoricalRelic } from "@/types/living";
+import type { HistoricalRelic, StateAgenda } from "@/types/living";
 import { createRng } from "@/utils/rng";
 import {
   activeCivThemeId,
@@ -4446,6 +4446,64 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
         expect(Living.assaultFactionNode(1, faction.i, "hq")).toBe(false);
         expect(faction.hq.pillaged).toBeFalsy();
+      });
+    });
+
+    describe("State suppression UI and saved-map compatibility (Phase 4)", () => {
+      it("initializes legacy factions and suppress agendas without new-save fields", () => {
+        setupCityWorld();
+        pack.factions = [{ i: 0 } as Faction];
+        const legacy = {
+          i: 1,
+          name: "Legacy Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          color: "#123456",
+          icon: "🗡️",
+          culture: 1,
+          foundedYear: 1000,
+          memberIds: [],
+          alignment: "evil",
+          values: ["honor"],
+          expansionism: 1,
+          expansionScope: "state",
+          sovereignAmbition: false,
+          hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 5, cell: 4, tier: 1, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ],
+          science: 2,
+          currentTechId: null,
+          researchQueue: [],
+          researchedTechs: [],
+          researchedProgress: {},
+          treasury: 100,
+          influence: 30,
+          military: [],
+          stateRelations: { 1: "Enemy" },
+          factionRelations: {},
+          agenda: null,
+          seasonsActive: 0,
+          removed: false
+        } as unknown as Faction;
+        pack.factions.push(legacy);
+
+        const living = Living.init();
+        expect(legacy.hq.pillaged).toBeUndefined();
+        expect(legacy.hq.influence).toBe(70);
+        expect(living.states[1]).toBeDefined();
+
+        // A suppress agenda saved without targetFactionId clears safely on step.
+        living.states[1].agenda = {
+          kind: "suppress_faction",
+          label: "Suppressing Legacy Hand in Aelor",
+          targetBurgId: 1,
+          progress: 0,
+          required: 1
+        } as unknown as StateAgenda;
+        expect(() => Living.tick(1)).not.toThrow();
+        expect(living.states[1].agenda?.kind).not.toBe("suppress_faction");
       });
     });
   });
