@@ -7591,14 +7591,14 @@ class LivingModel {
     return LivingThreats.quellTrouble(provinceId);
   }
 
-  /** Order a state army to march on and assault a lair in its territory. */
-  assaultLair(stateId: number, provinceId: number): boolean {
-    return LivingThreats.assaultLair(stateId, provinceId);
+  /** Order a state army to march on and assault a hostile faction in its territory. */
+  assaultFaction(stateId: number, provinceId: number): boolean {
+    return LivingThreats.assaultFaction(stateId, provinceId);
   }
 
-  /** Dispatch an adventuring band to execute a decapitation delve into a lair. */
-  sendAdventurersToLair(stateId: number, provinceId: number): boolean {
-    return LivingThreats.sendAdventurersToLair(stateId, provinceId);
+  /** Dispatch an adventuring band to execute a decapitation delve into a hostile faction. */
+  sendAdventurersToFaction(stateId: number, provinceId: number): boolean {
+    return LivingThreats.sendAdventurersToFaction(stateId, provinceId);
   }
 
   /** Trouble festers into an active lair if neglected too long. */
@@ -9005,20 +9005,30 @@ class LivingModel {
       return { kind: "muster", label: "Mustering troops", progress: 0, required: 1 };
     }
 
-    const lairProvince = this.ownedProvinces(state.i)
-      .map(p => ({ province: p, lair: living.provinces[p.i]?.lair }))
-      .filter((entry): entry is { province: Province; lair: ProvinceLair } => Boolean(entry.lair))
-      .sort((a, b) => b.lair.level - a.lair.level)[0];
+    const factionProvince = this.ownedProvinces(state.i)
+      .map(p => {
+        const faction = Factions.active().find(f => {
+          if (f.allegiance !== "hostile" && f.allegiance !== "clandestine") return false;
+          const provId =
+            f.hq.provinceId ??
+            (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+            pack.cells?.province?.[f.hq.cell];
+          return provId === p.i;
+        });
+        return { province: p, faction };
+      })
+      .filter((entry): entry is { province: Province; faction: import("@/types/factions").Faction } => Boolean(entry.faction))
+      .sort((a, b) => (b.faction.military?.[0]?.a ?? 0) - (a.faction.military?.[0]?.a ?? 0))[0];
 
-    if (lairProvince) {
+    if (factionProvince) {
       const army = this.fieldArmy(state);
       const armyMenValue = army ? armyMen(army, Military.getUnitTypes()) : 0;
-      const defMen = lairProvince.lair.defenders.reduce((s, u) => s + u.count, 0);
+      const defMen = (factionProvince.faction.military ?? []).reduce((s, r) => s + (r.a ?? 0), 0);
       if (army && (armyMenValue >= defMen * 0.85 || sSim.warExhaustion < 40)) {
         return {
           kind: "clear_lair",
-          label: `Marching against ${lairProvince.lair.name} in ${lairProvince.province.name}`,
-          targetProvinceId: lairProvince.province.i,
+          label: `Marching against ${factionProvince.faction.name} in ${factionProvince.province.name}`,
+          targetProvinceId: factionProvince.province.i,
           progress: 0,
           required: 1
         };
@@ -9026,8 +9036,8 @@ class LivingModel {
       if ((state.treasury ?? 0) >= 40) {
         return {
           kind: "hire_adventurers",
-          label: `Hiring adventurers against ${lairProvince.lair.name} in ${lairProvince.province.name}`,
-          targetProvinceId: lairProvince.province.i,
+          label: `Hiring adventurers against ${factionProvince.faction.name} in ${factionProvince.province.name}`,
+          targetProvinceId: factionProvince.province.i,
           progress: 0,
           required: 1
         };
@@ -9079,14 +9089,16 @@ class LivingModel {
           sSim.agenda = null;
           return;
         }
-        const pSim = living.provinces[provinceId];
-        if (!pSim?.lair) {
-          sSim.agenda = null;
-          return;
-        }
-        this.assaultLair(state.i, provinceId);
+        this.assaultFaction(state.i, provinceId);
         agenda.progress += 1;
-        if (agenda.progress >= agenda.required || !pSim.lair) {
+        const cleared = !Factions.active().some(f => {
+          const provId =
+            f.hq.provinceId ??
+            (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+            pack.cells?.province?.[f.hq.cell];
+          return provId === provinceId && (f.allegiance === "hostile" || f.allegiance === "clandestine");
+        });
+        if (agenda.progress >= agenda.required || cleared) {
           sSim.agenda = null;
         }
         return;
@@ -9097,14 +9109,16 @@ class LivingModel {
           sSim.agenda = null;
           return;
         }
-        const pSim = living.provinces[provinceId];
-        if (!pSim?.lair) {
-          sSim.agenda = null;
-          return;
-        }
-        this.sendAdventurersToLair(state.i, provinceId);
+        this.sendAdventurersToFaction(state.i, provinceId);
         agenda.progress += 1;
-        if (agenda.progress >= agenda.required || !pSim.lair) {
+        const cleared = !Factions.active().some(f => {
+          const provId =
+            f.hq.provinceId ??
+            (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+            pack.cells?.province?.[f.hq.cell];
+          return provId === provinceId && (f.allegiance === "hostile" || f.allegiance === "clandestine");
+        });
+        if (agenda.progress >= agenda.required || cleared) {
           sSim.agenda = null;
         }
         return;
@@ -9574,6 +9588,9 @@ class LivingModel {
   /** Entrenched-sovereignty check: hostile factions ascend when order has collapsed. Combat and expansion run in stepTactical. */
   stepFactionMilitaryAndRaids(living: LivingWorldState): void {
     for (const faction of Factions.active()) {
+      if (faction.allegiance === "hostile" || faction.allegiance === "clandestine") {
+        this.tickFactionRaid(faction, living);
+      }
       if (
         faction.sovereignAmbition &&
         faction.allegiance === "hostile" &&
@@ -9613,13 +9630,7 @@ class LivingModel {
       const province = lair.provinceId ? pack.provinces?.[lair.provinceId] : undefined;
       const pSim = lair.provinceId ? living.provinces[lair.provinceId] : undefined;
 
-      this.tickLairRaid(
-        province ?? ({ i: 0, name: "Wildlands" } as Province),
-        pSim ?? ({ order: 50, stability: 0 } as ProvinceSimState),
-        lair,
-        living
-      );
-
+      // Lair raids moved to tickFactionRaid; lairs now only ascend (Path B).
       const key = lair.markerId !== undefined ? `lair:${lair.markerId}` : `prov_lair:${lair.provinceId}`;
       if (!living.activeLairs?.[key] && !pSim?.lair) continue;
 
@@ -9824,6 +9835,188 @@ class LivingModel {
       cell: lair.cell,
       stateId: province.state
     });
+  }
+
+  /** Faction raid tick: hostile/clandestine factions sack plausible settlements, ported from the retired lair raids. */
+  private tickFactionRaid(faction: import("@/types/factions").Faction, living: LivingWorldState): void {
+    const provinceId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
+    const province = provinceId ? pack.provinces?.[provinceId] : undefined;
+    const pSim = provinceId ? living.provinces?.[provinceId] : undefined;
+
+    const rng = this.rng("faction:raid", faction.i * 1000 + provinceId, living.tick);
+    const shouldRaid = faction.raidPending || rng.d(6) >= (faction.raidThreshold ?? 6);
+    if (!shouldRaid) return;
+
+    const unitTypes = Military.getUnitTypes();
+    const raidBlocks = (faction.military ?? []).flatMap(reg => (reg.units ?? []).filter(u => u.hp > 0));
+    const raidUnits = toBattleUnitsMen(raidBlocks, unitTypes);
+    const raidMen = raidUnits.reduce((sum, u) => sum + u.count, 0);
+    if (raidUnits.length === 0 || raidMen <= 0) return;
+
+    // 1. Identify target burgs (maritime HQs strike ports/coasts)
+    let targetBurgs: Burg[] = [];
+    if (faction.hq.maritime) {
+      const [lx, ly] = pack.cells.p?.[faction.hq.cell] ?? [0, 0];
+      targetBurgs = pack.burgs
+        .filter(b => b?.i && !b.removed && (b.port || (pack.cells.h && pack.cells.h[b.cell] < 20)))
+        .map(b => ({ burg: b, dist: Math.hypot(b.x - lx, b.y - ly) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 4)
+        .map(d => d.burg);
+    } else {
+      const localBurgs = province?.i
+        ? pack.burgs.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === province.i)
+        : [];
+      targetBurgs = localBurgs;
+      if (targetBurgs.length === 0) {
+        const [lx, ly] = pack.cells.p?.[faction.hq.cell] ?? [0, 0];
+        const withDist = pack.burgs
+          .filter(b => b?.i && !b.removed)
+          .map(b => ({ burg: b, dist: Math.hypot(b.x - lx, b.y - ly) }))
+          .sort((a, b) => a.dist - b.dist);
+        targetBurgs = withDist.slice(0, 3).map(d => d.burg);
+      }
+    }
+    if (targetBurgs.length === 0) return;
+
+    // 2. Filter for plausible targets (skip fortresses that are overwhelmingly defended)
+    const plausible = targetBurgs.filter(b => {
+      const defenders = this.burgDefenders(b);
+      const defMen = defenders.reduce((sum, u) => sum + u.count, 0);
+      const walls = Number(b.walls ?? 0);
+      if (walls >= 2 && defMen > raidMen * 1.5) return false;
+      if (defMen > raidMen * 2.5) return false;
+      return true;
+    });
+
+    if (plausible.length === 0) {
+      faction.raidPending = true;
+      return;
+    }
+
+    // Sort by easiest target (lowest walls, fewest defenders)
+    plausible.sort((a, b) => {
+      const wA = Number(a.walls ?? 0);
+      const wB = Number(b.walls ?? 0);
+      if (wA !== wB) return wA - wB;
+      const menA = this.burgDefenders(a).reduce((sum, u) => sum + u.count, 0);
+      const menB = this.burgDefenders(b).reduce((sum, u) => sum + u.count, 0);
+      return menA - menB;
+    });
+    const target = plausible[0]!;
+
+    faction.raidPending = false;
+
+    // 3. Resolve raid combat
+    const { config } = currentContent();
+    const defenders = this.burgDefenders(target);
+    const ownerState = pack.states[target.state ?? 0];
+    const stationedReg = (ownerState?.military ?? []).find(r => r.cell === target.cell && r.a > 0);
+    const stationedBlocks = (stationedReg?.units ?? []).filter(u => u.hp > 0 && unitTypes[u.type]);
+    for (const u of toBattleUnitsMen(stationedBlocks, unitTypes)) defenders.push(u);
+
+    const session = initBattleSession({
+      config,
+      unitTypes,
+      attacker: { factionId: 0, armyId: null, units: raidUnits },
+      defender: { factionId: target.state ?? 0, armyId: null, units: defenders },
+      cell: target.cell,
+      regionId: pack.cells.province?.[target.cell] ?? provinceId,
+      assault: Number(target.walls ?? 0) > 0,
+      modifiers: this.assaultModifiers(target)
+    });
+    while (session.status === "active" && session.round < config.battle.maxRounds) {
+      stepBattleRound(session, rng.next);
+    }
+    const outcome = finalizeBattle(session, rng.next);
+
+    this.addBattleMarker(target);
+
+    if (stationedReg && ownerState && stationedBlocks.length > 0) {
+      this.applyArmySurvivors(ownerState, stationedReg, outcome.defender.units);
+    }
+    // Raiders keep their survivors in the lead regiment
+    const survivors = fromBattleUnitsMen(outcome.attacker.units, unitTypes);
+    if (faction.military?.length && survivors.length > 0 && survivors.reduce((s, b) => s + (b.hp ?? 0), 0) > 0) {
+      const main = faction.military[0]!;
+      main.units = survivors;
+      syncRegimentTotals(main, unitTypes);
+    }
+
+    if (outcome.winner === "defender") {
+      if (pSim) pSim.order = Math.min(100, pSim.order + 3);
+      this.pushNews(living, {
+        kind: "faction",
+        text: `${target.name} garrison repulsed raiders from ${faction.name}!`,
+        cell: target.cell,
+        stateId: target.state ?? 0,
+        burgId: target.i
+      });
+      return;
+    }
+
+    // Raid coup: an ambitious faction that overwhelms a vulnerable non-capital raises a state
+    const bSim = living.burgs[target.i];
+    if (
+      faction.sovereignAmbition &&
+      (faction.seasonsActive ?? 0) >= 6 &&
+      !target.capital &&
+      ((pSim?.order ?? 100) <= 20 || Number(target.walls ?? 0) === 0 || (bSim?.buildings.length ?? 0) === 0)
+    ) {
+      if (this.ascendFactionToState(faction.i, target.i) !== null) return;
+    }
+
+    // Raiders win: destroy 1 asset or pillage development & unrest
+    if (pSim && bSim?.buildings && bSim.buildings.length > 0) {
+      let destroyIndex = bSim.buildings.findIndex(bid => !bid.startsWith("walls"));
+      if (destroyIndex === -1) destroyIndex = bSim.buildings.length - 1;
+      const destroyed = bSim.buildings.splice(destroyIndex, 1)[0]!;
+      syncBurgFlagsFromBuildings(target, bSim.buildings);
+      const bDef = currentContent().content.buildings.find(b => b.id === destroyed);
+      const bName = bDef?.name ?? destroyed;
+      pSim.order = Math.max(0, pSim.order - 6);
+      this.pushNews(living, {
+        kind: "faction",
+        text: `Raiders from ${faction.name} sacked ${target.name} and destroyed its ${bName}!`,
+        cell: target.cell,
+        stateId: target.state ?? 0,
+        burgId: target.i
+      });
+      this.pushHistory(
+        "sack",
+        [
+          { kind: "burg", id: target.i },
+          { kind: "state", id: target.state ?? 0 }
+        ],
+        target.cell,
+        `Raiders from ${faction.name} sacked ${target.name} and tore down its ${bName}.`
+      );
+    } else if (pSim) {
+      if (bSim) {
+        bSim.development = Math.max(0, bSim.development - 1);
+        bSim.unrest = Math.min(10, bSim.unrest + 2);
+      }
+      pSim.development = Math.max(0, pSim.development - 1);
+      pSim.order = Math.max(0, pSim.order - 10);
+      this.pushNews(living, {
+        kind: "faction",
+        text: `Raiders from ${faction.name} pillaged ${target.name}, leaving ruin in their wake.`,
+        cell: target.cell,
+        stateId: target.state ?? 0,
+        burgId: target.i
+      });
+      this.pushHistory(
+        "sack",
+        [
+          { kind: "burg", id: target.i },
+          { kind: "state", id: target.state ?? 0 }
+        ],
+        target.cell,
+        `Raiders from ${faction.name} plundered ${target.name} and terrorized the populace.`
+      );
+    }
+
+    faction.influence = Math.min(100, (faction.influence ?? 0) + 5);
   }
 
   /** Step each active state's projects and seasonal agenda. */

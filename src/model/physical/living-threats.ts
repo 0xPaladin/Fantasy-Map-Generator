@@ -702,6 +702,249 @@ export function quellTrouble(provinceId: number): boolean {
   return true;
 }
 
+/** Hostile/clandestine faction with an HQ in a province, by military weight. */
+function factionThreatInProvince(provinceId: number): Faction | null {
+  const candidates = Factions.active().filter(faction => {
+    if (faction.allegiance !== "hostile" && faction.allegiance !== "clandestine") return false;
+    const provId =
+      faction.hq.provinceId ??
+      (faction.hq.burgId ? pack.cells.province?.[pack.burgs?.[faction.hq.burgId]?.cell ?? 0] : undefined) ??
+      pack.cells?.province?.[faction.hq.cell];
+    return provId === provinceId;
+  });
+  candidates.sort((a, b) => {
+    const men = (f: Faction) => (f.military ?? []).reduce((s, r) => s + (r.units?.reduce((t, u) => t + (u.hp ?? 0), 0) ?? 0), 0);
+    return men(b) - men(a);
+  });
+  return candidates[0] ?? null;
+}
+
+export function assaultFaction(stateId: number, provinceId: number): boolean {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed || province.state !== stateId) return false;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim) return false;
+
+  const state = pack.states[stateId];
+  const sSim = living.states[stateId];
+  if (!state?.i || state.removed || !sSim) return false;
+
+  const faction = factionThreatInProvince(provinceId);
+  if (!faction) return false;
+
+  const army = fieldArmy(state);
+  if (!army) return false;
+
+  const { config } = currentContent();
+  const unitTypes = Military.getUnitTypes();
+  const attackerUnits = toBattleUnitsMen(army.units ?? [], unitTypes);
+  const factionReg = faction.military?.[0];
+  const defenderUnits = toBattleUnitsMen((factionReg?.units ?? []).filter(u => u.hp > 0), unitTypes);
+
+  if (attackerUnits.length === 0 || defenderUnits.length === 0) return false;
+
+  const cell = faction.hq.cell;
+  const session = initBattleSession({
+    config,
+    unitTypes,
+    attacker: { factionId: stateId, armyId: null, units: attackerUnits },
+    defender: { factionId: 0, armyId: null, units: defenderUnits },
+    cell,
+    regionId: provinceId,
+    assault: faction.hq.fortified,
+    modifiers: {
+      walls: faction.hq.fortified ? 1 : 0,
+      defenderEncamped: faction.hq.fortified,
+      defenderAmbushed: false,
+      attackerCrossedRiver: false,
+      labels: [faction.hq.fortified ? `${faction.name} (fortified walls)` : faction.name]
+    }
+  });
+
+  const rng = getRng("faction:assault", stateId * 1000 + provinceId, living.tick);
+  while (session.status === "active" && session.round < config.battle.maxRounds) {
+    stepBattleRound(session, rng.next);
+  }
+  const outcome = finalizeBattle(session, rng.next);
+
+  applyArmySurvivors(state, army, outcome.attacker.units);
+  addBattleMarker(cell, faction.name);
+
+  const destroyFaction = () => {
+    if (faction.hq.markerId !== undefined) convertDangerMarkerToRuins(faction.hq.markerId, state.name);
+    Factions.remove(faction.i);
+  };
+
+  if (outcome.winner === "attacker") {
+    const factionName = faction.name;
+    destroyFaction();
+    sSim.warExhaustion = Math.max(0, sSim.warExhaustion - 2);
+    relieveEschaton(living);
+
+    pushNews(living, {
+      kind: "faction",
+      text: `${state.name}'s army conquered and destroyed ${factionName} in ${province.name}!`,
+      cell,
+      stateId
+    });
+    pushHistory(
+      "conquest",
+      [{ kind: "state", id: stateId }],
+      cell,
+      `${state.name}'s legions conquered and dismantled ${factionName} in ${province.name}.`
+    );
+    return true;
+  }
+
+  // Heavy losses without a clean win still gut the faction's forces
+  if (factionReg) {
+    factionReg.units = fromBattleUnitsMen(outcome.defender.units, unitTypes);
+    syncRegimentTotals(factionReg, unitTypes);
+  }
+  if (factionReg && factionReg.a <= 0) {
+    const factionName = faction.name;
+    destroyFaction();
+    pushNews(living, {
+      kind: "faction",
+      text: `${state.name}'s army destroyed ${factionName} in ${province.name} at immense cost!`,
+      cell,
+      stateId
+    });
+    return true;
+  }
+
+  for (const u of army.units ?? []) {
+    u.disruption = Math.min(3, (u.disruption ?? 0) + 1);
+  }
+  sSim.warExhaustion = Math.min(100, sSim.warExhaustion + 4);
+
+  pushNews(living, {
+    kind: "faction",
+    text: `${state.name}'s assault on ${faction.name} was repulsed with heavy losses!`,
+    cell,
+    stateId
+  });
+  pushHistory(
+    "battle",
+    [{ kind: "state", id: stateId }],
+    cell,
+    `${state.name}'s expedition against ${faction.name} was repulsed.`
+  );
+  return false;
+}
+
+export function sendAdventurersToFaction(stateId: number, provinceId: number): boolean {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed || province.state !== stateId) return false;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim) return false;
+
+  const state = pack.states[stateId];
+  const sSim = living.states[stateId];
+  if (!state?.i || state.removed || !sSim) return false;
+
+  const faction = factionThreatInProvince(provinceId);
+  if (!faction) return false;
+
+  const history = Chronicle.sync();
+  history.figures ??= [];
+
+  let adventurer = history.figures.find(
+    f => !f.death && f.roles.some(r => r.type === "adventurer" && r.target.kind === "state" && r.target.id === stateId)
+  );
+
+  const year = options.map?.lore?.calendar?.year ?? 1000;
+  if (!adventurer) {
+    const culture = state.culture ?? 0;
+    const index = history.figures.length;
+    const rng = traitsRng(living.seed, "adventurer", index + state.i * 500);
+    const alignment = rollAlignment(rng, pack.cultures[culture]?.alignment);
+    const { virtues, vices } = rollFigureTraits(rng, alignment);
+    adventurer = {
+      i: index,
+      name: Names.getCulture(culture),
+      culture,
+      birth: year - rng.int(22, 40),
+      roles: [{ type: "adventurer", target: { kind: "state", id: state.i }, from: year }],
+      alignment,
+      virtues,
+      vices
+    };
+    history.figures.push(adventurer);
+  }
+
+  const factionReg = faction.military?.[0];
+  const unitTypes = Military.getUnitTypes();
+  const traitBonus = (adventurer.virtues?.length ?? 0) - (adventurer.vices?.length ?? 0);
+  const rng = getRng("adventurer:delve", stateId * 500 + provinceId, living.tick);
+  const roll = rng.d(20);
+  const domainMod = valueModifier(living.states[stateId]?.yieldsPerTurn?.gold ?? 0);
+  const total = roll + domainMod + traitBonus;
+  const dc = 14 + Math.ceil((factionReg?.a ?? 100) / 100);
+
+  if (total >= dc) {
+    if (faction.hq.markerId !== undefined) convertDangerMarkerToRuins(faction.hq.markerId, state.name);
+    const factionName = faction.name;
+    Factions.remove(faction.i);
+    pSim.order = Math.min(100, pSim.order + 12);
+    pSim.stability += 1;
+    relieveEschaton(living);
+
+    pushNews(living, {
+      kind: "faction",
+      text: `${adventurer.name} and their adventuring band purged ${factionName} in ${province.name}!`,
+      cell: faction.hq.cell,
+      stateId
+    });
+    pushHistory(
+      "conquest",
+      [
+        { kind: "figure", id: adventurer.i },
+        { kind: "state", id: stateId }
+      ],
+      faction.hq.cell,
+      `${adventurer.name} and their adventuring band slew the master of ${factionName} in ${province.name}.`
+    );
+    return true;
+  }
+
+  if (total >= dc - 3) {
+    const cut = factionReg?.units ?? [];
+    for (const u of cut) {
+      u.hp = Math.max(0.1, u.hp * (0.5 + rng.next() * 0.25));
+    }
+    if (factionReg) syncRegimentTotals(factionReg, unitTypes);
+
+    pushNews(living, {
+      kind: "faction",
+      text: `${adventurer.name}'s band struck deep into ${faction.name}, culling defenders before withdrawing.`,
+      cell: faction.hq.cell,
+      stateId
+    });
+    return false;
+  }
+
+  if (rng.d(2) === 1) {
+    adventurer.death = year;
+    for (const role of adventurer.roles) {
+      if (role.type === "adventurer" && role.to === undefined) role.to = year;
+    }
+  }
+  faction.raidPending = true;
+
+  pushNews(living, {
+    kind: "faction",
+    text: `${adventurer.name}'s delve into ${faction.name} failed disastrously!`,
+    cell: faction.hq.cell,
+    stateId
+  });
+  return false;
+}
+
 export function assaultLair(stateId: number, provinceId: number): boolean {
   const province = pack.provinces?.[provinceId];
   if (!province?.i || province.removed || province.state !== stateId) return false;
@@ -1531,6 +1774,8 @@ export const LivingThreats = {
   spawnDangerousFaction,
   migrateLegacyThreats,
   quellTrouble,
+  assaultFaction,
+  sendAdventurersToFaction,
   assaultLair,
   sendAdventurersToLair,
   metastasizeTroubleToLair,
