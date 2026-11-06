@@ -199,8 +199,8 @@ function renderDialog(): void {
     <div id="${dialogId}" class="dialog stable editorDialog">
       ${renderEditorHeader({ dialogId, columns })}
       <div id="charactersBodySection" class="table" data-type="absolute" style="max-height: 480px; overflow-y: auto;"></div>
-      <div id="charactersFilters" class="editorFilters" style="display: flex; gap: 8px; align-items: center; padding: 6px;">
-        <label for="charactersSearch">${t("Search")}: <input id="charactersSearch" type="search" style="width: 140px;" /></label>
+      <div id="charactersFilters" class="editorFilters" data-tip="${t("Apply a filter")}">
+        <label for="charactersSearch">${t("Search")}: <input id="charactersSearch" type="search" /></label>
         <label for="charactersStatusFilter">${t("Status")}:
           <select id="charactersStatusFilter">
             <option value="all">${t("All")}</option>
