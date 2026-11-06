@@ -9456,6 +9456,14 @@ class LivingModel {
     return null;
   }
 
+  /** Warmth ladder for faction⇄state relations: Enemy … Ally. */
+  private improveFactionRelation(faction: import("@/types/factions").Faction, stateId: number): void {
+    const ladder = ["Enemy", "Rival", "Suspicion", "Neutral", "Friendly", "Ally"] as const;
+    const current = faction.stateRelations[stateId] ?? "Neutral";
+    const idx = ladder.indexOf(current);
+    if (idx >= 0 && idx < ladder.length - 1) faction.stateRelations[stateId] = ladder[idx + 1];
+  }
+
   /**
    * Clear trouble as a production clock (faction-trouble conversion Phase 2):
    * adventuring/religious/commercial factions bank their node's Production
@@ -9482,9 +9490,15 @@ class LivingModel {
         pSim.trouble = null;
         pSim.order = Math.min(100, pSim.order + 10);
         pSim.stability += 1;
+        const hostStateId = province?.state ?? 0;
+        const before = hostStateId ? (faction.stateRelations[hostStateId] ?? "Neutral") : undefined;
+        if (hostStateId) this.improveFactionRelation(faction, hostStateId);
+        faction.influence = Math.min(100, (faction.influence ?? 0) + 10);
+        const standing =
+          before && before !== faction.stateRelations[hostStateId] ? `, improving relations with ${pack.states[hostStateId]?.name ?? "the state"}` : "";
         this.pushNews(living, {
           kind: "trouble",
-          text: `${faction.name} cleared the ${troubleName} afflicting ${province?.name ?? "the province"}.`,
+          text: `${faction.name} cleared the ${troubleName} afflicting ${province?.name ?? "the province"}${standing}.`,
           cell: province?.center ?? node.node.cell,
           burgId: node.node.burgId
         });

@@ -4735,6 +4735,7 @@ describe("Faction clear-trouble production clock (trouble conversion Phase 2)", 
     const living = Living.init();
     Living.spawnTrouble(1, "flooding", "burg", 1);
     const faction = caretaker("religious");
+    faction.stateRelations[1] = "Suspicion";
 
     Living.tick(1);
     expect(faction.agenda?.kind).toBe("clear_trouble");
@@ -4749,6 +4750,33 @@ describe("Faction clear-trouble production clock (trouble conversion Phase 2)", 
     expect(living.provinces[1].stability).toBe(stabilityBefore + 1);
     expect(faction.agenda).toBeNull();
     expect(living.recentNews.some(n => n.kind === "trouble" && n.text.includes(faction.name))).toBe(true);
+    // Clearing trouble buys standing with the host state
+    expect(faction.stateRelations[1]).toBe("Neutral");
+  });
+
+  it("improves relations one rung per clear, capped at Ally", () => {
+    const living = Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("adventuring");
+    faction.stateRelations[1] = "Enemy";
+    faction.agenda = {
+      kind: "clear_trouble",
+      label: "test",
+      targetProvinceId: 1,
+      progress: 0,
+      required: 1
+    };
+
+    Living.tick(1);
+    expect(living.provinces[1].trouble).toBeNull();
+    expect(faction.stateRelations[1]).toBe("Rival");
+
+    // Already Ally: stays Ally
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    faction.stateRelations[1] = "Ally";
+    faction.agenda = { kind: "clear_trouble", label: "test", targetProvinceId: 1, progress: 0, required: 1 };
+    Living.tick(1);
+    expect(faction.stateRelations[1]).toBe("Ally");
   });
 
   it("clears the agenda without progress when the trouble is gone", () => {
