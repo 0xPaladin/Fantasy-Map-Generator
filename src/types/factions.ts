@@ -51,10 +51,13 @@ export interface FactionHq {
   provinceId?: number;
   maritime?: boolean;
   fortified: boolean;
+  pillaged?: boolean;
   secrecy: number; // 0..100
   assets: string[];
   sim?: BurgSimState;
 }
+
+export type FactionNodeKey = "hq" | `outpost:${number}`;
 
 export interface FactionOutpost {
   burgId: number;

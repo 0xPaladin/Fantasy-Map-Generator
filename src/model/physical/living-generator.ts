@@ -80,6 +80,7 @@ import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type {
   Faction,
   FactionHq,
+  FactionNodeKey,
   FactionNodeYieldBreakdown,
   FactionOutpost,
   FactionYieldBreakdown
@@ -972,6 +973,31 @@ export const UNHAPPY_COMBAT_MULTIPLIER = 0.67;
 export const GOLD_PURCHASE_RESERVE = 100;
 export const BASE_EMPIRE_HAPPINESS = 9;
 export const LUXURY_HAPPINESS = 4;
+/** Production plan for state suppression of a faction node. */
+export const FACTION_SUPPRESSION_OPERATION_ID = "faction-suppression";
+export const FACTION_SUPPRESSION_PRODUCTION_BASE = 6;
+export const FACTION_SUPPRESSION_PRODUCTION_PER_TIER = 4;
+
+/** City-node key used by suppression production operations. */
+export function factionSuppressionNodeKey(node: FactionHq | FactionOutpost, isHq: boolean): FactionNodeKey {
+  return isHq ? "hq" : (`outpost:${node.burgId}` as FactionNodeKey);
+}
+
+/** Production cost of one administrative suppression cycle against a faction node. */
+export function factionSuppressionProductionCost(node: { tier?: number }): number {
+  const tier = node?.tier ?? 2;
+  return FACTION_SUPPRESSION_PRODUCTION_BASE + tier * FACTION_SUPPRESSION_PRODUCTION_PER_TIER;
+}
+
+/** A locally hosted faction node that a state can pressure through suppression. */
+export interface FactionSuppressionTarget {
+  faction: Faction;
+  node: FactionHq | FactionOutpost;
+  isHq: boolean;
+  burg: Burg;
+  nodeKey: FactionNodeKey;
+  score: number;
+}
 
 /** OpenCiv theme profile for the live map: Astral, Historical/Modern or Fantasy. */
 export function activeCivThemeId(): CivThemeId {
@@ -2579,6 +2605,12 @@ class LivingModel {
       // Environmental-trouble work order (Phase E): progress like a building.
       return 80;
     }
+    if (item.kind === "operation") {
+      if (item.id !== FACTION_SUPPRESSION_OPERATION_ID) return 1;
+      const target = this.resolveFactionSuppressionTarget(state, item);
+      const tier = target ? (target.isHq ? 2 : target.node.tier) : 2;
+      return factionSuppressionProductionCost({ tier });
+    }
     const cost =
       item.kind === "unit"
         ? isCivilianUnit(item.id)
@@ -2664,6 +2696,11 @@ class LivingModel {
       return;
     }
 
+    if (item.kind === "operation") {
+      this.completeSuppressionOperation(state, burg, bSim, item, living);
+      return;
+    }
+
     if (item.kind === "building" || item.kind === "wonder") {
       if (!bSim.civBuildings.includes(item.id)) bSim.civBuildings.push(item.id);
       syncCivFlagsFromBuildings(burg, bSim.civBuildings);
@@ -2707,6 +2744,110 @@ class LivingModel {
       return;
     }
     this.muster(state.i);
+  }
+
+  /** Administrative suppression pressure after a host-city operation finishes. */
+  private completeSuppressionOperation(
+    state: State,
+    burg: Burg,
+    _bSim: BurgSimState,
+    item: ProductionItem,
+    living: LivingWorldState
+  ): void {
+    if (item.id !== FACTION_SUPPRESSION_OPERATION_ID) return;
+    const target = this.resolveFactionSuppressionTarget(state, item);
+    if (!target) return;
+    this.applyFactionSuppressionPressure(state, target, living);
+  }
+
+  /** Resolve an operation/stale agenda target into its live faction node and host burg. */
+  private resolveFactionSuppressionTarget(
+    state: State,
+    item: { targetFactionId?: number; targetNodeKey?: string }
+  ): FactionSuppressionTarget | null {
+    const factionId = item.targetFactionId;
+    const faction = factionId !== undefined ? pack.factions?.[factionId] : undefined;
+    if (!faction?.i || faction.removed) return null;
+
+    const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
+    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) nodes.push({ node: faction.hq, isHq: true });
+    for (const outpost of faction.outposts ?? []) {
+      if (!outpost.pillaged) nodes.push({ node: outpost, isHq: false });
+    }
+
+    for (const { node, isHq } of nodes) {
+      if (item.targetNodeKey !== undefined && item.targetNodeKey !== factionSuppressionNodeKey(node, isHq)) continue;
+      const candidateBurg = node.burgId ? pack.burgs[node.burgId] : undefined;
+      if (!candidateBurg?.i || candidateBurg.removed || candidateBurg.state !== state.i) continue;
+      return {
+        faction,
+        node,
+        isHq,
+        burg: candidateBurg,
+        nodeKey: factionSuppressionNodeKey(node, isHq),
+        score: 0
+      };
+    }
+    return null;
+  }
+
+  /** Apply one administrative suppression effect when the target node is unguarded. */
+  private applyFactionSuppressionPressure(
+    state: State,
+    target: FactionSuppressionTarget,
+    living: LivingWorldState
+  ): void {
+    const { node, isHq, burg } = target;
+
+    // Guards must be dealt with first; a defending army pauses administrative pressure.
+    const hasGuard = (target.faction.military ?? []).some(
+      regiment =>
+        regiment.cell === node.cell &&
+        !armyIsEmpty(regiment) &&
+        !isCivilianUnit((regiment.type ?? "").toLowerCase())
+    );
+    if (hasGuard) return;
+
+    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+    const pSim = provinceId ? living.provinces?.[provinceId] : undefined;
+    const provinceOrder = pSim?.order ?? 70;
+    const influenceDamage = Math.max(1, Math.floor((provinceOrder - node.secrecy) / 20));
+
+    if ("influence" in node) {
+      node.influence = Math.max(0, node.influence - influenceDamage);
+    }
+
+    if (pSim) pSim.order = Math.min(100, pSim.order + 2);
+    const bSim = living.burgs[burg.i];
+    if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 1);
+  }
+
+  /** Hurry a city-node suppression operation without changing the gold reserve rule. */
+  hurryFactionSuppression(burgId: number): boolean {
+    const living = this.getState();
+    const burg = pack.burgs[burgId];
+    const bSim = living.burgs[burgId];
+    if (!burg?.i || burg.removed || !burg.state || !bSim?.productionQueue?.[0]) return false;
+
+    const item = bSim.productionQueue[0]!;
+    if (item.kind !== "operation" || item.id !== FACTION_SUPPRESSION_OPERATION_ID) return false;
+
+    const state = pack.states[burg.state];
+    if (!state?.i || state.removed) return false;
+    if (!this.resolveFactionSuppressionTarget(state, item)) return false;
+
+    const key = `${item.kind}:${item.id}`;
+    const remaining = Math.max(0, this.productionCost(state, item) - (bSim.productionProgress?.[key] ?? 0));
+    if (remaining <= 0) return false;
+
+    const price = hurryGoldCost(remaining, false, (bSim.civBuildings ?? []).includes("big_ben"));
+    if (Number(state.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
+
+    state.treasury = Math.round((Number(state.treasury ?? 0) - price) * 100) / 100;
+    if (bSim.productionProgress) delete bSim.productionProgress[key];
+    bSim.productionQueue.shift();
+    this.completeProductionItem(state, burg, bSim, item, living);
+    return true;
   }
 
   /** A wonder winner refunds 1 Gold per 1 Production invested by every rival. */
@@ -4394,6 +4535,105 @@ class LivingModel {
     return true;
   }
 
+  /** Queue one faction-suppression operation through a state city. */
+  startFactionSuppression(stateId: number, factionId: number): boolean {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    const sSim = living.states[stateId];
+    if (!state?.i || state.removed || !sSim) return false;
+    if (!this.isHostileToState(factionId, stateId)) return false;
+
+    const targets = this.eligibleFactionSuppressionTargets(stateId).filter(target => target.faction.i === factionId);
+    const target = targets[0];
+    if (!target) return false;
+
+    const bSim = living.burgs[target.burg.i];
+    if (!bSim?.isMajor) return false;
+
+    bSim.productionQueue ??= [];
+    bSim.productionProgress ??= {};
+    if (bSim.productionQueue.some(item => item.kind === "operation" && item.id === FACTION_SUPPRESSION_OPERATION_ID)) {
+      return false;
+    }
+
+    bSim.productionQueue.push({
+      kind: "operation",
+      id: FACTION_SUPPRESSION_OPERATION_ID,
+      targetFactionId: factionId,
+      targetNodeKey: target.nodeKey
+    });
+    sSim.agenda = {
+      kind: "suppress_faction",
+      label: `Suppressing ${target.faction.name} in ${target.burg.name ?? "a burg"}`,
+      targetFactionId: factionId,
+      targetBurgId: target.burg.i,
+      progress: 0,
+      required: 1
+    };
+
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${state.name} began suppressing ${target.faction.name} in ${target.burg.name ?? "a burg"}.`,
+      cell: target.burg.cell,
+      stateId,
+      burgId: target.burg.i
+    });
+    return true;
+  }
+
+  /** Whether a state is willing to suppress this faction as an in-world target. */
+  isHostileToState(factionId: number, stateId: number): boolean {
+    const faction = pack.factions?.[factionId];
+    return Boolean(faction?.i && !faction.removed && this.isFactionHostileToState(faction, stateId));
+  }
+
+  /** Active, locally hosted faction nodes eligible for administrative suppression by a state. */
+  eligibleFactionSuppressionTargets(stateId: number): FactionSuppressionTarget[] {
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed) return [];
+
+    const stateCell = state.center;
+    const statePoint = stateCell !== undefined ? pack.cells.p?.[stateCell] : undefined;
+    const targets: FactionSuppressionTarget[] = [];
+
+    for (const faction of Factions.active()) {
+      if (!this.isFactionHostileToState(faction, state.i)) continue;
+
+      const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
+      if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) nodes.push({ node: faction.hq, isHq: true });
+      for (const outpost of faction.outposts ?? []) {
+        if (!outpost.pillaged) nodes.push({ node: outpost, isHq: false });
+      }
+
+      for (const { node, isHq } of nodes) {
+        const burg = node.burgId ? pack.burgs[node.burgId] : undefined;
+        if (!burg?.i || burg.removed || burg.state !== state.i) continue;
+
+        const yields = node.sim?.cityYields;
+        const burgPoint = pack.cells.p?.[burg.cell];
+        const distance =
+          burgPoint && statePoint ? Math.hypot(burgPoint[0] - statePoint[0], burgPoint[1] - statePoint[1]) : 0;
+        const score =
+          (burg.capital ? 1000 : 0) +
+          ((yields?.gold ?? 0) + (yields?.production ?? 0) + (yields?.culture ?? 0)) * 10 +
+          ((node.sim?.citizens ?? 1) + ("influence" in node ? node.influence : node.secrecy)) -
+          distance * 0.1;
+
+        targets.push({
+          faction,
+          node,
+          isHq,
+          burg,
+          nodeKey: factionSuppressionNodeKey(node, isHq),
+          score
+        });
+      }
+    }
+
+    targets.sort((a, b) => b.score - a.score || a.burg.cell - b.burg.cell || a.faction.i - b.faction.i);
+    return targets;
+  }
+
   /** Gold-hurry the top production item in a Major Burg (GoldPurchase). */
   hurryProduction(burgId: number): boolean {
     const living = this.getState();
@@ -4701,6 +4941,15 @@ class LivingModel {
     if (faction.stateRelations?.[stateId] === "Enemy") return true;
     if (faction.allegiance === "hostile") return true;
     return false;
+  }
+
+  /** Broader suppression eligibility: hostile/clandestine allegiance or an explicit Enemy relation. */
+  private isFactionHostileToState(faction: Faction, stateId: number): boolean {
+    if (!stateId) return false;
+    if (faction.patronStateId === stateId && faction.allegiance === "state_arm") return false;
+    const relation = faction.stateRelations?.[stateId];
+    if (relation === "Ally" || relation === "Friendly") return false;
+    return faction.allegiance === "hostile" || faction.allegiance === "clandestine" || relation === "Enemy";
   }
 
   /** Is this faction at war with that faction (explicit Enemy relation)? */

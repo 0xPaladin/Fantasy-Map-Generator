@@ -18,7 +18,8 @@ export type AgendaKind =
   | "clear_lair"
   | "hire_adventurers"
   | "defend"
-  | "raid";
+  | "raid"
+  | "suppress_faction";
 
 /**
  * Diplomatic treaties (Phase D of the army integration). War and peace stay
@@ -166,6 +167,8 @@ export interface StateAgenda {
   kind: AgendaKind;
   label: string;
   targetStateId?: number;
+  targetFactionId?: number;
+  stallUntilTick?: number;
   targetProvinceId?: number;
   targetBurgId?: number;
   targetCell?: number;
@@ -829,8 +832,10 @@ export interface CivThemeProfile {
 }
 
 export interface ProductionItem {
-  kind: "unit" | "building" | "wonder" | "trouble";
+  kind: "unit" | "building" | "wonder" | "trouble" | "operation";
   id: string;
+  targetFactionId?: number;
+  targetNodeKey?: string;
 }
 
 export interface CellSimState {
