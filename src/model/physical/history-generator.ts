@@ -312,6 +312,7 @@ class ChronicleModel {
   private emitFigures(events: HistoryEvent[], founded: number[]): HistoricalFigure[] {
     const figures = Characters.ensureRegistry();
     for (const stateId of this.majorStates()) this.emitDynasty(stateId, founded[stateId], events);
+    this.emitFactionLeaders();
     for (const event of events) {
       if (event.type !== "war") continue;
       const patron = event.actors.find(ref => ref.kind === "state" && ref.id); // a state, not the wilds
@@ -370,6 +371,7 @@ class ChronicleModel {
         events
       );
     }
+    this.emitFactionLeaders();
     for (const event of events) {
       if (event.type !== "war") continue;
       const patron = event.actors.find(ref => ref.kind === "polity"); // id 0 is a real lineage: it was founded first
@@ -445,6 +447,26 @@ class ChronicleModel {
         );
         predecessor = figure;
       }
+    }
+  }
+
+  /** one leader per non-monster faction, so factions show up in the characters registry */
+  private emitFactionLeaders(): void {
+    for (const faction of pack.factions ?? []) {
+      if (!faction?.i || faction.removed) continue;
+      if (faction.type === "monster_nest") continue;
+      const id = Characters.nextId();
+      const seedKey = `figure:${id}`;
+      const culture = faction.culture ?? 0;
+      const figure = Characters.add({
+        name: Names.getCulture(culture),
+        culture,
+        birth: (faction.foundedYear ?? this.year) - rand(18, 40),
+        roles: [{ type: "ruler", target: { kind: "faction", id: faction.i }, from: faction.foundedYear ?? this.year }],
+        seedKey,
+        ...figureTraits(seedKey, culture)
+      });
+      faction.leaderId = figure.i;
     }
   }
 
