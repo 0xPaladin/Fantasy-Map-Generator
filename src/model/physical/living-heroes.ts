@@ -27,6 +27,7 @@ import type { HeroSheet } from "@/types/character";
 import type { Die } from "@/types/character-actions";
 import type { HistoricalFigure } from "@/types/history";
 import type {
+  DisciplineId,
   GuildState,
   HeroArchetypeId,
   HeroDoctrine,
@@ -58,7 +59,7 @@ export function ensureHeroSheet(figure: HistoricalFigure): HeroSheet {
       archetype,
       attributes: figure.skills ? attributesFromSkills(figure.skills) : { ...start.attributes },
       actions: figure.skills ? legacyActionsFromSkills(figure.skills) : { ...start.actions },
-      abilities: figure.disciplines?.length ? [...figure.disciplines] : [start.ability],
+      abilities: figure.disciplines?.length ? [...figure.disciplines] : [...figureArchetype(figure).disciplines],
       xp: figure.xp ?? 0,
       progression
     };
@@ -73,6 +74,7 @@ export function ensureHeroSheet(figure: HistoricalFigure): HeroSheet {
   hero.progression ??= {};
 
   figure.archetype ??= hero.archetype;
+  figure.disciplines ??= [...hero.abilities] as DisciplineId[];
   figure.progression ??= hero.progression;
   figure.xp ??= hero.xp;
   return hero;
@@ -133,6 +135,7 @@ export function figureLevel(xp = 0): number {
 /** Old saves receive no retroactive points: absent progression starts at the current level. */
 export function applyHeroLevels(figure: HistoricalFigure): boolean {
   const hero = ensureHeroSheet(figure);
+  hero.xp = figure.xp ?? hero.xp ?? 0;
   const progression = hero.progression!;
   const level = figureLevel(hero.xp ?? 0);
 
@@ -164,6 +167,11 @@ export function applyHeroLevels(figure: HistoricalFigure): boolean {
     const next = stepDie(hero.actions[action]);
     if (next !== hero.actions[action]) {
       hero.actions[action] = next;
+      gained = true;
+    }
+    figure.skills ??= { m: 0, w: 0, s: 0, c: 0 };
+    if (figure.skills[pool] < 5) {
+      figure.skills[pool] += 1;
       gained = true;
     }
   }
