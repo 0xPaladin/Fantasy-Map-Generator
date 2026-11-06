@@ -4696,6 +4696,96 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
   });
 });
 
+describe("Faction clear-trouble production clock (trouble conversion Phase 2)", () => {
+  beforeEach(() => {
+    buildStubPack();
+    // City loops need terrain columns or stepCities early-returns with empty yields
+    pack.cells.h = [0, 30, 30, 30, 30, 30];
+    pack.cells.biome = [0, 2, 2, 2, 2, 2];
+    pack.factions = [{ i: 0 } as Faction];
+  });
+
+  const caretaker = (category: "adventuring" | "religious" | "commercial" | "martial") =>
+    Factions.add({
+      name: `${category} caretakers`,
+      category,
+      type: category === "martial" ? "mercenary_company" : "adventurer_guild",
+      allegiance: "autonomous",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+    });
+
+  it("assigns a clear_trouble agenda sized in production and banks node production each season", () => {
+    const living = Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("adventuring");
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+    expect(faction.agenda?.targetProvinceId).toBe(1);
+    expect(faction.agenda?.required).toBe(60); // 40 + 20 x level 1
+    expect(faction.agenda?.progress).toBe(0);
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+    expect(faction.agenda?.progress ?? 0).toBeGreaterThan(0);
+    expect(living.provinces[1].trouble).not.toBeNull();
+  });
+
+  it("clears the hazard on completion with order and stability rewards", () => {
+    const living = Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("religious");
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+    faction.agenda!.progress = faction.agenda!.required - 1;
+
+    const orderBefore = living.provinces[1].order;
+    const stabilityBefore = living.provinces[1].stability;
+    Living.tick(1);
+
+    expect(living.provinces[1].trouble).toBeNull();
+    expect(living.provinces[1].order).toBeGreaterThanOrEqual(orderBefore + 7);
+    expect(living.provinces[1].stability).toBe(stabilityBefore + 1);
+    expect(faction.agenda).toBeNull();
+    expect(living.recentNews.some(n => n.kind === "trouble" && n.text.includes(faction.name))).toBe(true);
+  });
+
+  it("clears the agenda without progress when the trouble is gone", () => {
+    Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("commercial");
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+
+    Living.quellTrouble(1);
+    Living.tick(1);
+    expect(faction.agenda).toBeNull();
+  });
+
+  it("does not assign clear_trouble to martial factions or factions without a node in the province", () => {
+    Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const martial = caretaker("martial");
+    martial.hq.burgId = 1;
+
+    Living.tick(2);
+    expect(martial.agenda).toBeNull();
+
+    // Province 2 (Oakshire) has no troubled province node for a second faction
+    const far = Factions.add({
+      name: "far guild",
+      category: "adventuring",
+      type: "adventurer_guild",
+      allegiance: "autonomous",
+      hq: { cell: 5, burgId: 3, fortified: false, secrecy: 0, assets: [] }
+    });
+    Living.tick(1);
+    expect(far.agenda).toBeNull();
+  });
+});
+
 describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & Ascension)", () => {
   beforeEach(() => {
     buildStubPack();

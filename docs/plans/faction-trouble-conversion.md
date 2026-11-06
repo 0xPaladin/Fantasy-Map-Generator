@@ -1,6 +1,6 @@
 # Plan — Runtime Trouble→Faction Conversion: Trouble Shrinks, Dangerous Factions Spawn, Lairs Die
 
-**Status:** Phase 1 delivered; Phases 2–4 pending
+**Status:** Phases 1–2 delivered; Phases 3–4 pending
 **Goal:** Finish what PR #30 started. Trouble becomes only natural/environmental hazards; organizational pressure spawns as **dangerous factions** in `pack.factions`; lairs disappear as a separate system because the faction tick now owns raiding, clearing and ascension. One opponent engine: the faction tick.
 
 ---
@@ -67,6 +67,13 @@
 
 **Exit:** a faction clears a hazard by clock with a test; no `clear_hazard` string remains.
 
+### 4.1 Phase 2 delivery notes
+
+- `clear_hazard` → `clear_trouble` (`src/types/factions.ts`); no other `clear_hazard` string remains in `src/`.
+- `stepFactionClearTrouble()` in `living-generator.ts` runs at the top of the faction loop in `stepFactionAgendas()`: the banking branch (`progress += nodeSim.cityYields.production`) and the assignment branch (caretaker categories only, node must sit in a troubled province, highest level first) — a faction holds at most one agenda, so it never displaces an in-flight mobilization.
+- The node sim's yields are computed by `stepCities` earlier the same tick (drafted burg-resident nodes included), so the clock banks fresh production each season. `required = 40 + 20 × level` is snapshotted at assignment; completion applies the standard rewards (`+10` order, `+1` stability, news, chronicle `deed`).
+- Four tests: assignment sizing + per-season banking, completion rewards, stale-agenda cleanup, martial/no-node exclusion.
+
 ---
 
 ## 5. Phase 3 — Delete lairs; the faction tick raids and clears
@@ -97,7 +104,7 @@
 | Phase | Size | Exit |
 |---|---|---|
 | 1 — catalog prune + spawn split + delete trouble promotion | medium | ✅ done |
-| 2 — faction clear-trouble clock | small | clock test passes |
+| 2 — faction clear-trouble clock | small | ✅ done |
 | 3 — delete lairs, faction raid/clear tick | large | lair grep clean; raid tests pass |
 | 4 — docs + suite | small | suite green |
 

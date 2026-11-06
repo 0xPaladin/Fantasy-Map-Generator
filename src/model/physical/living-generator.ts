@@ -9440,12 +9440,102 @@ class LivingModel {
     this.stepLairs(living);
   }
 
-  /** Step faction agendas: patron severance and turf clashes (expansion is via Settlers in Phase 4) */
+  /** Faction node (HQ or outpost) sitting in a province, with its sim. */
+  private factionNodeInProvince(faction: import("@/types/factions").Faction, provinceId: number) {
+    const entries: { node: import("@/types/factions").FactionHq | import("@/types/factions").FactionOutpost; isHq: boolean }[] = [
+      { node: faction.hq, isHq: true },
+      ...(faction.outposts ?? []).map(outpost => ({ node: outpost, isHq: false }))
+    ];
+    for (const entry of entries) {
+      const nodeProvId =
+        (entry.node as import("@/types/factions").FactionHq).provinceId ??
+        (entry.node.burgId ? pack.cells.province?.[pack.burgs?.[entry.node.burgId]?.cell ?? 0] : undefined) ??
+        pack.cells.province?.[entry.node.cell];
+      if (nodeProvId === provinceId) return { ...entry, sim: ensureFactionNodeSim(entry.node, entry.isHq) };
+    }
+    return null;
+  }
+
+  /**
+   * Clear trouble as a production clock (faction-trouble conversion Phase 2):
+   * adventuring/religious/commercial factions bank their node's Production
+   * each season toward `40 + 20 × level` and clear the hazard on completion.
+   */
+  private stepFactionClearTrouble(faction: import("@/types/factions").Faction, living: LivingWorldState): void {
+    const agenda = faction.agenda;
+    if (agenda?.kind === "clear_trouble") {
+      const provinceId = agenda.targetProvinceId;
+      const pSim = provinceId !== undefined ? living.provinces[provinceId] : undefined;
+      if (provinceId === undefined || !pSim?.trouble) {
+        faction.agenda = null;
+        return;
+      }
+      const node = this.factionNodeInProvince(faction, provinceId);
+      if (!node) {
+        faction.agenda = null;
+        return;
+      }
+      agenda.progress += Math.max(0, node.sim.cityYields?.production ?? 0);
+      if (agenda.progress >= agenda.required) {
+        const troubleName = pSim.trouble.name;
+        const province = pack.provinces?.[provinceId];
+        pSim.trouble = null;
+        pSim.order = Math.min(100, pSim.order + 10);
+        pSim.stability += 1;
+        this.pushNews(living, {
+          kind: "trouble",
+          text: `${faction.name} cleared the ${troubleName} afflicting ${province?.name ?? "the province"}.`,
+          cell: province?.center ?? node.node.cell,
+          burgId: node.node.burgId
+        });
+        this.pushHistory(
+          "deed",
+          [{ kind: "state", id: province?.state ?? 0 }],
+          province?.center ?? node.node.cell,
+          `${faction.name} cleared the ${troubleName} afflicting ${province?.name ?? "the province"}.`
+        );
+        faction.agenda = null;
+      }
+      return;
+    }
+
+    // Assignment: only caretaker categories, only with a node in a troubled province.
+    if (agenda || !["adventuring", "religious", "commercial"].includes(faction.category)) return;
+    const nodes = [
+      { node: faction.hq, isHq: true },
+      ...(faction.outposts ?? []).map(outpost => ({ node: outpost, isHq: false }))
+    ];
+    let best: { provinceId: number; level: number } | null = null;
+    for (const entry of nodes) {
+      const nodeProvId =
+        (entry.node as import("@/types/factions").FactionHq).provinceId ??
+        (entry.node.burgId ? pack.cells.province?.[pack.burgs?.[entry.node.burgId]?.cell ?? 0] : undefined) ??
+        pack.cells.province?.[entry.node.cell];
+      if (!nodeProvId) continue;
+      const trouble = living.provinces[nodeProvId]?.trouble;
+      if (trouble && (!best || trouble.level > best.level)) best = { provinceId: nodeProvId, level: trouble.level };
+    }
+    if (best) {
+      const province = pack.provinces?.[best.provinceId];
+      const trouble = living.provinces[best.provinceId]!.trouble!;
+      faction.agenda = {
+        kind: "clear_trouble",
+        label: `Clearing ${trouble.name} in ${province?.name ?? "the province"}`,
+        targetProvinceId: best.provinceId,
+        progress: 0,
+        required: 40 + 20 * best.level
+      };
+    }
+  }
+
+  /** Step faction agendas: patron severance, clear-trouble production clocks and turf clashes (expansion is via Settlers in Phase 4) */
   stepFactionAgendas(living: LivingWorldState): void {
     const activeFactions = Factions.active();
     const rng = this.rng("faction:agendas", living.tick);
 
     for (const faction of activeFactions) {
+      this.stepFactionClearTrouble(faction, living);
+
       if (faction.allegiance === "state_arm" && faction.patronStateId) {
         const patronSim = living.states?.[faction.patronStateId];
         const patron = pack.states?.[faction.patronStateId];

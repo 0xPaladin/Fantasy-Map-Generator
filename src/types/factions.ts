@@ -25,7 +25,7 @@ export type FactionAgendaKind =
   | "muster_forces"
   | "raid_burg"
   | "subvert_burg"
-  | "clear_hazard"
+  | "clear_trouble"
   | "strike_rival"
   | "excavate_site"
   | "stage_coup";
