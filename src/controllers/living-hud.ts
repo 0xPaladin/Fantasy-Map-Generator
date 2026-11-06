@@ -18,7 +18,7 @@ import { resolveCivTechName } from "@/data/living-civ-themes";
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
 import { getPetitionDef } from "@/data/living-petitions";
 import { describeRelicBonuses, RELIC_CATALOG, reserveRelics, vaultHasRoom, vaultRelics } from "@/data/living-relics";
-import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import {
   excavationMissionTags,
   lairMissionTags,
@@ -1501,10 +1501,6 @@ function renderStateCard(stateId: number): string {
   const hasTroubled = (pack.provinces ?? []).some(
     p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.trouble
   );
-  const hasPromotableTrouble = (pack.provinces ?? []).some(p => {
-    const t = p?.i && !p.removed && p.state === stateId ? living.provinces?.[p.i]?.trouble : undefined;
-    return Boolean(t && isTroubleStatePromotable(t.id));
-  });
   const hasLairs = (pack.provinces ?? []).some(
     p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.lair
   );
@@ -1554,7 +1550,6 @@ function renderStateCard(stateId: number): string {
              <button type="button" data-god="smite" data-state="${stateId}">Smite Ruler</button>
              <button type="button" data-god="war" data-state="${stateId}">Force War</button>
              ${hasTroubled ? `<button type="button" data-god="resolve-state-trouble" data-state="${stateId}">Resolve Trouble</button>` : ""}
-             ${hasPromotableTrouble ? `<button type="button" data-god="promote-state-trouble" data-state="${stateId}">Promote to State</button>` : ""}
              ${hasLairs ? `<button type="button" data-god="assault-state-lair" data-state="${stateId}">Assault Lair</button>` : ""}
              ${hasLairs ? `<button type="button" data-god="delve-state-lair" data-state="${stateId}">Send Adventurers</button>` : ""}
              ${hasAscendableLair ? `<button type="button" data-god="ascend-state-lair" data-state="${stateId}">Ascend Lair</button>` : ""}
@@ -2164,7 +2159,6 @@ function renderBurgCard(burgId: number): string {
   const pSim = provId ? living.provinces?.[provId] : undefined;
   const trouble = pSim?.trouble;
   const tDef = trouble ? getTroubleDef(trouble.id) : undefined;
-  const troublePromotable = Boolean(trouble && isTroubleStatePromotable(trouble.id));
   const lair = pSim?.lair;
   const lairDef = lair ? getLairDef(lair.id) : undefined;
   const lairCapable = Boolean(lair && isLairStateCapable(lair.id));
@@ -2193,7 +2187,7 @@ function renderBurgCard(burgId: number): string {
             <div class="livingMuted">Order ${Math.round(pSim.order)}% · Stability ${pSim.stability} · Dev ${pSim.development}</div>
             ${
               trouble && tDef
-                ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme}) ${troublePromotable ? `<span class="livingBadge" style="background:#8b2635">${escapeHtml(tDef.stateForm ?? "State-Capable")}</span>` : ""}</div>
+                ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme})</div>
                    <div class="livingMuted">Save: ${SAVE_KIND_LABELS[tDef.save]} · Specialist: ${UNIT_ROLE_LABELS[tDef.requiredRole]}</div>`
                 : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
             }
@@ -2220,8 +2214,7 @@ function renderBurgCard(burgId: number): string {
              ${
                provId && trouble
                  ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>
-                    ${stateId ? `<button type="button" data-god="resolve-trouble" data-state="${stateId}" data-province="${provId}">Resolve Trouble</button>` : ""}
-                    ${troublePromotable ? `<button type="button" data-god="promote-trouble" data-province="${provId}" data-burg="${burgId}">Promote to State</button>` : ""}`
+                    ${stateId ? `<button type="button" data-god="resolve-trouble" data-state="${stateId}" data-province="${provId}">Resolve Trouble</button>` : ""}`
                  : provId && !lair
                    ? `<button type="button" data-god="spawn-trouble" data-province="${provId}">Spawn Trouble</button>`
                    : ""
@@ -2549,34 +2542,6 @@ function runIntervention(button: HTMLElement): void {
       } else {
         ok = false;
         message = "No active trouble in the state.";
-      }
-      break;
-    }
-    case "promote-trouble": {
-      const newStateId = Living.promoteTroubleToState(provId, burgId || undefined);
-      ok = newStateId !== null;
-      const newState = newStateId ? pack.states[newStateId] : undefined;
-      message = ok
-        ? `Trouble promoted to sovereign state: ${newState?.fullName ?? newState?.name ?? "New Realm"}!`
-        : "This trouble cannot promote to a state.";
-      break;
-    }
-    case "promote-state-trouble": {
-      const living = Living.getState();
-      const prov = (pack.provinces ?? []).find(p => {
-        const t = p?.i && !p.removed && p.state === stateId ? living.provinces?.[p.i]?.trouble : undefined;
-        return Boolean(t && isTroubleStatePromotable(t.id));
-      });
-      if (prov) {
-        const newStateId = Living.promoteTroubleToState(prov.i);
-        ok = newStateId !== null;
-        const newState = newStateId ? pack.states[newStateId] : undefined;
-        message = ok
-          ? `Trouble in ${prov.name} proclaimed ${newState?.fullName ?? newState?.name ?? "a new state"}!`
-          : `Trouble in ${prov.name} could not form a state.`;
-      } else {
-        ok = false;
-        message = "No promotable trouble in the state.";
       }
       break;
     }

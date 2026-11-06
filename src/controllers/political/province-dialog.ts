@@ -5,7 +5,7 @@ import { poiCapacityType } from "@/data/tiers";
 import { valueModifier } from "@/data/saves-helpers";
 import { civBuildingCapacity } from "@/data/living-civ-buildings";
 import { isLairStateCapable } from "@/data/living-lairs";
-import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import type { Province } from "@/model/political/provinces-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { classifyGood, Living, regionTierFromPop } from "@/model/physical/living-generator";
@@ -320,12 +320,10 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
   let troubleHtml = "";
   if (pSim?.trouble) {
     const tDef = getTroubleDef(pSim.trouble.id);
-    const isPromotable = isTroubleStatePromotable(pSim.trouble.id);
     const troubleName = pSim.trouble.name || tDef?.name || pSim.trouble.id;
     troubleHtml = `<span>
       <strong>${escapeHtml(troubleName)}</strong>
       <span style="font-size:0.88em; color:#666;">(Lv ${pSim.trouble.level}, ${escapeHtml(pSim.trouble.theme)})</span>
-      ${isPromotable ? '<span class="provBadge" style="background:#8b2635">State-Capable</span>' : ""}
       <button type="button" class="icon-target pointer" data-zoom-cell="${pSim.trouble.cell}" data-tip="${t("Zoom to trouble")}" style="background:none; border:none; padding:0; cursor:pointer; font-size:1.05em; vertical-align:middle;"></button>
       <span style="font-size:0.85em; color:#666; margin-left:0.3em;">(${tDef ? SAVE_KIND_LABELS[tDef.save] : ""} · ${tDef ? UNIT_ROLE_LABELS[tDef.requiredRole] : ""} · ${pSim.trouble.seasonsUnchecked ?? 0}s unchecked)</span>
     </span>`;

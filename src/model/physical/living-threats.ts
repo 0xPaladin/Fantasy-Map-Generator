@@ -21,13 +21,19 @@ import {
   pickLairForTrouble
 } from "@/data/living-lairs";
 import {
+  BURG_FACTION_IDS,
   BURG_TROUBLE_IDS,
   getTroubleDef,
-  isTroubleStatePromotable,
+  getTroubleFactionType,
+  RESOURCE_FACTION_IDS,
   RESOURCE_TROUBLE_IDS,
+  RUIN_FACTION_IDS,
   RUIN_TROUBLE_IDS,
+  TROUBLE_CATALOG,
+  TROUBLE_TO_LAIR,
   troubleUnitMatchMultiplier
 } from "@/data/living-troubles";
+import { getFactionArchetype } from "@/data/factions-catalog";
 import { fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
@@ -450,11 +456,22 @@ export function spawnTrouble(
     finalTheme = rng.choice(candidates) ?? "burg";
   }
 
+  // Spawn split: hazard trouble stays a provincial affliction; organizational
+  // trouble takes root as a dangerous faction instead. An explicit ID is
+  // honored: catalog IDs are hazards, anything else is a faction.
+  const spawnFaction = troubleId
+    ? !TROUBLE_CATALOG[troubleId]
+    : rng.next() < (finalTheme === "ruin" ? 0.6 : finalTheme === "burg" ? 0.55 : 0.4);
+  if (spawnFaction) {
+    spawnDangerousFaction(provinceId, troubleId, finalTheme, level);
+    return null;
+  }
+
   let finalTroubleId = troubleId;
   if (!finalTroubleId) {
     const table =
       finalTheme === "burg" ? BURG_TROUBLE_IDS : finalTheme === "ruin" ? RUIN_TROUBLE_IDS : RESOURCE_TROUBLE_IDS;
-    finalTroubleId = rng.choice(table) ?? "monsters";
+    finalTroubleId = rng.choice(table) ?? "flooding";
   }
 
   const finalLevel = minmax(level ?? rng.d(4) + 1, 1, 10);
@@ -495,6 +512,174 @@ export function spawnTrouble(
   });
 
   return pSim.trouble ?? null;
+}
+
+/**
+ * Spawn a dangerous faction from the trouble trigger: an organizational
+ * trouble that took root as a first-class entry in `pack.factions` instead of
+ * a provincial affliction. HQ anchors at the province's capital burg, then any
+ * burg, then a danger marker, then a wilderness cell; military comes from the
+ * matched lair template scaled by level.
+ */
+export function spawnDangerousFaction(
+  provinceId: number,
+  troubleId?: string,
+  theme?: TroubleTheme,
+  level?: number
+): Faction | null {
+  const province = pack.provinces?.[provinceId];
+  if (!province?.i || province.removed) return null;
+  const host = getHost();
+  const living = host.getState();
+  const pSim = living.provinces[provinceId];
+  if (!pSim) return null;
+
+  const rng = getRng("trouble:spawn-faction", provinceId, living.tick);
+  const finalTheme = theme ?? (rng.next() > 0.5 ? "burg" : "ruin");
+
+  let factionType: string;
+  if (troubleId) {
+    factionType = getTroubleFactionType(troubleId);
+  } else {
+    const table =
+      finalTheme === "burg"
+        ? BURG_FACTION_IDS
+        : finalTheme === "ruin"
+          ? RUIN_FACTION_IDS
+          : RESOURCE_FACTION_IDS;
+    factionType = rng.choice(table) ?? "brigand_raiders";
+  }
+  const arch = getFactionArchetype(factionType);
+  if (!arch) return null;
+
+  const finalLevel = minmax(level ?? rng.d(4) + 1, 1, 10);
+  const lairDef = getLairDef(TROUBLE_TO_LAIR[factionType] ?? TROUBLE_TO_LAIR[troubleId ?? ""] ?? "aspiring_warlord");
+  const scale = Math.max(1, Math.min(2, Math.round(finalLevel / 5)));
+  const templates = lairDef.defenderUnits.map(t => ({ ...t, count: Math.max(1, Math.round(t.count * scale)) }));
+  const unitTypes = Military.getUnitTypes();
+  const armyUnits = instantiateLairUnits(templates, unitTypes);
+  const u: Record<string, number> = {};
+  for (const unit of armyUnits) u[unit.type] = (u[unit.type] ?? 0) + unit.count;
+
+  // HQ: capital burg, then any burg in the province, then a danger marker, then wilderness.
+  const major =
+    pack.burgs.find(
+      b =>
+        b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
+    ) ??
+    pack.burgs.find(
+      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId
+    );
+  const marker = (pack.markers ?? []).find(
+    m => !m.hidden && m.cell && pack.cells.province?.[m.cell] === provinceId && isDangerMarker(m.type)
+  );
+  const cell = major?.cell ?? marker?.cell ?? province.center ?? pack.states[province.state]?.center ?? 0;
+  const [x, y] = pack.cells.p?.[cell] ?? [0, 0];
+
+  const culture = pack.cells.culture?.[cell] ?? pack.states[province.state]?.culture ?? 1;
+  const year = options?.map?.lore?.calendar?.year ?? 1000;
+  const researchQueue = arch.desiredTechs.filter(t => t !== "pottery" && t !== "mining");
+
+  const faction = Factions.add({
+    name: arch.name,
+    category: arch.category,
+    type: arch.type,
+    allegiance: arch.defaultAllegiance,
+    color: undefined,
+    icon: arch.markerIcon,
+    culture,
+    foundedYear: year,
+    alignment: arch.defaultAlignment,
+    values: [...arch.defaultValues],
+    expansionism: 1.0,
+    expansionScope: arch.defaultExpansionScope,
+    sovereignAmbition: arch.sovereignAmbition,
+    stateForm: arch.stateForm,
+    stateRosterId: arch.stateRosterId,
+    hq: {
+      cell,
+      burgId: major?.i,
+      markerId: marker?.i,
+      provinceId,
+      maritime: lairDef.maritime,
+      fortified: lairDef.fortified,
+      secrecy: arch.defaultAllegiance === "clandestine" ? 50 : 0,
+      assets: []
+    },
+    outposts: [],
+    currentTechId: researchQueue[0] ?? null,
+    researchQueue,
+    researchedTechs: ["pottery", "mining"],
+    treasury: 150,
+    influence: 30,
+    military: [
+      {
+        i: 1,
+        name: `${arch.name} Garrison`,
+        a: armyUnits.reduce((sum, unit) => sum + unit.count, 0),
+        cell,
+        x,
+        y,
+        bx: x,
+        by: y,
+        u,
+        n: lairDef.maritime ? 1 : 0,
+        state: 0,
+        icon: arch.markerIcon
+      }
+    ],
+    raidThreshold: lairDef.raidThreshold,
+    stateRelations: province.state ? { [province.state]: "Enemy" } : {},
+    factionRelations: {},
+    seasonsActive: 0
+  });
+
+  pushNews(living, {
+    kind: "faction",
+    text: `${faction.name} has taken root in ${province.name}! (${finalTheme} threat, level ${finalLevel})`,
+    cell,
+    stateId: province.state,
+    burgId: major?.i
+  });
+  host.pushHistory?.(
+    "deed",
+    [{ kind: "state", id: province.state ?? 0 }],
+    cell,
+    `${faction.name} arose in ${province.name}.`
+  );
+
+  return faction;
+}
+
+/**
+ * One-time save migration (faction-trouble conversion Phase 1): legacy
+ * organizational troubles and lairs become dangerous factions. Hazards pass
+ * through untouched. Idempotent: converted fields are cleared.
+ */
+export function migrateLegacyThreats(living: LivingWorldState): void {
+  for (const province of pack.provinces ?? []) {
+    if (!province?.i || province.removed) continue;
+    const pSim = living.provinces[province.i];
+    if (!pSim) continue;
+
+    if (pSim.trouble && !TROUBLE_CATALOG[pSim.trouble.id]) {
+      const trouble = pSim.trouble;
+      pSim.trouble = null;
+      spawnDangerousFaction(province.i, trouble.id, trouble.theme, trouble.level);
+    }
+    if (pSim.lair) {
+      const lair = pSim.lair;
+      pSim.lair = null;
+      spawnDangerousFaction(province.i, lair.id, lair.theme, lair.level);
+    }
+  }
+  if (living.activeLairs) {
+    const lairs = Object.values(living.activeLairs);
+    living.activeLairs = {};
+    for (const lair of lairs) {
+      if (lair.provinceId) spawnDangerousFaction(lair.provinceId, lair.id, lair.theme, lair.level);
+    }
+  }
 }
 
 export function quellTrouble(provinceId: number): boolean {
@@ -834,38 +1019,6 @@ export function smiteLair(provinceId: number): boolean {
   return true;
 }
 
-export function promoteTroubleToState(provinceId: number, burgId?: number): number | null {
-  const province = pack.provinces?.[provinceId];
-  if (!province?.i || province.removed) return null;
-  const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces[provinceId];
-  const trouble = pSim?.trouble;
-  if (!trouble || !isTroubleStatePromotable(trouble.id)) return null;
-
-  const tDef = getTroubleDef(trouble.id);
-  const lairDef = getLairDef(tDef.stateLairId ?? "aspiring_warlord");
-  const unitTypes = Military.getUnitTypes();
-  const scale = Math.max(1, Math.min(2, Math.round(trouble.level / 5)));
-  const templates = lairDef.defenderUnits.map(t => ({ ...t, count: Math.max(1, Math.round(t.count * scale)) }));
-  const units = instantiateLairUnits(templates, unitTypes);
-  const originCell = trouble.cell || province.center || pack.states[province.state]?.center || 0;
-
-  return spawnEmergentState({
-    province,
-    pSim,
-    living,
-    originKind: "trouble",
-    originName: trouble.name,
-    originCell,
-    requestedBurgId: burgId ?? trouble.burgId,
-    rosterId: lairDef.stateRosterId,
-    stateForm: tDef.stateForm ?? lairDef.stateForm,
-    alignment: lairDef.defaultAlignment,
-    units
-  });
-}
-
 export function ascendFactionToState(factionId: number, targetBurgId?: number): number | null {
   const faction = pack.factions?.[factionId];
   if (!faction || faction.removed) return null;
@@ -1176,16 +1329,6 @@ export function resolveTrouble(stateId: number, provinceId: number): boolean {
       cell,
       stateId
     });
-
-    if (
-      pSim.trouble &&
-      isTroubleStatePromotable(pSim.trouble.id) &&
-      pSim.trouble.level >= 6 &&
-      pSim.order <= 30 &&
-      (roll === 1 || total <= dc - 10)
-    ) {
-      promoteTroubleToState(provinceId);
-    }
   }
 
   return success;
@@ -1532,13 +1675,14 @@ export const LivingThreats = {
   removeLairMarker,
   clearLair,
   spawnTrouble,
+  spawnDangerousFaction,
+  migrateLegacyThreats,
   quellTrouble,
   assaultLair,
   sendAdventurersToLair,
   metastasizeTroubleToLair,
   spawnLair,
   smiteLair,
-  promoteTroubleToState,
   ascendFactionToState,
   ascendLairToState,
   spawnRemnantFaction,

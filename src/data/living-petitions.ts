@@ -5,7 +5,6 @@ export type PetitionAnchorKind = "trouble" | "lair" | "unrest" | "state" | "curs
 /** World outcomes a petition choice can trigger; the generator applies them to the popup's anchor */
 export type PetitionEffect =
   | { kind: "quellTrouble" }
-  | { kind: "promoteTrouble" }
   | { kind: "purgeLair" }
   | { kind: "pacifyBurg" }
   | { kind: "unrest"; amount: number }
@@ -26,8 +25,6 @@ export interface PetitionChoice {
 export interface PetitionDef {
   id: string;
   anchor: PetitionAnchorKind;
-  /** coup petitions only anchor to state-promotable troubles */
-  promotableOnly?: boolean;
   /** {burg} {province} {state} {lair} {ruler} {trouble} {relic} placeholders */
   title: string;
   text: string;
@@ -57,29 +54,6 @@ export const PETITION_CATALOG: Record<string, PetitionDef> = {
       }
     ]
   },
-  pretenders_bribe: {
-    id: "pretenders_bribe",
-    anchor: "trouble",
-    promotableOnly: true,
-    title: "The Pretender's Bribe",
-    text: "An exiled lord in {province} seeks Guild recognition to stage a coup against {state}.",
-    choices: [
-      {
-        label: "Back the Coup",
-        tooltip: "-50 gold, +10 renown: the trouble rises into a Guild-allied state",
-        gold: -50,
-        renown: 10,
-        effects: [{ kind: "promoteTrouble" }]
-      },
-      {
-        label: "Betray to the Crown",
-        tooltip: "+50 gold, +5 renown: the coup collapses and the trouble is quelled",
-        gold: 50,
-        renown: 5,
-        effects: [{ kind: "quellTrouble" }]
-      }
-    ]
-  },
   harsh_levy: {
     id: "harsh_levy",
     anchor: "trouble",
@@ -95,6 +69,27 @@ export const PETITION_CATALOG: Record<string, PetitionDef> = {
       },
       {
         label: "Let Them Squabble",
+        tooltip: "+10 gold, -4 renown: the Guild pockets the escrow and walks away",
+        gold: 10,
+        renown: -4
+      }
+    ]
+  },
+  flood_relief: {
+    id: "flood_relief",
+    anchor: "trouble",
+    title: "The Flood Relief",
+    text: "Waters have risen in {province}; {state} asks the Guild to fund dikes and grain stores before the winter.",
+    choices: [
+      {
+        label: "Fund the Relief",
+        tooltip: "-25 gold, +8 renown: Guild coin builds dikes and the trouble is quelled",
+        gold: -25,
+        renown: 8,
+        effects: [{ kind: "quellTrouble" }]
+      },
+      {
+        label: "Let Them Fend for Themselves",
         tooltip: "+10 gold, -4 renown: the Guild pockets the escrow and walks away",
         gold: 10,
         renown: -4

@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { LAIR_CATALOG, STATE_CAPABLE_LAIR_IDS } from "./living-lairs";
+import { LAIR_CATALOG } from "./living-lairs";
+import { getFactionArchetype } from "./factions-catalog";
 import {
+  BURG_FACTION_IDS,
   BURG_TROUBLE_IDS,
   getTroubleDef,
-  isTroubleStatePromotable,
+  getTroubleFactionType,
+  ORGANIZATIONAL_TROUBLE_IDS,
+  RESOURCE_FACTION_IDS,
   RESOURCE_TROUBLE_IDS,
+  RUIN_FACTION_IDS,
   RUIN_TROUBLE_IDS,
-  STATE_PROMOTABLE_TROUBLE_IDS,
   TROUBLE_CATALOG,
+  TROUBLE_TO_FACTION,
+  TROUBLE_TO_LAIR,
   troubleUnitMatchMultiplier,
   UNIT_ROLE_POOLS
 } from "./living-troubles";
 
-describe("living-troubles (Slice 1: Trouble Catalog, State Promotion Profiles, and Unit Roles)", () => {
-  it("defines all 46 distinct Trouble archetypes across thematic tables", () => {
+describe("living-troubles (hazard catalog, retired organizational map, unit roles)", () => {
+  it("defines exactly the 20 natural/environmental hazard archetypes", () => {
     const keys = Object.keys(TROUBLE_CATALOG);
-    expect(keys).toHaveLength(46);
+    expect(keys).toHaveLength(20);
 
     for (const id of keys) {
       const def = TROUBLE_CATALOG[id];
@@ -28,50 +34,44 @@ describe("living-troubles (Slice 1: Trouble Catalog, State Promotion Profiles, a
       expect(["guardsmen", "military", "merchant", "sage", "prophet", "magistrate"]).toContain(def.requiredRole);
     }
 
-    expect(BURG_TROUBLE_IDS).toHaveLength(20);
-    expect(RUIN_TROUBLE_IDS).toHaveLength(20);
-    expect(RESOURCE_TROUBLE_IDS).toHaveLength(20);
-  });
-
-  it("classifies exactly 19 state-promotable Troubles and 27 non-promotable hazards", () => {
-    expect(STATE_PROMOTABLE_TROUBLE_IDS).toHaveLength(19);
-    const promotableSet = new Set(STATE_PROMOTABLE_TROUBLE_IDS);
-    const capableLairsSet = new Set(STATE_CAPABLE_LAIR_IDS);
-
-    for (const [id, def] of Object.entries(TROUBLE_CATALOG)) {
-      if (promotableSet.has(id)) {
-        expect(def.canPromoteToState).toBe(true);
-        expect(isTroubleStatePromotable(id)).toBe(true);
-        expect(def.stateForm).toBeTruthy();
-        expect(def.stateLairId, `Promotable trouble ${id} has stateLairId`).toBeDefined();
-        expect(
-          capableLairsSet.has(def.stateLairId!),
-          `Trouble ${id} stateLairId ${def.stateLairId} is a state-capable lair`
-        ).toBe(true);
-        expect(LAIR_CATALOG[def.stateLairId!], `Trouble ${id} paired lair exists`).toBeDefined();
-      } else {
-        expect(def.canPromoteToState).toBe(false);
-        expect(isTroubleStatePromotable(id)).toBe(false);
-        expect(def.stateLairId).toBeUndefined();
-      }
+    for (const table of [BURG_TROUBLE_IDS, RUIN_TROUBLE_IDS, RESOURCE_TROUBLE_IDS]) {
+      expect(table.length).toBeGreaterThan(0);
+      for (const id of table) expect(TROUBLE_CATALOG[id], `spawn table id ${id} is a hazard`).toBeDefined();
     }
   });
 
+  it("maps all 26 retired organizational troubles to faction archetypes and lair templates", () => {
+    expect(ORGANIZATIONAL_TROUBLE_IDS).toHaveLength(26);
+    for (const id of ORGANIZATIONAL_TROUBLE_IDS) {
+      expect(TROUBLE_CATALOG[id]).toBeUndefined();
+      const factionType = getTroubleFactionType(id);
+      expect(getFactionArchetype(factionType), `${id} resolves to a faction archetype`).toBeDefined();
+      expect(LAIR_CATALOG[TROUBLE_TO_LAIR[id]!], `template lair for ${id}`).toBeDefined();
+    }
+    expect(getTroubleFactionType("monsters")).toBe("monster_nest");
+    expect(getTroubleFactionType("murderous_heirs")).toBe("conquering_heirs");
+    expect(TROUBLE_TO_FACTION.monsters).toBe("monster_nest");
+  });
+
+  it("covers every organizational trouble in the dangerous-faction spawn pools", () => {
+    const pool = new Set([...BURG_FACTION_IDS, ...RUIN_FACTION_IDS, ...RESOURCE_FACTION_IDS]);
+    for (const id of ORGANIZATIONAL_TROUBLE_IDS) expect(pool.has(id)).toBe(true);
+  });
+
   it("retrieves trouble definitions with fallback via getTroubleDef", () => {
-    const demagogue = getTroubleDef("demagogue");
-    expect(demagogue.id).toBe("demagogue");
-    expect(demagogue.canPromoteToState).toBe(true);
-    expect(demagogue.stateForm).toBe("Revolutionary Tribune");
+    const flooding = getTroubleDef("flooding");
+    expect(flooding.id).toBe("flooding");
+    expect(flooding.name).toBeTruthy();
 
     const fallback = getTroubleDef("non_existent_trouble");
-    expect(fallback).toBe(TROUBLE_CATALOG.monsters);
+    expect(fallback).toBe(TROUBLE_CATALOG.flooding);
   });
 
   it("computes troubleUnitMatchMultiplier correctly based on role and pool match", () => {
-    const def = getTroubleDef("riotous_thugs"); // pool: m, requiredRole: guardsmen
-    expect(troubleUnitMatchMultiplier(def, "guardsmen")).toBe(1); // exact role
-    expect(troubleUnitMatchMultiplier(def, "military")).toBe(2); // same pool (m), different role
-    expect(troubleUnitMatchMultiplier(def, "sage")).toBe(3); // wrong pool (w)
+    const def = getTroubleDef("flooding"); // pool: w, requiredRole: merchant
+    expect(troubleUnitMatchMultiplier(def, "merchant")).toBe(1); // exact role
+    expect(troubleUnitMatchMultiplier(def, "sage")).toBe(2); // same pool (w), different role
+    expect(troubleUnitMatchMultiplier(def, "military")).toBe(3); // wrong pool (m)
     expect(troubleUnitMatchMultiplier(def, undefined)).toBe(3); // no unit
   });
 

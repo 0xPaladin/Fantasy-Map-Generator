@@ -1,6 +1,6 @@
 // Trouble and Lair layer renderer: visual markers and info popups for active provincial threats
 import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
-import { getTroubleDef, isTroubleStatePromotable, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import { MapEntities } from "@/model/map-entities";
 import { Living } from "@/model/physical/living-generator";
 import type { Burg } from "@/model/political/burgs-generator";
@@ -185,7 +185,6 @@ export function getTroubleOrLairFromElement(element: Element | null): TroubleInf
         const trouble = pSim.trouble;
         const tDef = getTroubleDef(trouble.id);
         const burg = trouble.burgId ? pack.burgs?.[trouble.burgId] : undefined;
-        const promotable = isTroubleStatePromotable(trouble.id);
 
         const name = `${trouble.name} (Trouble Lv ${trouble.level})`;
         const tip = `${trouble.name} — Level ${trouble.level} ${trouble.theme} trouble in ${province.name}`;
@@ -196,10 +195,7 @@ export function getTroubleOrLairFromElement(element: Element | null): TroubleInf
           `<p><strong>Seasons Unchecked:</strong> ${trouble.seasonsUnchecked ?? 0}</p>`,
           `<p><strong>Required Counter:</strong> ${escapeHtml(UNIT_ROLE_LABELS[trouble.requiredRole] ?? trouble.requiredRole)} (${trouble.pool.toUpperCase()} Pool)</p>`,
           `<p><strong>Save / Harm:</strong> ${escapeHtml(SAVE_KIND_LABELS[trouble.save] ?? trouble.save)}</p>`,
-          tDef?.description ? `<p style="margin-top: 6px; font-style: italic;">${escapeHtml(tDef.description)}</p>` : "",
-          promotable
-            ? `<p style="margin-top: 6px; color: #8b2635; font-weight: bold;">⚠️ State-Capable: May rise as ${escapeHtml(tDef?.stateForm ?? "a sovereign realm")}</p>`
-            : ""
+          tDef?.description ? `<p style="margin-top: 6px; font-style: italic;">${escapeHtml(tDef.description)}</p>` : ""
         ].filter(Boolean).join("");
 
         return {

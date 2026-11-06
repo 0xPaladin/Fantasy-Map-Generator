@@ -96,7 +96,6 @@ const mocks = vi.hoisted(() => {
     spawnTrouble: vi.fn(() => ({ id: "monsters", level: 5 })),
     quellTrouble: vi.fn(() => true),
     resolveTrouble: vi.fn(() => true),
-    promoteTroubleToState: vi.fn(() => 2),
     spawnLair: vi.fn(() => ({ id: "bandit_camp", name: "Bandit Camp", level: 6 })),
     smiteLair: vi.fn(() => true),
     assaultLair: vi.fn(() => true),
@@ -912,10 +911,13 @@ describe("LivingHud", () => {
         stability: 3,
         development: 2,
         trouble: {
-          id: "demagogue",
-          name: "Zealous Demagogue",
+          id: "flooding",
+          name: "Seasonal Flooding",
           level: 4,
           theme: "burg",
+          pool: "w",
+          save: "poverty",
+          requiredRole: "merchant",
           burgId: 1,
           seasonsUnchecked: 2
         },
@@ -948,7 +950,7 @@ describe("LivingHud", () => {
     provinceChip?.click();
     expect(inspector?.textContent).toContain("Public order");
     expect(inspector?.textContent).toContain("82%");
-    expect(inspector?.textContent).toContain("Zealous Demagogue");
+    expect(inspector?.textContent).toContain("Seasonal Flooding");
     expect(inspector?.textContent).toContain("Forest Hideout");
     expect(inspector?.textContent).toContain("4 citizens");
     expect(inspector?.querySelector('[data-open="province"]')).toBeTruthy();
@@ -1040,7 +1042,7 @@ describe("LivingHud", () => {
     expect(document.getElementById("livingWorldHud")).toBeTruthy();
   });
 
-  it("shows Promote to State button and badge only for state-promotable troubles", () => {
+  it("never shows a Promote to State button for hazard trouble", () => {
     mocks.state.provinces = {
       1: {
         provinceId: 1,
@@ -1048,13 +1050,13 @@ describe("LivingHud", () => {
         stability: 1,
         development: 0,
         trouble: {
-          id: "demagogue",
-          name: "Zealous Demagogue",
+          id: "flooding",
+          name: "Seasonal Flooding",
           level: 7,
           theme: "burg",
-          pool: "s",
-          save: "uprising",
-          requiredRole: "prophet",
+          pool: "w",
+          save: "poverty",
+          requiredRole: "merchant",
           seasonsUnchecked: 3,
           cell: 1
         }
@@ -1067,14 +1069,10 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const inspector = document.getElementById("livingInspector");
-    expect(inspector?.textContent).toContain("Revolutionary Tribune");
+    expect(inspector?.textContent).toContain("Seasonal Flooding");
+    expect(inspector?.querySelector('[data-god="promote-trouble"]')).toBeNull();
 
-    const promoteBtn = inspector?.querySelector<HTMLElement>('[data-god="promote-trouble"]');
-    expect(promoteBtn).toBeTruthy();
-    promoteBtn?.click();
-    expect(Living.promoteTroubleToState).toHaveBeenCalledWith(1, 1);
-
-    // Non-promotable trouble omits the Promote to State button
+    // Hazards never show a Promote to State button
     mocks.state.provinces = {
       1: {
         provinceId: 1,
@@ -1755,13 +1753,13 @@ describe("LivingHud", () => {
         id: 4,
         kind: "guild_petition",
         cell: 1,
-        title: "The Pretender's Bribe",
-        subtitle: "An exiled lord seeks Guild recognition.",
+        title: "The Harsh Levy",
+        subtitle: "Aeloria begs the Guild to put down the trouble.",
         createdTick: 0,
         expiresAtTick: 4,
         provinceId: 1,
         stateId: 1,
-        petitionId: "pretenders_bribe",
+        petitionId: "harsh_levy",
         rewardGold: 0,
         rewardRenown: 0
       }
@@ -1770,13 +1768,13 @@ describe("LivingHud", () => {
 
     const bar = document.getElementById("livingHudGuild");
     expect(bar?.textContent).toContain("Petitions:");
-    expect(bar?.textContent).toContain("The Pretender's Bribe");
+    expect(bar?.textContent).toContain("The Harsh Levy");
 
     bar?.querySelector<HTMLElement>('[data-guild="inspect-petition"]')?.click();
 
     const inspector = document.getElementById("livingInspector");
-    expect(inspector?.textContent).toContain("Back the Coup");
-    expect(inspector?.textContent).toContain("Betray to the Crown");
+    expect(inspector?.textContent).toContain("Fund the Militia");
+    expect(inspector?.textContent).toContain("Let Them Squabble");
   });
 
   it("shows the Wheel of Ages only when the age is ready to turn at the bottom right", () => {

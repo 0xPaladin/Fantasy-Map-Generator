@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FACTION_ASSETS_CATALOG } from "@/data/faction-assets";
 import { CIV_TECHS } from "@/data/living-civ-techs";
 import { LAIR_CATALOG } from "@/data/living-lairs";
-import { TROUBLE_CATALOG } from "@/data/living-troubles";
+import { TROUBLE_CATALOG, ORGANIZATIONAL_TROUBLE_IDS, getTroubleFactionType } from "@/data/living-troubles";
 import { getAllFactionArchetypes, getArchetypesByCategory, getFactionArchetype } from "./factions-catalog";
 
 describe("FACTIONS_CATALOG", () => {
@@ -49,14 +49,13 @@ describe("FACTIONS_CATALOG", () => {
     }
   });
 
-  it("covers organizational troubles and distinguishes hazards in TROUBLE_CATALOG", () => {
-    const hazards = Object.values(TROUBLE_CATALOG).filter(t => t.isHazard);
-    expect(hazards.length).toBeGreaterThanOrEqual(18);
-
-    for (const hazard of hazards) {
-      expect(hazard.isHazard).toBe(true);
-      expect(hazard.attractsFactionTypes?.length).toBeGreaterThan(0);
+  it("absorbs every retired organizational trouble as a faction archetype", () => {
+    expect(ORGANIZATIONAL_TROUBLE_IDS.length).toBe(26);
+    for (const troubleId of ORGANIZATIONAL_TROUBLE_IDS) {
+      expect(TROUBLE_CATALOG[troubleId]).toBeUndefined();
+      expect(getFactionArchetype(getTroubleFactionType(troubleId)), troubleId).toBeDefined();
     }
+    expect(Object.keys(TROUBLE_CATALOG)).toHaveLength(20);
   });
 
   it("looks up archetypes by type and category", () => {

@@ -6,9 +6,10 @@ import type { Burg, Province, State } from "@/types/subdivided-pack";
 import {
   ascendFactionToState,
   clearLair,
-  promoteTroubleToState,
+  migrateLegacyThreats,
   quellTrouble,
   setThreatHost,
+  spawnDangerousFaction,
   spawnLair,
   spawnRemnantFaction,
   spawnTrouble,
@@ -85,15 +86,68 @@ describe("living-threats", () => {
     expect(mockLiving.activeLairs?.["lair:1"]).toBeUndefined();
   });
 
-  it("spawns and quells troubles", () => {
-    const trouble = spawnTrouble(1, "secret_society", "burg", 3);
+  it("spawns hazards as trouble and quells them", () => {
+    const trouble = spawnTrouble(1, "flooding", "burg", 3);
     expect(trouble).not.toBeNull();
-    expect(trouble?.id).toBe("secret_society");
+    expect(trouble?.id).toBe("flooding");
     expect(mockLiving.provinces[1].trouble).toBe(trouble);
 
     const quelled = quellTrouble(1);
     expect(quelled).toBe(true);
     expect(mockLiving.provinces[1].trouble).toBeNull();
+  });
+
+  it("spawns organizational trouble as a dangerous faction instead", () => {
+    const trouble = spawnTrouble(1, "secret_society", "burg", 3);
+    expect(trouble).toBeNull();
+    expect(mockLiving.provinces[1].trouble).toBeNull();
+
+    const factions = (pack.factions ?? []).filter(f => f.i !== 0);
+    expect(factions).toHaveLength(1);
+    expect(factions[0]?.type).toBe("secret_society");
+    expect(factions[0]?.allegiance).toBe("clandestine");
+    expect(factions[0]?.stateRelations[1]).toBe("Enemy");
+    expect(factions[0]?.hq.burgId).toBe(1);
+    expect(factions[0]?.military.length).toBeGreaterThan(0);
+  });
+
+  it("spawns a dangerous faction directly with lair-template military", () => {
+    const faction = spawnDangerousFaction(1, "monsters", "ruin", 6);
+    expect(faction).not.toBeNull();
+    expect(faction?.type).toBe("monster_nest");
+    expect(faction?.allegiance).toBe("hostile");
+    expect(faction?.military[0]?.u).toBeDefined();
+    expect(mockLiving.provinces[1].trouble).toBeNull();
+  });
+
+  it("migrates legacy organizational trouble and lairs into factions", () => {
+    mockLiving.provinces[1].trouble = {
+      id: "demagogue",
+      name: "Zealous Demagogue",
+      theme: "burg",
+      pool: "s",
+      save: "uprising",
+      requiredRole: "prophet",
+      level: 5,
+      seasonsUnchecked: 2,
+      cell: 1
+    } as never;
+    mockLiving.provinces[1].lair = {
+      id: "bandit_camp",
+      name: "Bandit Camp",
+      theme: "burg",
+      level: 4,
+      cell: 1,
+      seasonsActive: 5
+    } as never;
+
+    migrateLegacyThreats(mockLiving);
+
+    expect(mockLiving.provinces[1].trouble).toBeNull();
+    expect(mockLiving.provinces[1].lair).toBeNull();
+    const types = (pack.factions ?? []).filter(f => f.i !== 0).map(f => f.type);
+    expect(types).toContain("demagogue");
+    expect(types).toContain("bandit_camp");
   });
 
   it("spawns and clears lairs", () => {
@@ -104,15 +158,6 @@ describe("living-threats", () => {
 
     clearLair(lair!, "Aelorian Guard");
     expect(mockLiving.provinces[1].lair).toBeNull();
-  });
-
-  it("promotes trouble to sovereign state", () => {
-    spawnTrouble(1, "secret_society", "burg", 7);
-    const stateId = promoteTroubleToState(1, 1);
-    expect(stateId).not.toBeNull();
-    expect(stateId).toBeGreaterThan(1);
-    expect(pack.states[stateId!]).toBeDefined();
-    expect(mockLiving.provinces[1].trouble).toBeNull();
   });
 
   it("ascends an ambitious faction into a sovereign state", () => {

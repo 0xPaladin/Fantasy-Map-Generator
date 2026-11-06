@@ -28,7 +28,7 @@ import {
   vaultBonuses,
   vaultHasRoom
 } from "@/data/living-relics";
-import { getTroubleDef, isTroubleStatePromotable } from "@/data/living-troubles";
+import { getTroubleDef } from "@/data/living-troubles";
 import { buildMissionPhases, type MissionPhaseInput, phasesForParty } from "@/data/mission-phases";
 import { excavationMissionTags, lairMissionTags, PACIFY_MISSION_TAGS, troubleMissionTags } from "@/data/mission-tags";
 import {
@@ -140,7 +140,6 @@ export interface GuildHost {
   pacifyBurg?(burgId: number): boolean;
   completeAsset?(burgId: number): boolean;
   sparkRebellion?(stateId: number, burgId?: number): boolean;
-  promoteTroubleToState?(provinceId: number, capitalBurgId?: number): number | null;
   smiteRuler?(stateId: number): boolean;
   relieveEschaton?(living: LivingWorldState, amount?: number): void;
   addRuinMarker?(cell: number, name: string): number;
@@ -571,12 +570,7 @@ export function guildInciteUprising(burgId: number): boolean {
   const burg = pack.burgs?.[burgId];
   if (!burg?.i || burg.removed || !burg.state) return false;
   const provinceId = pack.cells.province?.[burg.cell];
-  const trouble = provinceId !== undefined ? living.provinces?.[provinceId]?.trouble : undefined;
-  const coup =
-    trouble && provinceId !== undefined && isTroubleStatePromotable(trouble.id) && host.promoteTroubleToState
-      ? host.promoteTroubleToState(provinceId, burgId) !== null
-      : false;
-  const ok = coup || (host.sparkRebellion ? host.sparkRebellion(burg.state, burgId) : true);
+  const ok = host.sparkRebellion ? host.sparkRebellion(burg.state, burgId) : true;
   if (!ok) return false;
   if (!chargeOperation(living, guild, operator, kind)) return false;
 
@@ -1975,7 +1969,6 @@ export function findPetitionAnchor(living: LivingWorldState, rng: Rng): Petition
 
     if (pSim.trouble) {
       for (const def of petitionsForAnchor("trouble")) {
-        if (def.promotableOnly && !isTroubleStatePromotable(pSim.trouble.id)) continue;
         targets.push({
           def,
           cell: pSim.trouble.cell ?? province.center ?? 0,
@@ -2127,18 +2120,12 @@ export function refreshPopups(living: LivingWorldState): void {
       });
     }
 
-    const troubleImminent =
-      Boolean(trouble) &&
-      isTroubleStatePromotable(trouble!.id) &&
-      trouble!.level >= 7 &&
-      trouble!.seasonsUnchecked >= 3 &&
-      pSim.order <= 30;
     const lairImminent = Boolean(lair) && isLairStateCapable(lair!.id) && lair!.level >= 8 && lair!.seasonsActive >= 7;
-    if (troubleImminent || lairImminent) {
+    if (lairImminent) {
       candidates.push({
         kind: "ascension_warning",
         cell,
-        title: `${lair ? lair.name : trouble!.name} is about to rise`,
+        title: `${lair!.name} is about to rise`,
         subtitle: "A new sovereign state may be born next season",
         provinceId: province.i,
         stateId,
@@ -2203,16 +2190,6 @@ export function applyPetitionEffects(
       case "quellTrouble": {
         if (popup.provinceId !== undefined && (host.quellTrouble ? host.quellTrouble(popup.provinceId) : true)) {
           outcomes.push("the trouble was quelled");
-        }
-        break;
-      }
-      case "promoteTrouble": {
-        const newStateId =
-          popup.provinceId !== undefined && host.promoteTroubleToState
-            ? host.promoteTroubleToState(popup.provinceId, popup.burgId)
-            : null;
-        if (newStateId !== null) {
-          outcomes.push(`${pack.states?.[newStateId]?.name ?? "a new realm"} rose from the coup`);
         }
         break;
       }

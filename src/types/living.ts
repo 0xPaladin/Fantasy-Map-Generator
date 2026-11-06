@@ -474,6 +474,8 @@ export interface LivingWorldState {
   eschaton?: number;
   /** lazily initialized guild wallet, mission list and on-map popups */
   guild?: GuildState;
+  /** one-time legacy trouble/lair -> faction migration has run (faction-trouble conversion) */
+  threatsMigrated?: boolean;
   /** Active player-controlled faction ID in pack.factions */
   playerFactionId?: number;
   /** completed World Wonder id -> owner and year; later Living World 2.0 slices */

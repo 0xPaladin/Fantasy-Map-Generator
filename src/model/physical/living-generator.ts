@@ -39,7 +39,7 @@ import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { growLair, isLairStateCapable } from "@/data/living-lairs";
 import { RELIC_LEASE_TRIBUTE } from "@/data/living-relics";
-import { getTroubleDef, isTroubleStatePromotable } from "@/data/living-troubles";
+import { getTroubleDef } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
 import { Routes } from "@/model/economy/routes-generator";
 import {
@@ -1142,6 +1142,10 @@ class LivingModel {
 
     this.syncWorld();
     this.ensureCommanders();
+    if (!history.living.threatsMigrated) {
+      LivingThreats.migrateLegacyThreats(history.living);
+      history.living.threatsMigrated = true;
+    }
     return history.living;
   }
 
@@ -7618,9 +7622,14 @@ class LivingModel {
     return LivingThreats.smiteLair(provinceId);
   }
 
-  /** Promote an unchecked promotable trouble into a sovereign rebel / cult realm. */
-  promoteTroubleToState(provinceId: number, burgId?: number): number | null {
-    return LivingThreats.promoteTroubleToState(provinceId, burgId);
+  /** Spawn a dangerous faction from the trouble trigger. */
+  spawnDangerousFaction(
+    provinceId: number,
+    troubleId?: string,
+    theme?: TroubleTheme,
+    level?: number
+  ): import("@/types/factions").Faction | null {
+    return LivingThreats.spawnDangerousFaction(provinceId, troubleId, theme, level);
   }
 
   /** Ascend an ambitious faction into a sovereign state. */
@@ -9373,13 +9382,6 @@ class LivingModel {
           const metaChance = lvl >= 10 ? 1 : Math.max(0, (unchecked - 2) * 0.06 + Math.max(0, lvl - 4) * 0.04);
           const rngMeta = this.rng("trouble:metastasize", province.i, living.tick);
           if (rngMeta.chance(metaChance)) {
-            const canCoup =
-              isTroubleStatePromotable(pSim.trouble.id) &&
-              (lvl >= 7 || unchecked >= 5) &&
-              (pSim.order <= 25 || (sSim ? sSim.unravel >= 60 || sSim.warExhaustion >= 60 : false));
-            if (canCoup && this.promoteTroubleToState(province.i) !== null) {
-              continue;
-            }
             this.metastasizeTroubleToLair(province.i);
           }
         }
