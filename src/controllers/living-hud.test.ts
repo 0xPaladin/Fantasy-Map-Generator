@@ -95,7 +95,6 @@ const mocks = vi.hoisted(() => {
     completeAsset: vi.fn(() => true),
     spawnTrouble: vi.fn(() => ({ id: "monsters", level: 5 })),
     quellTrouble: vi.fn(() => true),
-    resolveTrouble: vi.fn(() => true),
     spawnLair: vi.fn(() => ({ id: "bandit_camp", name: "Bandit Camp", level: 6 })),
     smiteLair: vi.fn(() => true),
     assaultLair: vi.fn(() => true),

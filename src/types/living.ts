@@ -14,7 +14,6 @@ export type AgendaKind =
   | "conquer"
   | "reclaim"
   | "pacify"
-  | "resolve_trouble"
   | "clear_lair"
   | "hire_adventurers"
   | "defend"

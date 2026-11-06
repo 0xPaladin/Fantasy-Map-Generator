@@ -932,15 +932,6 @@ export function metastasizeTroubleToLair(provinceId: number, lairId?: string): P
   pSim.lair = lair;
   pSim.trouble = null;
 
-  if (province.state) {
-    const sSim = living.states[province.state];
-    if (sSim) {
-      if (sSim.agenda?.kind === "resolve_trouble" && sSim.agenda.targetProvinceId === provinceId) {
-        sSim.agenda = null;
-      }
-    }
-  }
-
   const lairDef = getLairDef(chosenLairId);
   pushNews(living, {
     kind: "lair",
@@ -1194,144 +1185,6 @@ export function spawnRemnantFaction(fallenState: State, conquerorStateId?: numbe
   });
 
   return remnant;
-}
-
-export function resolveTrouble(stateId: number, provinceId: number): boolean {
-  const province = pack.provinces?.[provinceId];
-  if (!province?.i || province.removed || province.state !== stateId) return false;
-  const host = getHost();
-  const living = host.getState();
-  const pSim = living.provinces[provinceId];
-  if (!pSim?.trouble || pSim.lair) return false;
-
-  const state = pack.states[stateId];
-  const sSim = living.states[stateId];
-  if (!state?.i || state.removed || !sSim) return false;
-
-  const troubleDef = getTroubleDef(pSim.trouble.id);
-  const unitTypes = Military.getUnitTypes();
-
-  let bestUnit: ArmyBlock | null = null;
-  let bestReg: Regiment | null = null;
-  let bestMult = 3;
-  let bestDisruption = 999;
-
-  for (const reg of state.military ?? []) {
-    for (const unit of reg.units ?? []) {
-      if (unit.hp <= 0) continue;
-      const uType = unitTypes[unit.type];
-      const role: TroubleUnitRole = uType?.troubleRole ?? "military";
-      const mult = troubleUnitMatchMultiplier(troubleDef, role);
-      const dis = unit.disruption ?? 0;
-      if (mult < bestMult || (mult === bestMult && dis < bestDisruption)) {
-        bestMult = mult;
-        bestDisruption = dis;
-        bestUnit = unit;
-        bestReg = reg;
-      }
-    }
-  }
-
-  const history = Chronicle.sync();
-  history.figures ??= [];
-  const figures = history.figures;
-  const commander = bestReg?.crew
-    ?.map(id => figures[id])
-    .find(f => f && !f.death && f.roles.some(r => r.type === "specialist" && r.specialty === troubleDef.requiredRole));
-
-  const troubleLevel = pSim.trouble.level;
-  const dc = 16 + bestMult * troubleLevel;
-  const poolGen = sSim.yieldsPerTurn?.gold ?? 0;
-  const domainMod = valueModifier(poolGen);
-  const skillBonus = commander?.skills?.[troubleDef.pool] ?? 0;
-  const traitBonus = commander ? (commander.virtues?.length ?? 0) - (commander.vices?.length ?? 0) : 0;
-  const unitDisruption = bestUnit?.disruption ?? 0;
-
-  const rng = getRng("trouble:resolve", provinceId, living.tick);
-  const roll = rng.d(20);
-  const total = roll + skillBonus + domainMod + traitBonus - unitDisruption;
-  const year = options?.map?.lore?.calendar?.year ?? 1000;
-  const cell = province.center ?? state.center;
-
-  const success = total >= dc;
-  if (success) {
-    const reduction = rng.d(4);
-    pSim.trouble.level -= reduction;
-    if (pSim.trouble.level <= 0) {
-      pSim.trouble = null;
-      pSim.order = Math.min(100, pSim.order + 10);
-      pSim.stability += 1;
-      if (commander) {
-        commander.xp = (commander.xp ?? 0) + 25;
-        pushNews(living, {
-          kind: "trouble",
-          text: `${commander.name} overcame ${troubleDef.name} in ${province.name}!`,
-          cell,
-          stateId
-        });
-        pushHistory(
-          "deed",
-          [
-            { kind: "figure", id: commander.i },
-            { kind: "state", id: stateId }
-          ],
-          cell,
-          `${commander.name} eliminated the ${troubleDef.name} affliction in ${province.name}.`
-        );
-      } else {
-        pushNews(living, {
-          kind: "trouble",
-          text: `${state.name} overcame ${troubleDef.name} in ${province.name}!`,
-          cell,
-          stateId
-        });
-        pushHistory(
-          "conquest",
-          [{ kind: "state", id: stateId }],
-          cell,
-          `${state.name} eliminated the ${troubleDef.name} affliction in ${province.name}.`
-        );
-      }
-    } else {
-      if (commander) commander.xp = (commander.xp ?? 0) + 10;
-      const who = commander ? commander.name : state.name;
-      pushNews(living, {
-        kind: "trouble",
-        text: `${who} quelled ${troubleDef.name} in ${province.name} (reduced to level ${pSim.trouble.level}).`,
-        cell,
-        stateId
-      });
-    }
-  } else {
-    if (bestUnit) {
-      bestUnit.disruption = Math.min(3, (bestUnit.disruption ?? 0) + 1);
-    }
-    let aftermath = "";
-    if (commander && total <= dc - 6) {
-      if (rng.d(2) === 1) {
-        commander.death = year;
-        for (const role of commander.roles) if (role.to === undefined) role.to = year;
-        if (bestReg?.crew) bestReg.crew = bestReg.crew.filter(id => id !== commander.i);
-        aftermath = ` ${commander.name} did not survive the attempt.`;
-      } else {
-        const vice = drawVice(rng, commander);
-        if (vice) {
-          commander.vices ??= [];
-          commander.vices.push(vice);
-          aftermath = ` The struggle left ${commander.name} ${vice}.`;
-        }
-      }
-    }
-    const who = commander ? `${commander.name}'s attempt` : `${state.name}'s attempt`;
-    pushNews(living, {
-      kind: "trouble",
-      text: `${who} to resolve ${troubleDef.name} in ${province.name} failed (rolled ${total} vs DC ${dc}).${aftermath}`,
-      cell,
-      stateId
-    });
-  }
-
-  return success;
 }
 
 function resolveEmergentCapital(
@@ -1603,7 +1456,7 @@ function spawnEmergentState(opts: {
     const oldSim = living.states[oldOwnerId]!;
     const kind = oldSim.agenda?.kind;
     if (
-      (kind === "resolve_trouble" || kind === "clear_lair" || kind === "hire_adventurers") &&
+      (kind === "clear_lair" || kind === "hire_adventurers") &&
       oldSim.agenda?.targetProvinceId === province.i
     ) {
       oldSim.agenda = null;
@@ -1685,8 +1538,7 @@ export const LivingThreats = {
   smiteLair,
   ascendFactionToState,
   ascendLairToState,
-  spawnRemnantFaction,
-  resolveTrouble
+  spawnRemnantFaction
 };
 
 

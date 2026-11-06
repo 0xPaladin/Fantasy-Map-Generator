@@ -39,7 +39,6 @@ import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { growLair, isLairStateCapable } from "@/data/living-lairs";
 import { RELIC_LEASE_TRIBUTE } from "@/data/living-relics";
-import { getTroubleDef } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
 import { Routes } from "@/model/economy/routes-generator";
 import {
@@ -7582,12 +7581,7 @@ class LivingModel {
     return true;
   }
 
-  /** Send military or specialist units to quell a provincial trouble with a domain saving throw. */
-  resolveTrouble(stateId: number, provinceId: number): boolean {
-    return LivingThreats.resolveTrouble(stateId, provinceId);
-  }
-
-  /** Spawn or escalate a trouble in a province (e.g. banditry, heresy, rebellion). */
+  /** Spawn or escalate a trouble in a province (e.g. flooding, heresy, unrest). */
   spawnTrouble(provinceId: number, troubleId?: string, theme?: TroubleTheme, level?: number): ProvinceTrouble | null {
     return LivingThreats.spawnTrouble(provinceId, troubleId, theme, level);
   }
@@ -9040,22 +9034,6 @@ class LivingModel {
       }
     }
 
-    const troubledProvince = this.ownedProvinces(state.i)
-      .map(p => ({ province: p, trouble: living.provinces[p.i]?.trouble }))
-      .filter((entry): entry is { province: Province; trouble: ProvinceTrouble } => Boolean(entry.trouble))
-      .sort((a, b) => b.trouble.level - a.trouble.level)[0];
-
-    if (troubledProvince) {
-      const tDef = getTroubleDef(troubledProvince.trouble.id);
-      return {
-        kind: "resolve_trouble",
-        label: `Resolving ${tDef.name} in ${troubledProvince.province.name}`,
-        targetProvinceId: troubledProvince.province.i,
-        progress: 0,
-        required: 1
-      };
-    }
-
     const war = this.warAgenda(state, sSim);
     if (war) return war;
 
@@ -9127,24 +9105,6 @@ class LivingModel {
         this.sendAdventurersToLair(state.i, provinceId);
         agenda.progress += 1;
         if (agenda.progress >= agenda.required || !pSim.lair) {
-          sSim.agenda = null;
-        }
-        return;
-      }
-      case "resolve_trouble": {
-        const provinceId = agenda.targetProvinceId;
-        if (provinceId === undefined) {
-          sSim.agenda = null;
-          return;
-        }
-        const pSim = living.provinces[provinceId];
-        if (!pSim?.trouble) {
-          sSim.agenda = null;
-          return;
-        }
-        this.resolveTrouble(state.i, provinceId);
-        agenda.progress += 1;
-        if (agenda.progress >= agenda.required || !pSim.trouble) {
           sSim.agenda = null;
         }
         return;

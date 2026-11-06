@@ -748,9 +748,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     Living.tick(1);
 
-    // With level 4 trouble, order drains by level * 2 = 8 (plus garrison +2 = net -6, or floor checked)
-    // and stability accrual from garrison is suspended
-    expect(living.provinces[1].stability).toBe(5);
+    // With level 4 trouble, order drains by level * 2 = 8 (plus garrison +2 = net -6, or floor checked).
+    // Garrison stability accrual stays suspended while trouble is active; the
+    // freed agenda goes to development instead, spending developStabilityCost (4).
+    expect(living.provinces[1].stability).toBe(1);
     expect(living.provinces[1].order).toBeLessThan(70);
   });
 
@@ -794,25 +795,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(troubleUnitMatchMultiplier(despairDef, "guardsmen")).toBe(3);
   });
 
-  it("resolves trouble with domain saving throw and tracks disruption", () => {
-    const living = Living.init();
-    const trouble = Living.spawnTrouble(1, "flooding", "burg", 2);
-    expect(trouble).not.toBeNull();
-
-    const unit = pack.states[1].military![0].units![0];
-    unit.disruption = 0;
-
-    // Attempt resolution
-    const result = Living.resolveTrouble(1, 1);
-    if (result) {
-      // Success either reduced or eliminated trouble
-      expect(living.provinces[1].trouble == null || living.provinces[1].trouble.level < 2).toBe(true);
-    } else {
-      // Failure inflicted +1 disruption
-      expect(unit.disruption).toBe(1);
-    }
-  });
-
   it("resting units in peaceful provinces recover disruption", () => {
     Living.init();
     const unit = pack.states[1].military![0].units![0];
@@ -838,7 +820,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(marker.icon).toBe("🗡️");
     expect(marker.hidden).toBeUndefined();
 
-    expect(Living.resolveTrouble(1, 1)).toBe(false);
+    expect(Living.quellTrouble(1)).toBe(false);
 
     expect(Living.smiteLair(1)).toBe(true);
     expect(living.provinces[1].lair).toBeNull();
@@ -4205,148 +4187,6 @@ describe("Unified Figures slice 1: specialist commanders", () => {
   });
 });
 
-describe("Unified Figures slice 2: named dispatch", () => {
-  beforeEach(() => {
-    globalThis.options = {
-      map: {
-        seed: "test-living-seed",
-        population: { ruralFactor: 1, urbanization: 1 },
-        lore: {
-          name: "Test World",
-          description: "",
-          calendar: { year: 1000, era: "Age of Dawn", eraShort: "AD" },
-          history: { span: 500, realms: 0, density: 1, echoes: false, renames: false, mode: "archaeologist" }
-        }
-      },
-      generation: { cultures: { traits: true }, states: { limit: 4, sizeVariety: 2, growthRate: 1 } }
-    } as unknown as typeof options;
-
-    globalThis.pack = {
-      cells: {
-        i: [0, 1, 2, 3],
-        state: new Uint16Array([0, 1, 1, 0]),
-        province: new Uint16Array([0, 1, 1, 0]),
-        pop: [0, 120, 100, 20],
-        culture: [0, 1, 1, 1],
-        religion: [0, 1, 1, 1],
-        c: [[1], [0, 2], [1], [2]],
-        p: [
-          [0, 0],
-          [10, 10],
-          [20, 20],
-          [30, 30]
-        ],
-        r: [0, 0, 0, 0]
-      },
-      cultures: [
-        { i: 0, name: "Wildlands", base: 0, center: 0 },
-        { i: 1, name: "Aeloran (Human)", base: 0, center: 1, alignment: "good" }
-      ],
-      religions: [{ i: 0, name: "No religion" }],
-      burgs: [
-        { i: 0 },
-        {
-          i: 1,
-          name: "Aelor",
-          cell: 1,
-          x: 10,
-          y: 10,
-          state: 1,
-          culture: 1,
-          population: 18,
-          capital: 1,
-          walls: 1,
-          plaza: 1,
-          temple: 1,
-          citadel: 1
-        }
-      ],
-      states: [
-        { i: 0, name: "Neutrals" },
-        {
-          i: 1,
-          name: "Aeloria",
-          culture: 1,
-          capital: 1,
-          center: 1,
-          military: [
-            {
-              i: 0,
-              a: 300,
-              cell: 1,
-              x: 10,
-              y: 10,
-              bx: 10,
-              by: 10,
-              u: { spear: 300 },
-              units: [
-                { type: "spear", hp: 1, exp: 0 },
-                { type: "sage_coven", hp: 1, exp: 0 }
-              ],
-              n: 0,
-              name: "1st Aeloria Regiment",
-              state: 1,
-              icon: "⚔️"
-            }
-          ]
-        }
-      ],
-      provinces: [{ i: 0 }, { i: 1, name: "Ems", state: 1, burg: 1, center: 1 }],
-      history: { events: [], realms: [], eras: [{ name: "Age of Dawn", from: 500, to: 1000 }], figures: [] }
-    } as unknown as typeof pack;
-  });
-
-  it("names the matching specialist commander in the dispatch news", () => {
-    Living.init();
-    const living = Living.getState();
-    const commander = pack.history.figures!.find(f => f.roles.some(r => r.specialty === "sage"))!;
-    Living.spawnTrouble(1, "ancient_curse", "burg", 2); // pool w, requiredRole sage
-    const beforeXp = commander.xp ?? 0;
-    const success = Living.resolveTrouble(1, 1);
-    const news = living.recentNews[0]!;
-    expect(news.text).toContain(commander.name);
-    expect(news.text).toContain("Ancient Curse");
-    if (success) {
-      expect(commander.xp).toBeGreaterThan(beforeXp);
-      if (living.provinces[1].trouble === null) {
-        const event = pack.history.events!.at(-1)!;
-        expect(event.type).toBe("deed");
-        expect(event.actors).toContainEqual({ kind: "figure", id: commander.i });
-      }
-    }
-  });
-
-  it("a disastrous resolution breaks or slays the commander", () => {
-    Living.init();
-    const commander = pack.history.figures!.find(f => f.roles.some(r => r.specialty === "sage"))!;
-    commander.virtues = [];
-    commander.vices = ["cruel", "greedy", "wrathful"]; // traitBonus −3
-    commander.skills!.w = 0;
-    const regiment = pack.states[1].military![0];
-    for (const unit of regiment.units!) unit.disruption = 3;
-    Living.spawnTrouble(1, "ancient_curse", "burg", 10); // dc 26: total ≤ 20 is a guaranteed fumble
-    const vicesBefore = commander.vices.length;
-    Living.resolveTrouble(1, 1);
-    const broken = commander.death !== undefined || commander.vices.length > vicesBefore;
-    expect(broken).toBe(true);
-    if (commander.death !== undefined) {
-      expect(regiment.crew).not.toContain(commander.i); // the fallen commander is uncrewed
-    }
-  });
-
-  it("falls back to the anonymous state voice when no specialist is fielded", () => {
-    Living.init();
-    const living = Living.getState();
-    const state = pack.states[1];
-    state.military![0].units = state.military![0].units!.filter(u => u.type !== "sage_coven");
-    state.military![0].crew = [];
-    Living.spawnTrouble(1, "ancient_curse", "burg", 2);
-    Living.resolveTrouble(1, 1);
-    const news = living.recentNews[0]!;
-    expect(news.text).toContain("Aeloria");
-  });
-});
-
 const buildStubPack = () => {
   globalThis.options = {
     map: {
@@ -4592,16 +4432,18 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     expect(living.provinces[2].lair).not.toBeNull();
   });
 
-  it("does not promote a hazard when resolveTrouble critically backfires in a low-order province", () => {
+  it("leaves a festering hazard in place without the domain check: no dice, no promotion", () => {
     const living = Living.init();
-    Living.spawnTrouble(2, "flooding", "burg", 9); // high DC guarantees a critical failure
+    Living.spawnTrouble(2, "flooding", "burg", 9);
     living.provinces[2].order = 25;
 
-    const success = Living.resolveTrouble(1, 2);
-    expect(success).toBe(false);
+    expect(typeof (Living as unknown as Record<string, unknown>).resolveTrouble).toBe("undefined");
+    Living.tick(1);
+
     expect(pack.states.length).toBe(3);
     expect(pack.provinces[2].state).not.toBe(3);
-    expect(living.provinces[2].trouble).not.toBeNull();
+    // The hazard only escalates; it is cleared by production, heroes or factions
+    expect(living.provinces[2].trouble?.level ?? 0).toBeGreaterThanOrEqual(9);
   });
 
   it("ascends a state-capable lair via Path A (raid coup) when overwhelming a vulnerable non-capital settlement", () => {

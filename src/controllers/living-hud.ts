@@ -1549,7 +1549,6 @@ function renderStateCard(stateId: number): string {
              <button type="button" data-god="spark" data-state="${stateId}">Spark Rebellion</button>
              <button type="button" data-god="smite" data-state="${stateId}">Smite Ruler</button>
              <button type="button" data-god="war" data-state="${stateId}">Force War</button>
-             ${hasTroubled ? `<button type="button" data-god="resolve-state-trouble" data-state="${stateId}">Resolve Trouble</button>` : ""}
              ${hasLairs ? `<button type="button" data-god="assault-state-lair" data-state="${stateId}">Assault Lair</button>` : ""}
              ${hasLairs ? `<button type="button" data-god="delve-state-lair" data-state="${stateId}">Send Adventurers</button>` : ""}
              ${hasAscendableLair ? `<button type="button" data-god="ascend-state-lair" data-state="${stateId}">Ascend Lair</button>` : ""}
@@ -2213,8 +2212,7 @@ function renderBurgCard(burgId: number): string {
              <button type="button" data-god="complete" data-burg="${burgId}">Complete Asset</button>
              ${
                provId && trouble
-                 ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>
-                    ${stateId ? `<button type="button" data-god="resolve-trouble" data-state="${stateId}" data-province="${provId}">Resolve Trouble</button>` : ""}`
+                 ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>`
                  : provId && !lair
                    ? `<button type="button" data-god="spawn-trouble" data-province="${provId}">Spawn Trouble</button>`
                    : ""
@@ -2516,35 +2514,20 @@ function runIntervention(button: HTMLElement): void {
       break;
     }
     case "spawn-trouble": {
+      const factionsBefore = (pack.factions ?? []).filter(f => f.i !== 0).length;
       const res = Living.spawnTrouble(provId);
-      ok = Boolean(res);
-      message = ok ? "Trouble has arisen in the province." : "Failed to spawn trouble.";
+      ok = Boolean(res) || (pack.factions ?? []).filter(f => f.i !== 0).length > factionsBefore;
+      message = res
+        ? "Trouble has arisen in the province."
+        : ok
+          ? "A dangerous faction has taken root in the province."
+          : "Failed to spawn trouble.";
       break;
     }
     case "quell-trouble":
       ok = Living.quellTrouble(provId);
       message = ok ? "The provincial trouble has been quelled." : "No trouble to quell.";
       break;
-    case "resolve-trouble":
-      ok = Living.resolveTrouble(stateId, provId);
-      message = ok ? "The domain quashed the trouble!" : "The domain's effort failed.";
-      break;
-    case "resolve-state-trouble": {
-      const living = Living.getState();
-      const prov = (pack.provinces ?? []).find(
-        p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.trouble
-      );
-      if (prov) {
-        ok = Living.resolveTrouble(stateId, prov.i);
-        message = ok
-          ? `The domain quashed the trouble in ${prov.name}!`
-          : `The domain's effort in ${prov.name} failed.`;
-      } else {
-        ok = false;
-        message = "No active trouble in the state.";
-      }
-      break;
-    }
     case "spawn-lair": {
       const res = Living.spawnLair(provId);
       ok = Boolean(res);
