@@ -24,9 +24,9 @@ describe("SolarSystem registry", () => {
     expect(SolarSystem.homeworldId).toBeTruthy();
 
     const homeworld = SolarSystem.homeworld!;
-    expect(homeworld.kind).toBe("planet");
+    expect(homeworld.kind).toBe("moon");
     expect(homeworld.colonizable).toBe(true);
-    expect(homeworld.parentId).toBeNull();
+    expect(homeworld.parentId).toMatch(/^planet-\d+$/);
 
     for (const moon of moons) {
       expect(moon.parentId).toMatch(/^planet-\d+$/);
