@@ -50,12 +50,12 @@ describe("FACTIONS_CATALOG", () => {
   });
 
   it("absorbs every retired organizational trouble as a faction archetype", () => {
-    expect(ORGANIZATIONAL_TROUBLE_IDS.length).toBe(26);
+    expect(ORGANIZATIONAL_TROUBLE_IDS.length).toBe(18);
     for (const troubleId of ORGANIZATIONAL_TROUBLE_IDS) {
       expect(TROUBLE_CATALOG[troubleId]).toBeUndefined();
       expect(getFactionArchetype(getTroubleFactionType(troubleId)), troubleId).toBeDefined();
     }
-    expect(Object.keys(TROUBLE_CATALOG)).toHaveLength(20);
+    expect(Object.keys(TROUBLE_CATALOG)).toHaveLength(28);
   });
 
   it("looks up archetypes by type and category", () => {

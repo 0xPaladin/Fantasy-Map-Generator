@@ -19,9 +19,9 @@ import {
 } from "./living-troubles";
 
 describe("living-troubles (hazard catalog, retired organizational map, unit roles)", () => {
-  it("defines exactly the 20 natural/environmental hazard archetypes", () => {
+  it("defines exactly the 28 hazard and hazardous-custom archetypes", () => {
     const keys = Object.keys(TROUBLE_CATALOG);
-    expect(keys).toHaveLength(20);
+    expect(keys).toHaveLength(28);
 
     for (const id of keys) {
       const def = TROUBLE_CATALOG[id];
@@ -40,8 +40,8 @@ describe("living-troubles (hazard catalog, retired organizational map, unit role
     }
   });
 
-  it("maps all 26 retired organizational troubles to faction archetypes and lair templates", () => {
-    expect(ORGANIZATIONAL_TROUBLE_IDS).toHaveLength(26);
+  it("maps all 18 retired organizational troubles to faction archetypes and lair templates", () => {
+    expect(ORGANIZATIONAL_TROUBLE_IDS).toHaveLength(18);
     for (const id of ORGANIZATIONAL_TROUBLE_IDS) {
       expect(TROUBLE_CATALOG[id]).toBeUndefined();
       const factionType = getTroubleFactionType(id);
