@@ -4095,6 +4095,205 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(faction.hq.sim?.cityYields?.food ?? 0).toBeGreaterThan(0);
       expect(faction.hq.sim?.cityYields?.gold ?? 0).toBeGreaterThanOrEqual(0);
     });
+
+    describe("State suppression administrative campaign (Phase 2)", () => {
+      function queueSuppression(living: ReturnType<typeof Living.init>, faction: Faction, nodeKey: string, progress = 13) {
+        const b1 = living.burgs[1];
+        b1.productionQueue = [
+          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: nodeKey }
+        ];
+        b1.productionProgress = { "operation:faction-suppression": progress };
+        living.states[1].agenda = {
+          kind: "suppress_faction",
+          label: `Suppressing ${faction.name} in Aelor`,
+          targetFactionId: faction.i,
+          targetBurgId: 1,
+          progress: 0,
+          required: 1
+        };
+      }
+
+      it("starts one suppression operation and agenda via the public API", () => {
+        Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        const b1 = Living.getState().burgs[1];
+        expect(b1.productionQueue).toEqual([
+          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: "outpost:1" }
+        ]);
+        expect(Living.getState().states[1].agenda).toMatchObject({
+          kind: "suppress_faction",
+          targetFactionId: faction.i,
+          targetBurgId: 1
+        });
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(false);
+        expect(
+          Living.getState().recentNews.some(item => item.kind === "faction" && item.text.includes("began suppressing"))
+        ).toBe(true);
+      });
+
+      it("chooses a suppression agenda once the state fields an army", () => {
+        const living = Living.init();
+        pack.states[1].military = [
+          {
+            i: 0,
+            name: "Aeloria Regiment",
+            a: 100,
+            cell: 9,
+            x: 90,
+            y: 90,
+            bx: 90,
+            by: 90,
+            u: { spear: 100 },
+            units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 1,
+            icon: "⚔️"
+          } as unknown as (typeof pack.states[1].military)[number]
+        ];
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        Living.tick(1);
+
+        expect(living.states[1].agenda).toMatchObject({ kind: "suppress_faction", targetFactionId: faction.i });
+        expect(
+          (living.burgs[1].productionQueue ?? []).some(
+            item => item.kind === "operation" && item.targetFactionId === faction.i
+          )
+        ).toBe(true);
+      });
+
+      it("applies order/secrecy pressure and pillages a depleted outpost", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 3, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        queueSuppression(living, faction, "outpost:1");
+
+        Living.tick(1);
+
+        expect(faction.outposts[0].pillaged).toBe(true);
+        expect(faction.outposts[0].influence).toBe(0);
+        expect(living.states[1].agenda).toBeNull();
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("razed"))).toBe(true);
+        // Pillaged nodes are skipped from empire rollups.
+        expect(Living.getFactionYieldBreakdown(faction).outposts).toHaveLength(0);
+      });
+
+      it("pauses pressure while a faction guard defends the node", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 10, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        faction.military = [
+          {
+            i: 1,
+            name: "Silver Guard",
+            a: 100,
+            cell: 5,
+            x: 50,
+            y: 50,
+            bx: 50,
+            by: 50,
+            u: { spear: 100 },
+            units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 0,
+            icon: "⚔️",
+            rosterId: faction.rosterId
+          } as unknown as (typeof faction.military)[number]
+        ];
+        queueSuppression(living, faction, "outpost:1");
+
+        Living.tick(1);
+
+        expect(faction.outposts[0].influence).toBe(10);
+        expect(faction.outposts[0].pillaged).toBeFalsy();
+        expect(living.states[1].agenda?.kind).toBe("suppress_faction");
+        expect(living.states[1].agenda?.stallUntilTick).toBeGreaterThan(living.tick);
+      });
+
+      it("relocates the HQ to the strongest surviving outpost when it falls", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          researchedTechs: ["pottery"],
+          hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 2, assets: [] },
+          outposts: [
+            { burgId: 5, cell: 4, tier: 1, influence: 50, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        queueSuppression(living, faction, "hq");
+
+        Living.tick(1);
+
+        expect(faction.removed).toBeFalsy();
+        expect(faction.hq.burgId).toBe(5);
+        expect(faction.hq.pillaged).toBe(false);
+        expect(faction.outposts).toHaveLength(0);
+        expect(faction.researchedTechs).toContain("pottery");
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("fled to"))).toBe(true);
+      });
+
+      it("dissolves the faction when its HQ falls with no surviving outposts", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 2, assets: [] }
+        });
+        queueSuppression(living, faction, "hq");
+
+        Living.tick(1);
+
+        expect(faction.removed).toBe(true);
+        expect(living.states[1].agenda).toBeNull();
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("dissolved"))).toBe(true);
+      });
+    });
   });
 });
 

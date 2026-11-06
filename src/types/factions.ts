@@ -52,6 +52,7 @@ export interface FactionHq {
   maritime?: boolean;
   fortified: boolean;
   pillaged?: boolean;
+  influence?: number; // 0..100, urban HQ suppression health (defaults to 70)
   secrecy: number; // 0..100
   assets: string[];
   sim?: BurgSimState;

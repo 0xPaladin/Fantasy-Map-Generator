@@ -31,6 +31,7 @@ export function ensureFactionNodeSim(node: FactionHq | FactionOutpost, isHq: boo
   const civBuildings = Array.from(new Set([...(node.assets ?? []), ...(node.sim?.civBuildings ?? [])]));
   node.assets = [...civBuildings];
   const baseHp = isHq ? 200 : 100;
+  if (isHq && node.influence === undefined) node.influence = 70;
 
   if (!node.sim) {
     node.sim = {

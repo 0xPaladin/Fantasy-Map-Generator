@@ -2757,7 +2757,175 @@ class LivingModel {
     if (item.id !== FACTION_SUPPRESSION_OPERATION_ID) return;
     const target = this.resolveFactionSuppressionTarget(state, item);
     if (!target) return;
+    const sSim = living.states[state.i];
+    if (this.factionNodeHasGuard(target.faction, target.node)) {
+      // Guarded node stalls the campaign; repeated stalls strain the state.
+      const agenda = sSim?.agenda?.kind === "suppress_faction" ? sSim.agenda : undefined;
+      if (sSim && (!agenda?.stallUntilTick || agenda.stallUntilTick <= living.tick)) {
+        sSim.unravel = Math.min(100, (sSim.unravel ?? 0) + 2);
+      }
+      if (agenda) agenda.stallUntilTick = living.tick + 4;
+      return;
+    }
     this.applyFactionSuppressionPressure(state, target, living);
+  }
+
+  /** Whether a non-civilian faction regiment is defending this node cell. */
+  private factionNodeHasGuard(faction: Faction, node: FactionHq | FactionOutpost): boolean {
+    return (faction.military ?? []).some(
+      regiment =>
+        regiment.cell === node.cell &&
+        !armyIsEmpty(regiment) &&
+        !isCivilianUnit((regiment.type ?? "").toLowerCase())
+    );
+  }
+
+  /** Apply one administrative suppression effect when the target node is unguarded. */
+  private applyFactionSuppressionPressure(
+    state: State,
+    target: FactionSuppressionTarget,
+    living: LivingWorldState
+  ): void {
+    const { node, isHq, burg } = target;
+
+    // Guards must be dealt with first; a defending army pauses administrative pressure.
+    if (this.factionNodeHasGuard(target.faction, node)) return;
+
+    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+    const pSim = provinceId ? living.provinces?.[provinceId] : undefined;
+    const provinceOrder = pSim?.order ?? 70;
+    const influenceDamage = Math.max(1, Math.floor((provinceOrder - node.secrecy) / 20));
+
+    if (isHq) {
+      node.influence = Math.max(0, (node.influence ?? 70) - influenceDamage);
+    } else {
+      node.influence = Math.max(0, node.influence - influenceDamage);
+    }
+
+    if (pSim) pSim.order = Math.min(100, pSim.order + 2);
+    const bSim = living.burgs[burg.i];
+    if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 1);
+
+    const remaining = isHq ? (node.influence ?? 0) : node.influence;
+    if (remaining <= 0) this.pillageFactionNode(state, target, living);
+  }
+
+  /** Pillage a depleted node, clear its queue state, and run relocation/dissolution checks. */
+  private pillageFactionNode(state: State, target: FactionSuppressionTarget, living: LivingWorldState): void {
+    const { faction, node, isHq, burg } = target;
+    node.pillaged = true;
+    if ("influence" in node || isHq) (node as FactionHq | FactionOutpost).influence = 0;
+
+    // Drop any partial suppression work queued for this node.
+    const bSim = living.burgs[burg.i];
+    if (bSim?.productionQueue) {
+      bSim.productionQueue = bSim.productionQueue.filter(
+        item =>
+          !(
+            item.kind === "operation" &&
+            item.id === FACTION_SUPPRESSION_OPERATION_ID &&
+            item.targetFactionId === faction.i &&
+            item.targetNodeKey === target.nodeKey
+          )
+      );
+      if (bSim.productionProgress) delete bSim.productionProgress[`operation:${FACTION_SUPPRESSION_OPERATION_ID}`];
+    }
+
+    if (!isHq) {
+      this.pushNews(living, {
+        kind: "faction",
+        text: `${state.name} razed the ${faction.name} enclave in ${burg.name ?? "a burg"}.`,
+        cell: burg.cell,
+        stateId: state.i,
+        burgId: burg.i
+      });
+    }
+
+    if (isHq) this.relocateOrDissolveFaction(state, faction, living);
+
+    // Retarget or cancel the suppressing state's agenda.
+    const sSim = living.states[state.i];
+    const agenda = sSim?.agenda;
+    if (agenda?.kind === "suppress_faction" && agenda.targetFactionId === faction.i) {
+      if (faction.removed) {
+        sSim.agenda = null;
+      } else {
+        const next = this.eligibleFactionSuppressionTargets(state.i).find(entry => entry.faction.i === faction.i);
+        if (next) {
+          agenda.targetBurgId = next.burg.i;
+          agenda.label = `Suppressing ${next.faction.name} in ${next.burg.name ?? "a burg"}`;
+        } else {
+          sSim.agenda = null;
+        }
+      }
+    }
+  }
+
+  /** After an urban HQ falls: relocate to the strongest outpost, or dissolve the faction. */
+  private relocateOrDissolveFaction(state: State, faction: Faction, living: LivingWorldState): void {
+    const survivors = [...(faction.outposts ?? [])]
+      .filter(outpost => !outpost.pillaged)
+      .sort((a, b) => b.influence - a.influence || a.burgId - b.burgId);
+    const survivor = survivors[0];
+
+    if (!survivor) {
+      Factions.remove(faction.i);
+      this.pushNews(living, {
+        kind: "faction",
+        text: `${faction.name} was dissolved after its last stronghold fell.`,
+        cell: faction.hq?.cell,
+        ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
+      });
+      return;
+    }
+
+    const oldHq = faction.hq;
+    const burg = pack.burgs[survivor.burgId];
+    faction.outposts = (faction.outposts ?? []).filter(outpost => outpost !== survivor);
+    faction.hq = {
+      cell: survivor.cell,
+      burgId: survivor.burgId,
+      fortified: oldHq?.fortified ?? false,
+      pillaged: false,
+      influence: survivor.influence,
+      secrecy: survivor.secrecy,
+      assets: [...survivor.assets],
+      sim: survivor.sim
+    };
+    ensureFactionNodeSim(faction.hq, true);
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${faction.name} fled to ${burg?.name ?? "a new stronghold"}.`,
+      cell: survivor.cell,
+      stateId: state.i,
+      burgId: survivor.burgId
+    });
+  }
+
+  /** Queue one suppression operation for the target's host city, if not already queued. */
+  private enqueueFactionSuppression(
+    target: FactionSuppressionTarget,
+    living: LivingWorldState
+  ): boolean {
+    const bSim = living.burgs[target.burg.i];
+    if (!bSim?.isMajor) return false;
+    bSim.productionQueue ??= [];
+    bSim.productionProgress ??= {};
+    const queued = bSim.productionQueue.some(
+      item =>
+        item.kind === "operation" &&
+        item.id === FACTION_SUPPRESSION_OPERATION_ID &&
+        item.targetFactionId === target.faction.i &&
+        item.targetNodeKey === target.nodeKey
+    );
+    if (queued) return false;
+    bSim.productionQueue.push({
+      kind: "operation",
+      id: FACTION_SUPPRESSION_OPERATION_ID,
+      targetFactionId: target.faction.i,
+      targetNodeKey: target.nodeKey
+    });
+    return true;
   }
 
   /** Resolve an operation/stale agenda target into its live faction node and host burg. */
@@ -2789,37 +2957,6 @@ class LivingModel {
       };
     }
     return null;
-  }
-
-  /** Apply one administrative suppression effect when the target node is unguarded. */
-  private applyFactionSuppressionPressure(
-    state: State,
-    target: FactionSuppressionTarget,
-    living: LivingWorldState
-  ): void {
-    const { node, isHq, burg } = target;
-
-    // Guards must be dealt with first; a defending army pauses administrative pressure.
-    const hasGuard = (target.faction.military ?? []).some(
-      regiment =>
-        regiment.cell === node.cell &&
-        !armyIsEmpty(regiment) &&
-        !isCivilianUnit((regiment.type ?? "").toLowerCase())
-    );
-    if (hasGuard) return;
-
-    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
-    const pSim = provinceId ? living.provinces?.[provinceId] : undefined;
-    const provinceOrder = pSim?.order ?? 70;
-    const influenceDamage = Math.max(1, Math.floor((provinceOrder - node.secrecy) / 20));
-
-    if ("influence" in node) {
-      node.influence = Math.max(0, node.influence - influenceDamage);
-    }
-
-    if (pSim) pSim.order = Math.min(100, pSim.order + 2);
-    const bSim = living.burgs[burg.i];
-    if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 1);
   }
 
   /** Hurry a city-node suppression operation without changing the gold reserve rule. */
@@ -2961,10 +3098,11 @@ class LivingModel {
     }[] = [];
     for (const faction of Factions.active()) {
       syncFactionState(faction);
-      if (faction.hq) {
+      if (faction.hq && !faction.hq.pillaged) {
         entries.push({ faction, node: faction.hq, sim: ensureFactionNodeSim(faction.hq, true), isHq: true });
       }
       for (const outpost of faction.outposts ?? []) {
+        if (outpost.pillaged) continue;
         entries.push({ faction, node: outpost, sim: ensureFactionNodeSim(outpost, false), isHq: false });
       }
     }
@@ -3416,13 +3554,16 @@ class LivingModel {
     nodeSim.tilesAcquired = tiles + 1;
 
     if (node.burgId) {
-      if ("influence" in node) {
+      if ("tier" in node) {
         node.influence = Math.min(100, (node.influence ?? 30) + 10);
+      } else {
+        node.influence = Math.min(100, (node.influence ?? 70) + 10);
       }
       // Reduce rival faction outpost influence in the same Burg
       for (const rival of Factions.active()) {
         if (rival.i === faction.i) continue;
         for (const rOutpost of rival.outposts ?? []) {
+          if (rOutpost.pillaged) continue;
           if (rOutpost.burgId === node.burgId) {
             rOutpost.influence = Math.max(5, (rOutpost.influence ?? 20) - 5);
           }
@@ -3751,7 +3892,7 @@ class LivingModel {
   /** Count unimproved workable cells currently worked by any of a Faction's nodes. */
   private countFactionUnimprovedCells(faction: Faction, living: LivingWorldState): number {
     let count = 0;
-    const nodes = [faction.hq, ...(faction.outposts ?? [])];
+    const nodes = [faction.hq, ...(faction.outposts ?? [])].filter(node => node && !node.pillaged);
     for (const node of nodes) {
       if (!node?.sim?.workedCells) continue;
       for (const cell of node.sim.workedCells) {
@@ -3766,8 +3907,8 @@ class LivingModel {
   /** Check whether there is any valid Burg on the map where this Faction does not yet have an HQ or Outpost. */
   private hasFactionOutpostTarget(faction: Faction): boolean {
     const existing = new Set<number>();
-    if (faction.hq?.burgId) existing.add(faction.hq.burgId);
-    for (const o of faction.outposts ?? []) existing.add(o.burgId);
+    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) existing.add(faction.hq.burgId);
+    for (const o of faction.outposts ?? []) if (!o.pillaged) existing.add(o.burgId);
     return (pack.burgs ?? []).some(b => b?.i && !b.removed && !existing.has(b.i));
   }
 
@@ -4150,10 +4291,10 @@ class LivingModel {
     sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
   }
 
-  /** Active HQ/outpost nodes of a faction, skipping pillaged outposts. */
+  /** Active HQ/outpost nodes of a faction, skipping pillaged nodes. */
   private factionEmpireNodes(faction: Faction): { node: FactionHq | FactionOutpost; isHq: boolean }[] {
     const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
-    if (faction.hq) nodes.push({ node: faction.hq, isHq: true });
+    if (faction.hq && !faction.hq.pillaged) nodes.push({ node: faction.hq, isHq: true });
     for (const outpost of faction.outposts ?? []) {
       if (outpost.pillaged) continue;
       nodes.push({ node: outpost, isHq: false });
@@ -4359,8 +4500,8 @@ class LivingModel {
   /** Host state used for the +25% research spillover. */
   private factionHostStateId(faction: Faction): number {
     if (faction.patronStateId) return faction.patronStateId;
-    if (faction.hq?.burgId) return pack.burgs[faction.hq.burgId]?.state ?? 0;
-    const first = (faction.outposts ?? [])[0];
+    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) return pack.burgs[faction.hq.burgId]?.state ?? 0;
+    const first = (faction.outposts ?? []).find(outpost => !outpost.pillaged);
     if (first?.burgId) return pack.burgs[first.burgId]?.state ?? 0;
     return 0;
   }
@@ -4541,27 +4682,14 @@ class LivingModel {
     const state = pack.states[stateId];
     const sSim = living.states[stateId];
     if (!state?.i || state.removed || !sSim) return false;
+    if (sSim.agenda?.kind === "suppress_faction") return false;
     if (!this.isHostileToState(factionId, stateId)) return false;
 
     const targets = this.eligibleFactionSuppressionTargets(stateId).filter(target => target.faction.i === factionId);
     const target = targets[0];
     if (!target) return false;
 
-    const bSim = living.burgs[target.burg.i];
-    if (!bSim?.isMajor) return false;
-
-    bSim.productionQueue ??= [];
-    bSim.productionProgress ??= {};
-    if (bSim.productionQueue.some(item => item.kind === "operation" && item.id === FACTION_SUPPRESSION_OPERATION_ID)) {
-      return false;
-    }
-
-    bSim.productionQueue.push({
-      kind: "operation",
-      id: FACTION_SUPPRESSION_OPERATION_ID,
-      targetFactionId: factionId,
-      targetNodeKey: target.nodeKey
-    });
+    if (!this.enqueueFactionSuppression(target, living)) return false;
     sSim.agenda = {
       kind: "suppress_faction",
       label: `Suppressing ${target.faction.name} in ${target.burg.name ?? "a burg"}`,
@@ -4632,6 +4760,11 @@ class LivingModel {
 
     targets.sort((a, b) => b.score - a.score || a.burg.cell - b.burg.cell || a.faction.i - b.faction.i);
     return targets;
+  }
+
+  /** Best locally hosted hostile/clandestine node for administrative suppression. */
+  private pickFactionSuppressionTarget(state: State): FactionSuppressionTarget | null {
+    return this.eligibleFactionSuppressionTargets(state.i)[0] ?? null;
   }
 
   /** Gold-hurry the top production item in a Major Burg (GoldPurchase). */
@@ -5104,7 +5237,7 @@ class LivingModel {
   private factionNodesAtBurg(factionId: number, burgId: number): boolean {
     const faction = pack.factions?.[factionId];
     if (!faction?.i || faction.removed) return false;
-    if (faction.hq?.burgId === burgId) return true;
+    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId === burgId) return true;
     return (faction.outposts ?? []).some(outpost => outpost.burgId === burgId && !outpost.pillaged);
   }
 
@@ -9528,6 +9661,18 @@ class LivingModel {
       };
     }
 
+    const suppression = this.pickFactionSuppressionTarget(state);
+    if (suppression) {
+      return {
+        kind: "suppress_faction",
+        label: `Suppressing ${suppression.faction.name} in ${suppression.burg.name ?? "a burg"}`,
+        targetFactionId: suppression.faction.i,
+        targetBurgId: suppression.burg.i,
+        progress: 0,
+        required: 1
+      };
+    }
+
     const war = this.warAgenda(state, sSim);
     if (war) return war;
 
@@ -9725,6 +9870,44 @@ class LivingModel {
         );
         agenda.progress += 1;
         if (agenda.progress >= agenda.required) sSim.agenda = null;
+        return;
+      }
+      case "suppress_faction": {
+        const factionId = agenda.targetFactionId;
+        if (factionId === undefined) {
+          sSim.agenda = null;
+          return;
+        }
+        // Resolve the current node, preferring one already queued in the agenda burg.
+        let target: FactionSuppressionTarget | null = null;
+        const agendaBurg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
+        const queuedItem = agendaBurg
+          ? (living.burgs[agendaBurg.i]?.productionQueue ?? []).find(
+              item =>
+                item.kind === "operation" &&
+                item.id === FACTION_SUPPRESSION_OPERATION_ID &&
+                item.targetFactionId === factionId
+            )
+          : undefined;
+        if (queuedItem) target = this.resolveFactionSuppressionTarget(state, queuedItem);
+        if (!target && agendaBurg) {
+          target =
+            this.eligibleFactionSuppressionTargets(state.i).find(
+              entry => entry.faction.i === factionId && entry.burg.i === agendaBurg.i
+            ) ?? null;
+        }
+        target ??= this.eligibleFactionSuppressionTargets(state.i).find(entry => entry.faction.i === factionId) ?? null;
+        if (!target) {
+          sSim.agenda = null;
+          return;
+        }
+        agenda.targetFactionId = target.faction.i;
+        agenda.targetBurgId = target.burg.i;
+        agenda.label = `Suppressing ${target.faction.name} in ${target.burg.name ?? "a burg"}`;
+
+        const bSim = living.burgs[target.burg.i];
+        if (!bSim?.isMajor) return;
+        this.enqueueFactionSuppression(target, living);
         return;
       }
       default:
