@@ -4631,6 +4631,130 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(progress > 0 || queued).toBe(true);
       });
     });
+
+    describe("State suppression wilderness strongholds", () => {
+      function wildernessFaction(name: string, overrides: Partial<Faction> = {}): Faction {
+        return Factions.add({
+          name,
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 9, fortified: false, secrecy: 0, assets: [] } as Faction["hq"],
+          outposts: [],
+          ...overrides
+        });
+      }
+
+      function fieldArmy(blocks: number, cell = 10) {
+        pack.states[1].military = [
+          {
+            i: 0,
+            name: "Aeloria Regiment",
+            a: 100,
+            cell,
+            x: 100,
+            y: 100,
+            bx: 100,
+            by: 100,
+            u: { spear: 100 },
+            units: Array.from({ length: blocks }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 1,
+            icon: "⚔️"
+          } as unknown as (typeof pack.states[1].military)[number]
+        ];
+      }
+
+      it("targets a wilderness HQ on a state-owned cell but not on free land", () => {
+        Living.init();
+        const faction = wildernessFaction("Pale Hand");
+        expect(faction.hq.burgId).toBeFalsy();
+
+        const targets = Living.eligibleFactionSuppressionTargets(1);
+        expect(targets.map(t => t.faction.i)).toContain(faction.i);
+        expect(targets.find(t => t.faction.i === faction.i)?.wilderness).toBe(true);
+        expect(targets.find(t => t.faction.i === faction.i)?.burg).toBeNull();
+        expect(targets.find(t => t.faction.i === faction.i)?.cell).toBe(9);
+
+        // Moving the HQ to a cell owned by state 2 removes eligibility.
+        faction.hq.cell = 7;
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(faction.i);
+      });
+
+      it("starts a military-only agenda with no production queue for a wilderness HQ", () => {
+        const living = Living.init();
+        const faction = wildernessFaction("Pale Hand");
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        const agenda = living.states[1].agenda;
+        expect(agenda?.kind).toBe("suppress_faction");
+        expect(agenda?.targetCell).toBe(9);
+        expect(agenda?.targetBurgId).toBeUndefined();
+        expect(agenda?.label).toContain("wild");
+        for (const bSim of Object.values(living.burgs)) {
+          expect(
+            (bSim.productionQueue ?? []).some(item => item.kind === "operation" && item.id === "faction-suppression")
+          ).toBe(false);
+        }
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("began suppressing"))).toBe(
+          true
+        );
+      });
+
+      it("storms a wilderness HQ and dissolves the faction with no outposts left", () => {
+        Living.init();
+        fieldArmy(13);
+        const faction = wildernessFaction("Pale Hand");
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        expect(Living.assaultFactionNode(1, faction.i, "hq")).toBe(true);
+        expect(faction.hq.pillaged).toBe(true);
+        expect(faction.removed).toBe(true);
+        expect(Living.getState().states[1].agenda).toBeNull();
+      });
+
+      it("relocates a wilderness HQ to its strongest surviving outpost", () => {
+        Living.init();
+        fieldArmy(13);
+        const faction = wildernessFaction("Pale Hand", {
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        expect(Living.assaultFactionNode(1, faction.i, "hq")).toBe(true);
+        expect(faction.removed).toBeFalsy();
+        expect(faction.hq.burgId).toBe(1);
+        expect(faction.hq.pillaged).toBe(false);
+        expect(faction.outposts).toHaveLength(0);
+      });
+
+      it("keeps a wilderness agenda without production after a tick until the army can march", () => {
+        const living = Living.init();
+        fieldArmy(13, 1); // far from cell 9: cannot storm yet
+        const faction = wildernessFaction("Pale Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+
+        Living.tick(1);
+
+        for (const bSim of Object.values(living.burgs)) {
+          expect(
+            (bSim.productionQueue ?? []).some(item => item.kind === "operation" && item.id === "faction-suppression")
+          ).toBe(false);
+        }
+        // Either the marching army reached the stronghold this tick (pillaged,
+        // agenda retargeted/cleared) or it is still marching (agenda intact):
+        // in no case did an administrative operation appear.
+        if (faction.hq.pillaged) {
+          expect(faction.removed).toBe(true);
+        } else {
+          expect(living.states[1].agenda?.kind).toBe("suppress_faction");
+          expect(living.states[1].agenda?.targetCell).toBe(9);
+        }
+      });
+    });
   });
 });
 

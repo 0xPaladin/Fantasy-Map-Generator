@@ -2027,16 +2027,20 @@ function renderAgenda(
         ? (faction.hq?.burgId === burg.i && !faction.hq.pillaged
             ? faction.hq
             : (faction.outposts ?? []).find(outpost => outpost.burgId === burg.i && !outpost.pillaged))
-        : undefined;
+        : faction?.hq && !faction.hq.pillaged && !faction.hq.burgId
+          ? faction.hq
+          : undefined;
     const influence =
       node !== undefined ? ("tier" in node ? node.influence : (node.influence ?? undefined)) : undefined;
     const tick = living?.tick ?? 0;
     const stalled = agenda.stallUntilTick !== undefined && agenda.stallUntilTick > tick;
+    const wilderness = agenda.targetCell !== undefined && !burg;
+    const location = burg?.name ?? (wilderness ? "the wildlands" : "a burg");
     return /* html */ `
     <div class="livingSection">
       <div class="livingSectionTitle">Agenda</div>
-      <div>Suppressing ${escapeHtml(faction?.name ?? "a faction")} in ${escapeHtml(burg?.name ?? "a burg")}</div>
-      <div class="livingMuted">Influence ${influence !== undefined ? `${Math.round(influence)}%` : "—"}${stalled ? " · stalled (defending army or failed storm)" : ""}</div>
+      <div>Suppressing ${escapeHtml(faction?.name ?? "a faction")} in ${escapeHtml(location)}</div>
+      <div class="livingMuted">Influence ${influence !== undefined ? `${Math.round(influence)}%` : "—"}${stalled ? " · stalled (defending army or failed storm)" : ""}${wilderness ? " · wilderness stronghold (military only)" : ""}</div>
     </div>`;
   }
 
@@ -2056,8 +2060,10 @@ function renderSuppressionTargets(stateId: number, sSim: StatePolitySim): string
   const rows = targets
     .map(target => {
       const influence = "tier" in target.node ? target.node.influence : (target.node.influence ?? undefined);
+      const location = target.burg?.name ?? "the wildlands";
+      const wildernessTag = target.wilderness ? " · wilderness (military only)" : "";
       return `<li>
-        <span class="livingMuted">${escapeHtml(target.faction.name)} · ${escapeHtml(target.burg.name ?? "a burg")} · Influence ${influence !== undefined ? `${Math.round(influence)}%` : "—"}</span>
+        <span class="livingMuted">${escapeHtml(target.faction.name)} · ${escapeHtml(location)}${escapeHtml(wildernessTag)} · Influence ${influence !== undefined ? `${Math.round(influence)}%` : "—"}</span>
         ${suppressing && sSim.agenda?.targetFactionId === target.faction.i ? `<span class="livingMuted"> (suppressing)</span>` : `<button type="button" data-guild="suppress-faction" data-state="${stateId}" data-faction="${target.faction.i}">Suppress faction</button>`}
       </li>`;
     })

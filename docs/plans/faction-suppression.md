@@ -262,7 +262,7 @@ Avoid per-season spam.
    - victory pillages the node;
    - failure retreats the army and delays suppression.
 5. Let unfinished administrative pressure resume after the guard clears.
-6. Add wilderness stronghold assault only after urban node completion proves acceptable.
+6. Add wilderness stronghold assault only after urban node completion proves acceptable. (Done: military-only storm of an HQ with no burg on a state-owned cell; victory pillages and runs the same relocation/dissolution path.)
 
 ### Phase 4 — UI & saved-map compatibility
 

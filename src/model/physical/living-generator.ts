@@ -993,12 +993,27 @@ export function factionSuppressionProductionCost(node: { tier?: number }): numbe
   return FACTION_SUPPRESSION_PRODUCTION_BASE + tier * FACTION_SUPPRESSION_PRODUCTION_PER_TIER;
 }
 
+/** Human-readable stronghold location for a suppression target. */
+export function factionSuppressionLocationName(target: FactionSuppressionTarget): string {
+  if (target.burg?.i) return target.burg.name ?? "a burg";
+  const provinceId = Number(pack.cells.province?.[target.cell] ?? 0);
+  const province = provinceId ? pack.provinces?.[provinceId] : undefined;
+  return province?.name ? `the wilds of ${province.name}` : "the wildlands";
+}
+
+/** Resolve a suppression target's state-owned cell for marching and news. */
+export function factionSuppressionTargetCell(target: FactionSuppressionTarget): number {
+  return target.burg?.i ? target.burg.cell : target.cell;
+}
+
 /** A locally hosted faction node that a state can pressure through suppression. */
 export interface FactionSuppressionTarget {
   faction: Faction;
   node: FactionHq | FactionOutpost;
   isHq: boolean;
-  burg: Burg;
+  burg: Burg | null;
+  cell: number;
+  wilderness: boolean;
   nodeKey: FactionNodeKey;
   score: number;
 }
@@ -2791,6 +2806,7 @@ class LivingModel {
     living: LivingWorldState
   ): void {
     const { node, isHq, burg } = target;
+    if (!burg?.i) return; // Wilderness strongholds are military-only, not administrative pressure.
 
     // Guards must be dealt with first; a defending army pauses administrative pressure.
     if (this.factionNodeHasGuard(target.faction, node)) return;
@@ -2817,31 +2833,43 @@ class LivingModel {
   /** Pillage a depleted node, clear its queue state, and run relocation/dissolution checks. */
   private pillageFactionNode(state: State, target: FactionSuppressionTarget, living: LivingWorldState): void {
     const { faction, node, isHq, burg } = target;
+    const targetCell = factionSuppressionTargetCell(target);
+    const location = factionSuppressionLocationName(target);
     node.pillaged = true;
     if ("influence" in node || isHq) (node as FactionHq | FactionOutpost).influence = 0;
 
     // Drop any partial suppression work queued for this node.
-    const bSim = living.burgs[burg.i];
-    if (bSim?.productionQueue) {
-      bSim.productionQueue = bSim.productionQueue.filter(
-        item =>
-          !(
-            item.kind === "operation" &&
-            item.id === FACTION_SUPPRESSION_OPERATION_ID &&
-            item.targetFactionId === faction.i &&
-            item.targetNodeKey === target.nodeKey
-          )
-      );
-      if (bSim.productionProgress) delete bSim.productionProgress[`operation:${FACTION_SUPPRESSION_OPERATION_ID}`];
+    if (burg?.i) {
+      const bSim = living.burgs[burg.i];
+      if (bSim?.productionQueue) {
+        bSim.productionQueue = bSim.productionQueue.filter(
+          item =>
+            !(
+              item.kind === "operation" &&
+              item.id === FACTION_SUPPRESSION_OPERATION_ID &&
+              item.targetFactionId === faction.i &&
+              item.targetNodeKey === target.nodeKey
+            )
+        );
+        if (bSim.productionProgress) delete bSim.productionProgress[`operation:${FACTION_SUPPRESSION_OPERATION_ID}`];
+      }
     }
 
-    if (!isHq) {
+    if (!isHq && burg?.i) {
       this.pushNews(living, {
         kind: "faction",
         text: `${state.name} razed the ${faction.name} enclave in ${burg.name ?? "a burg"}.`,
         cell: burg.cell,
         stateId: state.i,
         burgId: burg.i
+      });
+    }
+    if (isHq && target.wilderness) {
+      this.pushNews(living, {
+        kind: "faction",
+        text: `${state.name} razed the ${faction.name} stronghold in ${location}.`,
+        cell: targetCell,
+        stateId: state.i
       });
     }
 
@@ -2856,8 +2884,9 @@ class LivingModel {
       } else {
         const next = this.eligibleFactionSuppressionTargets(state.i).find(entry => entry.faction.i === faction.i);
         if (next) {
-          agenda.targetBurgId = next.burg.i;
-          agenda.label = `Suppressing ${next.faction.name} in ${next.burg.name ?? "a burg"}`;
+          agenda.targetBurgId = next.burg?.i;
+          agenda.targetCell = next.burg?.i ? undefined : next.cell;
+          agenda.label = `Suppressing ${next.faction.name} in ${factionSuppressionLocationName(next)}`;
         } else {
           sSim.agenda = null;
         }
@@ -2937,9 +2966,10 @@ class LivingModel {
   }
 
   /**
-   * Storm an urban faction node with the state's field army through the shared
+   * Storm a faction node with the state's field army through the shared
    * battle engine. Victory pillages the node; failure retreats the army and
-   * delays the suppression campaign. Wilderness HQs stay out of scope.
+   * delays the suppression campaign. Wilderness HQs are military-only: there
+   * is no host city, so they are stormed directly rather than pressured.
    */
   assaultFactionNode(stateId: number, factionId: number, nodeKey?: string): boolean {
     const living = this.getState();
@@ -2954,13 +2984,15 @@ class LivingModel {
       ) ?? null;
     if (!target) return false;
     const { faction, node, isHq, burg } = target;
+    const targetCell = factionSuppressionTargetCell(target);
+    const location = factionSuppressionLocationName(target);
 
     const army = this.fieldArmy(state);
     if (!army) return false;
 
     const types = Military.getUnitTypes();
     const ranged = armyIsRangedBlocks(army, types);
-    if (!this.cellHopDistances(army.cell, ranged ? 2 : 1).has(burg.cell)) return false;
+    if (!this.cellHopDistances(army.cell, ranged ? 2 : 1).has(targetCell)) return false;
 
     const attackerUnits = toBattleUnits(army.units ?? []);
     const defenderUnits = toBattleUnits(this.factionGarrisonBlocks(faction, node, isHq));
@@ -2981,18 +3013,18 @@ class LivingModel {
         armyId: `fm-f${faction.i}-garrison`,
         units: defenderUnits
       },
-      cell: burg.cell,
-      regionId: pack.cells.province?.[burg.cell] ?? 0,
+      cell: targetCell,
+      regionId: pack.cells.province?.[targetCell] ?? 0,
       assault: true,
       modifiers: {
         walls: fortified ? 1 : 0,
         defenderEncamped: fortified,
         defenderAmbushed: attackerArmy?.stance === "ambush",
         attackerCrossedRiver:
-          Number(pack.cells.r?.[army.cell] ?? 0) !== Number(pack.cells.r?.[burg.cell] ?? 0) &&
-          Number(pack.cells.r?.[burg.cell] ?? 0) > 0,
-        defenderTerrain: terrainDefenseMultiplier(burg.cell) > 1,
-        labels: [fortified ? `${burg.name ?? "stronghold"} (fortified)` : (burg.name ?? "stronghold")],
+          Number(pack.cells.r?.[army.cell] ?? 0) !== Number(pack.cells.r?.[targetCell] ?? 0) &&
+          Number(pack.cells.r?.[targetCell] ?? 0) > 0,
+        defenderTerrain: terrainDefenseMultiplier(targetCell) > 1,
+        labels: [fortified ? `${burg?.name ?? "stronghold"} (fortified)` : (burg?.name ?? "stronghold")],
         ...(happinessCombatMultiplier(sSim.happiness) !== 1
           ? { attackerLordMult: happinessCombatMultiplier(sSim.happiness) }
           : {}),
@@ -3002,7 +3034,7 @@ class LivingModel {
       }
     });
 
-    const rng = this.rng("faction:assault", state.i * 1000 + burg.i, living.tick);
+    const rng = this.rng("faction:assault", state.i * 1000 + targetCell, living.tick);
     while (session.status === "active" && session.round < config.battle.maxRounds) {
       stepBattleRound(session, rng.next, {
         attacker: this.battleOrder(session, "attacker", attackerArmy?.stance ?? "march"),
@@ -3038,9 +3070,9 @@ class LivingModel {
       if (armyIsEmpty(army) && army.units?.[0]) army.units[0].hp = 0.01;
       if (this.armyHasMelee(army, types)) {
         const occupancy = this.armyOccupancy(living);
-        this.moveRegimentTo(army, burg.cell, state.i, attackerKey, occupancy);
+        this.moveRegimentTo(army, targetCell, state.i, attackerKey, occupancy);
       }
-      this.addBattleMarker(burg.cell, `${state.name} vs ${faction.name}`);
+      this.addBattleMarker(targetCell, `${state.name} vs ${faction.name}`);
       this.pillageFactionNode(state, target, living);
       return true;
     }
@@ -3049,8 +3081,8 @@ class LivingModel {
       this.removeRegiment(state, army, living);
     } else {
       // Retreat one hop toward friendly land; otherwise hold and delay.
-      const neighbors = [...(pack.cells.c?.[burg.cell] ?? [])]
-        .filter(cell => cell !== burg.cell)
+      const neighbors = [...(pack.cells.c?.[targetCell] ?? [])]
+        .filter(cell => cell !== targetCell)
         .sort((a, b) => a - b);
       const retreat = neighbors.find(cell => pack.cells.state?.[cell] === state.i) ?? neighbors[0];
       if (retreat !== undefined && retreat !== army.cell) {
@@ -3060,13 +3092,13 @@ class LivingModel {
     }
     if (sSimAgenda) sSimAgenda.stallUntilTick = living.tick + 4;
     sSim.unravel = Math.min(100, (sSim.unravel ?? 0) + 2);
-    this.addBattleMarker(burg.cell, `${state.name} vs ${faction.name}`);
+    this.addBattleMarker(targetCell, `${state.name} vs ${faction.name}`);
     this.pushNews(living, {
       kind: "faction",
-      text: `${state.name} failed to storm the ${faction.name} stronghold in ${burg.name ?? "a burg"}.`,
-      cell: burg.cell,
+      text: `${state.name} failed to storm the ${faction.name} stronghold in ${location}.`,
+      cell: targetCell,
       stateId: state.i,
-      burgId: burg.i
+      ...(burg?.i ? { burgId: burg.i } : {})
     });
     return false;
   }
@@ -3076,7 +3108,8 @@ class LivingModel {
     target: FactionSuppressionTarget,
     living: LivingWorldState
   ): boolean {
-    const bSim = living.burgs[target.burg.i];
+    if (!target.burg?.i) return false; // Wilderness strongholds have no host city queue.
+    const bSim = living.burgs[target.burg.i!];
     if (!bSim?.isMajor) return false;
     bSim.productionQueue ??= [];
     bSim.productionProgress ??= {};
@@ -3107,7 +3140,7 @@ class LivingModel {
     if (!faction?.i || faction.removed) return null;
 
     const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
-    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) nodes.push({ node: faction.hq, isHq: true });
+    if (faction.hq && !faction.hq.pillaged) nodes.push({ node: faction.hq, isHq: true });
     for (const outpost of faction.outposts ?? []) {
       if (!outpost.pillaged) nodes.push({ node: outpost, isHq: false });
     }
@@ -3115,15 +3148,32 @@ class LivingModel {
     for (const { node, isHq } of nodes) {
       if (item.targetNodeKey !== undefined && item.targetNodeKey !== factionSuppressionNodeKey(node, isHq)) continue;
       const candidateBurg = node.burgId ? pack.burgs[node.burgId] : undefined;
-      if (!candidateBurg?.i || candidateBurg.removed || candidateBurg.state !== state.i) continue;
-      return {
-        faction,
-        node,
-        isHq,
-        burg: candidateBurg,
-        nodeKey: factionSuppressionNodeKey(node, isHq),
-        score: 0
-      };
+      if (candidateBurg?.i && !candidateBurg.removed) {
+        if (candidateBurg.state !== state.i) continue;
+        return {
+          faction,
+          node,
+          isHq,
+          burg: candidateBurg,
+          cell: candidateBurg.cell,
+          wilderness: false,
+          nodeKey: factionSuppressionNodeKey(node, isHq),
+          score: 0
+        };
+      }
+      // Wilderness HQ: HQ without a burg, anchored to a state-owned cell.
+      if (isHq && node.cell !== undefined && node.cell >= 0 && Number(pack.cells.state?.[node.cell] ?? 0) === state.i) {
+        return {
+          faction,
+          node,
+          isHq,
+          burg: null,
+          cell: node.cell,
+          wilderness: true,
+          nodeKey: factionSuppressionNodeKey(node, isHq),
+          score: 0
+        };
+      }
     }
     return null;
   }
@@ -4857,23 +4907,27 @@ class LivingModel {
     const targets = this.eligibleFactionSuppressionTargets(stateId).filter(target => target.faction.i === factionId);
     const target = targets[0];
     if (!target) return false;
+    const location = factionSuppressionLocationName(target);
+    const targetCell = factionSuppressionTargetCell(target);
 
-    if (!this.enqueueFactionSuppression(target, living)) return false;
+    if (!target.wilderness && target.burg?.i) {
+      if (!this.enqueueFactionSuppression(target, living)) return false;
+    }
     sSim.agenda = {
       kind: "suppress_faction",
-      label: `Suppressing ${target.faction.name} in ${target.burg.name ?? "a burg"}`,
+      label: `Suppressing ${target.faction.name} in ${location}`,
       targetFactionId: factionId,
-      targetBurgId: target.burg.i,
+      ...(target.burg?.i ? { targetBurgId: target.burg.i } : { targetCell }),
       progress: 0,
       required: 1
     };
 
     this.pushNews(living, {
       kind: "faction",
-      text: `${state.name} began suppressing ${target.faction.name} in ${target.burg.name ?? "a burg"}.`,
-      cell: target.burg.cell,
+      text: `${state.name} began suppressing ${target.faction.name} in ${location}.`,
+      cell: targetCell,
       stateId,
-      burgId: target.burg.i
+      ...(target.burg?.i ? { burgId: target.burg.i } : {})
     });
     return true;
   }
@@ -4884,7 +4938,7 @@ class LivingModel {
     return Boolean(faction?.i && !faction.removed && this.isFactionHostileToState(faction, stateId));
   }
 
-  /** Active, locally hosted faction nodes eligible for administrative suppression by a state. */
+  /** Active, locally hosted faction nodes eligible for suppression by a state. */
   eligibleFactionSuppressionTargets(stateId: number): FactionSuppressionTarget[] {
     const state = pack.states[stateId];
     if (!state?.i || state.removed) return [];
@@ -4897,21 +4951,32 @@ class LivingModel {
       if (!this.isFactionHostileToState(faction, state.i)) continue;
 
       const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
-      if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) nodes.push({ node: faction.hq, isHq: true });
+      if (faction.hq && !faction.hq.pillaged) nodes.push({ node: faction.hq, isHq: true });
       for (const outpost of faction.outposts ?? []) {
         if (!outpost.pillaged) nodes.push({ node: outpost, isHq: false });
       }
 
       for (const { node, isHq } of nodes) {
         const burg = node.burgId ? pack.burgs[node.burgId] : undefined;
-        if (!burg?.i || burg.removed || burg.state !== state.i) continue;
+        const wilderness = isHq && !burg?.i;
+        let cell: number;
+        if (burg?.i && !burg.removed) {
+          if (burg.state !== state.i) continue;
+          cell = burg.cell;
+        } else if (wilderness) {
+          cell = node.cell;
+          if (cell === undefined || cell < 0) continue;
+          if (Number(pack.cells.state?.[cell] ?? 0) !== state.i) continue;
+        } else {
+          continue;
+        }
 
         const yields = node.sim?.cityYields;
-        const burgPoint = pack.cells.p?.[burg.cell];
+        const burgPoint = pack.cells.p?.[cell];
         const distance =
           burgPoint && statePoint ? Math.hypot(burgPoint[0] - statePoint[0], burgPoint[1] - statePoint[1]) : 0;
         const score =
-          (burg.capital ? 1000 : 0) +
+          (burg?.capital ? 1000 : 0) +
           ((yields?.gold ?? 0) + (yields?.production ?? 0) + (yields?.culture ?? 0)) * 10 +
           ((node.sim?.citizens ?? 1) + ("influence" in node ? node.influence : node.secrecy)) -
           distance * 0.1;
@@ -4920,14 +4985,16 @@ class LivingModel {
           faction,
           node,
           isHq,
-          burg,
+          burg: burg?.i && !burg.removed ? burg : null,
+          cell,
+          wilderness,
           nodeKey: factionSuppressionNodeKey(node, isHq),
           score
         });
       }
     }
 
-    targets.sort((a, b) => b.score - a.score || a.burg.cell - b.burg.cell || a.faction.i - b.faction.i);
+    targets.sort((a, b) => b.score - a.score || a.cell - b.cell || a.faction.i - b.faction.i);
     return targets;
   }
 
@@ -6672,6 +6739,9 @@ class LivingModel {
     if (burgId !== undefined) {
       const burg = pack.burgs[burgId];
       if (burg?.i && !burg.removed) return burg.cell;
+    }
+    if (agenda?.kind === "suppress_faction" && agenda.targetCell !== undefined) {
+      return agenda.targetCell;
     }
     if (agenda?.targetProvinceId !== undefined) {
       const province = pack.provinces?.[agenda.targetProvinceId];
@@ -10001,9 +10071,11 @@ class LivingModel {
     if (suppression) {
       return {
         kind: "suppress_faction",
-        label: `Suppressing ${suppression.faction.name} in ${suppression.burg.name ?? "a burg"}`,
+        label: `Suppressing ${suppression.faction.name} in ${factionSuppressionLocationName(suppression)}`,
         targetFactionId: suppression.faction.i,
-        targetBurgId: suppression.burg.i,
+        ...(suppression.burg?.i
+          ? { targetBurgId: suppression.burg.i }
+          : { targetCell: factionSuppressionTargetCell(suppression) }),
         progress: 0,
         required: 1
       };
@@ -10229,7 +10301,13 @@ class LivingModel {
         if (!target && agendaBurg) {
           target =
             this.eligibleFactionSuppressionTargets(state.i).find(
-              entry => entry.faction.i === factionId && entry.burg.i === agendaBurg.i
+              entry => entry.faction.i === factionId && entry.burg?.i === agendaBurg.i
+            ) ?? null;
+        }
+        if (!target && agenda.targetCell !== undefined) {
+          target =
+            this.eligibleFactionSuppressionTargets(state.i).find(
+              entry => entry.faction.i === factionId && entry.wilderness && entry.cell === agenda.targetCell
             ) ?? null;
         }
         target ??= this.eligibleFactionSuppressionTargets(state.i).find(entry => entry.faction.i === factionId) ?? null;
@@ -10238,13 +10316,24 @@ class LivingModel {
           return;
         }
         agenda.targetFactionId = target.faction.i;
-        agenda.targetBurgId = target.burg.i;
-        agenda.label = `Suppressing ${target.faction.name} in ${target.burg.name ?? "a burg"}`;
+        agenda.targetBurgId = target.burg?.i;
+        agenda.targetCell = target.burg?.i ? undefined : target.cell;
+        agenda.label = `Suppressing ${target.faction.name} in ${factionSuppressionLocationName(target)}`;
 
         // A failed storm (or a guarded stall) pauses the campaign briefly.
         if (agenda.stallUntilTick !== undefined && living.tick < agenda.stallUntilTick) return;
 
-        const bSim = living.burgs[target.burg.i];
+        if (target.wilderness) {
+          // Military-only: the field army marches via tacticalTarget (targetCell)
+          // and storms the stronghold once adjacent; a defending guard is
+          // handled by normal army-vs-guard combat first.
+          if (!this.factionNodeHasGuard(target.faction, target.node)) {
+            this.assaultFactionNode(state.i, target.faction.i, target.nodeKey);
+          }
+          return;
+        }
+
+        const bSim = living.burgs[target.burg!.i];
         if (!bSim?.isMajor) return;
         this.enqueueFactionSuppression(target, living);
 
