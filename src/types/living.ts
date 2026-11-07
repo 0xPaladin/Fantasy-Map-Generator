@@ -1,5 +1,4 @@
 // Living World simulation state types. See docs/plans/living-world.md
-import type { ArmyUnit } from "@/types/battle";
 import type { ActionId } from "./character-actions";
 
 export type SeasonId = 0 | 1 | 2 | 3;
@@ -143,24 +142,6 @@ export interface ProvinceTrouble {
   goodId?: number;
 }
 
-export interface ProvinceLair {
-  id: string;
-  name: string;
-  level: number;
-  theme: TroubleTheme;
-  cell: number;
-  burgId?: number;
-  markerId?: number;
-  provinceId?: number;
-  maritime?: boolean;
-  raidThreshold: number;
-  raidUnits: ArmyUnit[];
-  defenders: ArmyUnit[];
-  fortified: boolean;
-  raidPending: boolean;
-  seasonsActive: number;
-}
-
 export interface StateAgenda {
   kind: AgendaKind;
   label: string;
@@ -258,8 +239,6 @@ export interface ProvinceSimState {
   } | null;
   /** Active obstacle/trouble afflicting the province */
   trouble?: ProvinceTrouble | null;
-  /** Active lair entrenched in the province */
-  lair?: ProvinceLair | null;
 }
 
 export interface StatePolitySim {
@@ -489,8 +468,6 @@ export interface LivingWorldState {
   armies?: Record<string, ArmySimState>;
   /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
   religions?: Record<number, ReligionBeliefState>;
-  /** danger-marker lairs/troubles tracked across the map (master PR #21) */
-  activeLairs?: Record<string, ProvinceLair>;
   activeTroubles?: Record<string, ProvinceTrouble>;
 }
 

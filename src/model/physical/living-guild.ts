@@ -5,7 +5,7 @@ import { figureArchetype, figureDisciplines } from "@/data/hero-archetypes";
 import { aspectBonus } from "@/data/hero-aspects";
 import { disciplineBonus, matchingDisciplines } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, injuryPenalty, STAMINA_RESERVE_MINIMUM } from "@/data/hero-vitals";
-import { isLairStateCapable } from "@/data/living-lairs";
+import { convertDangerMarkerToRuins } from "@/data/danger-markers";
 import {
   formatPetitionText,
   getPetitionDef,
@@ -132,9 +132,6 @@ export interface GuildHost {
   ): void;
   pushHistory?(type: HistoryEventType, refs: HistRef[], cell?: number, text?: string): void;
   quellTrouble?(provinceId: number): boolean;
-  clearLair?(lair: unknown, victorName?: string): void;
-  smiteLair?(provinceId: number): boolean;
-  removeLairMarker?(markerId?: number): void;
   forceWar?(stateId: number, otherId?: number): boolean;
   isAtWar?(stateId: number, otherId: number): boolean;
   pacifyBurg?(burgId: number): boolean;
@@ -1115,6 +1112,40 @@ export function hasTargetMission(
   });
 }
 
+/** Hostile/clandestine faction threatening a province, by military weight. */
+export function factionThreatInGuildProvince(provinceId: number): Faction | null {
+  const candidates = Factions.active().filter(f => {
+    if (f.allegiance !== "hostile" && f.allegiance !== "clandestine") return false;
+    const provId =
+      f.hq.provinceId ??
+      (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+      pack.cells?.province?.[f.hq.cell];
+    return provId === provinceId;
+  });
+  candidates.sort((a, b) => {
+    const men = (f: Faction) => (f.military ?? []).reduce((s, r) => s + (r.a ?? 0), 0);
+    return men(b) - men(a);
+  });
+  return candidates[0] ?? null;
+}
+
+/** Faction behind a lair mission: by HQ marker, then by province. */
+export function factionForLairMission(mission: { markerId?: number; provinceId?: number }): Faction | null {
+  const byMarker =
+    mission.markerId !== undefined
+      ? Factions.active().find(f => f.hq.markerId === mission.markerId)
+      : undefined;
+  if (byMarker) return byMarker;
+  return mission.provinceId !== undefined ? factionThreatInGuildProvince(mission.provinceId) : null;
+}
+
+/** Threat level analog for a faction: stored spawn level, else military weight. */
+export function factionThreatLevel(faction: Faction): number {
+  if (faction.threatLevel !== undefined) return Math.min(10, Math.max(1, faction.threatLevel));
+  const men = (faction.military ?? []).reduce((s, r) => s + (r.a ?? 0), 0);
+  return Math.min(10, Math.max(1, Math.ceil(men / 100)));
+}
+
 /** The best mission available in one province (trouble before lair). */
 export function provinceTarget(living: LivingWorldState, guild: GuildState, provinceId: number): GuildTarget | null {
   const province = pack.provinces?.[provinceId];
@@ -1139,20 +1170,25 @@ export function provinceTarget(living: LivingWorldState, guild: GuildState, prov
     };
   }
 
-  const lair = pSim.lair;
-  if (lair && !hasTargetMission(guild, "lair", provinceId)) {
+  const threat = factionThreatInGuildProvince(provinceId);
+  if (threat && !hasTargetMission(guild, "lair", provinceId)) {
+    const factionLevel = factionThreatLevel(threat);
+    const marker = threat.hq.markerId !== undefined ? pack.markers?.[threat.hq.markerId] : undefined;
     return {
       kind: "lair",
-      cell: lair.cell,
+      cell: threat.hq.cell,
       provinceId,
-      burgId: lair.burgId,
+      burgId: threat.hq.burgId,
+      markerId: threat.hq.markerId,
       pool: "m",
-      dc: 14 + lair.level,
-      rewardGold: 30 + lair.level * 10,
+      dc: 14 + factionLevel,
+      rewardGold: 30 + factionLevel * 10,
       rewardRenown: 15,
       priority: 1,
-      level: lair.level,
-      tags: lairMissionTags(lair)
+      level: factionLevel,
+      tags: lairMissionTags(
+        marker && ["ruins", "dungeon", "cave", "battlefields"].includes(marker.type ?? "") ? "ruin" : "wild"
+      )
     };
   }
   return null;
@@ -1227,24 +1263,33 @@ export function missionTargets(living: LivingWorldState, guild: GuildState): Gui
       const target = provinceTarget(living, guild, province.i);
       if (target) targets.push(target);
     }
-    if (living.activeLairs) {
-      for (const lair of Object.values(living.activeLairs)) {
-        if (lair.markerId !== undefined && !hasTargetMission(guild, "lair", lair.provinceId, lair.markerId)) {
-          targets.push({
-            kind: "lair",
-            cell: lair.cell,
-            provinceId: lair.provinceId && pack.provinces?.[lair.provinceId]?.i ? lair.provinceId : undefined,
-            burgId: lair.burgId,
-            markerId: lair.markerId,
-            pool: "m",
-            dc: 14 + lair.level,
-            rewardGold: 30 + lair.level * 10,
-            rewardRenown: 15,
-            priority: guild.doctrine === "auto_lairs" ? 3 : 1,
-            level: lair.level,
-            tags: lairMissionTags(lair)
-          });
-        }
+    for (const faction of Factions.active()) {
+      if (faction.allegiance !== "hostile" && faction.allegiance !== "clandestine") continue;
+      const markerId = faction.hq.markerId;
+      const provinceId =
+        faction.hq.provinceId ??
+        (faction.hq.burgId ? pack.cells.province?.[pack.burgs?.[faction.hq.burgId]?.cell ?? 0] : undefined) ??
+        pack.cells?.province?.[faction.hq.cell];
+      if (markerId === undefined || !provinceId) continue;
+      if (!hasTargetMission(guild, "lair", provinceId, markerId)) {
+        const factionLevel = factionThreatLevel(faction);
+        const marker = pack.markers?.[markerId];
+        targets.push({
+          kind: "lair",
+          cell: faction.hq.cell,
+          provinceId: pack.provinces?.[provinceId]?.i ? provinceId : undefined,
+          burgId: faction.hq.burgId,
+          markerId,
+          pool: "m",
+          dc: 14 + factionLevel,
+          rewardGold: 30 + factionLevel * 10,
+          rewardRenown: 15,
+          priority: guild.doctrine === "auto_lairs" ? 3 : 1,
+          level: factionLevel,
+          tags: lairMissionTags(
+            marker && ["ruins", "dungeon", "cave", "battlefields"].includes(marker.type ?? "") ? "ruin" : "wild"
+          )
+        });
       }
     }
   }
@@ -1346,7 +1391,15 @@ export function createMission(
 export function missionTagsFor(living: LivingWorldState, mission: ActiveGuildMission): MissionTag[] {
   const pSim = mission.provinceId !== undefined ? living.provinces?.[mission.provinceId] : undefined;
   if (mission.kind === "trouble" && pSim?.trouble) return troubleMissionTags(pSim.trouble);
-  if (mission.kind === "lair" && pSim?.lair) return lairMissionTags(pSim.lair);
+  if (mission.kind === "lair") {
+    const threat = factionForLairMission(mission);
+    const marker = mission.markerId !== undefined ? pack.markers?.[mission.markerId] : undefined;
+    return lairMissionTags(
+      threat?.hq.markerId !== undefined && marker && ["ruins", "dungeon", "cave", "battlefields"].includes(marker.type ?? "")
+        ? "ruin"
+        : "wild"
+    );
+  }
   if (mission.kind === "excavate") {
     const marker =
       mission.markerId !== undefined ? (pack.markers ?? []).find(entry => entry?.i === mission.markerId) : undefined;
@@ -1361,10 +1414,7 @@ export function missionStillValid(living: LivingWorldState, mission: ActiveGuild
     case "trouble":
       return Boolean(pSim?.trouble);
     case "lair":
-      if (mission.markerId !== undefined) {
-        return Boolean(living.activeLairs?.[`lair:${mission.markerId}`]);
-      }
-      return Boolean(pSim?.lair);
+      return Boolean(factionForLairMission(mission));
     case "excavate":
       return (pack.markers ?? []).some(marker => marker.i === mission.markerId && !marker.hidden);
     case "pacify": {
@@ -1602,22 +1652,23 @@ export function applyMissionTargetEffect(
       return `${leader.name} broke ${def.name} in ${province?.name ?? "the province"} (reduced to level ${trouble.level}).`;
     }
     case "lair": {
-      const lair =
-        (mission.markerId !== undefined ? living.activeLairs?.[`lair:${mission.markerId}`] : undefined) ??
-        pSim?.lair ??
-        (living.activeLairs
-          ? Object.values(living.activeLairs).find(entry => entry.provinceId === mission.provinceId)
-          : undefined);
-      if (!lair) return "Nothing was left to resolve.";
+      const faction = factionForLairMission(mission);
+      if (!faction) return "Nothing was left to resolve.";
       if (partial) {
-        lair.level = Math.max(1, lair.level - 1);
-        return `${leader.name} weakened ${lair.name} in ${province?.name ?? "the wilderness"} (level ${lair.level}).`;
+        const reg = faction.military?.[0];
+        if (reg?.units) {
+          for (const u of reg.units) u.hp = Math.max(0.1, u.hp * 0.7);
+        }
+        return `${leader.name} weakened ${faction.name} in ${province?.name ?? "the wilderness"}.`;
       }
-      if (host.clearLair) host.clearLair(lair, leader.name);
-      else LivingThreats.clearLair(lair, leader.name);
+      if (faction.hq.markerId !== undefined) {
+        const marker = pack.markers?.[faction.hq.markerId];
+        if (marker) convertDangerMarkerToRuins(marker, leader.name);
+      }
+      Factions.remove(faction.i);
       if (host.relieveEschaton) host.relieveEschaton(living);
       else living.eschaton = Math.max(0, (living.eschaton ?? 0) - 5);
-      return `${leader.name} purged ${lair.name} in ${province?.name ?? "the wilderness"}.`;
+      return `${leader.name} purged ${faction.name} in ${province?.name ?? "the wilderness"}.`;
     }
     case "excavate": {
       const marker =
@@ -1959,12 +2010,13 @@ export function findPetitionAnchor(living: LivingWorldState, rng: Rng): Petition
     if (!pSim) continue;
     const stateId = province.state;
     const state = stateId ? pack.states?.[stateId] : undefined;
+    const threatForContext = factionThreatInGuildProvince(province.i);
     const context = {
       province: province.name,
       state: state?.i && !state.removed ? state.name : undefined,
       burg: pSim.trouble?.burgId !== undefined ? pack.burgs?.[pSim.trouble.burgId]?.name : undefined,
       trouble: pSim.trouble?.name,
-      lair: pSim.lair?.name
+      lair: threatForContext?.name
     };
 
     if (pSim.trouble) {
@@ -1979,21 +2031,23 @@ export function findPetitionAnchor(living: LivingWorldState, rng: Rng): Petition
         });
       }
     }
-    if (pSim.lair) {
-      for (const def of petitionsForAnchor("lair")) {
-        targets.push({
-          def,
-          cell: pSim.lair.cell,
-          provinceId: province.i,
-          burgId: pSim.lair.burgId,
-          stateId,
-          context: {
-            ...context,
-            burg: pSim.lair.burgId !== undefined ? pack.burgs?.[pSim.lair.burgId]?.name : undefined
-          }
-        });
-      }
+    const threat = factionThreatInGuildProvince(province.i);
+  if (threat) {
+    for (const def of petitionsForAnchor("lair")) {
+      targets.push({
+        def,
+        cell: threat.hq.cell,
+        provinceId: province.i,
+        burgId: threat.hq.burgId,
+        markerId: threat.hq.markerId,
+        stateId,
+        context: {
+          ...context,
+          burg: threat.hq.burgId !== undefined ? pack.burgs?.[threat.hq.burgId]?.name : undefined
+        }
+      });
     }
+  }
   }
 
   for (const burg of pack.burgs ?? []) {
@@ -2088,8 +2142,8 @@ export function refreshPopups(living: LivingWorldState): void {
     if (!pSim) continue;
 
     const trouble = pSim.trouble;
-    const lair = pSim.lair;
-    const cell = trouble?.cell ?? lair?.cell ?? province.center ?? 0;
+    const threat = factionThreatInGuildProvince(province.i);
+    const cell = trouble?.cell ?? threat?.hq.cell ?? province.center ?? 0;
     const stateId = province.state;
 
     if (trouble && trouble.level >= 4) {
@@ -2106,26 +2160,32 @@ export function refreshPopups(living: LivingWorldState): void {
       });
     }
 
-    if (lair?.raidPending) {
+    const threatLevel = threat ? factionThreatLevel(threat) : 0;
+    if (threat?.raidPending) {
       candidates.push({
         kind: "bounty_lair",
-        cell,
-        title: `${lair.name} prepares a raid`,
-        subtitle: `Level ${lair.level} lair in ${province.name ?? "the province"}`,
+        cell: threat.hq.cell,
+        title: `${threat.name} prepares a raid`,
+        subtitle: `Dangerous faction in ${province.name ?? "the province"}`,
         provinceId: province.i,
         stateId,
-        rewardGold: 20 + lair.level * 5,
+        markerId: threat.hq.markerId,
+        rewardGold: 20 + threatLevel * 5,
         rewardRenown: 8,
-        priority: lair.level + 10
+        priority: threatLevel + 10
       });
     }
 
-    const lairImminent = Boolean(lair) && isLairStateCapable(lair!.id) && lair!.level >= 8 && lair!.seasonsActive >= 7;
-    if (lairImminent) {
+    const factionImminent =
+      Boolean(threat) &&
+      threat!.sovereignAmbition &&
+      (threat!.seasonsActive ?? 0) >= 7 &&
+      (threat!.researchedTechs?.length ?? 0) >= 2;
+    if (factionImminent) {
       candidates.push({
         kind: "ascension_warning",
-        cell,
-        title: `${lair!.name} is about to rise`,
+        cell: threat!.hq.cell,
+        title: `${threat!.name} is about to rise`,
         subtitle: "A new sovereign state may be born next season",
         provinceId: province.i,
         stateId,
@@ -2195,14 +2255,17 @@ export function applyPetitionEffects(
       }
       case "purgeLair": {
         const pSim = popup.provinceId !== undefined ? living.provinces?.[popup.provinceId] : undefined;
-        const lair = pSim?.lair;
-        if (pSim && lair) {
-          if (host.removeLairMarker) host.removeLairMarker(lair.markerId);
-          pSim.lair = null;
+        const faction = popup.provinceId !== undefined ? factionThreatInGuildProvince(popup.provinceId) : null;
+        if (pSim && faction) {
+          if (faction.hq.markerId !== undefined) {
+            const marker = pack.markers?.[faction.hq.markerId];
+            if (marker) convertDangerMarkerToRuins(marker);
+          }
+          Factions.remove(faction.i);
           pSim.order = Math.min(100, pSim.order + 12);
           if (host.relieveEschaton) host.relieveEschaton(living);
           else living.eschaton = Math.max(0, (living.eschaton ?? 0) - 5);
-          outcomes.push(`${lair.name} was broken up`);
+          outcomes.push(`${faction.name} was broken up`);
         }
         break;
       }

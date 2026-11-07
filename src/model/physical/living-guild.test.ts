@@ -30,8 +30,6 @@ describe("living-guild", () => {
       getState: () => mockLiving,
       pushNews: () => {},
       quellTrouble: () => true,
-      clearLair: () => {},
-      smiteLair: () => true,
       forceWar: () => true
     });
 

@@ -105,7 +105,7 @@
 |---|---|---|
 | 1 — catalog prune + spawn split + delete trouble promotion | medium | ✅ done |
 | 2 — faction clear-trouble clock | small | ✅ done |
-| 3 — delete lairs, faction raid/clear tick | large | lair grep clean; raid tests pass |
+| 3 — delete lairs, faction raid/clear tick | large | ✅ done |
 | 4 — docs + suite | small | suite green |
 
 **Risks:**

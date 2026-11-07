@@ -1,29 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { currentContent } from "@/data/roster-store";
-import {
-  createProvinceLair,
-  getLairDef,
-  growLair,
-  instantiateLairUnits,
-  isLairStateCapable,
-  LAIR_CATALOG,
-  LAIR_NATURE_IDS,
-  MAX_LAIR_DEFENDERS,
-  MAX_LAIR_LEVEL,
-  pickLairForTrouble,
-  STATE_CAPABLE_LAIR_IDS,
-  TROUBLE_TO_LAIR_MAPPINGS
-} from "./living-lairs";
+import { getLairDef, instantiateLairUnits, LAIR_CATALOG } from "./living-lairs";
 
-describe("living-lairs (Slice 1: Lair Catalog, Unit Templates, and Trouble Mappings)", () => {
-  it("defines exactly 20 distinct Lair Natures", () => {
-    expect(LAIR_NATURE_IDS).toHaveLength(20);
-    const uniqueIds = new Set(LAIR_NATURE_IDS);
-    expect(uniqueIds.size).toBe(20);
+const LAIR_IDS = Object.keys(LAIR_CATALOG);
 
-    for (const id of LAIR_NATURE_IDS) {
-      const def = LAIR_CATALOG[id];
-      expect(def).toBeDefined();
+describe("living-lairs (military templates for dangerous factions)", () => {
+  it("defines 20 distinct lair natures", () => {
+    expect(LAIR_IDS).toHaveLength(20);
+    expect(new Set(LAIR_IDS).size).toBe(20);
+
+    for (const id of LAIR_IDS) {
+      const def = LAIR_CATALOG[id]!;
       expect(def.id).toBe(id);
       expect(def.name).toBeTruthy();
       expect(def.description).toBeTruthy();
@@ -36,50 +23,12 @@ describe("living-lairs (Slice 1: Lair Catalog, Unit Templates, and Trouble Mappi
     }
   });
 
-  it("classifies exactly 15 state-capable Lairs and 5 non-state hazards", () => {
-    expect(STATE_CAPABLE_LAIR_IDS).toHaveLength(15);
-    const capableSet = new Set(STATE_CAPABLE_LAIR_IDS);
-
-    const nonCapableIds = LAIR_NATURE_IDS.filter(id => !capableSet.has(id));
-    expect(nonCapableIds).toEqual([
-      "cursed_earth",
-      "mad_wizard",
-      "monster_nest",
-      "blight_infestation",
-      "vicious_humanoids"
-    ]);
-
-    const { rosters } = currentContent().content;
-
-    for (const id of LAIR_NATURE_IDS) {
-      const def = LAIR_CATALOG[id];
-      if (capableSet.has(id)) {
-        expect(def.canFormState).toBe(true);
-        expect(isLairStateCapable(id)).toBe(true);
-        expect(def.stateForm).toBeTruthy();
-        expect(def.stateRosterId).toBeTruthy();
-        expect(["good", "lawful", "neutral", "chaotic", "evil"]).toContain(def.defaultAlignment);
-        if (def.stateRosterId !== "local") {
-          expect(rosters[def.stateRosterId!], `Roster ${def.stateRosterId} exists in the roster catalog`).toBeDefined();
-        }
-      } else {
-        expect(def.canFormState).toBe(false);
-        expect(isLairStateCapable(id)).toBe(false);
-        expect(def.stateRosterId).toBeUndefined();
-      }
-    }
-  });
-
   it("references valid unit types defined in the roster catalog", () => {
     const { unitTypes } = currentContent().content;
-    for (const id of LAIR_NATURE_IDS) {
-      const def = LAIR_CATALOG[id];
-      for (const u of def.raidUnits) {
-        expect(unitTypes[u.unitTypeId], `Lair ${id} raid unit ${u.unitTypeId} exists in unitTypes`).toBeDefined();
-        expect(u.count).toBeGreaterThan(0);
-      }
-      for (const u of def.defenderUnits) {
-        expect(unitTypes[u.unitTypeId], `Lair ${id} defender unit ${u.unitTypeId} exists in unitTypes`).toBeDefined();
+    for (const id of LAIR_IDS) {
+      const def = LAIR_CATALOG[id]!;
+      for (const u of [...def.raidUnits, ...def.defenderUnits]) {
+        expect(unitTypes[u.unitTypeId], `Lair ${id} unit ${u.unitTypeId} exists in unitTypes`).toBeDefined();
         expect(u.count).toBeGreaterThan(0);
       }
     }
@@ -97,62 +46,7 @@ describe("living-lairs (Slice 1: Lair Catalog, Unit Templates, and Trouble Mappi
     }
   });
 
-  it("creates a ProvinceLair with bounded level (3..10) and correct fields", () => {
-    const lowLair = createProvinceLair("bandit_camp", 42, 2, "burg");
-    expect(lowLair.level).toBe(3);
-    expect(lowLair.cell).toBe(42);
-    expect(lowLair.theme).toBe("burg");
-    expect(lowLair.fortified).toBe(false);
-    expect(lowLair.raidThreshold).toBe(4);
-    expect(lowLair.raidPending).toBe(false);
-    expect(lowLair.seasonsActive).toBe(0);
-
-    const highLair = createProvinceLair("ancient_fort", 99, 15, "ruin", 10);
-    expect(highLair.level).toBe(10);
-    expect(highLair.burgId).toBe(10);
-    expect(highLair.fortified).toBe(true);
-    expect(highLair.raidThreshold).toBe(5);
-  });
-
-  it("maps Trouble archetypes to thematic Lairs with fallback", () => {
-    expect(pickLairForTrouble("angry_dead")).toBe("ancient_evil");
-    expect(pickLairForTrouble("dark_wizards")).toBe("mad_wizard");
-    expect(pickLairForTrouble("riotous_thugs")).toBe("thieves_stronghold");
-    expect(pickLairForTrouble("monsters")).toBe("monster_nest");
-
-    // All mapped trouble targets are valid lair IDs
-    for (const [troubleId, lairs] of Object.entries(TROUBLE_TO_LAIR_MAPPINGS)) {
-      expect(lairs.length).toBeGreaterThan(0);
-      for (const lairId of lairs) {
-        expect(LAIR_CATALOG[lairId], `Mapping for ${troubleId} -> ${lairId} must be valid`).toBeDefined();
-      }
-    }
-
-    // Unmapped fallback
-    const fallback = pickLairForTrouble("non_existent_trouble");
-    expect(LAIR_CATALOG[fallback]).toBeDefined();
-  });
-
-  it("grows a lair by one level and one raider block", () => {
-    const lair = createProvinceLair("bandit_camp", 1, 5);
-    const defenders = lair.defenders.length;
-
-    expect(growLair(lair)).toBe(true);
-    expect(lair.level).toBe(6);
-    expect(lair.defenders).toHaveLength(defenders + 1);
-    expect(lair.defenders.at(-1)!.type).toBe(getLairDef("bandit_camp").raidUnits[0]!.unitTypeId);
-  });
-
-  it("caps lair growth at max level and max defenders", () => {
-    const maxed = createProvinceLair("bandit_camp", 1, MAX_LAIR_LEVEL);
-    const defenders = maxed.defenders.length;
-    expect(growLair(maxed)).toBe(false);
-    expect(maxed.defenders).toHaveLength(defenders);
-
-    const full = createProvinceLair("bandit_camp", 1, 5);
-    while (full.defenders.length < MAX_LAIR_DEFENDERS) full.defenders.push({ ...full.defenders[0]! });
-    expect(growLair(full)).toBe(true);
-    expect(full.level).toBe(6);
-    expect(full.defenders).toHaveLength(MAX_LAIR_DEFENDERS);
+  it("falls back to a known template for unknown lair ids", () => {
+    expect(getLairDef("does_not_exist")).toBe(LAIR_CATALOG.ancient_evil);
   });
 });

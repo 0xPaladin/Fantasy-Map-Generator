@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   clearTroubleNotePin,
   drawTrouble,
-  getLairIcon,
+  getFactionIcon,
   getTroubleIcon,
   getTroubleOrLairFromElement,
   hasTroubleNotePin,
@@ -32,6 +32,7 @@ describe("draw-trouble", () => {
 
     globalThis.pack = {
       cells: {
+        province: new Uint16Array([1, 2, 0]),
         p: [
           [0, 0],
           [20, 20],
@@ -54,7 +55,41 @@ describe("draw-trouble", () => {
           x: 100,
           y: 100,
           name: "Red Hand Bandits",
-          threatId: "lair:10"
+          threatId: "faction:1"
+        }
+      ],
+      factions: [
+        { i: 0 },
+        {
+          i: 1,
+          name: "Red Hand Bandits",
+          type: "brigand_raiders",
+          allegiance: "hostile",
+          hq: { cell: 0, markerId: 10, provinceId: 1, fortified: false, secrecy: 0, assets: [] },
+          outposts: [],
+          military: [{ a: 40, units: [{ type: "spear", hp: 1 }] }],
+          raidThreshold: 4,
+          raidPending: true,
+          seasonsActive: 1,
+          sovereignAmbition: true,
+          stateForm: "Bandit Principality",
+          stateRelations: {},
+          factionRelations: {}
+        },
+        {
+          i: 2,
+          name: "Dread Kraken",
+          type: "monster_nest",
+          allegiance: "hostile",
+          hq: { cell: 2, provinceId: 0, maritime: true, fortified: false, secrecy: 0, assets: [] },
+          outposts: [],
+          military: [{ a: 60, units: [{ type: "spear", hp: 1 }] }],
+          raidThreshold: 6,
+          raidPending: true,
+          seasonsActive: 4,
+          sovereignAmbition: false,
+          stateRelations: {},
+          factionRelations: {}
         }
       ],
       history: {
@@ -68,38 +103,6 @@ describe("draw-trouble", () => {
           states: {},
           recentNews: [],
           burgs: {},
-          activeLairs: {
-            "lair:10": {
-              id: "bandit_camp",
-              name: "Red Hand Bandits",
-              level: 5,
-              theme: "burg",
-              cell: 0,
-              markerId: 10,
-              provinceId: 1,
-              raidThreshold: 5,
-              raidUnits: [{ type: "spear", count: 2, exp: 0 }],
-              defenders: [{ type: "spear", count: 4, exp: 0 }],
-              fortified: false,
-              raidPending: false,
-              seasonsActive: 1
-            },
-            "lair:sea": {
-              id: "monster_nest",
-              name: "Dread Kraken",
-              level: 7,
-              theme: "resource",
-              cell: 2,
-              provinceId: 0,
-              maritime: true,
-              raidThreshold: 6,
-              raidUnits: [],
-              defenders: [{ type: "spear", count: 10, exp: 0 }],
-              fortified: false,
-              raidPending: true,
-              seasonsActive: 4
-            }
-          },
           provinces: {
             1: {
               provinceId: 1,
@@ -117,8 +120,7 @@ describe("draw-trouble", () => {
                 level: 5,
                 seasonsUnchecked: 2,
                 cell: 0
-              },
-              lair: null
+              }
             },
             2: {
               provinceId: 2,
@@ -126,20 +128,7 @@ describe("draw-trouble", () => {
               stability: 5,
               development: 0,
               developmentProgress: null,
-              trouble: null,
-              lair: {
-                id: "bandit_camp",
-                name: "Black Wolf Bandits",
-                level: 6,
-                theme: "burg",
-                cell: 1,
-                raidThreshold: 5,
-                raidUnits: [{ type: "spear", count: 2, exp: 0 }],
-                defenders: [{ type: "spear", count: 4, exp: 0 }],
-                fortified: true,
-                raidPending: true,
-                seasonsActive: 3
-              }
+              trouble: null
             }
           }
         }
@@ -152,35 +141,30 @@ describe("draw-trouble", () => {
     } as unknown as typeof options;
   });
 
-  it("returns icons for troubles and lairs", () => {
+  it("returns icons for troubles and factions", () => {
     const trouble = pack.history!.living!.provinces[1].trouble!;
-    const lair = pack.history!.living!.provinces[2].lair!;
+    const faction = pack.factions![1]!;
 
     expect(getTroubleIcon(trouble)).toBe("🐺");
-    expect(getLairIcon(lair)).toBe("🗡️");
+    expect(getFactionIcon(faction)).toBe("🗡️");
   });
 
-  it("draws markers when trouble layer is on", () => {
+  it("draws trouble and faction pins when the trouble layer is on", () => {
     Layers.show("trouble");
     drawTrouble();
 
-    console.log("IDS", [...document.querySelectorAll("#trouble [id]")].map(e => e.id));
-    const troubleMarker = document.getElementById("trouble-marker-1");
-    const lairMarker = document.getElementById("lair-marker-10");
-    const seaLairMarker = document.getElementById("lair-marker-2");
-
-    expect(troubleMarker).not.toBeNull();
-    expect(lairMarker).not.toBeNull();
-    expect(seaLairMarker).not.toBeNull();
+    expect(document.getElementById("trouble-marker-1")).not.toBeNull();
+    expect(document.getElementById("faction-marker-1")).not.toBeNull();
+    expect(document.getElementById("faction-marker-2")).not.toBeNull();
   });
 
   it("clears content on removeTrouble", () => {
     Layers.show("trouble");
     drawTrouble();
-    expect(document.querySelectorAll(".trouble-marker, .lair-marker").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".trouble-marker, .faction-marker").length).toBeGreaterThan(0);
 
     removeTrouble();
-    expect(document.querySelectorAll(".trouble-marker, .lair-marker").length).toBe(0);
+    expect(document.querySelectorAll(".trouble-marker, .faction-marker").length).toBe(0);
   });
 
   it("resolves trouble info from element", () => {
@@ -198,30 +182,43 @@ describe("draw-trouble", () => {
     expect(info?.note).toContain("Threat Level:</strong> 5 / 10");
   });
 
-  it("resolves active lair info when hovering a standard marker element", () => {
+  it("resolves faction info from a faction pin", () => {
+    Layers.show("trouble");
+    drawTrouble();
+
+    const factionEl = document.getElementById("faction-marker-1")!;
+    const info = getTroubleOrLairFromElement(factionEl);
+
+    expect(info).toBeDefined();
+    expect(info?.type).toBe("faction");
+    expect(info?.name).toContain("Red Hand Bandits");
+    expect(info?.tip).toContain("hostile");
+    expect(info?.note).toContain("Northshire");
+    expect(info?.note).toContain("Fighters:</strong> 40");
+    expect(info?.note).toContain("Raid imminent");
+  });
+
+  it("resolves faction info from a standard marker element", () => {
     const stdMarkerEl = document.getElementById("marker10")!;
     const info = getTroubleOrLairFromElement(stdMarkerEl);
 
     expect(info).toBeDefined();
-    expect(info?.type).toBe("lair");
+    expect(info?.type).toBe("faction");
     expect(info?.name).toContain("Red Hand Bandits");
-    expect(info?.tip).toContain("Level 5");
-    expect(info?.note).toContain("Northshire");
-    expect(info?.note).toContain("Defenders");
   });
 
-  it("resolves maritime lair in open waters without a province", () => {
+  it("resolves a maritime faction in open waters without a province", () => {
     Layers.show("trouble");
     drawTrouble();
 
-    const seaEl = document.getElementById("lair-marker-2")!;
+    const seaEl = document.getElementById("faction-marker-2")!;
     const info = getTroubleOrLairFromElement(seaEl);
 
     expect(info).toBeDefined();
-    expect(info?.type).toBe("lair");
+    expect(info?.type).toBe("faction");
     expect(info?.name).toContain("Dread Kraken");
     expect(info?.note).toContain("Maritime Waters");
-    expect(info?.note).toContain("Raid Imminent");
+    expect(info?.note).toContain("Raid imminent");
   });
 
   it("handles pinning trouble notes", () => {

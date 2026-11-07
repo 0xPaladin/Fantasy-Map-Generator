@@ -2,15 +2,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Factions } from "@/model/political/factions-generator";
 import type { Faction } from "@/types/factions";
 import type { LivingWorldState } from "@/types/living";
-import type { Burg, Province, State } from "@/types/subdivided-pack";
+import type { Burg } from "@/model/political/burgs-generator";
+import type { Province } from "@/model/political/provinces-generator";
+import type { State } from "@/model/political/states-generator";
 import {
   ascendFactionToState,
-  clearLair,
   migrateLegacyThreats,
   quellTrouble,
   setThreatHost,
+  smiteFaction,
   spawnDangerousFaction,
-  spawnLair,
   spawnRemnantFaction,
   spawnTrouble,
   syncDangerMarkers
@@ -24,15 +25,14 @@ describe("living-threats", () => {
       seed: "threats-seed",
       tick: 1,
       season: 0,
-      activeLairs: {},
       activeTroubles: {},
+      recentNews: [],
       provinces: {
         1: {
           provinceId: 1,
           order: 30,
           stability: 1,
-          trouble: null,
-          lair: null
+          trouble: null
         }
       },
       states: {
@@ -69,7 +69,7 @@ describe("living-threats", () => {
       },
       provinces: [{ i: 0 }, { i: 1, name: "Heartlands", state: 1, center: 1 } as Province],
       cultures: [{ i: 0 }, { i: 1, name: "Aeloran", base: 0 }],
-      states: [{ i: 0 }, { i: 1, name: "Aeloria", color: "#3b82f6", culture: 1, center: 1, military: [] } as State],
+      states: [{ i: 0 }, { i: 1, name: "Aeloria", color: "#3b82f6", culture: 1, center: 1, military: [] } as unknown as State],
       burgs: [{ i: 0 }, { i: 1, name: "Aelor", state: 1, cell: 1, population: 10 } as Burg],
       markers: [
         { i: 0, type: "brigands", cell: 1, name: "Bandit Hideout" },
@@ -79,11 +79,14 @@ describe("living-threats", () => {
     } as unknown as typeof pack;
   });
 
-  it("synchronizes danger markers into activeLairs", () => {
+  it("synchronizes danger markers into dangerous factions", () => {
     syncDangerMarkers(mockLiving);
-    expect(mockLiving.activeLairs?.["lair:0"]).toBeDefined();
-    expect(mockLiving.activeLairs?.["lair:0"].name).toBe("Bandit Hideout");
-    expect(mockLiving.activeLairs?.["lair:1"]).toBeUndefined();
+
+    const faction = Factions.active().find(f => f.hq.markerId === 0);
+    expect(faction).toBeDefined();
+    expect(faction?.name).toBe("Bandit Hideout");
+    // Ruins markers are not danger markers, so no faction is anchored to marker 1
+    expect(Factions.active().some(f => f.hq.markerId === 1)).toBe(false);
   });
 
   it("spawns hazards as trouble and quells them", () => {
@@ -116,6 +119,7 @@ describe("living-threats", () => {
     expect(faction).not.toBeNull();
     expect(faction?.type).toBe("monster_nest");
     expect(faction?.allegiance).toBe("hostile");
+    expect(faction?.threatLevel).toBe(6);
     expect(faction?.military[0]?.u).toBeDefined();
     expect(mockLiving.provinces[1].trouble).toBeNull();
   });
@@ -132,32 +136,31 @@ describe("living-threats", () => {
       seasonsUnchecked: 2,
       cell: 1
     } as never;
-    mockLiving.provinces[1].lair = {
+    (mockLiving.provinces[1] as unknown as { lair?: unknown }).lair = {
       id: "bandit_camp",
       name: "Bandit Camp",
       theme: "burg",
       level: 4,
       cell: 1,
       seasonsActive: 5
-    } as never;
+    };
 
     migrateLegacyThreats(mockLiving);
 
     expect(mockLiving.provinces[1].trouble).toBeNull();
-    expect(mockLiving.provinces[1].lair).toBeNull();
+    expect((mockLiving.provinces[1] as unknown as { lair?: unknown }).lair).toBeUndefined();
     const types = (pack.factions ?? []).filter(f => f.i !== 0).map(f => f.type);
     expect(types).toContain("demagogue");
     expect(types).toContain("bandit_camp");
   });
 
-  it("spawns and clears lairs", () => {
-    const lair = spawnLair(1, "bandit_camp", 2, 1);
-    expect(lair).not.toBeNull();
-    expect(lair?.id).toBe("bandit_camp");
-    expect(mockLiving.provinces[1].lair).toBe(lair);
+  it("spawns and smites dangerous factions", () => {
+    const faction = spawnDangerousFaction(1, "bandit_camp", "burg", 2);
+    expect(faction).not.toBeNull();
+    expect(faction?.type).toBe("bandit_camp");
 
-    clearLair(lair!, "Aelorian Guard");
-    expect(mockLiving.provinces[1].lair).toBeNull();
+    expect(smiteFaction(1)).toBe(true);
+    expect(Factions.active().some(f => f.i === faction!.i)).toBe(false);
   });
 
   it("ascends an ambitious faction into a sovereign state", () => {

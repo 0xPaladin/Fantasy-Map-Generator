@@ -1,5 +1,6 @@
 // Transient on-map juice for the Living HUD: army/raid vectors, floating outcome
 // badges and clickable bounty popups. See docs/plans/living-idle-guild.md (slice 1).
+import { Factions } from "@/model/political/factions-generator";
 import { Living, UNIT_MAX_HP } from "@/model/physical/living-generator";
 import { viewport } from "@/renderers/viewport/viewport";
 import type { LivingNewsItem, LivingPopup, LivingPopupKind, LivingWorldState } from "@/types/living";
@@ -128,24 +129,25 @@ function nearestBurgPoint(cell: number, provinceId: number | undefined): [number
   return best;
 }
 
-/** Raid lines from imminent lairs, war arrows from conquer/reclaim agendas, and hero quest lines. */
+/** Raid lines from imminent faction raids, war arrows from conquer/reclaim agendas, and hero quest lines. */
 export function collectLivingVectors(living: LivingWorldState): LivingVector[] {
   if (!pack?.cells?.p) return [];
+/** Raid lines from imminent faction raids, war arrows from conquer/reclaim agendas, and hero quest lines. */
   const vectors: LivingVector[] = [];
 
-  for (const pSim of Object.values(living.provinces ?? {})) {
-    const lair = pSim?.lair;
-    if (!lair?.raidPending) continue;
-    const from = cellPoint(lair.cell);
-    const to = nearestBurgPoint(lair.cell, pack.cells.province?.[lair.cell]);
+  for (const faction of Factions.active()) {
+    if (faction.allegiance !== "hostile" && faction.allegiance !== "clandestine") continue;
+    if (!faction.raidPending) continue;
+    const from = cellPoint(faction.hq.cell);
+    const to = nearestBurgPoint(faction.hq.cell, pack.cells.province?.[faction.hq.cell]);
     if (!from || !to) continue;
     vectors.push({
-      id: `raid-${pSim.provinceId}`,
+      id: `raid-faction-${faction.i}`,
       kind: "raid",
       from,
       to,
       color: VECTOR_COLORS.raid,
-      label: lair.name
+      label: faction.name
     });
   }
 

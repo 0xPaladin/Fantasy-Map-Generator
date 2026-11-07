@@ -1,6 +1,6 @@
 // Mission tags are derived from the target, never stored on the mission definition.
 // See docs/plans/hero-diversity.md.
-import type { MissionTag, ProvinceLair, ProvinceTrouble } from "@/types/living";
+import type { MissionTag, ProvinceTrouble } from "@/types/living";
 
 const MAGICAL_TROUBLES = new Set([
   "ancient_curse",
@@ -48,8 +48,8 @@ export function troubleMissionTags(
   return tags;
 }
 
-export function lairMissionTags(lair: Pick<ProvinceLair, "theme">): MissionTag[] {
-  return ["lair", "combat", lair.theme === "ruin" ? "ruin" : "wild"];
+export function lairMissionTags(theme: string): MissionTag[] {
+  return ["lair", "combat", theme === "ruin" ? "ruin" : "wild"];
 }
 
 export function excavationMissionTags(marker: { type?: string; chronicle?: boolean }): MissionTag[] {

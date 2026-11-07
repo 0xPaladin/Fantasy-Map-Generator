@@ -95,11 +95,11 @@ const mocks = vi.hoisted(() => {
     completeAsset: vi.fn(() => true),
     spawnTrouble: vi.fn(() => ({ id: "monsters", level: 5 })),
     quellTrouble: vi.fn(() => true),
-    spawnLair: vi.fn(() => ({ id: "bandit_camp", name: "Bandit Camp", level: 6 })),
-    smiteLair: vi.fn(() => true),
-    assaultLair: vi.fn(() => true),
-    sendAdventurersToLair: vi.fn(() => true),
-    ascendLairToState: vi.fn(() => 2)
+    spawnDangerousFaction: vi.fn(() => ({ i: 7 })),
+    smiteFaction: vi.fn(() => true),
+    assaultFaction: vi.fn(() => true),
+    sendAdventurersToFaction: vi.fn(() => true),
+    ascendFactionToState: vi.fn(() => 2)
   };
 
   return { state, living };
@@ -186,6 +186,7 @@ function makePack() {
       { i: 2, name: "Oakford", cell: 2, state: 1, population: 4, capital: 0 }
     ],
     provinces: [{ i: 0 }, { i: 1, name: "Northmarch", state: 1, burg: 1, center: 1 }],
+    factions: [{ i: 0 }],
     markers: [],
     history: {
       living: mocks.state,
@@ -374,7 +375,7 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("None");
   });
 
-  it("renders lairs as {Province}, {what} [{level}] and zooms to location on click", () => {
+  it("renders dangerous factions as {Province}, {what} [{allegiance}] and zooms to location on click", () => {
     mocks.state.provinces = {
       1: {
         provinceId: 1,
@@ -382,22 +383,26 @@ describe("LivingHud", () => {
         stability: 1,
         development: 0,
         developmentProgress: null,
-        trouble: null,
-        lair: {
-          id: "bandit_camp",
-          name: "Bandit Camp",
-          level: 6,
-          theme: "ruin",
-          cell: 2,
-          defenders: [],
-          raidUnits: [],
-          raidThreshold: 5,
-          fortified: false,
-          raidPending: false,
-          seasonsActive: 1
-        }
+        trouble: null
       }
     };
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Bandit Camp",
+        category: "martial",
+        type: "bandit_camp",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        raidThreshold: 5,
+        military: [{ i: 1, a: 40, units: [] }],
+        hq: { cell: 2, provinceId: 1, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        stateRelations: {},
+        factionRelations: {}
+      }
+    ] as never;
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
     ];
@@ -405,8 +410,8 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const inspector = document.getElementById("livingInspector");
-    expect(inspector?.textContent).toContain("Lairs");
-    expect(inspector?.textContent).toContain("Northmarch, Bandit Camp [6]");
+    expect(inspector?.textContent).toContain("Dangerous factions");
+    expect(inspector?.textContent).toContain("Northmarch, Bandit Camp [hostile]");
 
     const link = inspector?.querySelector<HTMLElement>('button[data-zoom-cell="2"]');
     expect(link).toBeTruthy();
@@ -483,7 +488,7 @@ describe("LivingHud", () => {
     expect(zoomTo).toHaveBeenCalledWith(10, 10, 8, 1000);
   });
 
-  it("renders Claims & Grudges in precedence order: Lairs, Troubles, Restive burgs, then Claims and Grudges", () => {
+  it("renders Claims & Grudges in precedence order: Dangerous factions, Troubles, Restive burgs, then Claims and Grudges", () => {
     mocks.state.provinces = {
       1: {
         provinceId: 1,
@@ -501,22 +506,26 @@ describe("LivingHud", () => {
           level: 5,
           seasonsUnchecked: 1,
           cell: 2
-        },
-        lair: {
-          id: "bandit_camp",
-          name: "Bandit Camp",
-          level: 6,
-          theme: "ruin",
-          cell: 2,
-          defenders: [],
-          raidUnits: [],
-          raidThreshold: 5,
-          fortified: false,
-          raidPending: false,
-          seasonsActive: 1
         }
       }
     };
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Bandit Camp",
+        category: "martial",
+        type: "bandit_camp",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        raidThreshold: 5,
+        military: [{ i: 1, a: 40, units: [] }],
+        hq: { cell: 2, provinceId: 1, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        stateRelations: {},
+        factionRelations: {}
+      }
+    ] as never;
     mocks.state.burgs = {
       1: {
         burgId: 1,
@@ -535,7 +544,7 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const text = document.getElementById("livingInspector")?.textContent ?? "";
-    const lairsIdx = text.indexOf("Lairs");
+    const lairsIdx = text.indexOf("Dangerous factions");
     const troublesIdx = text.indexOf("Troubles");
     const restiveIdx = text.indexOf("Restive burgs");
     const casusIdx = text.indexOf("Casus belli");
@@ -860,27 +869,30 @@ describe("LivingHud", () => {
     expect(Living.completeAsset).toHaveBeenCalledWith(2);
   });
 
-  it("shows provincial lairs in the state inspector and runs lair god-mode actions", () => {
+  it("shows dangerous factions in the state inspector and runs faction god-mode actions", () => {
     mocks.state.provinces = {
       1: {
         provinceId: 1,
         order: 75,
         stability: 2,
-        development: 1,
-        lair: {
-          id: "bandit_camp",
-          name: "Forest Hideout",
-          level: 6,
-          theme: "ruin",
-          originCell: 1,
-          raidThreshold: 5,
-          defenders: [{ type: "infantry", count: 25 }],
-          fortified: true,
-          raidPending: true,
-          seasonsActive: 2
-        }
+        development: 1
       }
     };
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Forest Hideout",
+        category: "martial",
+        type: "bandit_camp",
+        allegiance: "hostile",
+        stateRelations: { 1: "Enemy" },
+        raidThreshold: 5,
+        ridePending: false,
+        military: [{ i: 1, name: "warband", a: 25, cell: 1, state: 0, units: [], u: {} }],
+        hq: { cell: 1, burgId: 1, fortified: true, secrecy: 0, assets: [] }
+      }
+    ] as never;
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 2, kind: "succession", text: "A new ruler.", cell: 1, stateId: 1 }
     ];
@@ -889,17 +901,17 @@ describe("LivingHud", () => {
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Forest Hideout");
-    expect(inspector?.textContent).toContain("Forest Hideout [6]");
+    expect(inspector?.textContent).toContain("Dangerous factions");
 
-    inspector?.querySelector<HTMLElement>('[data-god="assault-state-lair"]')?.click();
-    expect(Living.assaultLair).toHaveBeenCalledWith(1, 1);
+    inspector?.querySelector<HTMLElement>('[data-god="assault-state-faction"]')?.click();
+    expect(Living.assaultFaction).toHaveBeenCalledWith(1, 1);
     expect(document.getElementById("livingHudStatus")?.textContent).toContain("Northmarch");
 
-    inspector?.querySelector<HTMLElement>('[data-god="delve-state-lair"]')?.click();
-    expect(Living.sendAdventurersToLair).toHaveBeenCalledWith(1, 1);
+    inspector?.querySelector<HTMLElement>('[data-god="delve-state-faction"]')?.click();
+    expect(Living.sendAdventurersToFaction).toHaveBeenCalledWith(1, 1);
 
-    inspector?.querySelector<HTMLElement>('[data-god="smite-state-lair"]')?.click();
-    expect(Living.smiteLair).toHaveBeenCalledWith(1);
+    inspector?.querySelector<HTMLElement>('[data-god="smite-state-faction"]')?.click();
+    expect(Living.smiteFaction).toHaveBeenCalledWith(1);
   });
 
   it("opens a province card from the state chips and from inspect()", () => {
@@ -919,21 +931,22 @@ describe("LivingHud", () => {
           requiredRole: "merchant",
           burgId: 1,
           seasonsUnchecked: 2
-        },
-        lair: {
-          id: "bandit_camp",
-          name: "Forest Hideout",
-          level: 5,
-          theme: "ruin",
-          originCell: 1,
-          raidThreshold: 5,
-          defenders: [{ type: "infantry", count: 12 }],
-          fortified: true,
-          raidPending: false,
-          seasonsActive: 1
         }
       }
     };
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Forest Hideout",
+        category: "martial",
+        type: "bandit_camp",
+        allegiance: "hostile",
+        raidThreshold: 5,
+        military: [{ i: 1, name: "warband", a: 12, cell: 1, state: 0, units: [], u: {} }],
+        hq: { cell: 1, burgId: 1, fortified: true, secrecy: 0, assets: [] }
+      }
+    ] as never;
     mocks.state.burgs[1] = { ...(mocks.state.burgs[1] as Record<string, unknown>), citizens: 4 };
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 2, kind: "religion", text: "Northmarch converts.", cell: 1, stateId: 1 }
@@ -958,27 +971,28 @@ describe("LivingHud", () => {
     expect(inspector?.textContent).toContain("Provinces Editor");
   });
 
-  it("shows provincial lair on burg card and triggers burg lair interventions", () => {
+  it("shows a dangerous faction on the burg card and triggers faction interventions", () => {
     mocks.state.provinces = {
       1: {
         provinceId: 1,
         order: 60,
         stability: 1,
-        development: 0,
-        lair: {
-          id: "ancient_evil",
-          name: "Abyssal Rift",
-          level: 8,
-          theme: "ruin",
-          originCell: 1,
-          raidThreshold: 6,
-          defenders: [{ type: "cavalry", count: 15 }],
-          fortified: false,
-          raidPending: false,
-          seasonsActive: 4
-        }
+        development: 0
       }
     };
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Abyssal Rift",
+        category: "martial",
+        type: "ancient_evil",
+        allegiance: "hostile",
+        raidThreshold: 6,
+        military: [{ i: 1, name: "warband", a: 15, cell: 1, state: 0, units: [], u: {} }],
+        hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      }
+    ] as never;
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 0, kind: "lair", text: "Abyssal Rift active.", cell: 1, burgId: 1 }
     ];
@@ -987,29 +1001,29 @@ describe("LivingHud", () => {
 
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Abyssal Rift");
-    expect(inspector?.textContent).toContain("Lv 8");
+    expect(inspector?.textContent).toContain("Faction:");
+    expect(inspector?.textContent).toContain("(hostile)");
     expect(inspector?.textContent).toContain("Raid: 6+");
-    expect(inspector?.textContent).toContain("15 men");
+    expect(inspector?.textContent).toContain("15 fighters");
 
-    inspector?.querySelector<HTMLElement>('[data-god="assault-lair"]')?.click();
-    expect(Living.assaultLair).toHaveBeenCalledWith(1, 1);
+    inspector?.querySelector<HTMLElement>('[data-god="assault-faction"]')?.click();
+    expect(Living.assaultFaction).toHaveBeenCalledWith(1, 1);
 
-    inspector?.querySelector<HTMLElement>('[data-god="delve-lair"]')?.click();
-    expect(Living.sendAdventurersToLair).toHaveBeenCalledWith(1, 1);
+    inspector?.querySelector<HTMLElement>('[data-god="delve-faction"]')?.click();
+    expect(Living.sendAdventurersToFaction).toHaveBeenCalledWith(1, 1);
 
-    inspector?.querySelector<HTMLElement>('[data-god="smite-lair"]')?.click();
-    expect(Living.smiteLair).toHaveBeenCalledWith(1);
-    expect(document.getElementById("livingHudStatus")?.textContent).toBe("The lair was smitten by divine wrath.");
+    inspector?.querySelector<HTMLElement>('[data-god="smite-faction"]')?.click();
+    expect(Living.smiteFaction).toHaveBeenCalledWith(1);
+    expect(document.getElementById("livingHudStatus")?.textContent).toBe("The faction was smitten by divine wrath.");
   });
 
-  it("allows spawning a lair when province has no active lair", () => {
+  it("allows spawning a dangerous faction when province has no threat", () => {
     mocks.state.provinces = {
       1: {
         provinceId: 1,
         order: 90,
         stability: 3,
-        development: 2,
-        lair: null
+        development: 2
       }
     };
     mocks.state.recentNews = [
@@ -1019,13 +1033,15 @@ describe("LivingHud", () => {
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
 
     const inspector = document.getElementById("livingInspector");
-    expect(inspector?.textContent).toContain("No active lair");
+    expect(inspector?.textContent).toContain("No dangerous faction");
 
-    const spawnBtn = inspector?.querySelector<HTMLElement>('[data-god="spawn-lair"]');
+    const spawnBtn = inspector?.querySelector<HTMLElement>('[data-god="spawn-faction"]');
     expect(spawnBtn).toBeTruthy();
     spawnBtn?.click();
-    expect(Living.spawnLair).toHaveBeenCalledWith(1);
-    expect(document.getElementById("livingHudStatus")?.textContent).toBe("A lair has arisen in the province.");
+    expect(Living.spawnDangerousFaction).toHaveBeenCalledWith(1);
+    expect(document.getElementById("livingHudStatus")?.textContent).toBe(
+      "A dangerous faction has taken root in the province."
+    );
   });
 
   it("opens the Legends browser from the date badge and toggles the HUD", () => {
@@ -1095,29 +1111,33 @@ describe("LivingHud", () => {
     expect(inspector?.querySelector<HTMLElement>('[data-god="promote-trouble"]')).toBeNull();
   });
 
-  it("shows Ascend Lair button and badge only for state-capable lairs on state and burg cards", () => {
+  it("shows Ascend Faction button and badge only for ambitious dangerous factions on state and burg cards", () => {
     mocks.state.provinces = {
       1: {
         provinceId: 1,
         order: 40,
         stability: 1,
-        development: 0,
-        lair: {
-          id: "demonic_master",
-          name: "Infernal Fane",
-          level: 8,
-          theme: "ruin",
-          cell: 1,
-          raidThreshold: 5,
-          defenders: [{ type: "infantry", count: 40 }],
-          fortified: true,
-          raidPending: false,
-          seasonsActive: 6
-        }
+        development: 0
       }
     };
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Infernal Fane",
+        category: "religious",
+        type: "demonic_master",
+        allegiance: "hostile",
+        sovereignAmbition: true,
+        stateForm: "Infernal Dominion",
+        seasonsActive: 8,
+        researchedTechs: ["pottery", "masonry"],
+        military: [{ i: 1, name: "warband", a: 40, cell: 1, state: 0, units: [], u: {} }],
+        hq: { cell: 1, burgId: 1, provinceId: 1, fortified: true, secrecy: 0, assets: [] }
+      }
+    ] as never;
     mocks.state.recentNews = [
-      { tick: 1, year: 1000, season: 0, kind: "lair", text: "Infernal Fane.", cell: 1, stateId: 1 }
+      { tick: 1, year: 1000, season: 0, kind: "faction", text: "Infernal Fane.", cell: 1, stateId: 1 }
     ];
     LivingHud.open();
     document.querySelector<HTMLElement>("button.livingNewsItem")?.click();
@@ -1125,34 +1145,29 @@ describe("LivingHud", () => {
     const inspector = document.getElementById("livingInspector");
     expect(inspector?.textContent).toContain("Infernal Dominion");
 
-    const stateAscendBtn = inspector?.querySelector<HTMLElement>('[data-god="ascend-state-lair"]');
+    const stateAscendBtn = inspector?.querySelector<HTMLElement>('[data-god="ascend-state-faction"]');
     expect(stateAscendBtn).toBeTruthy();
     stateAscendBtn?.click();
-    expect(Living.ascendLairToState).toHaveBeenCalledWith(1);
+    expect(Living.ascendFactionToState).toHaveBeenCalledWith(1);
 
-    // Non-capable lair (monster_nest) omits Ascend Lair button
-    mocks.state.provinces = {
-      1: {
-        provinceId: 1,
-        order: 40,
-        stability: 1,
-        development: 0,
-        lair: {
-          id: "monster_nest",
-          name: "Monster Nest",
-          level: 8,
-          theme: "ruin",
-          cell: 1,
-          raidThreshold: 5,
-          defenders: [{ type: "infantry", count: 40 }],
-          fortified: false,
-          raidPending: false,
-          seasonsActive: 6
-        }
+    // Non-ambitious faction (monster_nest) omits Ascend Faction button
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Monster Nest",
+        category: "martial",
+        type: "monster_nest",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        seasonsActive: 8,
+        researchedTechs: ["pottery", "masonry"],
+        military: [{ i: 1, name: "warband", a: 40, cell: 1, state: 0, units: [], u: {} }],
+        hq: { cell: 1, burgId: 1, provinceId: 1, fortified: false, secrecy: 0, assets: [] }
       }
-    };
+    ] as never;
     LivingHud.refresh();
-    expect(inspector?.querySelector<HTMLElement>('[data-god="ascend-state-lair"]')).toBeNull();
+    expect(inspector?.querySelector<HTMLElement>('[data-god="ascend-state-faction"]')).toBeNull();
   });
 
   it("shows the guild wallet in the guild bar", () => {
@@ -1301,21 +1316,26 @@ describe("LivingHud", () => {
         provinceId: 1,
         order: 60,
         stability: 1,
-        development: 0,
-        lair: {
-          id: "bandit_camp",
-          name: "Forest Hideout",
-          level: 6,
-          theme: "ruin",
-          originCell: 1,
-          raidThreshold: 5,
-          defenders: [{ type: "infantry", count: 25 }],
-          fortified: false,
-          raidPending: false,
-          seasonsActive: 2
-        }
+        development: 0
       }
     };
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Forest Hideout",
+        category: "martial",
+        type: "bandit_camp",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        raidThreshold: 5,
+        military: [{ i: 1, a: 25, units: [] }],
+        hq: { cell: 2, provinceId: 1, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        stateRelations: {},
+        factionRelations: {}
+      }
+    ] as never;
     mocks.state.recentNews = [
       { tick: 1, year: 1000, season: 3, kind: "lair", text: "Forest Hideout active.", cell: 2, burgId: 2 }
     ];

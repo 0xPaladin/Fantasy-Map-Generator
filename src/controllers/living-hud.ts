@@ -15,7 +15,7 @@ import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
-import { getLairDef, isLairStateCapable } from "@/data/living-lairs";
+import { Factions } from "@/model/political/factions-generator";
 import { getPetitionDef } from "@/data/living-petitions";
 import { describeRelicBonuses, RELIC_CATALOG, reserveRelics, vaultHasRoom, vaultRelics } from "@/data/living-relics";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
@@ -1019,13 +1019,44 @@ function rememberTarget(label: string | undefined, tags: MissionTag[] | undefine
   lastFitTarget = { label, tags };
 }
 
+/** Hostile/clandestine faction with an HQ in a province (HUD view of threat pressure). */
+function hostileFactionInProvince(provinceId: number): import("@/types/factions").Faction | null {  const candidates = Factions.active().filter(f => {
+    if (f.allegiance !== "hostile" && f.allegiance !== "clandestine") return false;
+    const provId =
+      f.hq.provinceId ??
+      (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+      pack.cells?.province?.[f.hq.cell];
+    return provId === provinceId;
+  });
+  candidates.sort(
+    (a, b) => (b.military?.[0]?.a ?? 0) - (a.military?.[0]?.a ?? 0)
+  );
+  return candidates[0] ?? null;
+}
+
+/** Province a faction HQ sits in. */
+function provIdOfFaction(faction: import("@/types/factions").Faction): number | undefined {
+  return (
+    faction.hq.provinceId ??
+    (faction.hq.burgId ? pack.cells.province?.[pack.burgs?.[faction.hq.burgId]?.cell ?? 0] : undefined) ??
+    pack.cells?.province?.[faction.hq.cell]
+  );
+}
+
 function rememberProvinceTarget(provinceId: number): void {
   const living = Living.getState();
   const province = pack.provinces?.[provinceId];
   const pSim = living.provinces?.[provinceId];
   if (!province?.i || !pSim) return;
   if (pSim.trouble) rememberTarget(`Fit for ${pSim.trouble.name}`, troubleMissionTags(pSim.trouble));
-  else if (pSim.lair) rememberTarget(`Fit for ${pSim.lair.name}`, lairMissionTags(pSim.lair));
+  const threat = hostileFactionInProvince(provinceId);
+  if (!pSim.trouble && threat) {
+    const marker = threat.hq.markerId !== undefined ? pack.markers?.[threat.hq.markerId] : undefined;
+    rememberTarget(
+      `Fit for ${threat.name}`,
+      lairMissionTags(marker && ["ruins", "dungeon", "cave", "battlefields"].includes(marker.type ?? "") ? "ruin" : "wild")
+    );
+  }
 }
 
 function selectMarker(markerId: number): void {
@@ -1039,7 +1070,7 @@ function selectState(stateId: number): void {
   const province = (pack.provinces ?? []).find(p => {
     if (!p?.i || p.removed || p.state !== stateId) return false;
     const sim = Living.getState().provinces?.[p.i];
-    return Boolean(sim?.trouble || sim?.lair);
+    return Boolean(sim?.trouble || hostileFactionInProvince(p.i));
   });
   if (province) rememberProvinceTarget(province.i);
   selected = { kind: "state", id: stateId };
@@ -1501,15 +1532,25 @@ function renderStateCard(stateId: number): string {
   const hasTroubled = (pack.provinces ?? []).some(
     p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.trouble
   );
-  const hasLairs = (pack.provinces ?? []).some(
-    p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.lair
+  const hasFactions = (pack.provinces ?? []).some(
+    p => p?.i && !p.removed && p.state === stateId && hostileFactionInProvince(p.i)
   );
-  const hasAscendableLair = (pack.provinces ?? []).some(p => {
-    const l = p?.i && !p.removed && p.state === stateId ? living.provinces?.[p.i]?.lair : undefined;
-    return Boolean(l && isLairStateCapable(l.id));
-  });
-  const canSpawnStateLair = (pack.provinces ?? []).some(
-    p => p?.i && !p.removed && p.state === stateId && !living.provinces?.[p.i]?.lair
+  const hasAscendableFaction = Factions.active().some(
+    f =>
+      f.sovereignAmbition &&
+      (f.allegiance === "hostile" || f.allegiance === "clandestine") &&
+      (f.seasonsActive ?? 0) >= 8 &&
+      (f.researchedTechs?.length ?? 0) >= 2 &&
+      (() => {
+        const provId =
+          f.hq.provinceId ??
+          (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+          pack.cells?.province?.[f.hq.cell];
+        return provId !== undefined && pack.provinces?.[provId]?.state === stateId;
+      })()
+  );
+  const canSpawnStateFaction = (pack.provinces ?? []).some(
+    p => p?.i && !p.removed && p.state === stateId && !hostileFactionInProvince(p.i)
   );
   const guild = Living.getGuild?.();
   const sandbox = Boolean(guild?.sandboxGodMode);
@@ -1531,7 +1572,7 @@ function renderStateCard(stateId: number): string {
       <div class="livingSectionTitle">Claims & Grudges</div>
       ${
         [
-          renderProvincesLairs(stateId),
+          renderProvincesFactions(stateId),
           renderProvincesTroubles(stateId),
           renderRestiveBurgs(stateId),
           renderClaims(sSim),
@@ -1549,15 +1590,15 @@ function renderStateCard(stateId: number): string {
              <button type="button" data-god="spark" data-state="${stateId}">Spark Rebellion</button>
              <button type="button" data-god="smite" data-state="${stateId}">Smite Ruler</button>
              <button type="button" data-god="war" data-state="${stateId}">Force War</button>
-             ${hasLairs ? `<button type="button" data-god="assault-state-lair" data-state="${stateId}">Assault Lair</button>` : ""}
-             ${hasLairs ? `<button type="button" data-god="delve-state-lair" data-state="${stateId}">Send Adventurers</button>` : ""}
-             ${hasAscendableLair ? `<button type="button" data-god="ascend-state-lair" data-state="${stateId}">Ascend Lair</button>` : ""}
-             ${hasLairs ? `<button type="button" data-god="smite-state-lair" data-state="${stateId}">Smite Lair</button>` : ""}
-             ${canSpawnStateLair ? `<button type="button" data-god="spawn-state-lair" data-state="${stateId}">Spawn Lair</button>` : ""}
+             ${hasFactions ? `<button type="button" data-god="assault-state-faction" data-state="${stateId}">Assault Faction</button>` : ""}
+             ${hasFactions ? `<button type="button" data-god="delve-state-faction" data-state="${stateId}">Send Adventurers</button>` : ""}
+             ${hasAscendableFaction ? `<button type="button" data-god="ascend-state-faction" data-state="${stateId}">Ascend Faction</button>` : ""}
+             ${hasFactions ? `<button type="button" data-god="smite-state-faction" data-state="${stateId}">Smite Faction</button>` : ""}
+             ${canSpawnStateFaction ? `<button type="button" data-god="spawn-state-faction" data-state="${stateId}">Spawn Faction</button>` : ""}
            </div>`
         : `<div class="livingGodTitle">Guild Operations</div>
            <div class="livingButtons">
-             ${hasTroubled || hasLairs ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Party</button>` : ""}
+             ${hasTroubled || hasFactions ? `<button type="button" data-guild="dispatch-state" data-state="${stateId}">Dispatch Party</button>` : ""}
              <button type="button" data-guild="patron" data-state="${stateId}" title="Restrict auto_patron contracts to this state">${isPatron ? "Current Patron State" : "Make Patron State"}</button>
              ${sSim.rulerId !== undefined ? `<button type="button" data-guild="op-assassinate" data-state="${stateId}" title="${escapeHtml(GUILD_OPERATIONS.assassinate_ruler.description)}">Assassinate Ruler — ${GUILD_OPERATIONS.assassinate_ruler.cost}g</button>` : ""}
              <button type="button" data-guild="op-broker" data-state="${stateId}" title="${escapeHtml(GUILD_OPERATIONS.war_broker.description)}">War Broker — ${GUILD_OPERATIONS.war_broker.cost}g</button>
@@ -1871,7 +1912,7 @@ function renderStateProvinces(stateId: number): string {
   const chips = provinces
     .map(province => {
       const pSim = living.provinces?.[province.i];
-      const icon = pSim?.lair ? "💀" : pSim?.trouble ? "⚠️" : "🏳️";
+      const icon = hostileFactionInProvince(province.i) ? "💀" : pSim?.trouble ? "⚠️" : "🏳️";
       const order = Math.round(pSim?.order ?? 0);
       const name = escapeHtml(province.name ?? "Province");
       return `<button type="button" class="livingCivChip" data-inspect="province" data-id="${province.i}" title="Public order ${order}%">${icon} ${name}</button>`;
@@ -1897,8 +1938,7 @@ function renderProvinceCard(provinceId: number): string {
   const capitalSim = province.burg ? living.burgs[province.burg] : undefined;
   const trouble = pSim.trouble;
   const troubleDef = trouble ? getTroubleDef(trouble.id) : undefined;
-  const lair = pSim.lair;
-  const lairDef = lair ? getLairDef(lair.id) : undefined;
+  const threat = hostileFactionInProvince(provinceId);
   const religionId = capitalBurg ? (pack.cells.religion?.[capitalBurg.cell] ?? 0) : 0;
   const religionName = religionId ? pack.religions?.[religionId]?.name : undefined;
   const development = pSim.developmentProgress
@@ -1921,14 +1961,14 @@ function renderProvinceCard(provinceId: number): string {
          }</div>`
       : `<div class="livingMuted">No active trouble</div>`;
 
-  const lairDefenders = lair?.defenders.reduce((sum, unit) => sum + (unit.count ?? 0), 0) ?? 0;
-  const lairRow =
-    lair && lairDef
-      ? `<div><strong>${escapeHtml(lair.name)}</strong> (Lv ${lair.level}, ${lair.theme})</div>
-         <div class="livingMuted">Raid ${lair.raidThreshold}+ · ${lairDefenders} defenders${
-           lair.fortified ? " · 🏰 Fortified" : ""
-         }${lair.raidPending ? " · ⚠️ Raid imminent" : ""}</div>`
-      : `<div class="livingMuted">No active lair</div>`;
+  const threatMen = threat ? (threat.military ?? []).reduce((s, r) => s + (r.a ?? 0), 0) : 0;
+  const threatRow =
+    threat
+      ? `<div><strong>${escapeHtml(threat.name)}</strong> (${escapeHtml(threat.allegiance)} faction)</div>
+         <div class="livingMuted">Raid ${threat.raidThreshold ?? 6}+, ${threatMen} fighters${
+           threat.hq.fortified ? ", fortified" : ""
+         }${threat.raidPending ? ", raid imminent" : ""}</div>`
+      : `<div class="livingMuted">No dangerous faction</div>`;
 
   return `<div class="livingInspectorTitle">🏳️ ${escapeHtml(province.name ?? "Province")}</div>
   <div class="livingMuted">${escapeHtml(owner)}${province.formName ? ` · ${escapeHtml(province.formName)}` : ""}</div>
@@ -1951,8 +1991,8 @@ function renderProvinceCard(provinceId: number): string {
     ${troubleRow}
   </div>
   <div class="livingSection">
-    <div class="livingSectionTitle">Lair</div>
-    ${lairRow}
+    <div class="livingSectionTitle">Dangerous faction</div>
+    ${threatRow}
   </div>
   <div class="livingButtons">
     <button type="button" data-open="province" data-id="${provinceId}">Provinces Editor</button>
@@ -2113,35 +2153,31 @@ function renderProvincesTroubles(stateId: number): string {
   return `<div class="livingSectionTitle">Troubles</div><ul>${rows}</ul>`;
 }
 
-function renderProvincesLairs(stateId: number): string {
-  const living = Living.getState();
+function renderProvincesFactions(stateId: number): string {
   const ownedProvinces = (pack.provinces ?? []).filter(p => p?.i && !p.removed && p.state === stateId);
-  const laired = ownedProvinces
-    .map(p => ({ province: p, pSim: living.provinces?.[p.i] }))
-    .filter((entry): entry is { province: (typeof pack.provinces)[number]; pSim: ProvinceSimState } =>
-      Boolean(entry.pSim?.lair)
+  const threatened = ownedProvinces
+    .map(p => ({ province: p, threat: hostileFactionInProvince(p.i) }))
+    .filter((entry): entry is { province: (typeof pack.provinces)[number]; threat: NonNullable<typeof entry.threat> } =>
+      Boolean(entry.threat)
     );
 
-  if (laired.length === 0) return "";
+  if (threatened.length === 0) return "";
 
-  const rows = laired
-    .map(({ province, pSim }) => {
-      const lair = pSim.lair!;
-      const def = getLairDef(lair.id);
-      const name = lair.name || def.name;
-      const cell = lair.cell || province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
-      const text = `${province.name ?? "Province"}, ${name} [${lair.level}]`;
-      const burgAttr = lair.burgId ? ` data-zoom-burg="${lair.burgId}"` : "";
-      const stateForm = isLairStateCapable(lair.id) ? getLairDef(lair.id)?.stateForm : undefined;
-      const badge = stateForm
-        ? ` <span class="livingBadge" style="background:#5e3c6e">${escapeHtml(stateForm)}</span>`
+  const rows = threatened
+    .map(({ province, threat }) => {
+      const name = threat.name;
+      const cell = threat.hq.cell || province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
+      const men = (threat.military ?? []).reduce((s, r) => s + (r.a ?? 0), 0);
+      const text = `${province.name ?? "Province"}, ${name} [${threat.allegiance}]`;
+      const burgAttr = threat.hq.burgId ? ` data-zoom-burg="${threat.hq.burgId}"` : "";
+      const badge = threat.sovereignAmbition
+        ? ` <span class="livingBadge" style="background:#5e3c6e">${escapeHtml(threat.stateForm ?? "State-Capable")}</span>`
         : "";
-      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}"${burgAttr} title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button>${badge}</li>`;
+      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}"${burgAttr} title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button>${badge} <span class="livingMuted">${men} fighters</span></li>`;
     })
     .join("");
-  return `<div class="livingSectionTitle">Lairs</div><ul>${rows}</ul>`;
+  return `<div class="livingSectionTitle">Dangerous factions</div><ul>${rows}</ul>`;
 }
-
 function renderBurgCard(burgId: number): string {
   const living = Living.getState();
   const burg = pack.burgs[burgId];
@@ -2158,12 +2194,11 @@ function renderBurgCard(burgId: number): string {
   const pSim = provId ? living.provinces?.[provId] : undefined;
   const trouble = pSim?.trouble;
   const tDef = trouble ? getTroubleDef(trouble.id) : undefined;
-  const lair = pSim?.lair;
-  const lairDef = lair ? getLairDef(lair.id) : undefined;
-  const lairCapable = Boolean(lair && isLairStateCapable(lair.id));
+  const threat = provId ? hostileFactionInProvince(provId) : null;
+  const threatCapable = Boolean(threat?.sovereignAmbition);
   const guild = Living.getGuild?.();
   const sandbox = Boolean(guild?.sandboxGodMode);
-  const canDispatch = Boolean(provId && (trouble || lair));
+  const canDispatch = Boolean(provId && (trouble || threat));
 
   return /* html */ `
     <div class="livingInspectorTitle">${escapeHtml(burg.name ?? "Burg")}</div>
@@ -2191,10 +2226,10 @@ function renderBurgCard(burgId: number): string {
                 : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
             }
             ${
-              lair
-                ? `<div style="margin-top:0.3em;color:#8b0000;"><strong>Lair:</strong> ${escapeHtml(lair.name)} (Lv ${lair.level}, ${lair.theme}) ${lairCapable ? `<span class="livingBadge" style="background:#5e3c6e">${escapeHtml(lairDef?.stateForm ?? "State-Capable")}</span>` : ""}</div>
-                   <div class="livingMuted">Raid: ${lair.raidThreshold}+ · Defenders: ${lair.defenders.reduce((sum, u) => sum + (u.count ?? 0), 0)} men${lair.fortified ? " · Fortified" : ""}${lair.raidPending ? " · Raid Imminent" : ""}</div>`
-                : `<div class="livingMuted" style="margin-top:0.2em;">No active lair</div>`
+              threat
+                ? `<div style="margin-top:0.3em;color:#8b0000;"><strong>Faction:</strong> ${escapeHtml(threat.name)} (${escapeHtml(threat.allegiance)}) ${threatCapable ? `<span class="livingBadge" style="background:#5e3c6e">${escapeHtml(threat.stateForm ?? "State-Capable")}</span>` : ""}</div>
+                   <div class="livingMuted">Raid: ${threat.raidThreshold ?? 6}+, ${(threat.military ?? []).reduce((sum, r) => sum + (r.a ?? 0), 0)} fighters${threat.hq.fortified ? ", fortified" : ""}${threat.raidPending ? ", raid imminent" : ""}</div>`
+                : `<div class="livingMuted" style="margin-top:0.2em;">No dangerous faction</div>`
             }
           </div>`
         : ""
@@ -2213,18 +2248,18 @@ function renderBurgCard(burgId: number): string {
              ${
                provId && trouble
                  ? `<button type="button" data-god="quell-trouble" data-province="${provId}">Quell Trouble</button>`
-                 : provId && !lair
+                 : provId
                    ? `<button type="button" data-god="spawn-trouble" data-province="${provId}">Spawn Trouble</button>`
                    : ""
              }
              ${
-               provId && lair
-                 ? `${stateId ? `<button type="button" data-god="assault-lair" data-state="${stateId}" data-province="${provId}">Assault Lair</button>` : ""}
-                    ${stateId ? `<button type="button" data-god="delve-lair" data-state="${stateId}" data-province="${provId}">Send Adventurers</button>` : ""}
-                    ${lairCapable ? `<button type="button" data-god="ascend-lair" data-province="${provId}" data-burg="${burgId}">Ascend Lair</button>` : ""}
-                    <button type="button" data-god="smite-lair" data-province="${provId}">Smite Lair</button>`
+               provId && threat
+                 ? `${stateId ? `<button type="button" data-god="assault-faction" data-state="${stateId}" data-province="${provId}">Assault Faction</button>` : ""}
+                    ${stateId ? `<button type="button" data-god="delve-faction" data-state="${stateId}" data-province="${provId}">Send Adventurers</button>` : ""}
+                    ${threatCapable ? `<button type="button" data-god="ascend-faction" data-province="${provId}" data-burg="${burgId}">Ascend Faction</button>` : ""}
+                    <button type="button" data-god="smite-faction" data-province="${provId}">Smite Faction</button>`
                  : provId
-                   ? `<button type="button" data-god="spawn-lair" data-province="${provId}">Spawn Lair</button>`
+                   ? `<button type="button" data-god="spawn-faction" data-province="${provId}">Spawn Faction</button>`
                    : ""
              }
            </div>`
@@ -2381,17 +2416,16 @@ function runGuildOperation(button: HTMLElement): void {
       message = ok ? "The Guild's diplomacy succeeded." : "The brokerage failed or no envoy was available.";
       break;
     case "dispatch-state": {
-      const living = Living.getState();
       const prov = (pack.provinces ?? []).find(p => {
         if (!p?.i || p.removed || p.state !== stateId) return false;
-        const sim = living.provinces?.[p.i];
-        return Boolean(sim?.trouble || sim?.lair);
+        const sim = Living.getState().provinces?.[p.i];
+        return Boolean(sim?.trouble || hostileFactionInProvince(p.i));
       });
       if (prov) {
         ok = Living.dispatchBestHero(prov.i);
         message = ok ? `A guild hero set out for ${prov.name}.` : "No idle hero is available.";
       } else {
-        message = "No trouble or lair to dispatch against.";
+        message = "No threat to dispatch against.";
       }
       break;
     }
@@ -2528,110 +2562,108 @@ function runIntervention(button: HTMLElement): void {
       ok = Living.quellTrouble(provId);
       message = ok ? "The provincial trouble has been quelled." : "No trouble to quell.";
       break;
-    case "spawn-lair": {
-      const res = Living.spawnLair(provId);
+    case "spawn-faction": {
+      const res = Living.spawnDangerousFaction(provId);
       ok = Boolean(res);
-      message = ok ? "A lair has arisen in the province." : "Failed to spawn lair.";
+      message = ok ? "A dangerous faction has taken root in the province." : "Failed to spawn faction.";
       break;
     }
-    case "smite-lair":
-      ok = Living.smiteLair(provId);
-      message = ok ? "The lair was smitten by divine wrath." : "No lair to smite.";
+    case "smite-faction":
+      ok = Living.smiteFaction(provId);
+      message = ok ? "The faction was smitten by divine wrath." : "No faction to smite.";
       break;
-    case "assault-lair":
-      ok = Living.assaultLair(stateId, provId);
-      message = ok ? "The military expedition destroyed the lair!" : "The expedition failed to destroy the lair.";
+    case "assault-faction":
+      ok = Living.assaultFaction(stateId, provId);
+      message = ok ? "The military expedition destroyed the faction!" : "The expedition failed to destroy the faction.";
       break;
-    case "delve-lair":
-      ok = Living.sendAdventurersToLair(stateId, provId);
-      message = ok ? "The adventuring party vanquished the lair!" : "The adventuring party failed to destroy the lair.";
+    case "delve-faction":
+      ok = Living.sendAdventurersToFaction(stateId, provId);
+      message = ok ? "The adventuring party vanquished the faction!" : "The adventuring party failed to destroy the faction.";
       break;
-    case "ascend-lair": {
-      const newStateId = Living.ascendLairToState(provId, burgId || undefined);
+    case "ascend-faction": {
+      const threat = hostileFactionInProvince(provId);
+      const newStateId = threat ? Living.ascendFactionToState(threat.i, burgId || undefined) : null;
       ok = newStateId !== null;
       const newState = newStateId ? pack.states[newStateId] : undefined;
       message = ok
-        ? `The lair ascended into ${newState?.fullName ?? newState?.name ?? "a sovereign state"}!`
-        : "This lair cannot form a state.";
+        ? `The faction ascended into ${newState?.fullName ?? newState?.name ?? "a sovereign state"}!`
+        : "This faction cannot form a state.";
       break;
     }
-    case "ascend-state-lair": {
-      const living = Living.getState();
-      const prov = (pack.provinces ?? []).find(p => {
-        const l = p?.i && !p.removed && p.state === stateId ? living.provinces?.[p.i]?.lair : undefined;
-        return Boolean(l && isLairStateCapable(l.id));
-      });
-      if (prov) {
-        const newStateId = Living.ascendLairToState(prov.i);
+    case "ascend-state-faction": {
+      const threat =
+        Factions.active().find(
+          f => (f.allegiance === "hostile" || f.allegiance === "clandestine") && f.sovereignAmbition
+        ) ?? null;
+      const provIdForState = threat ? provIdOfFaction(threat) : undefined;
+      if (threat && provIdForState) {
+        const newStateId = Living.ascendFactionToState(threat.i);
         ok = newStateId !== null;
         const newState = newStateId ? pack.states[newStateId] : undefined;
+        const prov = pack.provinces?.[provIdForState];
         message = ok
-          ? `The lair in ${prov.name} ascended into ${newState?.fullName ?? newState?.name ?? "a sovereign state"}!`
-          : `The lair in ${prov.name} could not form a state.`;
+          ? `${threat.name} in ${prov?.name} ascended into ${newState?.fullName ?? newState?.name ?? "a sovereign state"}!`
+          : `${threat.name} could not form a state.`;
       } else {
         ok = false;
-        message = "No state-capable lair in the state.";
+        message = "No ambitious dangerous faction in the state.";
       }
       break;
     }
-    case "spawn-state-lair": {
-      const living = Living.getState();
+    case "spawn-state-faction": {
       const prov = (pack.provinces ?? []).find(
-        p => p?.i && !p.removed && p.state === stateId && !living.provinces?.[p.i]?.lair
+        p => p?.i && !p.removed && p.state === stateId && !hostileFactionInProvince(p.i)
       );
       if (prov) {
-        const res = Living.spawnLair(prov.i);
+        const res = Living.spawnDangerousFaction(prov.i);
         ok = Boolean(res);
-        message = ok ? `A lair arose in ${prov.name}!` : `Failed to spawn lair in ${prov.name}.`;
+        message = ok ? `A dangerous faction arose in ${prov.name}!` : `Failed to spawn faction in ${prov.name}.`;
       } else {
         ok = false;
-        message = "All provinces already harbor lairs.";
+        message = "All provinces already harbor factions.";
       }
       break;
     }
-    case "assault-state-lair": {
-      const living = Living.getState();
+    case "assault-state-faction": {
       const prov = (pack.provinces ?? []).find(
-        p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.lair
+        p => p?.i && !p.removed && p.state === stateId && hostileFactionInProvince(p.i)
       );
       if (prov) {
-        ok = Living.assaultLair(stateId, prov.i);
+        ok = Living.assaultFaction(stateId, prov.i);
         message = ok
-          ? `The expedition destroyed the lair in ${prov.name}!`
-          : `The expedition against the lair in ${prov.name} failed.`;
+          ? `The expedition destroyed the faction in ${prov.name}!`
+          : `The expedition against the faction in ${prov.name} failed.`;
       } else {
         ok = false;
-        message = "No active lair in the state.";
+        message = "No dangerous faction in the state.";
       }
       break;
     }
-    case "delve-state-lair": {
-      const living = Living.getState();
+    case "delve-state-faction": {
       const prov = (pack.provinces ?? []).find(
-        p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.lair
+        p => p?.i && !p.removed && p.state === stateId && hostileFactionInProvince(p.i)
       );
       if (prov) {
-        ok = Living.sendAdventurersToLair(stateId, prov.i);
+        ok = Living.sendAdventurersToFaction(stateId, prov.i);
         message = ok
-          ? `The adventuring party vanquished the lair in ${prov.name}!`
-          : `The adventurers in ${prov.name} failed to destroy the lair.`;
+          ? `The adventuring party vanquished the faction in ${prov.name}!`
+          : `The adventurers in ${prov.name} failed to destroy the faction.`;
       } else {
         ok = false;
-        message = "No active lair in the state.";
+        message = "No dangerous faction in the state.";
       }
       break;
     }
-    case "smite-state-lair": {
-      const living = Living.getState();
+    case "smite-state-faction": {
       const prov = (pack.provinces ?? []).find(
-        p => p?.i && !p.removed && p.state === stateId && living.provinces?.[p.i]?.lair
+        p => p?.i && !p.removed && p.state === stateId && hostileFactionInProvince(p.i)
       );
       if (prov) {
-        ok = Living.smiteLair(prov.i);
-        message = ok ? `The lair in ${prov.name} was smitten!` : `Failed to smite lair in ${prov.name}.`;
+        ok = Living.smiteFaction(prov.i);
+        message = ok ? `The faction in ${prov.name} was smitten!` : `Failed to smite faction in ${prov.name}.`;
       } else {
         ok = false;
-        message = "No active lair in the state.";
+        message = "No dangerous faction in the state.";
       }
       break;
     }

@@ -42,7 +42,8 @@ function makePack() {
       { i: 1, name: "Aelor", cell: 1, x: 10, y: 10, state: 1 },
       { i: 2, name: "Oakford", cell: 2, x: 20, y: 20, state: 1 }
     ],
-    states: [{ i: 0 }, { i: 1, name: "Aeloria", capital: 1, center: 1 }]
+    states: [{ i: 0 }, { i: 1, name: "Aeloria", capital: 1, center: 1 }],
+    factions: [{ i: 0 }]
   };
 }
 
@@ -65,13 +66,22 @@ afterEach(() => {
 });
 
 describe("collectLivingVectors", () => {
-  it("draws raid lines for pending lairs and war arrows for conquer agendas", () => {
-    mocks.state.provinces = {
-      1: {
-        provinceId: 1,
-        lair: { cell: 3, raidPending: true, name: "Forest Hideout", level: 6 }
+  it("draws raid lines for pending faction raids and war arrows for conquer agendas", () => {
+    (globalThis.pack as unknown as { factions: unknown[] }).factions = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Forest Hideout",
+        type: "brigand_raiders",
+        allegiance: "hostile",
+        raidPending: true,
+        hq: { cell: 3, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        military: [],
+        stateRelations: {},
+        factionRelations: {}
       }
-    };
+    ];
     mocks.state.states = {
       1: {
         stateId: 1,
@@ -158,9 +168,21 @@ describe("collectLivingBadges", () => {
 
 describe("drawLivingOverlay", () => {
   it("renders vectors, floating badges and clickable popups on the map", () => {
-    mocks.state.provinces = {
-      1: { provinceId: 1, lair: { cell: 3, raidPending: true, name: "Forest Hideout", level: 6 } }
-    };
+    (globalThis.pack as unknown as { factions: unknown[] }).factions = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Forest Hideout",
+        type: "brigand_raiders",
+        allegiance: "hostile",
+        raidPending: true,
+        hq: { cell: 3, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        military: [],
+        stateRelations: {},
+        factionRelations: {}
+      }
+    ];
     mocks.state.states = {
       1: { stateId: 1, agenda: { kind: "conquer", targetBurgId: 2, label: "Take Oakford", progress: 1, required: 2 } }
     };

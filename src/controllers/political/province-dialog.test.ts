@@ -95,6 +95,22 @@ describe("openProvinceDetailsDialog", () => {
           burgs: [1]
         }
       ],
+      factions: [
+        { i: 0 },
+        {
+          i: 1,
+          name: "Goblin Warren",
+          type: "monster_nest",
+          allegiance: "hostile",
+          sovereignAmbition: true,
+          hq: { cell: 1, provinceId: 1, fortified: true, secrecy: 0, assets: [] },
+          outposts: [],
+          military: [{ a: 120 }],
+          raidPending: false,
+          stateRelations: {},
+          factionRelations: {}
+        }
+      ],
       living: {
         provinces: {
           1: {
@@ -117,19 +133,6 @@ describe("openProvinceDetailsDialog", () => {
               level: 4,
               seasonsUnchecked: 2,
               cell: 1
-            },
-            lair: {
-              id: "goblin_cave",
-              name: "Goblin Warren",
-              level: 5,
-              theme: "cave",
-              cell: 1,
-              defenders: [{ role: "infantry", count: 120 }],
-              raidUnits: [],
-              raidThreshold: 6,
-              fortified: true,
-              raidPending: false,
-              seasonsActive: 3
             }
           }
         },

@@ -4,8 +4,9 @@ import type { BuildingDef } from "@/data/roster-content";
 import { poiCapacityType } from "@/data/tiers";
 import { valueModifier } from "@/data/saves-helpers";
 import { civBuildingCapacity } from "@/data/living-civ-buildings";
-import { isLairStateCapable } from "@/data/living-lairs";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import { Factions } from "@/model/political/factions-generator";
+import type { Faction } from "@/types/factions";
 import type { Province } from "@/model/political/provinces-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { classifyGood, Living, regionTierFromPop } from "@/model/physical/living-generator";
@@ -90,6 +91,20 @@ export interface ProvinceCapacity {
   modW: number;
   modS: number;
   modC: number;
+}
+
+/** Hostile/clandestine faction with an HQ in a province (dialog view of threat pressure). */
+function hostileFactionForDialog(provinceId: number): Faction | null {
+  const candidates = Factions.active().filter(f => {
+    if (f.allegiance !== "hostile" && f.allegiance !== "clandestine") return false;
+    const provId =
+      f.hq.provinceId ??
+      (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+      pack.cells?.province?.[f.hq.cell];
+    return provId === provinceId;
+  });
+  candidates.sort((a, b) => (b.military?.[0]?.a ?? 0) - (a.military?.[0]?.a ?? 0));
+  return candidates[0] ?? null;
 }
 
 function getProvinceBuildings(provinceId: number, living?: LivingWorldState): string[] {
@@ -329,23 +344,22 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
     </span>`;
   }
 
-  // Active Lair
-  let lairHtml = "";
-  if (pSim?.lair) {
-    const lair = pSim.lair;
-    const isCapable = isLairStateCapable(lair.id);
-    const defCount = (lair.defenders ?? []).reduce((sum: number, u: { count?: number }) => sum + (u.count ?? 0), 0);
-    lairHtml = `<span>
-      <strong>${escapeHtml(lair.name)}</strong>
-      <span style="font-size:0.88em; color:#666;">(Lv ${lair.level}, ${escapeHtml(lair.theme)})</span>
+  // Dangerous faction with an HQ in the province
+  let factionHtml = "";
+  const factionThreat = provinceId ? hostileFactionForDialog(provinceId) : null;
+  if (factionThreat) {
+    const defCount = (factionThreat.military ?? []).reduce((sum, r) => sum + (r.a ?? 0), 0);
+    const isCapable = Boolean(factionThreat.sovereignAmbition);
+    factionHtml = `<span>
+      <strong>${escapeHtml(factionThreat.name)}</strong>
+      <span style="font-size:0.88em; color:#666;">(${escapeHtml(factionThreat.allegiance)} faction)</span>
       ${isCapable ? '<span class="provBadge" style="background:#5e3c6e">State-Capable</span>' : ""}
-      ${lair.fortified ? '<span class="provBadge" style="background:#2b5c8f">Fortified</span>' : ""}
-      ${lair.raidPending ? '<span class="provBadge" style="background:#a33d3d">Raid Imminent</span>' : ""}
-      <button type="button" class="icon-target pointer" data-zoom-cell="${lair.cell}" data-tip="${t("Zoom to lair")}" style="background:none; border:none; padding:0; cursor:pointer; font-size:1.05em; vertical-align:middle;"></button>
-      <span style="font-size:0.85em; color:#666; margin-left:0.3em;">(${defCount} def · Raid ${lair.raidThreshold}+)</span>
+      ${factionThreat.hq.fortified ? '<span class="provBadge" style="background:#2b5c8f">Fortified</span>' : ""}
+      ${factionThreat.raidPending ? '<span class="provBadge" style="background:#a33d3d">Raid Imminent</span>' : ""}
+      <button type="button" class="icon-target pointer" data-zoom-cell="${factionThreat.hq.cell}" data-tip="${t("Zoom to faction")}" style="background:none; border:none; padding:0; cursor:pointer; font-size:1.05em; vertical-align:middle;"></button>
+      <span style="font-size:0.85em; color:#666; margin-left:0.3em;">(${defCount} fighters)</span>
     </span>`;
   }
-
   // Province cells
   const provCells = new Set<number>();
   if (pack.cells?.province) {
@@ -564,11 +578,11 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
         ${devProgressHtml ? `<div style="font-size: 0.85em; color: #555; margin-top: 2px;">${devProgressHtml}</div>` : ""}
 
         ${
-          troubleHtml || lairHtml
+          troubleHtml || factionHtml
             ? `
         <div class="provRow" style="flex-wrap: wrap; gap: 0.8em; margin-top: 0.25em; font-size: 0.88em;">
           ${troubleHtml ? `<div style="display:inline-flex; align-items:center; gap:0.3em;"><strong>Trouble:</strong> ${troubleHtml}</div>` : ""}
-          ${lairHtml ? `<div style="display:inline-flex; align-items:center; gap:0.3em;"><strong>Lair:</strong> ${lairHtml}</div>` : ""}
+          ${factionHtml ? `<div style="display:inline-flex; align-items:center; gap:0.3em;"><strong>Faction:</strong> ${factionHtml}</div>` : ""}
         </div>`
             : ""
         }

@@ -702,6 +702,7 @@ class FactionsModule {
       influence: params.influence ?? 30,
       rosterId: params.rosterId,
       military: params.military || [],
+      threatLevel: params.threatLevel,
       raidThreshold: params.raidThreshold,
       raidPending: params.raidPending,
       stateRelations: params.stateRelations || {},

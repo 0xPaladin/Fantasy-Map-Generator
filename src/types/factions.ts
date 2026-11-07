@@ -116,6 +116,8 @@ export interface Faction {
   influence: number;
   rosterId?: string;
   military: Regiment[];
+  /** Threat level 1..10 for dangerous factions; drives mission DC and display. */
+  threatLevel?: number;
   raidThreshold?: number;
   raidPending?: boolean;
   stateRelations: Record<number, FactionRelation>;
