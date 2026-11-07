@@ -22,6 +22,7 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 
 ## Unreleased (factions branch)
 
+- Factions: states can now suppress hostile factions in the Living World — production-funded `suppress_faction` agenda against urban nodes (influence damage, guard stalls, pillage, HQ relocation/dissolution), military storm of wilderness strongholds on state-owned cells, plus Inspector "Suppress faction" command and pillaged badges
 - Factions: unified OpenCiv engine — HQs/outposts are city-nodes competing for worked cells, gathering seven yields, producing from unified queues, researching with host spillover, and fighting with shared Builders/Settlers/armies/sieges
 - Factions Editor: new Yields, Citizens, Worked Cells and Production columns; Outposts dialog and Burg inspector show per-node yields, citizens, worked cells and production queue
 

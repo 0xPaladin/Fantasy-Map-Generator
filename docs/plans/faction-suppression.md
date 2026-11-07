@@ -1,6 +1,6 @@
 # Plan — State Suppression of Hostile Factions
 
-**Status:** Implemented — Phases 1–5 complete  
+**Status:** Implemented — Phases 1–5 plus wilderness stronghold assault complete  
 **Branch:** `factions`  
 **Touchpoints:** `src/types/living.ts`, `src/types/factions.ts`, `src/model/physical/living-generator.ts`, `src/model/political/factions-generator.ts`, `src/controllers/political/factions-editor.ts`, `src/controllers/political/state-cities-dialog.ts`, `src/renderers/draw-living-overlay.ts`, `src/controllers/living-hud.ts`, and `src/model/physical/living-generator.test.ts`  
 **Companions:** [`factions.md`](factions.md), [`factions-civ-engine.md`](factions-civ-engine.md), [`living-openciv-armies.md`](living-openciv-armies.md)

@@ -244,7 +244,7 @@ Non-territorial organizations stored as an array of objects with strict element 
 - `patronStateId`: `number` - optional host/patron state id
 - `color`: `string` - faction color in hex
 - `icon`: `string` - marker icon
-- `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, secrecy, assets: string[], sim?: BurgSimState }`
+- `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, pillaged?, influence?, secrecy, assets: string[], sim?: BurgSimState }` (`influence` 0–100, defaults to 70; `pillaged` marks a razed urban or wilderness stronghold)
 - `outposts`: `FactionOutpost[]` - `{ burgId, cell, tier: 1|2|3, influence, secrecy, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
 - `tier`: `number` - `1..5`, derived from scale
 - `science`: `number` - current science per season (mirrors `yieldsPerTurn.science`)
@@ -595,15 +595,15 @@ Top level:
 
 `StatePolitySim`:
 
-- `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `resolve_trouble`, `clear_lair`
+- `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `resolve_trouble`, `clear_lair`, `suppress_faction`
 - `unravel`, `warExhaustion`, `claims`, `grudges` - the collapse clock, peace pressure and the memory of lost burgs and wrongs
 - `faith`, `happiness`, `yieldsPerTurn`, `currentTechId`, `researchQueue`, `researchedTechs` - optional OpenCiv empire fields
 - `warTurns`, `peaceTreatyTurns` - optional war/truce clocks
 - `treaties`: `Record<number, TreatyKind[]>` - optional positive agreements per other state (`nonAggression`, `trade`, `defensiveAlliance`, `militaryAccess`); symmetric
 
-A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` / `targetProvinceId` / `targetBurgId` / `targetCell` / `buildingId`, and `progress` / `required`.
+A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` / `targetProvinceId` / `targetBurgId` / `targetCell` / `buildingId`, plus `targetFactionId` and `stallUntilTick` for `suppress_faction`, and `progress` / `required`.
 
-`BurgSimState` carries `development`, `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, the OpenCiv city fields (`citizens`, `foodStored`, worked/locked cells) and the `productionQueue` (`{ kind: "unit" | "building" | "wonder" | "trouble", id }`) with its per-item progress.
+`BurgSimState` carries `development`, `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, the OpenCiv city fields (`citizens`, `foodStored`, worked/locked cells) and the `productionQueue` (`{ kind: "unit" | "building" | "wonder" | "trouble" | "operation", id, targetFactionId?, targetNodeKey? }`) with its per-item progress. Suppression uses a `faction-suppression` operation (`6 + tier × 4` Production) queued in the host burg; wilderness HQs are military-only and never queue it.
 
 `ProvinceSimState` carries `order`, `stability`, `development`, `developmentProgress`, and the active `trouble` / `lair`.
 
