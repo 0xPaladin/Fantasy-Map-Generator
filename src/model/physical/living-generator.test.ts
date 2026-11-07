@@ -4506,6 +4506,131 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(living.states[1].agenda?.kind).not.toBe("suppress_faction");
       });
     });
+
+    describe("State suppression tests and balance (Phase 5)", () => {
+      function hostileFaction(name: string, overrides: Partial<Faction> = {}): Faction {
+        return Factions.add({
+          name,
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ],
+          ...overrides
+        });
+      }
+
+      it("makes lawful and non-hostile factions ineligible for suppression", () => {
+        Living.init();
+        const patron = hostileFaction("Patron Guard", {
+          allegiance: "state_arm",
+          patronStateId: 1,
+          stateRelations: { 1: "Ally" }
+        });
+        const chartered = hostileFaction("Chartered Guild", {
+          allegiance: "chartered",
+          patronStateId: 1,
+          stateRelations: { 1: "Friendly" }
+        });
+        const neutral = hostileFaction("Neutral Circle", {
+          allegiance: "autonomous",
+          stateRelations: { 1: "Neutral" }
+        });
+        const hostile = hostileFaction("Silver Hand");
+
+        expect(Living.isHostileToState(patron.i, 1)).toBe(false);
+        expect(Living.isHostileToState(chartered.i, 1)).toBe(false);
+        expect(Living.isHostileToState(neutral.i, 1)).toBe(false);
+        expect(Living.isHostileToState(hostile.i, 1)).toBe(true);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).toContain(hostile.i);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(patron.i);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(chartered.i);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(neutral.i);
+        expect(Living.startFactionSuppression(1, patron.i)).toBe(false);
+        expect(Living.startFactionSuppression(1, neutral.i)).toBe(false);
+      });
+
+      it("accumulates production progress without spending gold", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        pack.states[1].treasury = 500;
+
+        Living.tick(1);
+
+        const b1 = living.burgs[1];
+        const progress = b1.productionProgress?.["operation:faction-suppression"] ?? 0;
+        expect(progress).toBeGreaterThan(0);
+        expect(progress).toBeLessThan(14);
+        expect(pack.states[1].treasury).toBeGreaterThanOrEqual(500);
+        expect(faction.outposts[0].influence).toBe(40);
+      });
+
+      it("hurries an operation for gold while retaining the reserve", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        const b1 = living.burgs[1];
+        b1.productionProgress = { "operation:faction-suppression": 0 };
+        const remaining = 6 + 2 * 4;
+        const price = hurryGoldCost(remaining, false);
+
+        // Too thin: the state keeps its 100 Gold reserve.
+        pack.states[1].treasury = price + 50;
+        expect(Living.hurryProduction(1)).toBe(false);
+        expect(pack.states[1].treasury).toBe(price + 50);
+
+        pack.states[1].treasury = 1000;
+        expect(Living.hurryProduction(1)).toBe(true);
+        expect(pack.states[1].treasury).toBe(1000 - price);
+        expect(faction.outposts[0].influence).toBe(37);
+      });
+
+      it("reduces influence by the order/secrecy formula per completed operation", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        living.provinces[1].order = 70;
+        const b1 = living.burgs[1];
+        b1.productionQueue = [
+          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: "outpost:1" }
+        ];
+        b1.productionProgress = { "operation:faction-suppression": 13 };
+        living.states[1].agenda = {
+          kind: "suppress_faction",
+          label: `Suppressing ${faction.name} in Aelor`,
+          targetFactionId: faction.i,
+          targetBurgId: 1,
+          progress: 0,
+          required: 1
+        };
+
+        Living.tick(1);
+
+        expect(faction.outposts[0].influence).toBe(37);
+        expect(faction.outposts[0].pillaged).toBeFalsy();
+        expect(living.provinces[1].order).toBeGreaterThanOrEqual(72);
+      });
+
+      it("progresses slowly without collapsing when local production is low", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+
+        Living.tick(2);
+
+        expect(faction.removed).toBe(false);
+        expect(faction.outposts[0].pillaged).toBeFalsy();
+        expect(faction.outposts[0].influence).toBeGreaterThan(0);
+        const progress = living.burgs[1].productionProgress?.["operation:faction-suppression"] ?? 0;
+        const queued = (living.burgs[1].productionQueue ?? []).some(
+          item => item.kind === "operation" && item.targetFactionId === faction.i
+        );
+        expect(progress > 0 || queued).toBe(true);
+      });
+    });
   });
 });
 
