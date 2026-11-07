@@ -93,6 +93,8 @@
 
 ## 6. Phase 4 — Docs and suite
 
+**Status: complete.**
+
 - `docs/wiki/Living-World.md`, `docs/wiki/Factions.md`, `docs/architecture/data-model.md`: trouble = hazards only; dangerous factions spawn from the trouble trigger; lairs are factions; ascension only via `ascendFactionToState()`.
 - `docs/plans/factions.md`: mark Option B delivered; remove the `isHazard`/`attractsFactionTypes` spec.
 - Rewrite lair/trouble tests in `living-generator.test.ts` around factions; suite green except the pre-existing `solar-system` failure.
@@ -106,7 +108,7 @@
 | 1 — catalog prune + spawn split + delete trouble promotion | medium | ✅ done |
 | 2 — faction clear-trouble clock | small | ✅ done |
 | 3 — delete lairs, faction raid/clear tick | large | ✅ done |
-| 4 — docs + suite | small | suite green |
+| 4 — docs + suite | small | ✅ done |
 
 **Risks:**
 - *Save compatibility:* legacy saves carry `pSim.lair`, `activeLairs` and organizational troubles. The Phase 1/3 migrations must run on `Living.init()` before any tick, or old maps strand entities.

@@ -15,7 +15,7 @@ The HUD is a compact bar at the bottom of the map. It can be dragged anywhere on
 
 Each tick writes to the map itself: borders, burg ownership, regiments, battle markers, the **Religions layer**, and chronicle events all change as the simulation runs. On the map, every army box carries a **capability bar**, a stack badge and a composition strip; wounded armies are tinted, and battlefields, besieged cities and headline events get markers.
 
-The optional **Trouble** layer draws a pin for every active provincial trouble and lair: hover a pin to read its level, theme, save and garrison (or pin the note open), and the native danger markers on the markers layer resolve to the same lair notes. Cleared lairs leave explorable **ruins** behind instead of vanishing.
+The optional **Trouble** layer draws a pin for every active provincial hazard and dangerous faction: hover a pin to read its level, theme, save and garrison (or pin the note open), and the native danger markers on the markers layer resolve to the same faction notes. Cleared hazards and factions leave explorable **ruins** behind instead of vanishing.
 
 ### The inspector
 While the HUD is open, click a state or a burg on the map to open its diorama card.
@@ -28,16 +28,16 @@ A **state** card leads with the **OpenCiv Empire** panel:
 * **Faith** — the state religion, its pantheon, its Holy City and the Faith cost of the next Great Prophet.
 * **Armies** — every field army with its capability %, nominal men, block count, mean experience and stance; adjacent enemies show win odds, a compact card reports the last battle, and the composition drill-down lists each block's roster unit, `hp` and `exp`.
 
-Below that the card keeps the familiar **ruler & traits**, **agenda**, **stability** (unravel and war-exhaustion meters), **claims & grudges**, restive burgs, provincial troubles and lairs, plus quick buttons for the _States Editor_ and _Regiments Overview_. The **capability** meter (`M`, `W`, `S`, `C`) is displayed at the bottom, directly reflecting constructed OpenCiv buildings via `civBuildingCapacity` (e.g. barracks and walls for Military, markets and banks for Wealth, monuments and temples for Social, libraries and universities for Cunning) alongside province levies and trade goods. While unit upkeep is managed via OpenCiv Gold maintenance, these scores drive the domain check modifiers `(+N)` used by units, specialists and rulers to resolve Provincial Troubles and delve lairs.
+Below that the card keeps the familiar **ruler & traits**, **agenda**, **stability** (unravel and war-exhaustion meters), **claims & grudges**, restive burgs, provincial troubles and dangerous factions, plus quick buttons for the _States Editor_ and _Regiments Overview_. The **capability** meter (`M`, `W`, `S`, `C`) is displayed at the bottom, directly reflecting constructed OpenCiv buildings via `civBuildingCapacity` (e.g. barracks and walls for Military, markets and banks for Wealth, monuments and temples for Social, libraries and universities for Cunning) alongside province levies and trade goods. While unit upkeep is managed via OpenCiv Gold maintenance, these scores drive the domain check modifiers `(+N)` used by units, specialists and rulers to resolve Provincial Troubles and delve dangerous factions.
 
 A **burg** card shows its owner, tier and population, its unrest and standing assets, and the **OpenCiv City** panel:
 
 * **City yields** for the seven OpenCiv resources, plus citizens, stored Food, acquired tiles and City HP.
 * **Production** — the queue with each item's banked Production and cost.
 * **Religion** — the city's majority faith and its per-religion pressure.
-* **Province** — public order, stability, development, active **Trouble** (with its save bane and specialist role) and active **Lair** (threat level, raid threshold, defenders and fortifications).
+* **Province** - public order, stability, development, active **Trouble** (with its save bane and specialist role) and hostile **dangerous factions** (threat level, raid threshold, military and fortifications).
 
-The state card also lists its **Provinces** as clickable chips, and each one opens a **province card**: public order, stability and development, the province capital and its faith, the active Trouble and Lair, and buttons to jump to the Provinces Editor or back to the state.
+The state card also lists its **Provinces** as clickable chips, and each one opens a **province card**: public order, stability and development, the province capital and its faith, the active Trouble and dangerous factions, and buttons to jump to the Provinces Editor or back to the state.
 
 The native editors surface the same live data. The **Burgs Editor** adds a *Living World* summary for the selected burg (citizens, city yields, City HP, majority faith and the current production item) with an **Inspect** button that opens its city card, plus the resident faction HQ/outposts with their citizens, worked cells, city yields and production queue. The **Factions Editor** adds Yields, Citizens, Worked Cells and Production columns (Food/Prod/Gold/Sci/Cult/Faith/Hap from `yieldsPerTurn`/`happiness`), and the Outposts & Assets dialog shows per-node citizens, worked cells, yields and the full queue. The **Provinces Editor** adds a **Living** column — public order with ⚠️ trouble and 💀 lair markers — and a **Province Details** dialog (the castle button on each row) with the province's order, stability and development, its M/W/S/C domain checks, standing assets and burg feature toggles; the Living column opens the province card, which links back to that dialog.
 
@@ -114,16 +114,16 @@ Faith is a real resource, and the **Religions layer is live**.
 * **Treaties** layer positive agreements on FMG's native diplomacy matrix: **non-aggression**, **trade**, **defensive alliance** and **military access**. A defensive alliance drags its signatories into a war when an ally is attacked; a rejected offer cools the relation one rung. Confederation merges two friendly states when the smaller accepts.
 * **Peace expels trespassers** — any regiment left in foreign land is moved to the nearest friendly or unowned cell. Claims and grudges still shape whom a state attacks next.
 
-#### Provincial troubles, lairs and ancient ruins
-The 46 fantasy **Provincial Troubles** (19 of them state-promotable) and 20 **Provincial Lairs** (15 state-capable) still drive the roleplay layer, with their domain resolution checks powered by OpenCiv capability generation.
+#### Provincial troubles, hazards and dangerous factions
+The fantasy **Provincial Troubles** split into 20 environmental/economic/site **hazards** (state-promotable, resolved via domain checks) plus 8 hazardous *customs* (`bad_reputation`, `class_hatred`, `covetous_polity`, `disputed_possession`, `disunity`, `cultural_feuding`, `mercenary_populace`, `xenophobia`) that are grievances, never actors. Everything organizational becomes a **dangerous faction** — the 18 former lair archetypes and the organizational trouble types now spawn as hostile/clandestine factions with HQ, military, raid threshold and raidPending flag, seeded from danger markers or emergent from neglected hazards.
 
-* **Troubles** — each season (or upon restless conquest) a local obstacle can crop up from a province's burgs, ruins or resources. Trouble adds $\lceil \text{level} / 2 \rceil$ to the state's `M`, `W` and `S` load, drains order by $\text{level} \times 2$, floors burg unrest, freezes garrison stability and suppresses resource trade goods. If unchecked it escalates every two seasons. States address it through the `resolve_trouble` agenda, rolling $1\text{d}20 + \text{valueModifier}(\text{pool.gen}) - \text{unit.disruption}$ against one of six saves (`disorder`, `uprising`, `poverty`, `ignorance`, `despair`, `corruption`); matching specialists roll at normal DC, mismatched units suffer penalties, failures inflict unit Disruption, and successes reduce severity.
-* **Lairs** — troubles left lingering (≥ 3 seasons or level ≥ 5) metastasize into permanent fortified lairs (or spawn from wilderness perils). Lairs place a marker, keep an entrenched garrison, add $\lceil \text{level} / 2 \rceil$ load, drain order, freeze stability, and roll each season to launch raids against nearby settlements. Raiders clash with garrisons, then tear down buildings or pillage development. Lairs block civic resolution and demand either a **military expedition** (`clear_lair`: +15 order, +2 stability, −2 war exhaustion on victory) or an **adventurer delve** (`hire_adventurers`: roll vs $14 + \text{level}$; full success clears it, near misses weaken it, failures can kill heroes).
-* **Emergent sovereign realms** — promotional troubles (19 of 37) and state-capable lairs (15 of 20) can become new states: a coup when order collapses (≤ 25) or a realm is in turmoil, or a lair ascension after eight seasons at level ≥ 8 (or by capturing a settlement during a raid). Emergent states seize or found a capital, scaffold walls/barracks/market/temple, reset province order and stability, receive 150 Gold, field a first regiment, mint an aggressive ruler and enter war with claims and grudges against their former sovereign.
+* **Hazards** — environmental/economic/site afflictions that drain order, freeze stability, and raise unrest. States clear them via burg work orders, guild hero missions, petitions, or a caretaker faction's clear-trouble clock. They never metastasize into lairs; unchecked hazards escalate level/order damage and can spawn a dangerous faction.
+* **Dangerous factions** — hostile/clandestine factions anchored to a province or danger marker. They raid nearby settlements, drain order, freeze stability, and can ascend into sovereign states after 8+ seasons with sovereign ambition, sufficient tech, and collapsed local order. States respond with `clear_faction` (march on the HQ) or `hire_adventurers` (guild delve).
+* **Emergent sovereign realms** — sovereign-ambition factions can become new states: a coup when order collapses (≤ 25) or a realm is in turmoil, or a faction ascension after eight seasons at sufficient level (or by capturing a settlement during a raid). Emergent states seize or found a capital, scaffold walls/barracks/market/temple, reset province order and stability, receive 150 Gold, field a first regiment, mint an aggressive ruler and enter war with claims and grudges against their former sovereign.
 * **Ancient ruins** — a regiment stepping onto an unexcavated `ruins` marker claims a bonus (`+75 Gold`, a citizen, or research progress); the Guild can excavate them for relics.
 
 #### Agendas, unrest and chronicle
-* **Agendas** — states choose one realm-level goal at a time: `muster`, `develop`, `build`, `colonize`, `conquer`, `reclaim`, `pacify`, `resolve_trouble`, `clear_lair`, `hire_adventurers`, `defend` or `raid`. Ruler traits and culture values weight that choice, and the goal tells armies where to march. City **production** itself is autonomous and no longer consumes an agenda.
+* **Agendas** — states choose one realm-level goal at a time: `muster`, `develop`, `build`, `colonize`, `conquer`, `reclaim`, `pacify`, `resolve_trouble`, `clear_faction`, `hire_adventurers`, `defend` or `raid`. Ruler traits and culture values weight that choice, and the goal tells armies where to march. City **production** itself is autonomous and no longer consumes an agenda.
 * **Development & buildings** — provinces spend stability to raise development. Roster buildings and wonders come from the city's **production queue**, not a separate construction economy; environmental trouble is minted into that queue as a work order.
 * **Unrest** — occupied burgs carry unrest, which drains order, raises unhappiness and contributes to the owner's unravel clock. Garrisoning a burg or building a temple helps it decay; a `pacify` agenda speeds it up and may assimilate the burg's culture or faith.
 * **Rulers, grudges, rebellion** — rulers age and are succeeded; weak courts can trigger succession crises. Wars, sacks, slain rulers and breakaways become weighted grudges, and lost burgs become claims. A full unravel meter still breaks a burg away — rejoin its homeland, defect to kin, restore independence, or found a secessionist state.
@@ -143,11 +143,11 @@ The inspector's _God Mode_ section lets you intervene without waiting for the si
 * **Quell Trouble** — immediately quashes an active provincial trouble.
 * **Resolve Trouble** — triggers a domain saving throw attempt by the province's owning state.
 * **Promote to State** — immediately promotes an eligible political or factional trouble into an emergent sovereign state.
-* **Spawn Lair** — creates an entrenched lair stronghold with defenders and a map marker in the province.
-* **Assault Lair** — orders the state's field army to launch an immediate assault on the lair.
-* **Send Adventurers** — dispatches an adventuring party to delve into the lair.
-* **Ascend Lair** — immediately ascends a state-capable lair into an emergent sovereign state.
-* **Smite Lair** — strikes down the lair and its defenders by divine intervention.
+* **Spawn Faction** - creates an entrenched hostile faction with defenders and a map marker in the province.
+* **Assault Faction** - orders the state's field army to launch an immediate assault on the faction.
+* **Send Adventurers** - dispatches an adventuring party to delve into the faction.
+* **Ascend Faction** - immediately ascends a sovereign-ambition faction into an emergent sovereign state.
+* **Smite Faction** - strikes down the faction and its defenders by divine intervention.
 
 Every intervention is written to the same chronicle and news ticker as a normal seasonal step.
 
@@ -164,7 +164,7 @@ Characters, hero sheets, checks and party expeditions have their own page: **[Ch
 The Living World still recruits, pays and dispatches those characters. Their identity, stats and condition live on the character sheet in `pack.history.figures`; the Guild owns the roster, gold and missions.
 
 ### The Wheel of Ages
-The **eschaton clock** (⏳ in the guild bar) measures how close the age is to its finale. It rises each season for every level 8+ lair, when an evil sovereign conquers a burg, and when a major state collapses; purging lairs winds it back by 5.
+The **eschaton clock** (? in the guild bar) measures how close the age is to its finale. It rises each season for every level 8+ dangerous faction, when an evil sovereign conquers a burg, and when a major state collapses; purging dangerous factions winds it back by 5.
 
 Once the clock reaches **100** — or the Guild reaches **tier 5** — the **Turn the Wheel of Ages** button illuminates. Turning it plays out the epoch bake:
 
