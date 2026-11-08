@@ -4,7 +4,6 @@ import { type LegacyFigure, migrateCharacters } from "@/services/io/characters-m
 import { FIRST_SNAPSHOT_RECORD, HISTORY_RECORD, parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { HeroSheet } from "@/types/character";
 import { emptyHistory, type History } from "@/types/history";
-import type { GuildState, HeroGuildState } from "@/types/living";
 
 function heroSheet(archetype: "warden" | "freeblade" = "warden"): HeroSheet {
   const start = heroStartingPackage(archetype);
@@ -16,18 +15,6 @@ function heroSheet(archetype: "warden" | "freeblade" = "warden"): HeroSheet {
     xp: 0
   };
 }
-
-const guildState: HeroGuildState = {
-  resolve: 7,
-  stamina: 5,
-  maxResolve: 9,
-  maxStamina: 6,
-  doctrine: "patrol",
-  temperament: { boldness: 3, caution: 2, teamplay: 1, greed: 4 },
-  injuries: [{ kind: "wounded", untilTick: 12 }],
-  downUntilTick: 14,
-  push: true
-};
 
 describe("character migration", () => {
   it("backfills seed keys and converts legacy skills to a hero sheet", () => {
@@ -73,43 +60,7 @@ describe("character migration", () => {
     expect(figure.skills).toEqual({ m: 4, w: 1, s: 0, c: 2 });
   });
 
-  it("loads old guild hero state into the sheet", () => {
-    const figure: LegacyFigure = {
-      i: 1,
-      name: "Mara",
-      culture: 1,
-      birth: 900,
-      roles: [{ type: "adventurer", target: { kind: "culture", id: 1 }, from: 950 }]
-    };
-    const history: History = {
-      ...emptyHistory(),
-      figures: [figure],
-      living: {
-        guild: {
-          roster: [1],
-          heroes: { 1: guildState },
-          cooldowns: { 1: 20 }
-        } as unknown as GuildState
-      } as unknown as History["living"]
-    };
-
-    migrateCharacters(history);
-
-    expect(figure.hero?.condition).toEqual({
-      resolve: 7,
-      stamina: 5,
-      maxResolve: 9,
-      maxStamina: 6,
-      injuries: [{ kind: "wounded", untilTick: 12 }],
-      downUntilTick: 14,
-      push: true
-    });
-    expect(figure.hero?.doctrine).toBe("patrol");
-    expect(figure.hero?.temperament).toEqual(guildState.temperament);
-    expect(figure.hero?.cooldownUntil).toBe(20);
-  });
-
-  it("keeps a new hero sheet and only fills missing condition data", () => {
+  it("keeps a new hero sheet untouched", () => {
     const existing = heroSheet("freeblade");
     const figure: LegacyFigure = {
       i: 2,
@@ -120,21 +71,13 @@ describe("character migration", () => {
       hero: existing,
       skills: { m: 1, w: 1, s: 1, c: 1 }
     };
-    const history: History = {
-      ...emptyHistory(),
-      figures: [figure],
-      living: {
-        guild: { heroes: { 2: guildState }, cooldowns: { 2: 30 } } as unknown as GuildState
-      } as unknown as History["living"]
-    };
+    const history: History = { ...emptyHistory(), figures: [figure] };
 
     migrateCharacters(history);
 
     expect(figure.hero).toBe(existing);
     expect(figure.hero?.archetype).toBe("freeblade");
     expect(figure.hero?.actions).toEqual(existing.actions);
-    expect(figure.hero?.condition?.resolve).toBe(7);
-    expect(figure.hero?.cooldownUntil).toBe(30);
   });
 
   it("leaves background characters without a hero sheet", () => {
@@ -200,19 +143,21 @@ describe("character save round-trip", () => {
       ...emptyHistory(),
       figures: [
         {
-          i: 0,
-          name: "Bram",
+          i: 1,
+          name: "Fallen",
           culture: 1,
-          birth: 900,
+          birth: 800,
+          death: 850,
           roles: [],
           removed: true,
-          seedKey: "figure:0"
+          seedKey: "figure:1"
         }
       ]
     };
 
     const { json, snapshotRecords } = serializeHistory(history, 0);
     const loaded = parseHistory(json, snapshotRecords, 0);
-    expect(loaded.figures?.[0].removed).toBe(true);
+    expect(loaded.figures[0]?.removed).toBe(true);
+    expect(loaded.figures[0]?.death).toBe(850);
   });
 });

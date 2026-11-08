@@ -1,8 +1,6 @@
 // Living World seasonal simulation engine. See docs/plans/living-world.md
 
-import type { Alignment } from "@/data/culture-traits";
-import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
-import { figureArchetype, figureDisciplines } from "@/data/hero-archetypes";
+import { rollAlignment, rollFigureTraits, traitsRng, type Alignment } from "@/data/culture-traits";
 import {
   CIV_BELIEF_BY_ID,
   CIV_ENHANCER_BELIEFS,
@@ -72,9 +70,9 @@ import {
 import type { Province } from "@/model/political/provinces-generator";
 import { type State, States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
-import type { Marker } from "@/model/story/markers-generator";
 import { isAstralView } from "@/renderers/view-mode";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
+import type { HistRef, HistoricalFigure, HistoryEventType, Realm } from "@/types/history";
 import type {
   Faction,
   FactionHq,
@@ -100,7 +98,6 @@ import {
   type CivUnitDef,
   type GrudgeReason,
   type HappinessBreakdown,
-  type HeroArchetypeId,
   type HeroDoctrine,
   type HeroGuildState,
   type LivingNewsItem,

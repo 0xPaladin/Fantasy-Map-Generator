@@ -1,8 +1,8 @@
-// Transient on-map juice for the Living HUD: army/raid vectors, floating outcome
-// badges and clickable bounty popups. See docs/plans/living-idle-guild.md (slice 1).
+// Transient on-map juice for the Living HUD: army/raid vectors and floating
+// outcome badges. See docs/plans/living-world.md (slice 5).
 import { Living, UNIT_MAX_HP } from "@/model/physical/living-generator";
 import { viewport } from "@/renderers/viewport/viewport";
-import type { LivingNewsItem, LivingPopup, LivingPopupKind, LivingWorldState } from "@/types/living";
+import type { LivingNewsItem, LivingWorldState } from "@/types/living";
 import { escapeHtml } from "@/utils";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -11,14 +11,6 @@ const CONTENT_ID = "livingOverlayContent";
 const TOASTS_ID = "livingToasts";
 const STYLE_ID = "livingOverlayStyle";
 const MAX_BADGES = 5;
-
-const POPUP_META: Record<LivingPopupKind, { icon: string; color: string }> = {
-  bounty_trouble: { icon: "📜", color: "#b8860b" },
-  bounty_lair: { icon: "🏰", color: "#8b0000" },
-  ascension_warning: { icon: "👑", color: "#6a4c93" },
-  relic_exposed: { icon: "💎", color: "#2a7f7a" },
-  guild_petition: { icon: "⚖️", color: "#444a8a" }
-};
 
 const NEWS_ICONS: Partial<Record<LivingNewsItem["kind"], string>> = {
   war: "🏹",
@@ -55,10 +47,6 @@ const OVERLAY_CSS = /* css */ `
     72% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-28px); }
   }
-  @keyframes livingPopupPulse {
-    0%, 100% { opacity: 0.18; transform: scale(0.85); }
-    50% { opacity: 0.4; transform: scale(1.25); }
-  }
   @keyframes livingDashFlow {
     to { stroke-dashoffset: -20; }
   }
@@ -67,13 +55,7 @@ const OVERLAY_CSS = /* css */ `
     50% { opacity: 0.95; }
   }
   .livingFloatBadgeInner { animation: livingFloatUp 4s ease-out forwards; }
-  .livingPopupPulse {
-    animation: livingPopupPulse 1.6s ease-in-out infinite;
-    transform-box: fill-box;
-    transform-origin: center;
-  }
   .livingVectorPath { animation: livingDashFlow 1.1s linear infinite; }
-  .livingVector-quest .livingVectorPath { animation-duration: 1.6s; }
   .livingVector-raid .livingVectorPath {
     animation: livingDashFlow 1.1s linear infinite, livingRaidPulse 1.4s ease-in-out infinite;
   }
@@ -81,7 +63,7 @@ const OVERLAY_CSS = /* css */ `
 
 export interface LivingVector {
   id: string;
-  kind: "raid" | "war" | "quest";
+  kind: "raid" | "war";
   from: [number, number];
   to: [number, number];
   color: string;
@@ -95,7 +77,7 @@ export interface LivingBadge {
   color: string;
 }
 
-const VECTOR_COLORS = { raid: "#8b0000", war: "#a33d3d", quest: "#b8860b" } as const;
+const VECTOR_COLORS = { raid: "#8b0000", war: "#a33d3d" } as const;
 
 function cellPoint(cell: number | undefined): [number, number] | null {
   if (cell === undefined) return null;
@@ -128,7 +110,7 @@ function nearestBurgPoint(cell: number, provinceId: number | undefined): [number
   return best;
 }
 
-/** Raid lines from imminent lairs, war arrows from conquer/reclaim agendas, and hero quest lines. */
+/** Raid lines from imminent lairs and war arrows from conquer/reclaim agendas. */
 export function collectLivingVectors(living: LivingWorldState): LivingVector[] {
   if (!pack?.cells?.p) return [];
   const vectors: LivingVector[] = [];
@@ -166,20 +148,6 @@ export function collectLivingVectors(living: LivingWorldState): LivingVector[] {
     });
   }
 
-  const hq = burgPoint(living.guild?.hqBurgId);
-  for (const mission of living.guild?.missions ?? []) {
-    const to = cellPoint(mission.targetCell);
-    if (!hq || !to) continue;
-    vectors.push({
-      id: `quest-${mission.id}`,
-      kind: "quest",
-      from: hq,
-      to,
-      color: VECTOR_COLORS.quest,
-      label: `${mission.progress}/${mission.required}`
-    });
-  }
-
   return vectors;
 }
 
@@ -189,18 +157,11 @@ function badgeIcon(item: LivingNewsItem): string {
   return NEWS_ICONS[item.kind] ?? "✦";
 }
 
-/** The outcome badges for the season that just resolved, excluding popups/bounties. */
+/** The outcome badges for the season that just resolved. */
 export function collectLivingBadges(living: LivingWorldState): LivingBadge[] {
-  const popupCells = new Set((living.guild?.popups ?? []).map(popup => popup.cell));
   const news = (living.recentNews ?? [])
     .filter(item => item.tick === living.tick && item.cell !== undefined)
-    .filter(
-      item =>
-        item.kind !== "trouble" &&
-        item.kind !== "lair" &&
-        !popupCells.has(item.cell!) &&
-        !/bounty claimed/i.test(item.text)
-    );
+    .filter(item => item.kind !== "trouble" && item.kind !== "lair");
 
   const badges: LivingBadge[] = news.map((item, index) => ({
     id: `${item.tick}-${index}`,
@@ -267,26 +228,6 @@ function badgeMarkup(badge: LivingBadge): string | null {
   </g>`;
 }
 
-function popupMarkup(popup: LivingPopup, point: [number, number], living: LivingWorldState): string {
-  const meta = POPUP_META[popup.kind];
-  const remaining = Math.max(0, popup.expiresAtTick - living.tick);
-  const [x, y] = point;
-  const reward =
-    popup.rewardGold || popup.rewardRenown ? ` (+${popup.rewardGold}g / +${popup.rewardRenown} renown)` : "";
-  const hint = popup.kind === "guild_petition" ? " — click to decide" : "";
-
-  return `<g class="livingPopup livingPopup-${popup.kind}" data-popup-id="${popup.id}" data-kind="${popup.kind}" transform="translate(${x.toFixed(1)}, ${y.toFixed(1)})" pointer-events="all" style="cursor:pointer">
-    <title>${escapeHtml(popup.title)} — ${escapeHtml(popup.subtitle)}${reward}${hint}</title>
-    <circle class="livingPopupPulse" r="9" fill="${meta.color}"/>
-    <circle class="livingPopupDisc" r="6.5" fill="${meta.color}" stroke="#fff" stroke-width="1"/>
-    <text class="livingPopupIcon" y="2.4" text-anchor="middle" font-size="6.5">${meta.icon}</text>
-    <g class="livingPopupCountdown" transform="translate(7,-7)">
-      <circle r="4" fill="#111" opacity="0.8"/>
-      <text y="1.4" text-anchor="middle" font-size="4.6" fill="#fff">${remaining}</text>
-    </g>
-  </g>`;
-}
-
 function ensureOverlay(): SVGGElement | null {
   const viewbox = document.getElementById("viewbox");
   if (!viewbox) return null;
@@ -314,7 +255,7 @@ function ensureStyle(): void {
   document.head.appendChild(style);
 }
 
-/** Show a transient floating toast over a specific cell (e.g. for a clicked bounty marker). */
+/** Show a transient floating toast over a specific cell. */
 export function showLivingToast(badge: LivingBadge): void {
   const overlay = ensureOverlay();
   if (!overlay) return;
@@ -347,20 +288,6 @@ export function showLivingToast(badge: LivingBadge): void {
   setTimeout(cleanup, 4200);
 }
 
-/** Display the toast specifically for a claimed bounty popup. */
-export function showMarkerToast(popup: LivingPopup): void {
-  const meta = POPUP_META[popup.kind] ?? { icon: "📜", color: "#b8860b" };
-  const reward =
-    popup.rewardGold || popup.rewardRenown ? ` (+${popup.rewardGold}g, +${popup.rewardRenown} renown)` : "";
-  const text = `${meta.icon} Bounty claimed: ${popup.title}${reward}`;
-  showLivingToast({
-    id: `toast-${popup.id}-${Date.now()}`,
-    cell: popup.cell,
-    text,
-    color: meta.color
-  });
-}
-
 /** Clear all active living toasts from the overlay. */
 export function clearLivingToasts(): void {
   const toasts = document.getElementById(TOASTS_ID);
@@ -377,17 +304,10 @@ export function drawLivingOverlay(options: { includeBadges?: boolean } = {}): vo
   const living = Living.getState();
   const vectors = collectLivingVectors(living);
   const badges = options.includeBadges !== false ? collectLivingBadges(living) : [];
-  const popups = living.guild?.popups ?? [];
 
   content.innerHTML = [
     ...vectors.map(vectorMarkup),
-    ...badges.map(badgeMarkup).filter((markup): markup is string => Boolean(markup)),
-    ...popups
-      .map(popup => {
-        const point = cellPoint(popup.cell);
-        return point ? popupMarkup(popup, point, living) : null;
-      })
-      .filter((markup): markup is string => Boolean(markup))
+    ...badges.map(badgeMarkup).filter((markup): markup is string => Boolean(markup))
   ].join("");
 }
 

@@ -1,6 +1,6 @@
 # Plan — Remove the Grand Guild (`living-guild`)
 
-**Status:** Phase 1 complete — Phase 2 (HUD) next. `mission-tags.ts` is kept until Phase 2 because the HUD still consumes it; it is deleted with the Guild Bar.
+**Status:** Phase 2 complete — Phase 3 (assistant context regeneration, any remaining wiring) next.
 **Branch:** `factions`
 **Touchpoints:** `src/model/physical/living-guild.ts`, `src/model/physical/living-guild.test.ts`, `src/model/physical/living-heroes.ts`, `src/model/physical/living-generator.ts`, `src/model/physical/living-generator.test.ts`, `src/controllers/living-hud.ts`, `src/controllers/living-hud.test.ts`, `src/renderers/draw-living-overlay.ts`, `src/renderers/draw-living-overlay.test.ts`, `src/services/io/characters-migration.ts`, `src/types/living.ts`, `src/types/factions.ts`, `src/data/guild-operations.ts`, `src/data/living-petitions.ts`, `src/data/living-relics.ts`, `src/data/mission-phases.ts`, `src/data/mission-tags.ts`, and the Living World wiki/docs.
 
@@ -26,15 +26,17 @@
 
 ## Phase 2 — HUD: remove the Guild Bar
 
-- Delete the entire Guild Bar (tier/gold/renown/doctrine chips, vault, petitions, patron/hero buttons) and the `sandboxGodMode` branch in `src/controllers/living-hud.ts`; god buttons become unconditional.
-- Remove relic/mission/petition/dispatch rendering and `data-guild=` handlers, keeping hero-sheet dialogs and faction suppression.
-- Replace HUD tests and `Living` mocks; delete the 19 guild-mode tests.
+- Rewrite `src/controllers/living-hud.ts` guild-free: clock/news/eschaton header only; inspector cards (state, burg, province, marker, figure) with unconditional Sandbox God Mode buttons; hero sheet keeps vitals, doctrine, push and path choices; faction suppression stays.
+- Delete `mission-tags.ts` (its HUD consumer is gone; `mission-phases.ts` was already deleted in Phase 1).
+- Rewrite `draw-living-overlay.ts` (moved up from Phase 3 — its guild types broke with Phase 1): raid/war vectors and outcome badges only; popups, quest lines and `showMarkerToast` removed; `showLivingToast` remains.
+- Rewrite `characters-migration.ts` per decision 2: legacy `living.guild` reads dropped; seedKey/sheet backfill for legacy figures stays.
+- Replace `living-hud.test.ts`, `draw-living-overlay.test.ts`, `characters-migration.test.ts` with guild-free suites.
 
-## Phase 3 — Overlay, saves, misc wiring
+## Phase 3 — Saves & misc wiring
 
-- `draw-living-overlay.ts`: remove quest vectors, popup markers and `showMarkerToast` relic paths.
-- `characters-migration.ts`: delete the one-release bridge if all live saves already carry `Character.hero`; otherwise keep a legacy reader for `HeroGuildState` condition merge without the full guild schema.
-- Assistant context regeneration.
+- ~~`draw-living-overlay.ts`~~ done in Phase 2.
+- ~~`characters-migration.ts`~~ done in Phase 2 (legacy guild reads dropped per decision 2).
+- Assistant context regeneration (`npm run generate:assistant-context`).
 
 ## Phase 4 — Docs & wiki
 
