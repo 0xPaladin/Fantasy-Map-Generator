@@ -1,6 +1,5 @@
 // Living World simulation state types. See docs/plans/living-world.md
 import type { ArmyUnit } from "@/types/battle";
-import type { ActionId } from "./character-actions";
 
 export type SeasonId = 0 | 1 | 2 | 3;
 
@@ -18,7 +17,8 @@ export type AgendaKind =
   | "clear_lair"
   | "hire_adventurers"
   | "defend"
-  | "raid";
+  | "raid"
+  | "suppress_faction";
 
 /**
  * Diplomatic treaties (Phase D of the army integration). War and peace stay
@@ -166,6 +166,8 @@ export interface StateAgenda {
   kind: AgendaKind;
   label: string;
   targetStateId?: number;
+  targetFactionId?: number;
+  stallUntilTick?: number;
   targetProvinceId?: number;
   targetBurgId?: number;
   targetCell?: number;
@@ -290,141 +292,6 @@ export interface StatePolitySim {
   treaties?: Record<number, TreatyKind[]>;
 }
 
-/** On-map popups queued by the simulation and claimed by the player (idle bonus). */
-export type LivingPopupKind =
-  | "bounty_trouble"
-  | "bounty_lair"
-  | "ascension_warning"
-  | "relic_exposed"
-  | "guild_petition";
-
-export interface LivingPopup {
-  id: number;
-  kind: LivingPopupKind;
-  cell: number;
-  title: string;
-  subtitle: string;
-  createdTick: number;
-  /** the popup auto-resolves (no reward) once the world reaches this tick */
-  expiresAtTick: number;
-  stateId?: number;
-  provinceId?: number;
-  burgId?: number;
-  markerId?: number;
-  /** guild_petition popups: the id of the awaiting PetitionDef */
-  petitionId?: string;
-  rewardGold: number;
-  rewardRenown: number;
-}
-
-export type GuildMissionKind = "trouble" | "lair" | "excavate" | "pacify";
-
-export interface MissionPhase {
-  id: string;
-  label: string;
-  action: ActionId;
-  tags: MissionTag[];
-  dc: number;
-  required: boolean;
-}
-
-export interface MissionPhaseResult {
-  phaseId: string;
-  heroId: number;
-  roll: number;
-  total: number;
-  success: boolean;
-  untrained?: boolean;
-  critical?: boolean;
-  complication?: boolean;
-}
-
-export type MissionOutcome = "full" | "partial" | "failed";
-
-export interface ActiveGuildMission {
-  id: number;
-  kind: GuildMissionKind;
-  figureId: number;
-  targetCell: number;
-  provinceId?: number;
-  burgId?: number;
-  markerId?: number;
-  action: ActionId;
-  dc: number;
-  progress: number;
-  required: number;
-  rewardGold: number;
-  rewardRenown: number;
-  /** target tags used for discipline and aspect fit */
-  tags?: MissionTag[];
-  /** leader first; two heroes below tier 3, up to three from tier 3 */
-  party?: number[];
-  phases?: MissionPhase[];
-  phaseResults?: MissionPhaseResult[];
-  /** per-hero Stamina committed when that hero first takes a phase */
-  staminaByHero?: Record<number, number>;
-  outcome?: MissionOutcome;
-  /** Stamina spent across the party */
-  staminaSpent?: number;
-  /** excavate missions: a named HistoricalRelic is minted on success */
-  rewardRelic?: boolean;
-}
-
-export type RelicCategory = "regalia" | "weapon" | "tome" | "charter" | "idol";
-
-export type RelicHolder =
-  | { kind: "vault" }
-  | { kind: "reserve" }
-  | { kind: "figure"; id: number }
-  | { kind: "state"; id: number }
-  | { kind: "ruin"; markerId: number; cell: number };
-
-/** A lore-linked artifact unearthed from an excavation site */
-export interface HistoricalRelic {
-  id: number;
-  name: string;
-  category: RelicCategory;
-  lore: string;
-  originYear: number;
-  originRealmId?: number;
-  originFigureId?: number;
-  bonuses: { m?: number; w?: number; s?: number; c?: number };
-  cursed?: boolean;
-  holder: RelicHolder;
-}
-
-export type IdleDoctrine = "auto_bounties" | "auto_lairs" | "auto_excavate" | "auto_pacify" | "auto_patron" | "manual";
-
-/** Player guild: wallet, hero stable, idle doctrine and the transient on-map popups. */
-export interface GuildState {
-  tier: number;
-  gold: number;
-  renown: number;
-  ageCount: number;
-  /** false = resource-driven Guild Operations, true = classic free God Mode */
-  sandboxGodMode: boolean;
-  doctrine: IdleDoctrine;
-  favoredStateId?: number;
-  hqBurgId?: number;
-  chapterBurgIds: number[];
-  /** active guild hero figure ids */
-  roster: number[];
-  /** tavern recruitment pool figure ids */
-  candidates: number[];
-  /** permanent +1 base skill per prestige age, inherited by hero scions */
-  legacyTier?: number;
-  /** figureId -> vitals, temperament, injuries and per-hero doctrine */
-  heroes?: Record<number, HeroGuildState>;
-  missions: ActiveGuildMission[];
-  /** all discovered relics, whatever their current holder */
-  relics: HistoricalRelic[];
-  /** figureId -> tick the hero is free again after a failed mission */
-  cooldowns: Record<number, number>;
-  /** excavation site marker.i values already dug */
-  excavatedMarkers: number[];
-  popups: LivingPopup[];
-}
-
 export type LivingNewsKind =
   | "war"
   | "battle"
@@ -472,10 +339,6 @@ export interface LivingWorldState {
   recentNews: LivingNewsItem[];
   /** 0..100 Age Finale meter; absent on old saves (treated as 0) */
   eschaton?: number;
-  /** lazily initialized guild wallet, mission list and on-map popups */
-  guild?: GuildState;
-  /** Active player-controlled faction ID in pack.factions */
-  playerFactionId?: number;
   /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
   worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
   /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5.
@@ -501,6 +364,29 @@ export type CivYieldId = "food" | "production" | "gold" | "science" | "culture" 
 
 export type YieldValues = Record<CivYieldId, number>;
 export type YieldDelta = Partial<YieldValues>;
+
+export interface StateCityYieldBreakdown {
+  burgId: number;
+  name: string;
+  isCapital: boolean;
+  yields: YieldValues;
+  grossGold: number;
+  maintenance: number;
+  science: number;
+  citizens: number;
+  workedCells: number;
+  buildings: string[];
+}
+
+export interface StateYieldBreakdown {
+  total: YieldValues;
+  totalCitizens: number;
+  totalWorkedCells: number;
+  upkeep: number;
+  maintenance: number;
+  cities: StateCityYieldBreakdown[];
+  capital: StateCityYieldBreakdown | null;
+}
 
 export type CivEraId =
   | "ancient"
@@ -805,8 +691,10 @@ export interface CivThemeProfile {
 }
 
 export interface ProductionItem {
-  kind: "unit" | "building" | "wonder" | "trouble";
+  kind: "unit" | "building" | "wonder" | "trouble" | "operation";
   id: string;
+  targetFactionId?: number;
+  targetNodeKey?: string;
 }
 
 export interface CellSimState {
@@ -863,7 +751,6 @@ export interface HappinessBreakdown {
   luxuries: number;
   buildings: number;
   religion: number;
-  relics: number;
   cityUnhappiness: number;
   citizenUnhappiness: number;
   unrestUnhappiness: number;

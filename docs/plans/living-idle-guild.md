@@ -1,12 +1,11 @@
 # Plan — Living Idle Game: The Grand Guild, Relics, Map Juice & The Wheel of Ages
 
-Updated: 2026-11-01. Status: **slices 1-5 shipped; `GuildState` deprecated (2026-11-05); Astral follow-on planned**.
+Updated: 2026-11-08. Status: **REMOVED (2026-11-08)** — the Grand Guild player layer (guild wallet, renown tiers, missions, relics, petitions, popups and paid Guild Operations) has been deleted from the codebase; see [`remove-living-guild.md`](remove-living-guild.md). The Living World HUD is free Sandbox God Mode only. Keep this plan as historical flavour; do not implement from it.
 
-> **Superseded in part by [characters.md](characters.md) and [factions.md](factions.md).**
-> `GuildState` in `pack.history.living.guild` is a deprecated stub. Factions own organizations,
-> treasury, membership, missions and relics; hero identity and stats live on
-> `pack.history.figures[].hero.condition`. New code must not write `GuildState.heroes`. Keep this
-> plan for the guild economy, relics, petitions and Wheel-of-Ages flavour.
+> Superseded by [characters.md](characters.md) and [factions.md](factions.md), then removed entirely.
+> Hero identity and stats live on `pack.history.figures[].hero.condition`; factions own organizations,
+> treasury and membership. The Wheel of Ages remains in reduced form (epoch bake, fallen empires,
+> era leap) without prestige carryover.
 
 Companions: [living-world.md](living-world.md), [unified-figures.md](unified-figures.md),
 [lair-ascension.md](lair-ascension.md), [hero-diversity.md](hero-diversity.md),

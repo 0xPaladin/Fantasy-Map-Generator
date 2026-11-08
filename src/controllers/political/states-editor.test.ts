@@ -185,4 +185,36 @@ describe("StatesEditor", () => {
     expect(tagsInput.value).toBe("empire, militarist, coastal");
     expect(valoriaRow.dataset.tags).toBe("empire, militarist, coastal");
   });
+
+  it("opens StateCitiesDialog when clicking stateBurgs cell", () => {
+    StatesEditor.open();
+
+    const valoriaRow = document.querySelector('#statesBodySection .states[data-id="1"]') as HTMLElement;
+    const burgsCell = valoriaRow.querySelector(".stateBurgs") as HTMLElement;
+    expect(burgsCell).not.toBeNull();
+    burgsCell.click();
+
+    const dialog = document.querySelector("#stateCitiesDialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog?.innerHTML).toContain("Valoria");
+  });
+
+  it("renders a pencil icon before the book icon and opens StateCitiesDialog on click", () => {
+    StatesEditor.open();
+
+    const valoriaRow = document.querySelector('#statesBodySection .states[data-id="1"]') as HTMLElement;
+    const pencil = valoriaRow.querySelector('span[data-col="edit"].icon-pencil') as HTMLElement;
+    const book = valoriaRow.querySelector('span[data-col="note"].icon-book') as HTMLElement;
+
+    expect(pencil).not.toBeNull();
+    expect(book).not.toBeNull();
+    // Check that pencil precedes book in DOM order
+    expect(pencil.compareDocumentPosition(book) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    pencil.click();
+
+    const dialog = document.querySelector("#stateCitiesDialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog?.innerHTML).toContain("Valoria");
+  });
 });

@@ -1,52 +1,29 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { HistoricalFigure } from "@/types/history";
-import type { GuildState, LivingWorldState } from "@/types/living";
+import type { LivingWorldState } from "@/types/living";
 import type { State } from "@/types/subdivided-pack";
 import {
   ensureCommanders,
   ensureHeroGuildState,
   ensureHeroSheet,
   getHeroState,
-  recruitCandidate,
-  recruitCost,
-  retireHero,
   setHeroDoctrine,
   setHeroesHost,
-  setHeroPush
+  setHeroPush,
+  spawnProtege
 } from "./living-heroes";
 
 describe("living-heroes", () => {
   let mockLiving: LivingWorldState;
-  let mockGuild: GuildState;
 
   beforeEach(() => {
-    mockGuild = {
-      tier: 1,
-      gold: 200,
-      renown: 20,
-      ageCount: 0,
-      sandboxGodMode: false,
-      doctrine: "auto_bounties",
-      chapterBurgIds: [1],
-      roster: [],
-      candidates: [],
-      heroes: {},
-      missions: [],
-      relics: [],
-      cooldowns: {},
-      excavatedMarkers: [],
-      popups: []
-    };
-
     mockLiving = {
       seed: "heroes-seed",
-      tick: 1,
-      guild: mockGuild
+      tick: 1
     } as unknown as LivingWorldState;
 
     setHeroesHost({
       getState: () => mockLiving,
-      getGuild: () => mockGuild,
       pushNews: () => {}
     });
 
@@ -98,7 +75,7 @@ describe("living-heroes", () => {
     const fig = makeFigure(1);
     pack.history.figures.push(fig);
 
-    const state = ensureHeroGuildState(mockGuild, fig);
+    const state = ensureHeroGuildState(fig);
     expect(state).toBeDefined();
     expect(state.resolve).toBeGreaterThan(0);
     expect(state.stamina).toBeGreaterThan(0);
@@ -111,42 +88,25 @@ describe("living-heroes", () => {
     expect(state.push).toBe(true);
   });
 
-  it("stores vitals on the hero sheet instead of the guild", () => {
+  it("stores vitals on the hero sheet", () => {
     const fig = makeFigure(4);
     pack.history.figures.push(fig);
 
-    const state = ensureHeroGuildState(mockGuild, fig);
-    expect(mockGuild.heroes).toEqual({});
+    const state = ensureHeroGuildState(fig);
     expect(ensureHeroSheet(fig).condition?.resolve).toBe(state.resolve);
 
     state.stamina = 3;
     expect(ensureHeroSheet(fig).condition?.stamina).toBe(3);
   });
 
-  it("recruits candidate when guild has gold and roster capacity", () => {
-    const fig = makeFigure(2);
-    pack.history.figures.push(fig);
-    mockGuild.candidates = [2];
+  it("spawns a protege carrying one skill point forward", () => {
+    const veteran = makeFigure(2);
+    pack.history.figures.push(veteran);
 
-    const cost = recruitCost(2);
-    expect(cost).toBeGreaterThan(0);
-    expect(mockGuild.gold).toBeGreaterThanOrEqual(cost);
-
-    const recruited = recruitCandidate(2);
-    expect(recruited).toBe(true);
-    expect(mockGuild.roster).toContain(2);
-    expect(mockGuild.candidates).not.toContain(2);
-    expect(mockGuild.gold).toBe(200 - cost);
-  });
-
-  it("retires veteran hero aged 50 or older", () => {
-    const fig = makeFigure(3, { birth: 940 }); // age 60 in year 1000
-    pack.history.figures.push(fig);
-    mockGuild.roster = [3];
-
-    const _retired = retireHero(3);
-    expect(mockGuild.roster).not.toContain(3);
-    expect(fig.roles[0]?.to).toBe(1000);
+    const protege = spawnProtege(mockLiving, veteran);
+    expect(protege).toBeDefined();
+    expect(protege!.i).not.toBe(veteran.i);
+    expect(protege!.skills?.m ?? 0).toBeGreaterThanOrEqual(veteran.skills!.m);
   });
 
   it("ensures commanders for fielded specialist units", () => {

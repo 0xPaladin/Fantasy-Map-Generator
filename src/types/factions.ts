@@ -1,13 +1,7 @@
 import type { Alignment } from "@/data/culture-traits";
 import type { Regiment } from "@/model/political/military-generator";
 import type { Emblem } from "@/types/emblems";
-import type {
-  ActiveGuildMission,
-  BurgSimState,
-  HappinessBreakdown,
-  HistoricalRelic,
-  YieldValues
-} from "@/types/living";
+import type { BurgSimState, HappinessBreakdown, YieldValues } from "@/types/living";
 
 export type FactionCategory = "commercial" | "adventuring" | "underworld" | "religious" | "political" | "martial";
 
@@ -51,10 +45,14 @@ export interface FactionHq {
   provinceId?: number;
   maritime?: boolean;
   fortified: boolean;
+  pillaged?: boolean;
+  influence?: number; // 0..100, urban HQ suppression health (defaults to 70)
   secrecy: number; // 0..100
   assets: string[];
   sim?: BurgSimState;
 }
+
+export type FactionNodeKey = "hq" | `outpost:${number}`;
 
 export interface FactionOutpost {
   burgId: number;
@@ -121,11 +119,9 @@ export interface Faction {
   stateRelations: Record<number, FactionRelation>;
   factionRelations: Record<number, FactionRelation>;
 
-  // Operations & Missions
+  // Operations
   doctrine?: "auto_expand" | "auto_bounties" | "auto_lairs" | "auto_excavate" | "auto_subvert" | "manual";
   agenda: FactionAgenda | null;
-  missions?: ActiveGuildMission[];
-  relics?: HistoricalRelic[];
   seasonsActive: number;
 
   // Map entity metadata
@@ -178,4 +174,26 @@ export interface FactionArchetypeDef {
   desiredAssets: readonly string[];
   desiredTechs: readonly string[];
   defaultValues: readonly string[];
+}
+
+export interface FactionNodeYieldBreakdown {
+  node: FactionHq | FactionOutpost;
+  isHq: boolean;
+  yields: YieldValues;
+  grossGold: number;
+  maintenance: number;
+  science: number;
+  citizens: number;
+  workedCells: number;
+}
+
+export interface FactionYieldBreakdown {
+  total: YieldValues;
+  totalCitizens: number;
+  totalWorkedCells: number;
+  upkeep: number;
+  maintenance: number;
+  nodes: FactionNodeYieldBreakdown[];
+  hq: FactionNodeYieldBreakdown | null;
+  outposts: FactionNodeYieldBreakdown[];
 }

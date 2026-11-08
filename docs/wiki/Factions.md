@@ -82,6 +82,20 @@ The legacy flat economy (`outpost.tier * 2`, instant gold asset purchases, telep
 
 ---
 
+### State Suppression of Hostile Factions
+
+States counter hostile or clandestine factions in-world instead of only through editor removal. A state whose burgs host a hostile faction node — or whose territory contains a wilderness HQ — can run a **suppression campaign**: the `suppress_faction` agenda, picked in `chooseAgenda()` after lair/trouble emergencies, or started from the Inspector's **Suppress faction** button.
+
+Auditing one node at a time:
+
+* **Urban nodes** are pressured through a `faction-suppression` production operation queued in the host burg (`6 + tier × 4` Production, never Gold; gold only hurries via `hurryProduction()`, keeping its reserve). Each completed operation deals `max(1, floor((provinceOrder − nodeSecrecy) / 20))` influence damage, raises province order, burg unrest and state unravel. A defending faction guard pauses pressure (and repeated stalls strain the state); unguarded low-influence (≤ 25) or fortified nodes can be stormed directly by the field army through the shared battle engine — victory pillages, failure retreats and delays the campaign.
+* **Wilderness strongholds** (HQ with no burg on a state-owned cell) are military-only: there is no host city to queue in, so the field army marches to the HQ cell and storms it once adjacent, under the same guard-first and pillage rules.
+* **Pillage consequences:** a razed outpost is skipped from yields/production/culture; a razed HQ relocates to the faction's strongest surviving outpost or dissolves the faction when none remain. Pillaged nodes show a slate crest with a 💀 badge and a "Pillaged" tooltip; the Outposts & Assets dialog shows per-node influence and suppression progress.
+
+Lawful `state_arm`, `chartered` and non-hostile factions are never eligible. Schedules, tuning and tests: [`faction-suppression.md`](../../plans/faction-suppression.md).
+
+---
+
 ### Sovereign State Ascension & Remnants
 
 Factions can evolve into recognized sovereign nations:
@@ -95,7 +109,8 @@ Factions can evolve into recognized sovereign nations:
 ### User Interface and Tools
 
 * **Factions Overview** (_Tools_ → _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV. Columns show yields (Food/Prod/Gold/Sci/Cult/Faith/Hap), total citizens, worked cells, and the HQ production queue head.
+* **State Inspector suppression**: for a state, the _Suppression_ section lists every eligible hostile faction node (with influence and a wilderness tag for burg-less HQs) and a **Suppress faction** command; the agenda reads "Suppressing {faction} in {burg or the wildlands}".
 * **Faction Editor Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The Outposts & Assets dialog shows per-node citizens, worked cells, city yields and the full production queue for the HQ and each outpost.
 * **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect all resident faction HQs/outposts at that burg — citizens, worked cells, city yields and production queue, plus local influence and secrecy.
 * **Map Layer (`#factions`, Hotkey: `Shift+F`)**: Displays faction HQ badges, outpost pins, and field regiments on the SVG map.
-* **Living HUD & Player Guild**: Choose any faction as your **Player Faction** to guide its contracts, hero missions, relic vaults, and expeditions, or observe autonomously in God Mode.
+* **Living HUD**: The god-mode inspector intervenes in the simulation — spark rebellions, smite rulers, resolve troubles, assault lairs, promote emergent states — and the **Suppression** section orders a state to campaign against a hostile faction.

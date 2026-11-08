@@ -9,8 +9,7 @@ const mocks = vi.hoisted(() => {
     provinces: {} as Record<number, unknown>,
     burgs: {} as Record<number, unknown>,
     units: {} as Record<string, unknown>,
-    recentNews: [] as unknown[],
-    guild: { tier: 1, gold: 0, renown: 0, popups: [] as unknown[] }
+    recentNews: [] as unknown[]
   };
   return { state, living: { getState: vi.fn(() => state) } };
 });
@@ -23,7 +22,7 @@ import {
   collectLivingVectors,
   drawLivingOverlay,
   removeLivingOverlay,
-  showMarkerToast
+  showLivingToast
 } from "./draw-living-overlay";
 
 function makePack() {
@@ -57,7 +56,6 @@ beforeEach(() => {
   mocks.state.burgs = {};
   mocks.state.units = {};
   mocks.state.recentNews = [];
-  mocks.state.guild = { tier: 1, gold: 0, renown: 0, popups: [] };
 });
 
 afterEach(() => {
@@ -104,31 +102,7 @@ describe("collectLivingBadges", () => {
     expect(badges[0].text).toContain("Battle of Oakford");
   });
 
-  it("filters out trouble and lair news and cells with active bounty popups", () => {
-    mocks.state.guild.popups = [
-      {
-        id: 7,
-        kind: "bounty_trouble",
-        cell: 1,
-        title: "Trouble",
-        subtitle: "Lv 4",
-        createdTick: 3,
-        expiresAtTick: 6,
-        rewardGold: 20,
-        rewardRenown: 3
-      },
-      {
-        id: 8,
-        kind: "bounty_lair",
-        cell: 3,
-        title: "Lair Raid",
-        subtitle: "Lv 5",
-        createdTick: 3,
-        expiresAtTick: 6,
-        rewardGold: 30,
-        rewardRenown: 3
-      }
-    ];
+  it("filters out trouble and lair news", () => {
     mocks.state.recentNews = [
       { tick: 3, year: 1000, season: 1, kind: "trouble", text: "Disorder arose!", cell: 1 },
       { tick: 3, year: 1000, season: 1, kind: "lair", text: "Raiders struck!", cell: 3 },
@@ -157,7 +131,7 @@ describe("collectLivingBadges", () => {
 });
 
 describe("drawLivingOverlay", () => {
-  it("renders vectors, floating badges and clickable popups on the map", () => {
+  it("renders vectors and floating badges on the map", () => {
     mocks.state.provinces = {
       1: { provinceId: 1, lair: { cell: 3, raidPending: true, name: "Forest Hideout", level: 6 } }
     };
@@ -165,19 +139,6 @@ describe("drawLivingOverlay", () => {
       1: { stateId: 1, agenda: { kind: "conquer", targetBurgId: 2, label: "Take Oakford", progress: 1, required: 2 } }
     };
     mocks.state.recentNews = [{ tick: 3, year: 1000, season: 1, kind: "battle", text: "Battle of Oakford!", cell: 2 }];
-    mocks.state.guild.popups = [
-      {
-        id: 7,
-        kind: "bounty_trouble",
-        cell: 1,
-        title: "Monsters in Aelor",
-        subtitle: "Level 5 trouble",
-        createdTick: 0,
-        expiresAtTick: 6,
-        rewardGold: 32,
-        rewardRenown: 3
-      }
-    ];
 
     drawLivingOverlay();
 
@@ -186,13 +147,6 @@ describe("drawLivingOverlay", () => {
     expect(overlay?.querySelector(".livingVector-raid")).toBeTruthy();
     expect(overlay?.querySelector(".livingVector-war")).toBeTruthy();
     expect(overlay?.querySelector(".livingFloatBadge")).toBeTruthy();
-
-    const popup = overlay?.querySelector('.livingPopup[data-popup-id="7"]');
-    expect(popup).toBeTruthy();
-    expect(popup?.querySelector("title")?.textContent).toContain("+32g");
-
-    // countdown = expiresAtTick - tick (6 - 3)
-    expect(popup?.querySelector(".livingPopupCountdown text")?.textContent).toBe("3");
   });
 
   it("is a no-op when the map is not mounted", () => {
@@ -212,26 +166,20 @@ describe("drawLivingOverlay", () => {
     expect(document.getElementById("livingOverlayStyle")).toBeNull();
   });
 
-  it("shows a marker toast only for the clicked popup with zoom-independent scale", () => {
+  it("shows a floating toast with zoom-independent scale", () => {
     drawLivingOverlay();
     const overlay = document.getElementById("livingOverlay");
 
-    showMarkerToast({
-      id: 42,
-      kind: "bounty_trouble",
+    showLivingToast({
+      id: "toast-42",
       cell: 1,
-      title: "Goblins in Aelor",
-      subtitle: "Level 4 trouble",
-      createdTick: 3,
-      expiresAtTick: 6,
-      rewardGold: 28,
-      rewardRenown: 3
+      text: "⚔️ Battle of Aelor",
+      color: "#a33d3d"
     });
 
     const toast = overlay?.querySelector(".livingFloatBadge");
     expect(toast).toBeTruthy();
-    expect(toast?.textContent).toContain("Goblins in Aelor");
-    expect(toast?.textContent).toContain("+28g");
+    expect(toast?.textContent).toContain("Battle of Aelor");
     expect(toast?.getAttribute("transform")).toContain("scale(1.0000)");
 
     clearLivingToasts();
