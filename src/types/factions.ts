@@ -1,13 +1,7 @@
 import type { Alignment } from "@/data/culture-traits";
 import type { Regiment } from "@/model/political/military-generator";
 import type { Emblem } from "@/types/emblems";
-import type {
-  ActiveGuildMission,
-  BurgSimState,
-  HappinessBreakdown,
-  HistoricalRelic,
-  YieldValues
-} from "@/types/living";
+import type { BurgSimState, HappinessBreakdown, YieldValues } from "@/types/living";
 
 export type FactionCategory = "commercial" | "adventuring" | "underworld" | "religious" | "political" | "martial";
 
@@ -125,11 +119,9 @@ export interface Faction {
   stateRelations: Record<number, FactionRelation>;
   factionRelations: Record<number, FactionRelation>;
 
-  // Operations & Missions
+  // Operations
   doctrine?: "auto_expand" | "auto_bounties" | "auto_lairs" | "auto_excavate" | "auto_subvert" | "manual";
   agenda: FactionAgenda | null;
-  missions?: ActiveGuildMission[];
-  relics?: HistoricalRelic[];
   seasonsActive: number;
 
   // Map entity metadata

@@ -709,8 +709,6 @@ class FactionsModule {
       factionRelations: params.factionRelations || {},
       doctrine: params.doctrine,
       agenda: params.agenda ?? null,
-      missions: params.missions,
-      relics: params.relics,
       seasonsActive: params.seasonsActive || 0,
       tags: params.tags,
       lock: params.lock,

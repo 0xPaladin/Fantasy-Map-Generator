@@ -2,7 +2,6 @@
 
 import type { Alignment } from "@/data/culture-traits";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
-import type { GuildOperationKind } from "@/data/guild-operations";
 import { figureArchetype, figureDisciplines } from "@/data/hero-archetypes";
 import {
   CIV_BELIEF_BY_ID,
@@ -18,7 +17,6 @@ import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-imp
 import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { growLair, isLairStateCapable } from "@/data/living-lairs";
-import { RELIC_LEASE_TRIBUTE } from "@/data/living-relics";
 import { getTroubleDef, isTroubleStatePromotable } from "@/data/living-troubles";
 import {
   assignStateRoster,
@@ -86,7 +84,6 @@ import type {
   FactionYieldBreakdown
 } from "@/types/factions";
 import {
-  type ActiveGuildMission,
   type ArmyBattleRecord,
   type ArmySimState,
   type ArmyStance,
@@ -102,25 +99,18 @@ import {
   type CivThemeId,
   type CivUnitDef,
   type GrudgeReason,
-  type GuildMissionKind,
-  type GuildState,
   type HappinessBreakdown,
   type HeroArchetypeId,
   type HeroDoctrine,
   type HeroGuildState,
-  type HistoricalRelic,
-  type IdleDoctrine,
   type LivingNewsItem,
   type LivingNewsKind,
-  type LivingPopup,
   type LivingWorldState,
-  type MissionPhase,
   type MissionTag,
   type ProductionItem,
   type ProvinceLair,
   type ProvinceSimState,
   type ProvinceTrouble,
-  type RelicCategory,
   type ReligionBeliefState,
   SEASON_NAMES,
   type SeasonId,
@@ -139,36 +129,16 @@ import { minmax } from "@/utils";
 import { SEA_LEVEL } from "@/utils/height-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
-import { LivingGuild } from "./living-guild";
 import { LivingHeroes } from "./living-heroes";
 import { LivingThreats } from "./living-threats";
 
 const MAX_RECENT_NEWS = 50;
-const _MAX_LIVING_POPUPS = 6;
-const _POPUP_LIFETIME_SEASONS = 3;
-
-/** Renown required for each Guild tier, index 0 = tier 1 */
-export const GUILD_RENOWN_THRESHOLDS = [0, 50, 150, 350, 700] as const;
-export const GUILD_TIER_TITLES = [
-  "Wayfarers' Lodge",
-  "Chartered Company",
-  "Grand Adventurers' Guild",
-  "Sovereign Order",
-  "Immortal Conclave"
-] as const;
-export const GUILD_MAX_HEROES = [3, 4, 6, 8, 10] as const;
-
-const _GUILD_DUES_PER_CHAPTER = 2;
-const _GUILD_CANDIDATES_PER_YEAR = 3;
-/** Auto-dispatch will not send a hero on a contract with less than this estimated chance. */
-const _MIN_AUTO_DISPATCH_FIT = 0.25;
-const _HERO_RETIREMENT_AGE = 55;
 const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
 
 const ERA_EPITHETS = [
   "Ash",
-  "the Guild Compact",
+  "the Compact",
   "Drowned Kings",
   "Iron and Salt",
   "Quiet Stars",
@@ -187,23 +157,12 @@ const ERA_ORDINALS = [
   "Tenth"
 ] as const;
 
-export function guildTierForRenown(renown: number): number {
-  return LivingGuild.guildTierForRenown(renown);
-}
-export const maxHeroesForTier = (tier: number): number => GUILD_MAX_HEROES[Math.min(4, Math.max(0, tier - 1))]!;
-export function maxPartyForTier(tier: number): number {
-  return LivingGuild.maxPartyForTier(tier);
-}
-export function guildCheckBonus(tier: number): number {
-  return LivingGuild.guildCheckBonus(tier);
-}
-
 /** Hero level from lifetime xp: 40 + 20 × level per level */
 export function figureLevel(xp = 0): number {
   return LivingHeroes.figureLevel(xp);
 }
 
-export type { FigureCheck, HeroMissionFit } from "./living-guild";
+export type { FigureCheck, HeroMissionFit } from "./living-heroes";
 
 /** xp needed to enter a level: L1 0, L2 60, L3 140, ... */
 export function xpForHeroLevel(level: number): number {
@@ -220,31 +179,12 @@ export function ensureHeroIdentity(figure: HistoricalFigure): void {
   LivingHeroes.ensureHeroIdentity(figure);
 }
 
-export function heroAlignmentModifier(alignment: string, tags: readonly MissionTag[]): number {
-  return LivingGuild.heroAlignmentModifier(alignment, tags);
+export function heroAlignmentModifier(figure: HistoricalFigure): number {
+  return LivingHeroes.heroAlignmentModifier(figure);
 }
 export function heroMissionFit(figure: HistoricalFigure, tags: readonly MissionTag[]): HeroMissionFit {
-  return LivingGuild.heroMissionFit(figure, tags);
+  return LivingHeroes.heroMissionFit(figure, tags);
 }
-
-interface GuildTarget {
-  kind: GuildMissionKind;
-  cell: number;
-  provinceId?: number;
-  burgId?: number;
-  markerId?: number;
-  pool: "m" | "w" | "s" | "c";
-  dc: number;
-  rewardGold: number;
-  rewardRenown: number;
-  priority: number;
-  level: number;
-  tags: MissionTag[];
-  /** excavate missions: success mints a named HistoricalRelic */
-  wantsRelic?: boolean;
-}
-
-export type { PartyPreview, PartyPreviewMember } from "./living-guild";
 
 export function figureCheckRoll(
   rng: Rng,
@@ -260,7 +200,7 @@ export function figureCheckRoll(
   synergy = 0,
   untrained = false
 ): FigureCheck {
-  return LivingGuild.figureCheckRoll(
+  return LivingHeroes.figureCheckRoll(
     rng,
     figure,
     pool,
@@ -274,17 +214,6 @@ export function figureCheckRoll(
     synergy,
     untrained
   );
-}
-
-export function figureCheck(
-  living: LivingWorldState,
-  guild: GuildState,
-  figure: HistoricalFigure,
-  target: GuildTarget,
-  phase: MissionPhase,
-  seed = 0
-): FigureCheck {
-  return LivingGuild.figureCheck(living, guild, figure, target, phase, seed);
 }
 
 export function settlementTierFromPop(populationThousands: number): number {
@@ -1106,7 +1035,7 @@ export function hasStackingConflict(
 }
 
 // ---------------------------------------------------------------------------
-// Slice 6: religion pressure, belief effects, diplomacy timers & relic perks
+// Slice 6: religion pressure, belief effects and diplomacy timers
 // ---------------------------------------------------------------------------
 
 /** A citizen represents 60 pressure for its faith. */
@@ -1128,12 +1057,6 @@ export const PROPHET_PRESSURE = 240;
 /** Diplomacy clocks. */
 export const MIN_WAR_TURNS = 10;
 export const PEACE_TREATY_TURNS = 10;
-/** Leased relic perks. */
-export const REGALIA_HAPPINESS = 4;
-export const IDOL_FAITH = 4;
-export const IDOL_CULTURE = 2;
-export const RELIC_YIELD_PERCENT = 15;
-export const WEAPON_RELIC_COMBAT_PERCENT = 15;
 
 /** Faith cost of the next pantheon for a state with `founded` pantheons already. */
 export function pantheonFaithCost(founded: number): number {
@@ -1165,7 +1088,6 @@ class LivingModel {
   init(opts?: { seed?: string; snapshotIntervalYears?: number }): LivingWorldState {
     LivingThreats.setHost(this);
     LivingHeroes.setHost(this);
-    LivingGuild.setHost(this);
 
     const history = Chronicle.sync();
     const seed = String(opts?.seed ?? history.living?.seed ?? options.map?.seed ?? "living-seed");
@@ -1203,53 +1125,6 @@ class LivingModel {
     return pack.history?.living ?? this.init();
   }
 
-  /** Return the guild wallet, initializing it lazily for maps saved before the Guild existed */
-  getGuild(): GuildState {
-    return LivingGuild.getGuild();
-  }
-
-  /** Return the active player-controlled faction in pack.factions */
-  getPlayerFaction(): Faction {
-    return LivingGuild.getPlayerFaction();
-  }
-
-  /** Change the active player-controlled faction */
-  setPlayerFaction(factionId: number): boolean {
-    return LivingGuild.setPlayerFaction(factionId);
-  }
-
-  /** Synchronize the legacy GuildState with the active player faction */
-  syncPlayerFaction(living: LivingWorldState): void {
-    LivingGuild.syncPlayerFaction(living);
-  }
-
-  /** On-map popups currently waiting to be claimed */
-  getPopups(): LivingPopup[] {
-    return LivingGuild.getPopups();
-  }
-
-  /** Active guild hero missions */
-  getMissions(): ActiveGuildMission[] {
-    return LivingGuild.getMissions();
-  }
-
-  /** Every discovered relic, whatever its current holder */
-  getRelics(): HistoricalRelic[] {
-    return LivingGuild.getRelics();
-  }
-
-  setDoctrine(doctrine: IdleDoctrine): void {
-    LivingGuild.setDoctrine(doctrine);
-  }
-
-  setSandboxGodMode(enabled: boolean): void {
-    LivingGuild.setSandboxGodMode(enabled);
-  }
-
-  setFavoredState(stateId: number): void {
-    LivingGuild.setFavoredState(stateId);
-  }
-
   /** Vitals, temperament, injuries and doctrine for one hero; lazily initialized. */
   getHeroState(figureId: number): HeroGuildState | undefined {
     return LivingHeroes.getHeroState(figureId);
@@ -1263,137 +1138,28 @@ class LivingModel {
     return LivingHeroes.setHeroPush(figureId, enabled);
   }
 
-  guildOperationCost(kind: GuildOperationKind): number {
-    return LivingGuild.guildOperationCost(kind);
-  }
-
-  /** The best idle roster hero allowed to lead this operation. */
-  guildOperator(kind: GuildOperationKind): HistoricalFigure | undefined {
-    return LivingGuild.guildOperator(kind);
-  }
-
-  /** Paid mediation: clear burg unrest and lift the province's order. */
-  guildPacifyMediate(burgId: number): boolean {
-    return LivingGuild.guildPacifyMediate(burgId);
-  }
-
-  /** Paid charter: complete the burg's current construction immediately. */
-  guildRushAssetCharter(burgId: number): boolean {
-    return LivingGuild.guildRushAssetCharter(burgId);
-  }
-
-  /** Paid sedition: spark a revolt or promote a state-capable trouble. */
-  guildInciteUprising(burgId: number): boolean {
-    return LivingGuild.guildInciteUprising(burgId);
-  }
-
-  /** Paid assassination: a Shadow's C check to slay a ruler and force succession. */
-  guildAssassinateRuler(stateId: number): boolean {
-    return LivingGuild.guildAssassinateRuler(stateId);
-  }
-
-  /** Paid diplomacy: broker peace with a current enemy, or provoke a border war. */
-  guildBrokerWar(stateId: number, otherId?: number): boolean {
-    return LivingGuild.guildBrokerWar(stateId, otherId);
-  }
-
   /** Spend one pending level 3/6 choice on a path from the hero's archetype. */
   chooseHeroPath(figureId: number, pathId: string): boolean {
     return LivingHeroes.chooseHeroPath(figureId, pathId);
-  }
-
-  /** Gold cost to recruit a hero: base by guild tier plus a premium for starting level. */
-  recruitCost(figureId?: number): number {
-    return LivingHeroes.recruitCost(figureId);
-  }
-
-  /** Recruit a tavern candidate into the hero roster. */
-  recruitCandidate(figureId: number): boolean {
-    return LivingHeroes.recruitCandidate(figureId);
-  }
-
-  /** Click-dispatch: pin a leader and auto-fill companions for the province target. */
-  dispatchHero(figureId: number, provinceId: number): boolean {
-    return LivingGuild.dispatchHero(figureId, provinceId);
-  }
-
-  /** Manually pin a leader for a province mission; companions are auto-filled. */
-  dispatchParty(figureId: number, provinceId: number): boolean {
-    return LivingGuild.dispatchParty(figureId, provinceId);
-  }
-
-  /** Recommended party and phase fits for the province dispatch card. */
-  getPartyPreview(provinceId: number, leaderId?: number): PartyPreview | null {
-    return LivingGuild.getPartyPreview(provinceId, leaderId);
-  }
-
-  /** Recommended party and phase fits for an excavation site. */
-  getPartyPreviewForMarker(markerId: number, leaderId?: number): PartyPreview | null {
-    return LivingGuild.getPartyPreviewForMarker(markerId, leaderId);
-  }
-
-  /** Send the best auto-filled party to a province (used by the HUD guild operations). */
-  dispatchBestHero(provinceId: number): boolean {
-    return LivingGuild.dispatchBestHero(provinceId);
-  }
-
-  /** Click-dispatch: pin a leader and auto-fill companions for an excavation. */
-  dispatchHeroToMarker(figureId: number, markerId: number): boolean {
-    return LivingGuild.dispatchHeroToMarker(figureId, markerId);
-  }
-
-  /** Manually pin a leader for an excavation; companions are auto-filled. */
-  dispatchPartyToMarker(figureId: number, markerId: number): boolean {
-    return LivingGuild.dispatchPartyToMarker(figureId, markerId);
-  }
-
-  /** Send the best auto-filled party to excavate a landmark. */
-  dispatchBestHeroToMarker(markerId: number): boolean {
-    return LivingGuild.dispatchBestHeroToMarker(markerId);
-  }
-
-  /** Place a vault relic in a hero's hands (one relic per hero). */
-  equipRelic(relicId: number, figureId: number): boolean {
-    return LivingGuild.equipRelic(relicId, figureId);
-  }
-
-  /** Enshrine a relic in the Guild Vault, up to one relic per guild tier. */
-  enshrineRelic(relicId: number): boolean {
-    return LivingGuild.enshrineRelic(relicId);
-  }
-
-  /** Lease a vault relic to a sovereign state: +gen, -1 unravel/season, tribute gold. */
-  leaseRelic(relicId: number, stateId: number): boolean {
-    return LivingGuild.leaseRelic(relicId, stateId);
-  }
-
-  /** Return a relic from any holder to the Guild Vault, or the reserve when it is full. */
-  recallRelic(relicId: number): boolean {
-    return LivingGuild.recallRelic(relicId);
-  }
-
-  /** Sandbox god action: excavate a site immediately, minting its seeded relic. */
-  excavateMarker(markerId: number): boolean {
-    return LivingGuild.excavateMarker(markerId);
   }
 
   /** The Wheel of Ages: bake the epoch, retire fallen empires, and open the next era. */
   turnAge(): { era: string; year: number; realms: number; successorStates: number } {
     const living = this.init();
     const history = Chronicle.sync();
-    const guild = this.getGuild();
     const yearBefore = options.map?.lore?.calendar?.year ?? 1000;
+    const ageCount = history.epochs?.length ?? 0;
 
     // 1. bake the completed age so Legends can scrub back through it
     this.bakeEpoch(living, yearBefore);
 
-    // 2. overextended empires fall, their capitals seeding chronicle relic ruins
+    // 2. overextended empires fall
     const realms = this.retireFallenEmpires(living, yearBefore);
 
     // 3. the calendar leaps forward and the political map is reshaped
     const year = yearBefore + WHEEL_YEAR_LEAP;
     options.map.lore.calendar.year = year;
-    const eraName = this.nextEraName(guild.ageCount);
+    const eraName = this.nextEraName(ageCount);
     history.eras ??= [];
     const currentEra = history.eras.at(-1);
     if (currentEra) currentEra.to = year;
@@ -1412,36 +1178,12 @@ class LivingModel {
     }
     this.syncWorld();
 
-    // 4. prestige carryover: heroes pass into legend, veteran bloodlines spawn scions
-    guild.ageCount += 1;
-    guild.legacyTier = (guild.legacyTier ?? 0) + 1;
-    const nextRoster: number[] = [];
-    for (const id of guild.roster) {
-      const hero = this.findFigure(id);
-      if (!hero || hero.death !== undefined) continue;
-      hero.death = year;
-      for (const role of hero.roles) {
-        if (role.to === undefined) role.to = year;
-      }
-      for (const held of guild.relics ?? []) {
-        if (held.holder.kind === "figure" && held.holder.id === id) this.placeRelic(held, guild);
-      }
-      if (figureLevel(hero.xp ?? 0) < 3 || nextRoster.length >= maxHeroesForTier(guild.tier)) continue;
-      nextRoster.push(this.spawnScion(living, hero, guild.legacyTier).i);
-    }
-    guild.roster = nextRoster;
-    guild.candidates = [];
-
     living.eschaton = 0;
 
     const text = `${eraName} dawns in ${year}: ${realms.length} ${
       realms.length === 1 ? "realm" : "realms"
     } fell and ${shattered} provinces broke away as the Wheel turned.`;
-    this.pushNews(living, {
-      kind: "muster",
-      text,
-      cell: guild.hqBurgId !== undefined ? pack.burgs[guild.hqBurgId]?.cell : undefined
-    });
+    this.pushNews(living, { kind: "muster", text });
     this.pushHistory("goldenAge", [], undefined, text);
 
     return { era: eraName, year, realms: realms.length, successorStates: shattered };
@@ -1532,20 +1274,10 @@ class LivingModel {
       }
     }
 
-    // a chronicle ruin at the fallen capital, hiding a realm-named relic (a +2-tier find)
+    // a chronicle ruin at the fallen capital
     const capital = state.capital ? pack.burgs[state.capital] : undefined;
     const cell = capital?.cell ?? state.center ?? 0;
-    const markerId = this.addRuinMarker(cell, `Ruins of ${state.name}`);
-    const marker = (pack.markers ?? [])[markerId]!;
-    const relic = this.mintRelicFromMarker(marker, year * 1000 + state.i);
-    relic.holder = { kind: "ruin", markerId, cell };
-
-    // relics the fallen state leased from the Guild are buried in the same ruin
-    for (const held of this.getGuild().relics ?? []) {
-      if (held.holder.kind === "state" && held.holder.id === state.i) {
-        held.holder = { kind: "ruin", markerId, cell };
-      }
-    }
+    this.addRuinMarker(cell, `Ruins of ${state.name}`);
 
     this.pushHistory(
       "collapse",
@@ -1608,65 +1340,12 @@ class LivingModel {
     sSim.rulerId = this.spawnRuler(state, living, year);
   }
 
-  /** A founder's scion: carries the bloodline and its legacy skill into the new era. */
-  private spawnScion(living: LivingWorldState, ancestor: HistoricalFigure, legacyTier: number): HistoricalFigure {
-    const history = Chronicle.sync();
-    history.figures ??= [];
-    const figures = history.figures;
-    const index = figures.length;
-    const year = options.map?.lore?.calendar?.year ?? 1000;
-    const rng = createRng(`${living.seed}:guild:scion:${index + ancestor.i * 1000}`);
-    const culture = ancestor.culture;
-    const alignment = rollAlignment(rng, pack.cultures?.[culture]?.alignment);
-    const traits = rollFigureTraits(rng, alignment);
-    const signatureVirtue = ancestor.virtues?.[0];
-    const virtues =
-      signatureVirtue && !traits.virtues.includes(signatureVirtue)
-        ? [signatureVirtue, ...traits.virtues]
-        : traits.virtues;
-
-    const skills = {
-      m: ancestor.skills?.m ?? 0,
-      w: ancestor.skills?.w ?? 0,
-      s: ancestor.skills?.s ?? 0,
-      c: ancestor.skills?.c ?? 0
-    };
-    const pools = ["m", "w", "s", "c"] as const;
-    const best = pools.reduce((chosen, pool) => (skills[pool] > skills[chosen] ? pool : chosen), pools[0]!);
-    skills[best] = Math.min(5, skills[best] + 1 + legacyTier);
-    const guild = this.getGuild();
-
-    const scion: HistoricalFigure = {
-      i: index,
-      name: Names.getCulture(culture),
-      culture,
-      birth: year - rng.int(18, 24),
-      roles: [{ type: "adventurer", target: { kind: "culture", id: culture }, from: year }],
-      alignment,
-      virtues,
-      vices: traits.vices,
-      cell: guild.hqBurgId !== undefined ? pack.burgs[guild.hqBurgId]?.cell : undefined,
-      xp: 0,
-      skills,
-      archetype: figureArchetype(ancestor).id,
-      disciplines: [...figureDisciplines(ancestor)],
-      progression: { appliedLevel: 1, pendingChoices: 0, picks: [] }
-    };
-    figures.push(scion);
-    return scion;
-  }
-
   /** Poetic name for the era that dawns after the given number of wheel turns. */
   private nextEraName(ageCount: number): string {
     const rng = createRng(`${this.getState().seed}:turnAge:${ageCount}`);
     const epithet = ERA_EPITHETS[rng.int(0, ERA_EPITHETS.length - 1)]!;
     const ordinal = ERA_ORDINALS[Math.min(ageCount, ERA_ORDINALS.length - 1)] ?? `${ageCount + 1}th`;
     return rng.chance(0.5) ? `The ${ordinal} Age of ${epithet}` : `The Era of ${epithet}`;
-  }
-
-  /** Retire a veteran hero and mint a protege carrying one skill point forward. */
-  retireHero(figureId: number): number | null {
-    return LivingHeroes.retireHero(figureId);
   }
 
   /** Deterministic PRNG for a given tick and domain tag */
@@ -1683,7 +1362,6 @@ class LivingModel {
     for (let step = 0; step < steps; step++) {
       living.tick += 1;
       living.season = ((living.season + 1) % 4) as SeasonId;
-      this.expirePopups(living);
 
       if (living.season === 0) {
         options.map.lore.calendar.year += 1;
@@ -1705,9 +1383,7 @@ class LivingModel {
       this.stepStates(living);
       this.stepDiplomacy(living);
       this.stepRebellions(living);
-      this.stepRelics(living);
       this.stepEschaton(living);
-      this.refreshPopups(living);
     }
 
     return living;
@@ -1787,81 +1463,28 @@ class LivingModel {
     return eraShort ? `${seasonName}, ${year} ${eraShort}` : `${seasonName}, ${year}`;
   }
 
-  /** Claim an on-map popup before it expires, banking its bonus Gold and Renown. */
-  claimPopup(id: number): LivingPopup | null {
-    return LivingGuild.claimPopup(id);
-  }
-
-  /** Drop popups whose countdown ran out. They auto-resolve without a reward. */
-  expirePopups(living: LivingWorldState): void {
-    LivingGuild.expirePopups(living);
-  }
-
-  /** Inspect the live world after a tick and queue urgent-bounty popups (deduplicated, capped). */
-  refreshPopups(living: LivingWorldState): void {
-    LivingGuild.refreshPopups(living);
-  }
-
-  /** Queue a one-off popup (e.g. a battle unearthing a relic) without waiting for the next scan. */
-  queuePopup(partial: Omit<LivingPopup, "id" | "createdTick" | "expiresAtTick">): LivingPopup | null {
-    return LivingGuild.queuePopup(partial);
-  }
-
-  /** Apply the player's petition choice: guild gold/renown plus world outcomes. */
-  resolvePetition(popupId: number, choiceIndex: number): { summary: string; gold: number; renown: number } | null {
-    return LivingGuild.resolvePetition(popupId, choiceIndex);
-  }
-
   findFigure(figureId: number): HistoricalFigure | undefined {
     return Chronicle.sync().figures?.find(figure => figure.i === figureId);
   }
 
-  /** Lazy vitals for old saves and fresh candidates alike. */
-  ensureHeroGuildState(guild: GuildState, figure: HistoricalFigure): HeroGuildState {
-    return LivingHeroes.ensureHeroGuildState(guild, figure);
+  /** Lazy vitals for a hero's sheet; the sheet is the only store. */
+  ensureHeroGuildState(figure: HistoricalFigure): HeroGuildState {
+    return LivingHeroes.ensureHeroGuildState(figure);
   }
 
-  /** One season of player faction / guild bookkeeping: missions, hero recovery, candidates, and dispatch. */
-  stepPlayerFactionMissions(living: LivingWorldState): void {
-    LivingGuild.stepPlayerFactionMissions(living);
-  }
-
-  /** Spring: refresh the tavern with up to three free adventurers. */
-  refreshCandidates(living: LivingWorldState): void {
-    LivingHeroes.refreshCandidates(living);
-  }
-
-  /** A fresh, unaffiliated adventurer for the tavern. */
-  mintCandidate(living: LivingWorldState, avoid: HeroArchetypeId[] = []): HistoricalFigure {
-    return LivingHeroes.mintCandidate(living, avoid);
-  }
-
-  /** A retired veteran's protege: one point in the veteran's best pool carried forward. */
+  /** A veteran's protege: one point in the veteran's best pool carried forward. */
   spawnProtege(living: LivingWorldState, veteran: HistoricalFigure): HistoricalFigure | undefined {
     return LivingHeroes.spawnProtege(living, veteran);
   }
 
-  syncGuildTier(living: LivingWorldState, guild: GuildState): void {
-    LivingGuild.syncGuildTier(living, guild);
-  }
-
   /** Ignored level 3/6 choices are auto-picked after two seasons by the archetype's doctrine. */
-  autoPickPendingPaths(living: LivingWorldState, guild: GuildState): void {
-    LivingHeroes.autoPickPendingPaths(living, guild);
+  autoPickPendingPaths(living: LivingWorldState): void {
+    LivingHeroes.autoPickPendingPaths(living);
   }
 
-  /** Guild Hall rest: Resolve, Stamina and injury treatment, once per season. */
-  recoverHeroes(living: LivingWorldState, guild: GuildState): void {
-    LivingHeroes.recoverHeroes(living, guild);
-  }
-
-  autoDispatch(living: LivingWorldState): void {
-    LivingGuild.autoDispatch(living);
-  }
-
-  /** Seasonal bookkeeping for leased relics: tribute gold and unravel relief. */
-  stepRelics(living: LivingWorldState): void {
-    LivingGuild.stepRelics(living);
+  /** Resolve, Stamina and injury treatment for every living hero, once per season. */
+  recoverHeroes(living: LivingWorldState): void {
+    LivingHeroes.recoverHeroes(living);
   }
 
   /** The current eschaton reading, lazily initialized for old saves */
@@ -1890,10 +1513,6 @@ class LivingModel {
   /** Purging lairs buys the world time. */
   relieveEschaton(living: LivingWorldState, amount = 5): void {
     living.eschaton = Math.max(0, (living.eschaton ?? 0) - amount);
-  }
-
-  resolveMission(living: LivingWorldState, mission: ActiveGuildMission): void {
-    LivingGuild.resolveMission(living, mission);
   }
 
   syncBurgs(living: LivingWorldState): void {
@@ -4224,19 +3843,6 @@ class LivingModel {
       }
     }
 
-    // Leased relic perks: charter boosts capital Gold, tome capital Science,
-    // idol adds Faith/Culture.
-    const capitalSim = state.capital ? living.burgs[state.capital] : undefined;
-    const charterShare = RELIC_YIELD_PERCENT / 100;
-    if (capitalSim) {
-      totalGrossGold += Math.round(
-        (capitalSim.cityYields?.gold ?? 0) * charterShare * this.stateRelicCount(state.i, "charter")
-      );
-      totalScience += this.citySciencePerTick(capitalSim) * charterShare * this.stateRelicCount(state.i, "tome");
-    }
-    totals.faith += IDOL_FAITH * this.stateRelicCount(state.i, "idol");
-    totals.culture += IDOL_CULTURE * this.stateRelicCount(state.i, "idol");
-
     const unitTypes = Military.getUnitTypes();
     let blockUpkeep = 0;
     let civilianUpkeep = 0;
@@ -4250,13 +3856,9 @@ class LivingModel {
       }
     }
     const upkeep = Math.max(0, blockUpkeep + civilianUpkeep - UPKEEP_FREE);
-    const leasedRelics = (living.guild?.relics ?? []).filter(
-      relic => relic.holder.kind === "state" && relic.holder.id === state.i
-    ).length;
-    const relicTribute = leasedRelics * RELIC_LEASE_TRIBUTE;
 
     totals.science = Math.round(totalScience * 100) / 100;
-    totals.gold = Math.round((totalGrossGold - totalMaintenance - upkeep + relicTribute) * 100) / 100;
+    totals.gold = Math.round((totalGrossGold - totalMaintenance - upkeep) * 100) / 100;
     totals.happiness = 0;
 
     return {
@@ -4265,7 +3867,6 @@ class LivingModel {
       totalWorkedCells,
       upkeep,
       maintenance: totalMaintenance,
-      relicTribute,
       cities,
       capital: capitalBreakdown
     };
@@ -4316,7 +3917,6 @@ class LivingModel {
       luxuries: 0,
       buildings: 0,
       religion: 0,
-      relics: REGALIA_HAPPINESS * this.stateRelicCount(state.i, "regalia"),
       cityUnhappiness: 0,
       citizenUnhappiness: 0,
       unrestUnhappiness: 0
@@ -4352,8 +3952,7 @@ class LivingModel {
       breakdown.base +
       breakdown.luxuries +
       breakdown.buildings +
-      breakdown.religion +
-      breakdown.relics -
+      breakdown.religion -
       breakdown.cityUnhappiness -
       breakdown.citizenUnhappiness -
       breakdown.unrestUnhappiness;
@@ -4506,7 +4105,6 @@ class LivingModel {
     if (happiness <= VERY_UNHAPPY_HAPPINESS) delta = 6;
     else if (happiness < 0) delta = 2;
     else delta = -(2 + Math.floor(happiness / 5));
-    delta -= 2 * this.stateRelicCount(sSim.stateId, "regalia");
     sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
   }
 
@@ -4678,7 +4276,6 @@ class LivingModel {
       luxuries: 0,
       buildings: 0,
       religion: 0,
-      relics: 0,
       cityUnhappiness: 0,
       citizenUnhappiness: 0,
       unrestUnhappiness: 0
@@ -4709,8 +4306,7 @@ class LivingModel {
       breakdown.base +
       breakdown.luxuries +
       breakdown.buildings +
-      breakdown.religion +
-      breakdown.relics -
+      breakdown.religion -
       breakdown.cityUnhappiness -
       breakdown.citizenUnhappiness -
       breakdown.unrestUnhappiness;
@@ -4797,18 +4393,12 @@ class LivingModel {
     const goldPerTurn = faction.yieldsPerTurn?.gold ?? 0;
     faction.treasury = Math.round((Number(faction.treasury ?? 0) + goldPerTurn) * 100) / 100;
     faction.science = Math.max(0, faction.yieldsPerTurn?.science ?? 0);
-    if (living.playerFactionId === faction.i && living.guild) {
-      living.guild.gold = faction.treasury;
-    }
     if (faction.treasury < 0) this.settleFactionDebt(faction, living);
   }
 
   /** Bankruptcy: disband the newest block, not the whole regiment. */
   private settleFactionDebt(faction: Faction, living: LivingWorldState): void {
     faction.treasury = 0;
-    if (living.playerFactionId === faction.i && living.guild) {
-      living.guild.gold = 0;
-    }
     const military = faction.military ?? [];
     const newest = military[military.length - 1];
     if (!newest) return;
@@ -6509,12 +6099,8 @@ class LivingModel {
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
       Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
 
-    const relicMult = (stateId: number) =>
-      this.stateRelicCount(stateId, "weapon") > 0 ? 1 + WEAPON_RELIC_COMBAT_PERCENT / 100 : 1;
-    const attackerLordMult =
-      happinessCombatMultiplier(living.states[attackerState.i]?.happiness) * relicMult(attackerState.i);
-    const defenderLordMult =
-      happinessCombatMultiplier(living.states[defenderState.i]?.happiness) * relicMult(defenderState.i);
+    const attackerLordMult = happinessCombatMultiplier(living.states[attackerState.i]?.happiness);
+    const defenderLordMult = happinessCombatMultiplier(living.states[defenderState.i]?.happiness);
 
     return {
       walls,
@@ -7366,9 +6952,7 @@ class LivingModel {
   private siegeModifiers(state: State, burg: Burg): BattleModifiers {
     const living = this.getState();
     const defenderId = burg.state ?? 0;
-    const relicMult = (stateId: number) =>
-      this.stateRelicCount(stateId, "weapon") > 0 ? 1 + WEAPON_RELIC_COMBAT_PERCENT / 100 : 1;
-    const lord = (stateId: number) => happinessCombatMultiplier(living.states[stateId]?.happiness) * relicMult(stateId);
+    const lord = (stateId: number) => happinessCombatMultiplier(living.states[stateId]?.happiness);
     const attackerLordMult = lord(state.i);
     const defenderLordMult = lord(defenderId);
     return {
@@ -7761,8 +7345,7 @@ class LivingModel {
   }
 
   // -------------------------------------------------------------------------
-  // Slice 6: dynamic religion pressure, beliefs, diplomacy timers and relic
-  // perks.
+  // Slice 6: dynamic religion pressure, beliefs and diplomacy timers.
   // -------------------------------------------------------------------------
 
   /** One seasonal religion tick: faith, pantheons, Great Prophets and pressure. */
@@ -8243,14 +7826,6 @@ class LivingModel {
     return this.isAtWar(stateId, owner);
   }
 
-  /** How many relics of a category are leased to this state. */
-  private stateRelicCount(stateId: number, category: RelicCategory): number {
-    const relics = pack.history?.living?.guild?.relics ?? [];
-    return relics.filter(
-      relic => relic.holder.kind === "state" && relic.holder.id === stateId && relic.category === category
-    ).length;
-  }
-
   /** Step post-conquest occupation unrest on burgs and apply unravel pressure to owning states */
   private stepBurgUnrest(living: LivingWorldState): void {
     const restiveCountByState = new Map<number, number>();
@@ -8691,26 +8266,6 @@ class LivingModel {
     return markerIndex;
   }
 
-  /** Place a found relic: carried by the digger, stored in the vault, or held in reserve. */
-  placeRelic(relic: HistoricalRelic, guild: GuildState, figure?: HistoricalFigure): void {
-    LivingGuild.placeRelic(relic, guild, figure);
-  }
-
-  /** Mint a lore-linked relic named after the nearest fallen realm, a dead hero, or the site itself */
-  mintRelicFromMarker(marker: Marker, seedId: number, figure?: HistoricalFigure): HistoricalRelic {
-    return LivingGuild.mintRelicFromMarker(marker, seedId, figure);
-  }
-
-  /** Recover any relics a fallen capital buried at this marker */
-  recoverRelicsFromMarker(guild: GuildState, markerId: number | undefined, figure?: HistoricalFigure): void {
-    LivingGuild.recoverRelicsFromMarker(guild, markerId, figure);
-  }
-
-  /** A fallen capital forces the state's leased relics into a fresh chronicle ruin at the capital cell. */
-  dropStateRelicsToRuin(stateId: number, burg: Burg): HistoricalRelic[] {
-    return LivingGuild.dropStateRelicsToRuin(stateId, burg);
-  }
-
   private pickWarRival(state: State): State | undefined {
     for (const burg of pack.burgs) {
       if (!burg?.i || burg.removed || !burg.state || burg.state === state.i) continue;
@@ -8905,9 +8460,6 @@ class LivingModel {
     this.transferCells(stateId, cells);
     burg.state = stateId;
     this.assignProvince(stateId, cells);
-
-    // a conquered capital forces its state's leased relics into a ruin at the capital cell
-    if (wasCapital && previousState > 0 && previousState !== stateId) this.dropStateRelicsToRuin(previousState, burg);
 
     // a major state losing its last holding collapses — and hastens the eschaton
     if (previousState > 0 && previousState !== stateId) {
@@ -9546,18 +9098,6 @@ class LivingModel {
         name: `Battle of ${label ?? burgOrCell.name ?? "the wilds"}`
       });
     }
-
-    // A clash can break open an ancient site: expose a relic cache on the map.
-    const cell = typeof burgOrCell === "number" ? burgOrCell : burgOrCell.cell;
-    const place = typeof burgOrCell === "number" ? (label ?? "the wilds") : (label ?? burgOrCell.name ?? "the wilds");
-    this.queuePopup({
-      kind: "relic_exposed",
-      cell,
-      title: `Relics exposed near ${place}`,
-      subtitle: "A clash has broken open an ancient site",
-      rewardGold: this.rng("relic:exposed", cell).int(15, 40),
-      rewardRenown: 4
-    });
   }
 
   pushHistory(type: HistoryEventType, actors: HistRef[], cell: number | undefined, text: string): void {
@@ -10529,14 +10069,12 @@ class LivingModel {
     }
   }
 
-  /** Seasonal simulation step for autonomous and player factions */
+  /** Seasonal simulation step for autonomous factions */
   stepFactions(living: LivingWorldState): void {
     if (pack.factions && pack.factions.length > 1) {
-      this.syncPlayerFaction(living);
       this.stepFactionAgendas(living);
       this.stepFactionMilitaryAndRaids(living);
     }
-    this.stepPlayerFactionMissions(living);
     this.stepLairs(living);
   }
 
@@ -10899,6 +10437,5 @@ declare global {
 export const Living = new LivingModel();
 window.Living = Living;
 
-export { LivingGuild } from "./living-guild";
 export { LivingHeroes } from "./living-heroes";
 export { LivingThreats } from "./living-threats";

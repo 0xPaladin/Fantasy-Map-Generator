@@ -128,7 +128,7 @@ export function openStateCitiesDialog(stateId: number): void {
         ${escapeHtml(formatYields(breakdown.total))} · 😊 ${Math.round(sSim?.happiness ?? 0)}
       </div>
       <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 10px;">
-        ${breakdown.totalCitizens} ${t("citizens")} · ${breakdown.totalWorkedCells} ${t("worked cells")} · ${t("Upkeep")}: -🪙${breakdown.upkeep} · ${t("Maint")}: -🪙${breakdown.maintenance}${breakdown.relicTribute ? ` · ${t("Relics")}: +🪙${breakdown.relicTribute}` : ""}
+        ${breakdown.totalCitizens} ${t("citizens")} · ${breakdown.totalWorkedCells} ${t("worked cells")} · ${t("Upkeep")}: -🪙${breakdown.upkeep} · ${t("Maint")}: -🪙${breakdown.maintenance}
       </div>
 
       <div style="margin-bottom: 8px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
