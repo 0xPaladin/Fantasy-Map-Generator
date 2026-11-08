@@ -1,6 +1,6 @@
 # Plan — Remove the Grand Guild (`living-guild`)
 
-**Status:** Phase 2 complete — Phase 3 (assistant context regeneration, any remaining wiring) next.
+**Status:** Phase 3 complete — Phase 4 (docs & wiki) next.
 **Branch:** `factions`
 **Touchpoints:** `src/model/physical/living-guild.ts`, `src/model/physical/living-guild.test.ts`, `src/model/physical/living-heroes.ts`, `src/model/physical/living-generator.ts`, `src/model/physical/living-generator.test.ts`, `src/controllers/living-hud.ts`, `src/controllers/living-hud.test.ts`, `src/renderers/draw-living-overlay.ts`, `src/renderers/draw-living-overlay.test.ts`, `src/services/io/characters-migration.ts`, `src/types/living.ts`, `src/types/factions.ts`, `src/data/guild-operations.ts`, `src/data/living-petitions.ts`, `src/data/living-relics.ts`, `src/data/mission-phases.ts`, `src/data/mission-tags.ts`, and the Living World wiki/docs.
 
@@ -36,7 +36,7 @@
 
 - ~~`draw-living-overlay.ts`~~ done in Phase 2.
 - ~~`characters-migration.ts`~~ done in Phase 2 (legacy guild reads dropped per decision 2).
-- Assistant context regeneration (`npm run generate:assistant-context`).
+- ~~Assistant context regeneration~~ done: `context.generated.ts` regenerated via `npm run generate:assistant-context`; `context.test.ts` green (Factions field list now reflects the missions/relics removal).
 
 ## Phase 4 — Docs & wiki
 
