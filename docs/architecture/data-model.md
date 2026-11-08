@@ -251,7 +251,7 @@ Non-territorial organizations stored as an array of objects with strict element 
 - `currentTechId` / `researchQueue` / `researchedTechs` / `researchedProgress` / `freeTechs?` - OpenCiv research state
 - `yieldsPerTurn?` / `happiness?` / `happinessBreakdown?` - empire rollup yields and happiness
 - `treasury`: `number` - faction gold balance
-- `influence`: `number` - empire influence (mirrors guild renown for the player faction)
+- `influence`: `number` - empire influence
 - `military`: `Regiment[]` - `ArmyBlock[]` composition; living sim keys are `f{factionId}-{regimentId}` in `living.units`/`living.armies`
 - `stateRelations` / `factionRelations`: `Record<number, FactionRelation>` - `Ally`, `Friendly`, `Neutral`, `Suspicion`, `Rival` or `Enemy` with states and other factions
 - `seasonsActive`: `number` - seasons simulated, used for sovereignty thresholds
@@ -591,7 +591,7 @@ Top level:
 - `cells`: `Record<number, CellSimState>` - optional tile improvements and pillage state
 - `armies`: `Record<string, ArmySimState>` - optional per-tick combat-army state, keyed by `${stateId}-${regimentId}`
 - `units`: `Record<string, UnitSimState>` - optional utility-regiment state (settlers, builders, missionaries, ...)
-- `recentNews`, `eschaton`, `guild`, `playerFactionId`, `worldWonders` - optional presentation, Age Finale, guild and ownership state
+- `recentNews`, `eschaton`, `worldWonders` - optional presentation and Age Finale state
 
 `StatePolitySim`:
 
@@ -641,7 +641,7 @@ A hero sheet (`HeroSheet`) holds the compact character stat block:
 - `condition`: optional `{ resolve, stamina, maxResolve, maxStamina, injuries, downUntilTick, push }`
 - `doctrine`, `temperament`, `cooldownUntil`: optional seasonal-play fields
 
-Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them. Mission phases also carry an `action`, not a pool.
+Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them.
 
 ## Legends
 

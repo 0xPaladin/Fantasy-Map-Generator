@@ -113,4 +113,4 @@ Factions can evolve into recognized sovereign nations:
 * **Faction Editor Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The Outposts & Assets dialog shows per-node citizens, worked cells, city yields and the full production queue for the HQ and each outpost.
 * **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect all resident faction HQs/outposts at that burg — citizens, worked cells, city yields and production queue, plus local influence and secrecy.
 * **Map Layer (`#factions`, Hotkey: `Shift+F`)**: Displays faction HQ badges, outpost pins, and field regiments on the SVG map.
-* **Living HUD & Player Guild**: Choose any faction as your **Player Faction** to guide its contracts, hero missions, relic vaults, and expeditions, or observe autonomously in God Mode.
+* **Living HUD**: The god-mode inspector intervenes in the simulation — spark rebellions, smite rulers, resolve troubles, assault lairs, promote emergent states — and the **Suppression** section orders a state to campaign against a hostile faction.

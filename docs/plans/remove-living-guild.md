@@ -1,6 +1,6 @@
 # Plan — Remove the Grand Guild (`living-guild`)
 
-**Status:** Phase 3 complete — Phase 4 (docs & wiki) next.
+**Status:** Phase 4 complete — Phase 5 (full-suite test confirmation) remains; most suites already verified in Phases 1–3.
 **Branch:** `factions`
 **Touchpoints:** `src/model/physical/living-guild.ts`, `src/model/physical/living-guild.test.ts`, `src/model/physical/living-heroes.ts`, `src/model/physical/living-generator.ts`, `src/model/physical/living-generator.test.ts`, `src/controllers/living-hud.ts`, `src/controllers/living-hud.test.ts`, `src/renderers/draw-living-overlay.ts`, `src/renderers/draw-living-overlay.test.ts`, `src/services/io/characters-migration.ts`, `src/types/living.ts`, `src/types/factions.ts`, `src/data/guild-operations.ts`, `src/data/living-petitions.ts`, `src/data/living-relics.ts`, `src/data/mission-phases.ts`, `src/data/mission-tags.ts`, and the Living World wiki/docs.
 
@@ -40,7 +40,13 @@
 
 ## Phase 4 — Docs & wiki
 
-- Rewrite `docs/wiki/Living-World.md` Grand Guild section (keep God Mode), `docs/wiki/Characters.md`, `docs/wiki/Factions.md`, `docs/wiki/Changelog.md`, `docs/domain/glossary.md`, `module-guide.md`, and mark `docs/plans/living-idle-guild.md` superseded.
+- ~~`docs/wiki/Living-World.md`~~ done: Grand Guild section removed, God Mode noted free, Wheel of Ages reduced to the epoch bake, relic/tribute/regalia/weapon-perk references stripped, `living-idle-guild.md` link dropped.
+- ~~`docs/wiki/Characters.md`~~ done: party expeditions and Guild Operations sections removed; checks reframed as the shared task resolution (still used by trouble/lair domain saves); vitals/growth kept.
+- ~~`docs/wiki/Factions.md`~~ done: "Living HUD & Player Guild" bullet replaced with the god-mode inspector + suppression description.
+- ~~`docs/wiki/Changelog.md`~~ done: Unreleased entry for the removal.
+- ~~`docs/domain/glossary.md`~~ done: Grand Guild, Mission tag, Party Expedition, Mission Phase, Guild Operation and Reserve entries removed; Hero/Living World/Doctrine/Resolve entries reworded.
+- ~~`docs/architecture/data-model.md`~~ done: `living.guild`/`playerFactionId` dropped from `LivingWorldState`; faction influence note fixed; mission-phase note removed.
+- ~~`docs/plans/living-idle-guild.md`~~ done: header marks the plan REMOVED with a pointer to `remove-living-guild.md`.
 
 ## Phase 5 — Tests
 
