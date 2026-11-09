@@ -12,6 +12,7 @@ import { Controllers } from "@/controllers";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import { Provinces } from "@/model/political/provinces-generator";
+import { Factions } from "@/model/political/factions-generator";
 import type { State } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
@@ -115,7 +116,7 @@ const columns: EditorColumn<Province>[] = [
     label: t("Living"),
     width: "5.5em",
     mobileHidden: true,
-    tip: t("Living World public order, active trouble and lair. Click to inspect"),
+    tip: t("Living World public order, active trouble and faction. Click to inspect"),
     sortBy: province => pack.history?.living?.provinces?.[province.i]?.order ?? 0
   },
   {
@@ -377,7 +378,7 @@ function getProvincesData(): Province[] {
   return sortDataByColumns(dialogId, filtered, columns);
 }
 
-/** The Living World column: public order plus active trouble/lair flags. */
+/** The Living World column: public order plus active trouble/faction flags. */
 function renderLivingProvince(province: Province): string {
   const pSim = pack.history?.living?.provinces?.[province.i];
   if (!pSim) return `<span class="placeholder">—</span>`;
@@ -392,10 +393,18 @@ function renderLivingProvince(province: Province): string {
   const trouble = pSim.trouble
     ? `<span data-tip="${t("Active trouble: {{name}}", { name: pSim.trouble.name })}">⚠️</span>`
     : "";
-  const lair = pSim.lair
-    ? `<span data-tip="${t("Active lair: {{name}}", { name: pSim.lair.name })}">💀</span>`
+  const hostile = Factions.active().find(f => {
+    if (f.allegiance !== "hostile" && f.allegiance !== "clandestine") return false;
+    const provId =
+      f.hq.provinceId ??
+      (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+      pack.cells?.province?.[f.hq.cell];
+    return provId === province.i;
+  });
+  const threat = hostile
+    ? `<span data-tip="${t("Dangerous faction: {{name}}", { name: hostile.name })}">⚔️</span>`
     : "";
-  return `<span class="pointer" data-tip="${tip}">${order}%</span>${trouble}${lair}`;
+  return `<span class="pointer" data-tip="${tip}">${order}%</span>${trouble}${threat}`;
 }
 
 function renderProvincesPage(view: TableView<Province>): void {

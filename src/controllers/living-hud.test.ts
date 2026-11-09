@@ -34,13 +34,11 @@ const { mocks, state } = vi.hoisted(() => {
       completeAsset: vi.fn(() => true),
       spawnTrouble: vi.fn(() => ({})),
       quellTrouble: vi.fn(() => true),
-      resolveTrouble: vi.fn(() => true),
-      promoteTroubleToState: vi.fn(() => 2),
-      spawnLair: vi.fn(() => ({ id: "bandit_camp", name: "Bandit Camp", level: 6 })),
-      smiteLair: vi.fn(() => true),
-      assaultLair: vi.fn(() => true),
-      sendAdventurersToLair: vi.fn(() => true),
-      ascendLairToState: vi.fn(() => 2),
+      spawnDangerousFaction: vi.fn(() => ({ i: 7 })),
+      smiteFaction: vi.fn(() => true),
+      assaultFaction: vi.fn(() => true),
+      sendAdventurersToFaction: vi.fn(() => true),
+      ascendFactionToState: vi.fn(() => 2),
       turnAge: vi.fn(() => ({ era: "Second Age", year: 1150, realms: 1, successorStates: 0 }))
     }
   };
@@ -132,6 +130,7 @@ describe("LivingHud", () => {
         { i: 1, name: "Aeloran" }
       ],
       religions: [{ i: 1, name: "Solar Church" }],
+      factions: [{ i: 0 }],
       markers: [{ i: 0, type: "ruins", cell: 3, name: "Old Ruins" }],
       history: { figures: [], events: [], realms: [], eras: [] }
     } as unknown as typeof pack;
@@ -209,7 +208,7 @@ describe("LivingHud", () => {
     state.living.states = {} as never;
   });
 
-  it("renders lairs and troubles as province rows with zoom links", () => {
+  it("renders dangerous factions and troubles as province rows with zoom links", () => {
     state.living.states = {
       1: { stateId: 1, agenda: null, unravel: 4, warExhaustion: 2, claims: [], grudges: [] }
     } as never;
@@ -219,17 +218,36 @@ describe("LivingHud", () => {
         order: 60,
         stability: 1,
         development: 0,
-        trouble: { id: "bandits", name: "Bandits", level: 3, cell: 4, theme: "banditry" },
-        lair: null
+        trouble: { id: "flooding", name: "Flooding", level: 3, cell: 4, theme: "banditry" }
       }
     } as never;
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Bandit Camp",
+        category: "martial",
+        type: "bandit_camp",
+        allegiance: "hostile",
+        sovereignAmbition: false,
+        raidThreshold: 5,
+        military: [{ i: 1, a: 40, units: [] }],
+        hq: { cell: 4, provinceId: 1, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        stateRelations: {},
+        factionRelations: {}
+      }
+    ] as never;
     openHud();
     LivingHud.inspect("state", 1);
 
     const panel = document.getElementById("livingInspector")!;
-    expect(panel.textContent).toContain("Bandits [3]");
+    expect(panel.textContent).toContain("Flooding [3]");
+    expect(panel.textContent).toContain("Dangerous factions");
+    expect(panel.textContent).toContain("Aeloran March, Bandit Camp [hostile]");
     state.living.provinces = {} as never;
     state.living.states = {} as never;
+    (pack.factions as unknown[]) = [{ i: 0 }];
   });
 
   it("renders the burg card with unrest meter and god buttons", () => {
@@ -244,24 +262,46 @@ describe("LivingHud", () => {
     state.living.burgs = {} as never;
   });
 
-  it("renders the province card with trouble and lair interventions", () => {
+  it("renders the province card with trouble and faction interventions", () => {
     state.living.provinces = {
       1: {
         provinceId: 1,
         order: 40,
         stability: 0,
         development: 0,
-        trouble: { id: "prowling", name: "Prowling Monsters", level: 4, cell: 4, theme: "banditry" },
-        lair: null
+        trouble: { id: "flooding", name: "Seasonal Flooding", level: 4, cell: 4, theme: "banditry" }
       }
     } as never;
+    (pack.factions as unknown[]) = [
+      { i: 0 },
+      {
+        i: 1,
+        name: "Bandit Camp",
+        category: "martial",
+        type: "bandit_camp",
+        allegiance: "hostile",
+        sovereignAmbition: true,
+        stateForm: "Freehold",
+        raidThreshold: 5,
+        military: [{ i: 1, a: 40, units: [] }],
+        hq: { cell: 4, provinceId: 1, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        stateRelations: {},
+        factionRelations: {}
+      }
+    ] as never;
     openHud();
     LivingHud.inspect("province", 1);
 
     const panel = document.getElementById("livingInspector")!;
-    expect(panel.textContent).toContain("Prowling Monsters");
+    expect(panel.textContent).toContain("Seasonal Flooding");
     expect(panel.querySelector('[data-god="quell-trouble"]')).toBeTruthy();
+    expect(panel.textContent).toContain("Bandit Camp");
+    expect(panel.querySelector('[data-god="assault-faction"]')).toBeTruthy();
+    expect(panel.querySelector('[data-god="smite-faction"]')).toBeTruthy();
+    expect(panel.querySelector('[data-god="ascend-faction"]')).toBeTruthy();
     state.living.provinces = {} as never;
+    (pack.factions as unknown[]) = [{ i: 0 }];
   });
 
   it("closes and reopens the HUD cleanly", () => {

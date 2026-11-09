@@ -2,7 +2,7 @@
 
 The **Factions** system introduces first-class, non-territorial organizations that operate across, within, and beneath the borders of sovereign states. While states claim Voronoi cells and draw colored borders, factions project power through **Headquarters (HQs)**, a network of **Outposts** in settlements, upgradeable **Assets**, and their own **Militaries** and **Advancement**.
 
-Factions unify peaceful commercial guilds, religious inquisitions, knightly orders, and state agencies with underworld syndicates, rebel fronts, and hostile wild lairs under a single simulation engine.
+Factions unify peaceful commercial guilds, religious inquisitions, knightly orders, and state agencies with underworld syndicates, rebel fronts, and hostile dangerous factions under a single simulation engine.
 
 ---
 
@@ -101,7 +101,7 @@ Lawful `state_arm`, `chartered` and non-hostile factions are never eligible. Sch
 Factions can evolve into recognized sovereign nations:
 
 * **Urban Coup**: An insurgent faction (rebel front, demagogue, or sinister cult) with overwhelming influence in a restive burg can seize control and proclaim a new State.
-* **Wilderness Ascension**: An entrenched warlord or wilder lair active for eight or more seasons can overpower nearby settlements or build a fresh capital burg, graduating into a sovereign nation on the map with its own borders, banner, and chronicle entries.
+* **Wilderness Ascension**: An entrenched hostile faction active for eight or more seasons can overpower nearby settlements or build a fresh capital burg, graduating into a sovereign nation on the map with its own borders, banner, and chronicle entries.
 * **State Collapse Remnants**: When an existing State collapses or is conquered, loyalist generals, nobles, or partisans form remnant insurgencies that fight on as clandestine factions.
 
 ---

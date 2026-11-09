@@ -19,7 +19,7 @@ export type FactionAgendaKind =
   | "muster_forces"
   | "raid_burg"
   | "subvert_burg"
-  | "clear_hazard"
+  | "clear_trouble"
   | "strike_rival"
   | "excavate_site"
   | "stage_coup";
@@ -114,6 +114,8 @@ export interface Faction {
   influence: number;
   rosterId?: string;
   military: Regiment[];
+  /** Threat level 1..10 for dangerous factions; drives mission DC and display. */
+  threatLevel?: number;
   raidThreshold?: number;
   raidPending?: boolean;
   stateRelations: Record<number, FactionRelation>;

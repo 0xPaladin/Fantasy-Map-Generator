@@ -2,7 +2,7 @@ import { currentContent } from "@/data/roster-store";
 import { MEN_PER_BLOCK, type UnitType } from "@/data/roster-content";
 import type { ArmyUnit } from "@/types/battle";
 import type { Alignment } from "@/data/culture-traits";
-import type { ProvinceLair, TroubleTheme } from "@/types/living";
+import type { TroubleTheme } from "@/types/living";
 
 export interface LairUnitTemplate {
   unitTypeId: string;
@@ -394,104 +394,6 @@ export const LAIR_CATALOG: Record<string, LairDef> = {
   }
 };
 
-/** 20 generic fantasy Lair Nature IDs */
-export const LAIR_NATURE_IDS: readonly string[] = [
-  "ancient_evil",
-  "ancient_fort",
-  "aspiring_warlord",
-  "bandit_camp",
-  "corrupt_monastery",
-  "cult_shrine",
-  "cursed_earth",
-  "demonic_master",
-  "dwarven_outcasts",
-  "mad_wizard",
-  "magical_gate",
-  "malevolent_creed",
-  "monster_nest",
-  "renegade_outpost",
-  "school_of_dark_sorcery",
-  "marauder_warcamp",
-  "splinter_group",
-  "thieves_stronghold",
-  "blight_infestation",
-  "vicious_humanoids"
-];
-
-/** 15 state-capable Lair Nature IDs */
-export const STATE_CAPABLE_LAIR_IDS: readonly string[] = [
-  "ancient_evil",
-  "ancient_fort",
-  "aspiring_warlord",
-  "bandit_camp",
-  "corrupt_monastery",
-  "cult_shrine",
-  "demonic_master",
-  "dwarven_outcasts",
-  "magical_gate",
-  "malevolent_creed",
-  "renegade_outpost",
-  "school_of_dark_sorcery",
-  "marauder_warcamp",
-  "splinter_group",
-  "thieves_stronghold"
-];
-
-export function isLairStateCapable(id: string): boolean {
-  return LAIR_CATALOG[id]?.canFormState ?? false;
-}
-
-/** Mapping from 37 Trouble archetypes to candidate Lair Natures */
-export const TROUBLE_TO_LAIR_MAPPINGS: Record<string, readonly string[]> = {
-  ancient_curse: ["ancient_evil", "cursed_earth"],
-  angry_dead: ["ancient_evil", "cursed_earth"],
-  bad_reputation: ["thieves_stronghold", "splinter_group"],
-  barren_surroundings: ["bandit_camp", "vicious_humanoids"],
-  blight_cult: ["cult_shrine", "demonic_master"],
-  blight_spawn: ["blight_infestation", "ancient_evil"],
-  brigand_raiders: ["bandit_camp", "thieves_stronghold"],
-  class_hatred: ["splinter_group", "thieves_stronghold"],
-  conquering_heirs: ["ancient_fort", "aspiring_warlord"],
-  contaminated_land: ["cursed_earth", "blight_infestation"],
-  corrupt_leadership: ["thieves_stronghold", "renegade_outpost"],
-  covetous_polity: ["splinter_group", "aspiring_warlord"],
-  crushed_spirits: ["corrupt_monastery", "cult_shrine"],
-  dark_wizards: ["mad_wizard", "school_of_dark_sorcery"],
-  demagogue: ["cult_shrine", "splinter_group"],
-  destructive_customs: ["corrupt_monastery", "cult_shrine"],
-  disputed_possession: ["ancient_fort", "aspiring_warlord"],
-  disunity: ["splinter_group", "thieves_stronghold"],
-  doomsday_cult: ["cult_shrine", "demonic_master"],
-  ethnic_feuding: ["malevolent_creed", "splinter_group"],
-  exceptional_poverty: ["thieves_stronghold", "bandit_camp"],
-  exiled_lord: ["ancient_fort", "aspiring_warlord"],
-  failed_settlement: ["ancient_fort", "bandit_camp"],
-  flooding: ["blight_infestation", "monster_nest"],
-  harsh_conditions: ["monster_nest", "dwarven_outcasts"],
-  hazardous_resource: ["dwarven_outcasts", "monster_nest"],
-  inaccessible: ["bandit_camp", "ancient_fort"],
-  leyline_blight: ["cursed_earth", "magical_gate"],
-  mercenary_populace: ["renegade_outpost", "aspiring_warlord"],
-  monsters: ["monster_nest", "vicious_humanoids"],
-  murderous_heirs: ["ancient_fort", "aspiring_warlord"],
-  no_workers: ["thieves_stronghold", "bandit_camp"],
-  outland_raiders: ["marauder_warcamp", "bandit_camp"],
-  pervasive_hunger: ["bandit_camp", "thieves_stronghold"],
-  recalcitrant_locals: ["splinter_group", "malevolent_creed"],
-  recurrent_sickness: ["blight_infestation", "cursed_earth"],
-  relic_golems: ["ancient_evil", "dwarven_outcasts"],
-  riotous_thugs: ["thieves_stronghold", "bandit_camp"],
-  savage_raiders: ["marauder_warcamp", "vicious_humanoids"],
-  severe_damage: ["ancient_fort", "bandit_camp"],
-  sinister_cult: ["cult_shrine", "demonic_master"],
-  taboo_land: ["cursed_earth", "ancient_evil"],
-  things_from_below: ["magical_gate", "blight_infestation", "dwarven_outcasts"],
-  toxic_process: ["cursed_earth", "blight_infestation"],
-  undeveloped: ["bandit_camp", "monster_nest"],
-  wasted_production: ["thieves_stronghold", "renegade_outpost"],
-  xenophobia: ["malevolent_creed", "splinter_group"]
-};
-
 export function getLairDef(id: string): LairDef {
   return LAIR_CATALOG[id] ?? LAIR_CATALOG.ancient_evil!;
 }
@@ -515,63 +417,4 @@ export function instantiateLairUnits(
     }
   }
   return units;
-}
-
-/** Constructs an active ProvinceLair state object from archetype and parameters */
-export function createProvinceLair(
-  lairId: string,
-  cell: number,
-  level: number,
-  theme?: TroubleTheme,
-  burgId?: number,
-  unitTypes?: Record<string, UnitType>
-): ProvinceLair {
-  const def = getLairDef(lairId);
-  return {
-    id: def.id,
-    name: def.name,
-    level: Math.max(3, Math.min(10, Math.round(level))),
-    theme: theme ?? def.defaultTheme,
-    cell,
-    burgId,
-    raidThreshold: def.raidThreshold,
-    raidUnits: instantiateLairUnits(def.raidUnits, unitTypes),
-    defenders: instantiateLairUnits(def.defenderUnits, unitTypes),
-    fortified: def.fortified,
-    raidPending: false,
-    seasonsActive: 0
-  };
-}
-
-export const MAX_LAIR_LEVEL = 10;
-export const MAX_LAIR_DEFENDERS = 8;
-
-/** A successful raid emboldens the lair: +1 level and one more raider block among its defenders. Returns whether the level rose. */
-export function growLair(lair: ProvinceLair, unitTypes?: Record<string, UnitType>): boolean {
-  if (lair.level >= MAX_LAIR_LEVEL) return false;
-  lair.level += 1;
-  const raiders = getLairDef(lair.id).raidUnits;
-  const live = lair.defenders.filter(unit => unit.count > 0).length;
-  if (raiders.length > 0 && live < MAX_LAIR_DEFENDERS) {
-    const template = raiders[lair.defenders.length % raiders.length]!;
-    lair.defenders.push(...instantiateLairUnits([{ unitTypeId: template.unitTypeId, count: 1 }], unitTypes));
-  }
-  return true;
-}
-
-/** Selects an appropriate Lair Nature when a Trouble metastasizes */
-export function pickLairForTrouble(
-  troubleId: string,
-  rng?: { d?: (sides: number) => number; choice?: <T>(arr: readonly T[]) => T }
-): string {
-  const mapped = TROUBLE_TO_LAIR_MAPPINGS[troubleId];
-  if (mapped && mapped.length > 0) {
-    if (rng?.choice) return rng.choice(mapped);
-    return mapped[0]!;
-  }
-  if (rng?.d) {
-    const idx = rng.d(LAIR_NATURE_IDS.length) - 1;
-    return LAIR_NATURE_IDS[idx] ?? LAIR_NATURE_IDS[0]!;
-  }
-  return LAIR_NATURE_IDS[0]!;
 }

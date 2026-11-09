@@ -906,6 +906,36 @@ export const FACTIONS_CATALOG: Record<string, FactionArchetypeDef> = {
     desiredAssets: ["subterranean_delve"],
     desiredTechs: ["biology"],
     defaultValues: ["corruption", "rot"]
+  },
+  // Absorbed organizational troubles (see TROUBLE_TO_FACTION in living-troubles.ts)
+  corrupt_leadership: {
+    type: "corrupt_leadership",
+    name: "Shadow Administration",
+    category: "political",
+    defaultAllegiance: "clandestine",
+    defaultExpansionScope: "state",
+    defaultAlignment: "evil",
+    sovereignAmbition: false,
+    markerIcon: "🦹",
+    description: "Bribed officials and court parasites selling offices, verdicts and tax rolls.",
+    desiredAssets: ["informant_ring", "counting_house"],
+    desiredTechs: ["guilds", "currency"],
+    defaultValues: ["greed", "corruption"]
+  },
+  recalcitrant_locals: {
+    type: "recalcitrant_locals",
+    name: "Obstinate Villagers",
+    category: "political",
+    defaultAllegiance: "hostile",
+    defaultExpansionScope: "local",
+    defaultAlignment: "chaotic",
+    sovereignAmbition: false,
+    raidThreshold: 6,
+    markerIcon: "🧱",
+    description: "Farmers barricading roads and granaries against the tax man's census.",
+    desiredAssets: ["muster_camp"],
+    desiredTechs: ["animal_husbandry"],
+    defaultValues: ["freedom", "stubbornness"]
   }
 };
 

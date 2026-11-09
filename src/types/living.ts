@@ -1,5 +1,4 @@
 // Living World simulation state types. See docs/plans/living-world.md
-import type { ArmyUnit } from "@/types/battle";
 
 export type SeasonId = 0 | 1 | 2 | 3;
 
@@ -13,8 +12,7 @@ export type AgendaKind =
   | "conquer"
   | "reclaim"
   | "pacify"
-  | "resolve_trouble"
-  | "clear_lair"
+  | "clear_faction"
   | "hire_adventurers"
   | "defend"
   | "raid"
@@ -144,24 +142,6 @@ export interface ProvinceTrouble {
   goodId?: number;
 }
 
-export interface ProvinceLair {
-  id: string;
-  name: string;
-  level: number;
-  theme: TroubleTheme;
-  cell: number;
-  burgId?: number;
-  markerId?: number;
-  provinceId?: number;
-  maritime?: boolean;
-  raidThreshold: number;
-  raidUnits: ArmyUnit[];
-  defenders: ArmyUnit[];
-  fortified: boolean;
-  raidPending: boolean;
-  seasonsActive: number;
-}
-
 export interface StateAgenda {
   kind: AgendaKind;
   label: string;
@@ -261,8 +241,6 @@ export interface ProvinceSimState {
   } | null;
   /** Active obstacle/trouble afflicting the province */
   trouble?: ProvinceTrouble | null;
-  /** Active lair entrenched in the province */
-  lair?: ProvinceLair | null;
 }
 
 export interface StatePolitySim {
@@ -339,6 +317,8 @@ export interface LivingWorldState {
   recentNews: LivingNewsItem[];
   /** 0..100 Age Finale meter; absent on old saves (treated as 0) */
   eschaton?: number;
+  /** one-time legacy trouble/lair -> faction migration has run (faction-trouble conversion) */
+  threatsMigrated?: boolean;
   /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
   worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
   /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5.
@@ -351,8 +331,6 @@ export interface LivingWorldState {
   armies?: Record<string, ArmySimState>;
   /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
   religions?: Record<number, ReligionBeliefState>;
-  /** danger-marker lairs/troubles tracked across the map (master PR #21) */
-  activeLairs?: Record<string, ProvinceLair>;
   activeTroubles?: Record<string, ProvinceTrouble>;
 }
 

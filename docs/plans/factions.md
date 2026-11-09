@@ -294,9 +294,7 @@ export interface Faction {
 
 ### 3.2. Provincial Hazards (`ProvinceHazard` — Option B)
 
-Non-organizational troubles (`flooding`, `barren_surroundings`, `recurrent_sickness`, `no_workers`, `inaccessible`, `ancient_curse`, `leyline_blight`, `contaminated_land`, `harsh_conditions`, `hazardous_resource`, `pervasive_hunger`, `severe_damage`, `taboo_land`, `toxic_process`, `undeveloped`, `wasted_production`, `crushed_spirits`, `destructive_customs`) remain on `ProvinceSimState.trouble` (`ProvinceTrouble`), with two new faction hooks:
-- `attractsFactionTypes: readonly string[]`: When a hazard festers unchecked (`seasonsUnchecked >= 2`), it increases the probability of an existing Faction establishing an outpost or a new Faction spawning in that province (e.g., `exceptional_poverty` / `pervasive_hunger` attracts `brigand_band`, `smuggler_ring`, or `peasant_commune`; `recurrent_sickness` attracts `doomsday_cult` or `monastic_order`; `ancient_curse` / `leyline_blight` attracts `arcane_college` or `dark_cabal`).
-- Any Faction with an `adventuring`, `religious`, `commercial`, or `state_arm` doctrine can dispatch a hero/specialist mission (`clear_hazard`) to resolve the hazard for gold and influence.
+Non-organizational troubles (`flooding`, `barren_surroundings`, `recurrent_sickness`, `no_workers`, `inaccessible`, `ancient_curse`, `leyline_blight`, `contaminated_land`, `harsh_conditions`, `hazardous_resource`, `pervasive_hunger`, `severe_damage`, `taboo_land`, `toxic_process`, `undeveloped`, `wasted_production`, `crushed_spirits`, `destructive_customs`) remain on `ProvinceSimState.trouble` (`ProvinceTrouble`) as **hazards only**. There are no `attractsFactionTypes` / `isHazard` hooks: hazards never become actors, and dangerous factions spawn from the trouble trigger's 50/50 hazard-vs-faction split (and from danger markers), not from hazard affinity tables. Any Faction with an `adventuring`, `religious`, `commercial`, or `state_arm` doctrine can dispatch a hero/specialist mission (`clear_hazard`) to resolve the hazard for gold and influence.
 
 ---
 
@@ -430,7 +428,7 @@ Every faction—whether AI-driven or player-selected via `playerFactionId`—use
 2. **`src/data/factions-catalog.ts` & `src/data/faction-assets.ts`**:
    - Build `FACTIONS_CATALOG` (~38 archetypes across the 6 categories), absorbing all 20 Lair archetypes from `src/data/living-lairs.ts` and the 19 organizational Trouble archetypes from `src/data/living-troubles.ts`.
    - Build `FACTION_ASSETS_CATALOG` (~20 tiered HQ/outpost assets across Commercial, Adventuring, Underworld, Religious, Political, Martial, Scholarly, and Wilder tracks) with tech prerequisites from `src/data/living-civ-techs.ts`.
-   - Update `src/data/living-troubles.ts` to mark the 18 environmental/economic/site troubles as `isHazard: true` with `attractsFactionTypes`.
+   - Update `src/data/living-troubles.ts` to mark the 28 hazards (20 environmental/economic/site + 8 hazardous customs) as hazards; `attractsFactionTypes`/`isHazard` hooks are retired (Option B).
 3. **Serialization (`src/services/io/save.ts`, `load.ts`, `epochs-format.ts`, `export-json.ts`, `auto-update.ts`)**:
    - Serialize `pack.factions` in `save.ts` and parse in `load.ts` (initializing `pack.factions = [{ i: 0 } as Faction]` when absent on legacy maps and running `Factions.generate()` or migrating legacy `living.guild` / `living.activeLairs` in `auto-update.ts`).
    - Register `"faction"` in `ENTITY_TYPES` inside `src/model/map-entities.ts` so Omnibar search, notes, and entity references work out of the box.

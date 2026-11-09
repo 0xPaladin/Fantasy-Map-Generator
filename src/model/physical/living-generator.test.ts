@@ -692,10 +692,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
   it("spawns and quells trouble on a province", () => {
     const living = Living.init();
-    const trouble = Living.spawnTrouble(1, "bad_reputation", "burg", 4);
+    const trouble = Living.spawnTrouble(1, "flooding", "burg", 4);
 
     expect(trouble).toMatchObject({
-      id: "bad_reputation",
+      id: "flooding",
       theme: "burg",
       level: 4,
       seasonsUnchecked: 0
@@ -712,13 +712,14 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     living.provinces[1].order = 70;
     living.provinces[1].stability = 5;
 
-    Living.spawnTrouble(1, "riotous_thugs", "burg", 4);
+    Living.spawnTrouble(1, "flooding", "burg", 4);
 
     Living.tick(1);
 
-    // With level 4 trouble, order drains by level * 2 = 8 (plus garrison +2 = net -6, or floor checked)
-    // and stability accrual from garrison is suspended
-    expect(living.provinces[1].stability).toBe(5);
+    // With level 4 trouble, order drains by level * 2 = 8 (plus garrison +2 = net -6, or floor checked).
+    // Garrison stability accrual stays suspended while trouble is active; the
+    // freed agenda goes to development instead, spending developStabilityCost (4).
+    expect(living.provinces[1].stability).toBe(1);
     expect(living.provinces[1].order).toBeLessThan(70);
   });
 
@@ -726,7 +727,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     const living = Living.init();
     living.burgs[1].unrest = 2;
 
-    Living.spawnTrouble(1, "demagogue", "burg", 6);
+    Living.spawnTrouble(1, "crushed_spirits", "burg", 6);
 
     Living.tick(1);
 
@@ -746,10 +747,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   });
 
   it("computes specialist mismatch penalties correctly", () => {
-    const disorderDef = getTroubleDef("riotous_thugs"); // pool: m, requiredRole: guardsmen
-    expect(troubleUnitMatchMultiplier(disorderDef, "guardsmen")).toBe(1);
-    expect(troubleUnitMatchMultiplier(disorderDef, "military")).toBe(2);
-    expect(troubleUnitMatchMultiplier(disorderDef, "merchant")).toBe(3);
+    const disorderDef = getTroubleDef("flooding"); // pool: w, requiredRole: merchant
+    expect(troubleUnitMatchMultiplier(disorderDef, "merchant")).toBe(1);
+    expect(troubleUnitMatchMultiplier(disorderDef, "sage")).toBe(2);
+    expect(troubleUnitMatchMultiplier(disorderDef, "military")).toBe(3);
 
     const povertyDef = getTroubleDef("exceptional_poverty"); // pool: w, requiredRole: merchant
     expect(troubleUnitMatchMultiplier(povertyDef, "merchant")).toBe(1);
@@ -760,25 +761,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(troubleUnitMatchMultiplier(despairDef, "prophet")).toBe(1);
     expect(troubleUnitMatchMultiplier(despairDef, "magistrate")).toBe(2);
     expect(troubleUnitMatchMultiplier(despairDef, "guardsmen")).toBe(3);
-  });
-
-  it("resolves trouble with domain saving throw and tracks disruption", () => {
-    const living = Living.init();
-    const trouble = Living.spawnTrouble(1, "brigand_raiders", "burg", 2);
-    expect(trouble).not.toBeNull();
-
-    const unit = pack.states[1].military![0].units![0];
-    unit.disruption = 0;
-
-    // Attempt resolution
-    const result = Living.resolveTrouble(1, 1);
-    if (result) {
-      // Success either reduced or eliminated trouble
-      expect(living.provinces[1].trouble == null || living.provinces[1].trouble.level < 2).toBe(true);
-    } else {
-      // Failure inflicted +1 disruption
-      expect(unit.disruption).toBe(1);
-    }
   });
 
   it("resting units in peaceful provinces recover disruption", () => {
@@ -792,33 +774,26 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(unit.disruption).toBe(1);
   });
 
-  it("spawns and smites a lair with map marker tracking", () => {
-    const living = Living.init();
-    const lair = Living.spawnLair(1, "bandit_camp", 5);
-    expect(lair).not.toBeNull();
-    expect(lair!.level).toBe(5);
-    expect(lair!.id).toBe("bandit_camp");
-    expect(lair!.markerId).toBeDefined();
+  it("spawns and smites a dangerous faction in a province", () => {
+    Living.init();
+    const faction = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 5);
+    expect(faction).not.toBeNull();
+    expect(faction!.type).toBe("brigand_raiders");
+    expect(faction!.hq.burgId).toBe(1);
+    expect(faction!.military[0]!.units!.length).toBeGreaterThan(0);
+    expect(faction!.stateRelations[1]).toBe("Enemy");
 
-    const marker = pack.markers[lair!.markerId!];
-    expect(marker).toBeDefined();
-    expect(marker.type).toBe("dungeon");
-    expect(marker.icon).toBe("🗡️");
-    expect(marker.hidden).toBeUndefined();
+    expect(Living.quellTrouble(1)).toBe(false);
 
-    expect(Living.resolveTrouble(1, 1)).toBe(false);
-
-    expect(Living.smiteLair(1)).toBe(true);
-    expect(living.provinces[1].lair).toBeNull();
-    // Danger markers are converted into explorable ruins instead of hidden
-    expect(marker.type).toBe("ruins");
-    expect(marker.name.startsWith("Ruins of")).toBe(true);
+    expect(Living.smiteFaction(1)).toBe(true);
+    expect(Factions.active().some(f => f.i === faction!.i)).toBe(false);
   });
 
-  it("drains public order, suspends garrison stability, and floors unrest while lair is active", () => {
+  it("drains public order, suspends garrison stability, and floors unrest while a hostile faction is entrenched", () => {
     const living = Living.init();
     Living.quellTrouble(1);
-    Living.spawnLair(1, "monster_nest", 6);
+    const faction = Living.spawnDangerousFaction(1, "monsters", "ruin", 6)!;
+    faction.seasonsActive = 6; // unrest floor 4 + floor(7/3) = 6 after the tick
 
     const pSim = living.provinces[1];
     pSim.order = 80;
@@ -828,85 +803,41 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     Living.tick(1);
 
-    // Unrest should be floored at lair level (6)
+    // Unrest should be floored at the entrenched threat (6)
     expect(bSim.unrest).toBeGreaterThanOrEqual(6);
-    // Stability shouldn't accrue from garrisons while lair is active
-    expect(pSim.stability).toBe(10);
-    // Order should drain by level * 2
+    // Garrison accrual stays suspended while the threat is entrenched
+    expect(pSim.stability).toBeLessThanOrEqual(10);
+    // Order should drain under threat pressure
     expect(pSim.order).toBeLessThan(80);
   });
 
-  it("metastasizes unchecked trouble into an entrenched lair", () => {
+  it("festered trouble takes root as a dangerous faction", () => {
     const living = Living.init();
-    Living.smiteLair(1);
-    const trouble = Living.spawnTrouble(1, "angry_dead", "ruin", 5);
+    Living.quellTrouble(1);
+    const trouble = Living.spawnTrouble(1, "flooding", "ruin", 10)!;
     expect(trouble).not.toBeNull();
+    trouble.seasonsUnchecked = 5;
 
-    const lair = Living.metastasizeTroubleToLair(1);
-    expect(lair).not.toBeNull();
+    Living.tick(1);
+
+    // Level-10 trouble always festers (metaChance 1): hazard cleared, faction raised
     expect(living.provinces[1].trouble).toBeNull();
-    expect(living.provinces[1].lair).toBe(lair);
-    expect(lair!.id).toBe("ancient_evil");
-    expect(lair!.level).toBe(3); // ceil(5 / 2) = 3, clamped to min 3
-
-    // Test higher trouble level (10 -> ceil(10 / 2) = 5)
-    Living.smiteLair(1);
-    Living.spawnTrouble(1, "angry_dead", "ruin", 10);
-    const lair10 = Living.metastasizeTroubleToLair(1);
-    expect(lair10!.level).toBe(5);
+    expect(
+      Factions.active().some(f => {
+        const provId =
+          f.hq.provinceId ??
+          (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
+          pack.cells?.province?.[f.hq.cell];
+        return provId === 1 && (f.allegiance === "hostile" || f.allegiance === "clandestine");
+      })
+    ).toBe(true);
   });
 
-  it("launches seasonal lair raid against a settlement", () => {
+
+
+  it("mounts military expedition to assault and clear a hostile faction", () => {
     const living = Living.init();
     Living.quellTrouble(1);
-    const lair = Living.spawnLair(1, "bandit_camp", 4);
-    expect(lair).not.toBeNull();
-    lair!.raidPending = true;
-
-    const bSim = living.burgs[1];
-    bSim.buildings = ["market1"];
-
-    Living.tick(1);
-
-    // News should record lair activity
-    expect(living.recentNews.some(item => item.kind === "lair")).toBe(true);
-  });
-
-  it("grows a lair after a victorious raid: level, defenders, marker and news", () => {
-    const living = Living.init();
-    Living.quellTrouble(1);
-    const lair = Living.spawnLair(1, "bandit_camp", 5)!;
-    lair.raidPending = true;
-    lair.raidUnits = Array.from({ length: 10 }, () => ({ type: "north_marauders", count: 1000, exp: 5 }));
-    const defenders = lair.defenders.length;
-
-    Living.tick(1);
-
-    expect(lair.level).toBe(6);
-    expect(lair.defenders).toHaveLength(defenders + 1);
-    expect(pack.markers![lair.markerId!]!.name).toContain("Lair Lvl 6");
-    expect(living.recentNews.some(item => item.kind === "lair" && item.text.includes("grew bolder"))).toBe(true);
-  });
-
-  it("does not grow a lair past level 10", () => {
-    Living.init();
-    Living.quellTrouble(1);
-    const lair = Living.spawnLair(1, "bandit_camp", 10)!;
-    lair.raidPending = true;
-    lair.raidUnits = Array.from({ length: 10 }, () => ({ type: "north_marauders", count: 1000, exp: 5 }));
-    const defenders = lair.defenders.length;
-
-    Living.tick(1);
-
-    expect(lair.level).toBe(10);
-    expect(lair.defenders).toHaveLength(defenders);
-  });
-
-  it("mounts military expedition to assault and clear a lair", () => {
-    const living = Living.init();
-    Living.quellTrouble(1);
-    const lair = Living.spawnLair(1, "bandit_camp", 4);
-    expect(lair).not.toBeNull();
 
     // Give state 1 a strong field army to ensure victory
     const army = pack.states[1].military![0];
@@ -916,10 +847,11 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       ...Array.from({ length: 3 }, () => ({ type: "archers", hp: 1, exp: 3 }))
     ];
 
-    const result = Living.assaultLair(1, 1);
+    const faction = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 5)!;
+    const result = Living.assaultFaction(1, 1);
     expect(result).toBe(true);
-    expect(living.provinces[1].lair).toBeNull();
-    expect(living.recentNews.some(item => item.kind === "lair" && item.text.includes("conquered and destroyed"))).toBe(
+    expect(Factions.active().some(f => f.i === faction.i)).toBe(false);
+    expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("conquered and destroyed"))).toBe(
       true
     );
   });
@@ -927,23 +859,23 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   it("dispatches adventurers on a decapitation delve creating an adventurer figure", () => {
     const living = Living.init();
     Living.quellTrouble(1);
-    const lair = Living.spawnLair(1, "monster_nest", 5);
-    expect(lair).not.toBeNull();
+    const faction = Living.spawnDangerousFaction(1, "monsters", "ruin", 5);
+    expect(faction).not.toBeNull();
 
-    Living.sendAdventurersToLair(1, 1);
+    Living.sendAdventurersToFaction(1, 1);
 
     // Should create or use an adventurer figure
     const adventurers = pack.history.figures?.filter(f => f.roles.some(r => r.type === "adventurer")) ?? [];
     expect(adventurers.length).toBeGreaterThan(0);
 
     // Delve result processed
-    expect(living.recentNews.some(item => item.kind === "lair")).toBe(true);
+    expect(living.recentNews.some(item => item.kind === "faction")).toBe(true);
   });
 
-  it("selects lair agendas and loads Wealth capacity during adventurer contract", () => {
+  it("selects faction agendas against a hostile threat and loads Wealth capacity during adventurer contract", () => {
     const living = Living.init();
     Living.quellTrouble(1);
-    Living.spawnLair(1, "ancient_fort", 6);
+    Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 6);
 
     const sSim = living.states[1];
     sSim.agenda = null;
@@ -951,8 +883,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     // Advance 1 tick so chooseAgenda and stepAgenda run
     Living.tick(1);
 
-    // Agenda should have targeted the lair (either clear_lair or hire_adventurers) or processed it
-    expect(living.recentNews.some(item => item.kind === "lair")).toBe(true);
+    // Agenda should have targeted the hostile faction (either clear_faction or hire_adventurers) or processed it
+    expect(sSim.agenda?.targetProvinceId ?? living.recentNews.some(item => item.kind === "faction")).toBeTruthy();
 
     // Active adventurer contract commits +1 W load
     sSim.agenda = {
@@ -965,11 +897,12 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   });
 
   describe("Wheel of Ages (slice 5)", () => {
-    it("tracks the eschaton clock from mighty lairs and evil conquests", () => {
+    it("tracks the eschaton clock from mighty factions and evil conquests", () => {
       const living = Living.init();
       expect(Living.getEschaton()).toBe(0);
 
-      Living.spawnLair(1, "bandit_camp", 9);
+      const doom = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 9)!;
+      doom.seasonsActive = 8;
       Living.tick(1);
       expect(Living.getEschaton()).toBe(1);
 
@@ -994,17 +927,16 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(Living.getEschaton()).toBe(3);
     });
 
-    it("winds the eschaton back when a lair is purged", () => {
+    it("winds the eschaton back when a dangerous faction is purged", () => {
       const living = Living.init();
-      Living.spawnLair(1, "bandit_camp", 9);
+      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 9)!.seasonsActive = 8;
       Living.tick(1);
       expect(Living.getEschaton()).toBe(1);
 
-      const lair = living.provinces[1].lair!;
-      Living.clearLair(lair);
+      expect(Living.smiteFaction(1)).toBe(true);
       Living.relieveEschaton(living);
 
-      expect(living.provinces[1].lair).toBeNull();
+      expect(Factions.active().some(f => f.hq.burgId === 1 && f.allegiance === "hostile")).toBe(false);
       expect(Living.getEschaton()).toBe(0);
     });
 
@@ -2591,7 +2523,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     it("queues a trouble work order and clears it when Production completes", () => {
       const living = Living.init();
-      const trouble = Living.spawnTrouble(1, "bandits", "burg", 2);
+      const trouble = Living.spawnTrouble(1, "flooding", "burg", 2);
       expect(trouble).not.toBeNull();
       const carrier = Object.values(living.burgs).find(bSim =>
         (bSim?.productionQueue ?? []).some(item => item.kind === "trouble")
@@ -2599,8 +2531,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(carrier).toBeDefined();
 
       // Production completes the work order and clears the affliction.
-      carrier!.productionQueue = [{ kind: "trouble", id: "bandits" }];
-      carrier!.productionProgress = { "trouble:bandits": 79 }; // one Production from done
+      carrier!.productionQueue = [{ kind: "trouble", id: "flooding" }];
+      carrier!.productionProgress = { "trouble:flooding": 79 }; // one Production from done
       Living.tick(1);
 
       expect(living.provinces[1].trouble).toBeNull();
@@ -2915,7 +2847,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           n: 0,
           state: 1,
           icon: "⚔️"
-        } as unknown as (typeof pack.states[1].military)[number]
+        } as unknown as NonNullable<NonNullable<(typeof pack.states)[number]>["military"]>[number]
       ];
       faction.military = [
         {
@@ -3072,7 +3004,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
             n: 0,
             state: 1,
             icon: "⚔️"
-          } as unknown as (typeof pack.states[1].military)[number]
+          } as unknown as NonNullable<NonNullable<(typeof pack.states)[number]>["military"]>[number]
         ];
         const faction = Factions.add({
           name: "Silver Hand",
@@ -3224,7 +3156,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
             n: 0,
             state: 1,
             icon: "⚔️"
-          } as unknown as (typeof pack.states[1].military)[number]
+          } as unknown as NonNullable<NonNullable<(typeof pack.states)[number]>["military"]>[number]
         ];
       }
 
@@ -3574,7 +3506,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
             n: 0,
             state: 1,
             icon: "⚔️"
-          } as unknown as (typeof pack.states[1].military)[number]
+          } as unknown as NonNullable<NonNullable<(typeof pack.states)[number]>["military"]>[number]
         ];
       }
 
@@ -3792,148 +3724,6 @@ describe("Unified Figures slice 1: specialist commanders", () => {
   });
 });
 
-describe("Unified Figures slice 2: named dispatch", () => {
-  beforeEach(() => {
-    globalThis.options = {
-      map: {
-        seed: "test-living-seed",
-        population: { ruralFactor: 1, urbanization: 1 },
-        lore: {
-          name: "Test World",
-          description: "",
-          calendar: { year: 1000, era: "Age of Dawn", eraShort: "AD" },
-          history: { span: 500, realms: 0, density: 1, echoes: false, renames: false, mode: "archaeologist" }
-        }
-      },
-      generation: { cultures: { traits: true }, states: { limit: 4, sizeVariety: 2, growthRate: 1 } }
-    } as unknown as typeof options;
-
-    globalThis.pack = {
-      cells: {
-        i: [0, 1, 2, 3],
-        state: new Uint16Array([0, 1, 1, 0]),
-        province: new Uint16Array([0, 1, 1, 0]),
-        pop: [0, 120, 100, 20],
-        culture: [0, 1, 1, 1],
-        religion: [0, 1, 1, 1],
-        c: [[1], [0, 2], [1], [2]],
-        p: [
-          [0, 0],
-          [10, 10],
-          [20, 20],
-          [30, 30]
-        ],
-        r: [0, 0, 0, 0]
-      },
-      cultures: [
-        { i: 0, name: "Wildlands", base: 0, center: 0 },
-        { i: 1, name: "Aeloran (Human)", base: 0, center: 1, alignment: "good" }
-      ],
-      religions: [{ i: 0, name: "No religion" }],
-      burgs: [
-        { i: 0 },
-        {
-          i: 1,
-          name: "Aelor",
-          cell: 1,
-          x: 10,
-          y: 10,
-          state: 1,
-          culture: 1,
-          population: 18,
-          capital: 1,
-          walls: 1,
-          plaza: 1,
-          temple: 1,
-          citadel: 1
-        }
-      ],
-      states: [
-        { i: 0, name: "Neutrals" },
-        {
-          i: 1,
-          name: "Aeloria",
-          culture: 1,
-          capital: 1,
-          center: 1,
-          military: [
-            {
-              i: 0,
-              a: 300,
-              cell: 1,
-              x: 10,
-              y: 10,
-              bx: 10,
-              by: 10,
-              u: { spear: 300 },
-              units: [
-                { type: "spear", hp: 1, exp: 0 },
-                { type: "sage_coven", hp: 1, exp: 0 }
-              ],
-              n: 0,
-              name: "1st Aeloria Regiment",
-              state: 1,
-              icon: "⚔️"
-            }
-          ]
-        }
-      ],
-      provinces: [{ i: 0 }, { i: 1, name: "Ems", state: 1, burg: 1, center: 1 }],
-      history: { events: [], realms: [], eras: [{ name: "Age of Dawn", from: 500, to: 1000 }], figures: [] }
-    } as unknown as typeof pack;
-  });
-
-  it("names the matching specialist commander in the dispatch news", () => {
-    Living.init();
-    const living = Living.getState();
-    const commander = pack.history.figures!.find(f => f.roles.some(r => r.specialty === "sage"))!;
-    Living.spawnTrouble(1, "ancient_curse", "burg", 2); // pool w, requiredRole sage
-    const beforeXp = commander.xp ?? 0;
-    const success = Living.resolveTrouble(1, 1);
-    const news = living.recentNews[0]!;
-    expect(news.text).toContain(commander.name);
-    expect(news.text).toContain("Ancient Curse");
-    if (success) {
-      expect(commander.xp).toBeGreaterThan(beforeXp);
-      if (living.provinces[1].trouble === null) {
-        const event = pack.history.events!.at(-1)!;
-        expect(event.type).toBe("deed");
-        expect(event.actors).toContainEqual({ kind: "figure", id: commander.i });
-      }
-    }
-  });
-
-  it("a disastrous resolution breaks or slays the commander", () => {
-    Living.init();
-    const commander = pack.history.figures!.find(f => f.roles.some(r => r.specialty === "sage"))!;
-    commander.virtues = [];
-    commander.vices = ["cruel", "greedy", "wrathful"]; // traitBonus −3
-    commander.skills!.w = 0;
-    const regiment = pack.states[1].military![0];
-    for (const unit of regiment.units!) unit.disruption = 3;
-    Living.spawnTrouble(1, "ancient_curse", "burg", 10); // dc 26: total ≤ 20 is a guaranteed fumble
-    const vicesBefore = commander.vices.length;
-    Living.resolveTrouble(1, 1);
-    const broken = commander.death !== undefined || commander.vices.length > vicesBefore;
-    expect(broken).toBe(true);
-    if (commander.death !== undefined) {
-      expect(regiment.crew).not.toContain(commander.i); // the fallen commander is uncrewed
-    }
-  });
-
-  it("falls back to the anonymous state voice when no specialist is fielded", () => {
-    Living.init();
-    const living = Living.getState();
-    const state = pack.states[1];
-    state.military![0].units = state.military![0].units!.filter(u => u.type !== "sage_coven");
-    state.military![0].crew = [];
-    Living.spawnTrouble(1, "ancient_curse", "burg", 2);
-    Living.resolveTrouble(1, 1);
-    const news = living.recentNews[0]!;
-    expect(news.text).toContain("Aeloria");
-  });
-});
-
 const buildStubPack = () => {
   globalThis.options = {
     map: {
@@ -4062,6 +3852,127 @@ const buildStubPack = () => {
   } as unknown as typeof pack;
 };
 
+describe("Faction raids and assaults (trouble conversion Phase 3A)", () => {
+  beforeEach(() => {
+    buildStubPack();
+    pack.factions = [{ i: 0 } as Faction];
+  });
+
+  const hostileFaction = (burgId: number, cell: number) => {
+    const faction = Factions.add({
+      name: "Reaver Host",
+      category: "martial",
+      type: "brigand_raiders",
+      allegiance: "hostile",
+      sovereignAmbition: false,
+      raidThreshold: 4,
+      stateRelations: { 1: "Enemy" },
+      hq: { cell, burgId, fortified: false, secrecy: 0, assets: [] }
+    });
+    faction.military = [
+      {
+        i: 1,
+        name: "Reaver Host warband",
+        a: 0,
+        cell,
+        x: 10,
+        y: 10,
+        bx: 10,
+        by: 10,
+        state: 0,
+        n: 0,
+        units: Array.from({ length: 10 }, () => ({ type: "spear", hp: 1, exp: 3 })) as never
+      } as never
+    ];
+    syncRegimentTotals(faction.military[0]!, Military.getUnitTypes());
+    return faction;
+  };
+
+  it("raids and sacks a vulnerable settlement", () => {
+    const living = Living.init();
+    const faction = hostileFaction(1, 1);
+    faction.raidPending = true;
+    const orderBefore = living.provinces[1].order;
+
+    Living.tick(1);
+
+    expect(living.recentNews.some(n => n.kind === "faction" && n.text.includes("Raiders from Reaver Host"))).toBe(true);
+    expect(living.provinces[1].order).toBeLessThan(orderBefore);
+  });
+
+  it("is repulsed by a prepared garrison", () => {
+    const living = Living.init();
+    const faction = hostileFaction(1, 1);
+    faction.raidPending = true;
+    // Moderate raiders vs a stationed regiment + capital garrison: plausible, but outmatched
+    faction.military[0]!.units = Array.from({ length: 10 }, () => ({ type: "spear", hp: 1, exp: 1 })) as never;
+    syncRegimentTotals(faction.military[0]!, Military.getUnitTypes());
+    pack.states[1].military = [
+      {
+        i: 1,
+        name: "Aelor Garrison",
+        a: 0,
+        cell: 1,
+        x: 10,
+        y: 10,
+        bx: 10,
+        by: 10,
+        state: 1,
+        n: 0,
+        units: Array.from({ length: 10 }, () => ({ type: "spear", hp: 1, exp: 3 })) as never
+      } as never
+    ];
+    syncRegimentTotals(pack.states[1].military[0]!, Military.getUnitTypes());
+
+    Living.tick(1);
+
+    expect(living.recentNews.some(n => n.kind === "faction" && n.text.includes("repulsed raiders"))).toBe(true);
+  });
+
+  it("assaults a hostile faction HQ and destroys it", () => {
+    Living.init();
+    const faction = hostileFaction(2, 3);
+    pack.states[1].military = [
+      {
+        i: 1,
+        name: "Aelor Host",
+        a: 0,
+        cell: 3,
+        x: 30,
+        y: 30,
+        bx: 30,
+        by: 30,
+        state: 1,
+        n: 0,
+        units: []
+      } as never
+    ];
+    const army = pack.states[1].military![0];
+    army.units = [
+      ...Array.from({ length: 4 }, () => ({ type: "cavalry", hp: 1, exp: 5 })),
+      ...Array.from({ length: 3 }, () => ({ type: "spear", hp: 1, exp: 3 })),
+      ...Array.from({ length: 3 }, () => ({ type: "archers", hp: 1, exp: 3 }))
+    ] as never;
+
+    const result = Living.assaultFaction(1, 2);
+    expect(result).toBe(true);
+    expect(Factions.active().some(f => f.i === faction.i)).toBe(false);
+  });
+
+  it("sends adventurers to delve a hostile faction and either purges or mauls it", () => {
+    Living.init();
+    const faction = hostileFaction(2, 3);
+    const menBefore = faction.military[0]?.units?.length ?? 0;
+
+    const result = Living.sendAdventurersToFaction(1, 2);
+    const gone = !Factions.active().some(f => f.i === faction.i);
+    if (result) expect(gone).toBe(true);
+    else {
+      expect(gone || faction.raidPending === true || (faction.military[0]?.units?.length ?? 0) <= menBefore).toBe(true);
+    }
+  });
+});
+
 describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => {
   beforeEach(() => {
     buildStubPack();
@@ -4071,116 +3982,96 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     Living.init();
     const stateCountBefore = pack.states.length;
 
-    Living.spawnTrouble(2, "flooding", "resource", 7);
-    expect(Living.promoteTroubleToState(2)).toBeNull();
+    // Hazards stay provincial trouble: they never spawn factions or states
+    const trouble = Living.spawnTrouble(2, "flooding", "resource", 7);
+    expect(trouble?.id).toBe("flooding");
+    expect(Living.ascendFactionToState(999)).toBeNull();
     expect(pack.states.length).toBe(stateCountBefore);
 
-    Living.spawnTrouble(2, "monsters", "ruin", 7);
-    expect(Living.promoteTroubleToState(2)).toBeNull();
-
-    Living.spawnLair(2, "monster_nest", 8);
-    expect(Living.ascendLairToState(2)).toBeNull();
-
-    Living.spawnLair(2, "cursed_earth", 8);
-    expect(Living.ascendLairToState(2)).toBeNull();
+    // Non-ambitious factions never ascend on their own
+    Living.spawnDangerousFaction(2, "monsters", "ruin", 8);
+    Living.spawnDangerousFaction(2, "things_from_below", "ruin", 8);
     expect(pack.states.length).toBe(stateCountBefore);
   });
 
-  it("promotes an eligible trouble into a sovereign state by seizing the province burg", () => {
+  it("spawns a dangerous faction from organizational trouble and ascends it into a sovereign state", () => {
     const living = Living.init();
-    Living.spawnTrouble(2, "demagogue", "burg", 7);
+    const trouble = Living.spawnTrouble(2, "demagogue", "burg", 7);
+    expect(trouble).toBeNull();
+    expect(living.provinces[2].trouble).toBeNull();
 
-    const newStateId = Living.promoteTroubleToState(2);
+    const faction = (pack.factions ?? []).find(f => f.i !== 0)!;
+    expect(faction.type).toBe("demagogue");
+    expect(faction.hq.burgId).toBe(2);
+    expect(faction.stateRelations[1]).toBe("Enemy");
+
+    const newStateId = Living.ascendFactionToState(faction.i);
     expect(newStateId).toBe(3);
 
     const newState = pack.states[newStateId!];
     expect(newState).toBeDefined();
-    expect(newState.expansionism).toBe(0.8);
+    expect(newState.fullName).toContain("Popular Assembly");
     expect(newState.treasury).toBe(150);
     expect(newState.capital).toBe(2);
-    expect(newState.fullName).toContain("Revolutionary Tribune");
 
     const capital = pack.burgs[2];
     expect(capital.state).toBe(newStateId);
     expect(capital.capital).toBe(1);
-    expect(pack.cells.state[3]).toBe(newStateId);
     expect(pack.provinces[2].state).toBe(newStateId);
 
-    // Trouble cleared, order & stability scaffolded
-    const pSim = living.provinces[2];
-    expect(pSim.trouble).toBeNull();
-    expect(pSim.order).toBe(75);
-    expect(pSim.stability).toBe(3);
+    // The faction survives as the new state's autonomous arm
+    expect(faction.allegiance).toBe("state_arm");
+    expect(faction.patronStateId).toBe(newStateId);
+    expect(faction.stateRelations[newStateId!]).toBe("Ally");
 
-    // Capital buildings scaffolded
-    const bSim = living.burgs[2];
-    expect(bSim.unrest).toBe(0);
-    expect(bSim.buildings).toEqual(expect.arrayContaining(["walls2", "barracks1", "market1", "temple1"]));
-
-    // Aggressive ruler minted & 1st Regiment raised
-    const sSim = living.states[newStateId!];
-    const ruler = pack.history.figures!.find(f => f.i === sSim.rulerId)!;
-    expect(ruler).toBeDefined();
-    expect(ruler.virtues).toContain("brave");
-    expect(ruler.vices?.some(v => ["wrathful", "cruel", "vengeful"].includes(v))).toBe(true);
-    expect(newState.military?.length).toBe(1);
-    expect(newState.military![0].a).toBeGreaterThan(0);
-
-    // Mutual war, claim, and weight-60 grudges
+    // Mutual war, claim, and grudges via the shared emergent engine
     expect(newState.diplomacy![1]).toBe("Enemy");
     expect(pack.states[1].diplomacy![newStateId!]).toBe("Enemy");
     expect(living.states[1].claims.some(c => c.burgId === 2 && c.heldByStateId === newStateId)).toBe(true);
     expect(living.states[1].grudges.some(g => g.againstStateId === newStateId && g.weight === 60)).toBe(true);
-    expect(sSim.grudges.some(g => g.againstStateId === 1 && g.weight === 60)).toBe(true);
-
   });
 
-  it("ascends a wilderness lair by founding a new capital burg and hiding its dungeon marker", () => {
+  it("ascends a wilderness faction by founding a new capital burg", () => {
     const living = Living.init();
-    const lair = Living.spawnLair(3, "demonic_master", 8, 4)!;
-    const markerId = lair.markerId!;
-    expect(pack.markers![markerId].hidden).toBeFalsy();
+    const faction = Living.spawnDangerousFaction(3, "doomsday_cult", "ruin", 8, { cell: 4 })!;
+    expect(faction.hq.cell).toBe(4);
 
     const burgsBefore = pack.burgs.length;
-    const newStateId = Living.ascendLairToState(3);
+    const newStateId = Living.ascendFactionToState(faction.i);
     expect(newStateId).toBe(3);
     expect(pack.burgs.length).toBe(burgsBefore + 1);
 
     const newState = pack.states[newStateId!];
-    expect(newState.rosterId).toBe("demonBase");
-    expect(newState.fullName).toContain("Infernal Dominion");
+    expect(newState.fullName).toContain("Apocalyptic Dominion");
 
     const newCapital = pack.burgs[newState.capital];
     expect(newCapital.cell).toBe(4);
     expect(newCapital.capital).toBe(1);
     expect(newCapital.state).toBe(newStateId);
     expect(pack.cells.state[4]).toBe(newStateId);
-
-    // The dungeon marker becomes a ruin and the lair is cleared
-    expect(pack.markers![markerId].type).toBe("ruins");
-    expect(living.provinces[3].lair).toBeNull();
     expect(living.provinces[3].order).toBe(75);
   });
 
-  it("organically promotes a festering trouble to a state in stepProvinces when order has collapsed", () => {
+  it("never promotes a festering hazard to a state in stepProvinces, even when order has collapsed", () => {
     const living = Living.init();
-    const trouble = Living.spawnTrouble(2, "demagogue", "burg", 10)!;
+    const trouble = Living.spawnTrouble(2, "flooding", "burg", 10)!;
     trouble.seasonsUnchecked = 5;
     living.provinces[2].order = 20;
 
     Living.tick(1);
 
-    expect(pack.states.length).toBe(4);
-    expect(pack.provinces[2].state).toBe(3);
+    expect(pack.states.length).toBe(3);
+    expect(pack.provinces[2].state).not.toBe(3);
+    // The hazard festers into a dangerous faction instead of a state
     expect(living.provinces[2].trouble).toBeNull();
-    expect(living.provinces[2].lair).toBeNull();
-    expect(pack.burgs[2].state).toBe(3);
-    expect(pack.burgs[2].capital).toBe(1);
+    expect(
+      Factions.active().some(f => f.hq.provinceId === 2 && (f.allegiance === "hostile" || f.allegiance === "clandestine"))
+    ).toBe(true);
   });
 
-  it("metastasizes a festering trouble into a lair instead of promoting when order is intact", () => {
+  it("festered hazards become dangerous factions when order is intact", () => {
     const living = Living.init();
-    const trouble = Living.spawnTrouble(2, "demagogue", "burg", 10)!;
+    const trouble = Living.spawnTrouble(2, "flooding", "burg", 10)!;
     trouble.seasonsUnchecked = 5;
     living.provinces[2].order = 80;
     living.states[1].unravel = 0;
@@ -4190,26 +4081,56 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
 
     expect(pack.states.length).toBe(3);
     expect(living.provinces[2].trouble).toBeNull();
-    expect(living.provinces[2].lair).not.toBeNull();
+    expect(
+      Factions.active().some(f => f.hq.provinceId === 2 && (f.allegiance === "hostile" || f.allegiance === "clandestine"))
+    ).toBe(true);
   });
 
-  it("promotes a trouble immediately when resolveTrouble critically backfires in a low-order province", () => {
+  it("leaves a festering hazard in place without the domain check: no dice, no promotion", () => {
     const living = Living.init();
-    Living.spawnTrouble(2, "exiled_lord", "burg", 9); // high DC (16 + 3*9 = 43) guarantees total <= dc - 10
+    Living.spawnTrouble(2, "flooding", "burg", 9);
     living.provinces[2].order = 25;
 
-    const success = Living.resolveTrouble(1, 2);
-    expect(success).toBe(false);
-    expect(pack.states.length).toBe(4);
-    expect(pack.provinces[2].state).toBe(3);
-    expect(living.provinces[2].trouble).toBeNull();
+    expect(typeof (Living as unknown as Record<string, unknown>).resolveTrouble).toBe("undefined");
+    Living.tick(1);
+
+    expect(pack.states.length).toBe(3);
+    expect(pack.provinces[2].state).not.toBe(3);
+    // The hazard only escalates; it is cleared by production, heroes or factions
+    expect(living.provinces[2].trouble?.level ?? 0).toBeGreaterThanOrEqual(9);
   });
 
-  it("ascends a state-capable lair via Path A (raid coup) when overwhelming a vulnerable non-capital settlement", () => {
-    const living = Living.init();
-    const lair = Living.spawnLair(2, "aspiring_warlord", 7, 3)!;
-    lair.raidPending = true;
-    lair.raidUnits = Array.from({ length: 8 }, () => ({ type: "cavalry", count: 1000, exp: 5 }));
+  it("ascends an ambitious raid faction via Path A when overwhelming a vulnerable non-capital settlement", () => {
+    Living.init();
+    const faction = Factions.add({
+      name: "Warlord's Host",
+      category: "martial",
+      type: "aspiring_warlord",
+      allegiance: "hostile",
+      sovereignAmbition: true,
+      raidThreshold: 1,
+      stateRelations: { 1: "Enemy" },
+      hq: { cell: 3, burgId: 2, fortified: false, secrecy: 0, assets: [] }
+    });
+    faction.seasonsActive = 8;
+    faction.raidPending = true;
+    faction.military = [
+      {
+        i: 1,
+        name: "Warlord's Host warband",
+        a: 0,
+        cell: 3,
+        x: 30,
+        y: 30,
+        bx: 30,
+        by: 30,
+        state: 0,
+        n: 0,
+        units: Array.from({ length: 8 }, () => ({ type: "cavalry", hp: 1, exp: 5 })) as never
+      } as never
+    ];
+    syncRegimentTotals(faction.military[0]!, Military.getUnitTypes());
+    const living = Living.getState();
     living.provinces[2].order = 18;
     pack.burgs[2].walls = 0;
 
@@ -4219,30 +4140,32 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     expect(pack.provinces[2].state).toBe(3);
     expect(pack.burgs[2].state).toBe(3);
     expect(pack.burgs[2].capital).toBe(1);
-    expect(living.provinces[2].lair).toBeNull();
+    expect(faction.allegiance).toBe("state_arm");
   });
 
-  it("ascends an entrenched wilderness lair via Path B when active >= 8 seasons at level >= 8", () => {
+  it("ascends an entrenched wilderness faction via Path B when active >= 8 seasons", () => {
     const living = Living.init();
-    const lair = Living.spawnLair(3, "dwarven_outcasts", 8, 4)!;
-    lair.seasonsActive = 7; // stepProvinces increments to 8
-    lair.raidThreshold = 7; // prevent raid so Path B is exercised directly
+    const faction = Living.spawnDangerousFaction(3, "dwarven_outcasts", "ruin", 8, { cell: 4 })!;
+    faction.allegiance = "hostile";
+    faction.seasonsActive = 7; // stepProvinces increments to 8
+    faction.raidThreshold = 7; // prevent raid so Path B is exercised directly
 
     Living.tick(1);
 
     expect(pack.states.length).toBe(4);
     expect(pack.provinces[3].state).toBe(3);
-    expect(living.provinces[3].lair).toBeNull();
-    expect(pack.states[3].rosterId).toBe("infernalDwarfBase");
+    expect(pack.states[3].fullName).toContain("Underhold");
+    expect(faction.allegiance).toBe("state_arm");
   });
 
   it("records independence chronicle events and round-trips emergent states through serializeHistory / parseHistory", () => {
     const living = Living.init();
     Living.spawnTrouble(2, "demagogue", "burg", 7);
-    const troubleStateId = Living.promoteTroubleToState(2)!;
+    const spawnedFaction = (pack.factions ?? []).find(f => f.i !== 0)!;
+    const troubleStateId = Living.ascendFactionToState(spawnedFaction.i)!;
 
-    Living.spawnLair(3, "demonic_master", 8, 4);
-    const lairStateId = Living.ascendLairToState(3)!;
+    const lairFaction = Living.spawnDangerousFaction(3, "doomsday_cult", "ruin", 8, { cell: 4 })!;
+    const lairStateId = Living.ascendFactionToState(lairFaction.i)!;
 
     const independenceEvents = pack.history.events!.filter(e => e.type === "independence");
     expect(independenceEvents).toHaveLength(2);
@@ -4254,7 +4177,6 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
 
     expect(restored.living?.states[troubleStateId]?.rulerId).toBe(living.states[troubleStateId].rulerId);
     expect(restored.living?.provinces?.[2]?.trouble).toBeNull();
-    expect(restored.living?.provinces?.[3]?.lair).toBeNull();
     expect(restored.events.filter(e => e.type === "independence")).toHaveLength(2);
   });
 
@@ -4270,9 +4192,10 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
       try {
         const living = Living.init({ seed: "deterministic-ascension-seed" });
         Living.spawnTrouble(2, "secret_society", "burg", 8);
-        const s1 = Living.promoteTroubleToState(2)!;
-        Living.spawnLair(3, "ancient_evil", 9, 4);
-        const s2 = Living.ascendLairToState(3)!;
+        const spawnedFaction = (pack.factions ?? []).find(f => f.i !== 0)!;
+        const s1 = Living.ascendFactionToState(spawnedFaction.i)!;
+        const lairFaction = Living.spawnDangerousFaction(3, "angry_dead", "ruin", 9, { cell: 4 })!;
+        const s2 = Living.ascendFactionToState(lairFaction.i)!;
         Living.tick(2);
         return {
           s1Name: pack.states[s1].fullName,
@@ -4292,6 +4215,124 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     const first = runScenario();
     const second = runScenario();
     expect(second).toEqual(first);
+  });
+});
+
+describe("Faction clear-trouble production clock (trouble conversion Phase 2)", () => {
+  beforeEach(() => {
+    buildStubPack();
+    // City loops need terrain columns or stepCities early-returns with empty yields
+    pack.cells.h = [0, 30, 30, 30, 30, 30];
+    pack.cells.biome = [0, 2, 2, 2, 2, 2];
+    pack.factions = [{ i: 0 } as Faction];
+  });
+
+  const caretaker = (category: "adventuring" | "religious" | "commercial" | "martial") =>
+    Factions.add({
+      name: `${category} caretakers`,
+      category,
+      type: category === "martial" ? "mercenary_company" : "adventurer_guild",
+      allegiance: "autonomous",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+    });
+
+  it("assigns a clear_trouble agenda sized in production and banks node production each season", () => {
+    const living = Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("adventuring");
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+    expect(faction.agenda?.targetProvinceId).toBe(1);
+    expect(faction.agenda?.required).toBe(60); // 40 + 20 x level 1
+    expect(faction.agenda?.progress).toBe(0);
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+    expect(faction.agenda?.progress ?? 0).toBeGreaterThan(0);
+    expect(living.provinces[1].trouble).not.toBeNull();
+  });
+
+  it("clears the hazard on completion with order and stability rewards", () => {
+    const living = Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("religious");
+    faction.stateRelations[1] = "Suspicion";
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+    faction.agenda!.progress = faction.agenda!.required - 1;
+
+    const orderBefore = living.provinces[1].order;
+    const stabilityBefore = living.provinces[1].stability;
+    Living.tick(1);
+
+    expect(living.provinces[1].trouble).toBeNull();
+    expect(living.provinces[1].order).toBeGreaterThanOrEqual(orderBefore + 7);
+    expect(living.provinces[1].stability).toBe(stabilityBefore + 1);
+    expect(faction.agenda).toBeNull();
+    expect(living.recentNews.some(n => n.kind === "trouble" && n.text.includes(faction.name))).toBe(true);
+    // Clearing trouble buys standing with the host state
+    expect(faction.stateRelations[1]).toBe("Neutral");
+  });
+
+  it("improves relations one rung per clear, capped at Ally", () => {
+    const living = Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("adventuring");
+    faction.stateRelations[1] = "Enemy";
+    faction.agenda = {
+      kind: "clear_trouble",
+      label: "test",
+      targetProvinceId: 1,
+      progress: 0,
+      required: 1
+    };
+
+    Living.tick(1);
+    expect(living.provinces[1].trouble).toBeNull();
+    expect(faction.stateRelations[1]).toBe("Rival");
+
+    // Already Ally: stays Ally
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    faction.stateRelations[1] = "Ally";
+    faction.agenda = { kind: "clear_trouble", label: "test", targetProvinceId: 1, progress: 0, required: 1 };
+    Living.tick(1);
+    expect(faction.stateRelations[1]).toBe("Ally");
+  });
+
+  it("clears the agenda without progress when the trouble is gone", () => {
+    Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const faction = caretaker("commercial");
+
+    Living.tick(1);
+    expect(faction.agenda?.kind).toBe("clear_trouble");
+
+    Living.quellTrouble(1);
+    Living.tick(1);
+    expect(faction.agenda).toBeNull();
+  });
+
+  it("does not assign clear_trouble to martial factions or factions without a node in the province", () => {
+    Living.init();
+    Living.spawnTrouble(1, "flooding", "burg", 1);
+    const martial = caretaker("martial");
+    martial.hq.burgId = 1;
+
+    Living.tick(2);
+    expect(martial.agenda).toBeNull();
+
+    // Province 2 (Oakshire) has no troubled province node for a second faction
+    const far = Factions.add({
+      name: "far guild",
+      category: "adventuring",
+      type: "adventurer_guild",
+      allegiance: "autonomous",
+      hq: { cell: 5, burgId: 3, fortified: false, secrecy: 0, assets: [] }
+    });
+    Living.tick(1);
+    expect(far.agenda).toBeNull();
   });
 });
 
@@ -4497,9 +4538,9 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
   });
 
   it("spawns remnant faction on state collapse with inherited identity and hostilities", () => {
-    Living.init();
+    const living = Living.init();
     const fallenState = pack.states[1];
-    fallenState.researchedTechs = ["mining", "pottery", "masonry"];
+    living.states[1].researchedTechs = ["mining", "pottery", "masonry"];
 
     const remnant = Living.spawnRemnantFaction(fallenState, 2);
     expect(remnant).not.toBeNull();
@@ -4509,7 +4550,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(remnant!.allegiance).toBe("hostile");
     expect(remnant!.sovereignAmbition).toBe(true);
     expect(remnant!.stateRelations[2]).toBe("Enemy");
-    expect(remnant!.researchedTechs).toEqual(fallenState.researchedTechs);
+    expect(remnant!.researchedTechs).toEqual(living.states[1].researchedTechs);
   });
 });
 

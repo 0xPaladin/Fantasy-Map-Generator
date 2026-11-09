@@ -1,8 +1,6 @@
 // Mapping and lifecycle utilities to turn danger markers into active Living World threats and lairs
-import type { UnitType } from "@/data/roster-content";
-import { getLairDef, instantiateLairUnits } from "@/data/living-lairs";
 import type { Marker } from "@/model/story/markers-generator";
-import type { ProvinceLair, TroubleTheme } from "@/types/living";
+import type { TroubleTheme } from "@/types/living";
 
 export const DANGER_MARKER_TYPES: readonly string[] = [
   "brigands",
@@ -97,40 +95,6 @@ export function getLairArchetypeForMarker(type: string): LairArchetypeMapping {
   }
 
   return { lairId: "monster_nest", defaultTheme: "resource", isMaritime: false, baseLevel: 4 };
-}
-
-export function computeMarkerThreatLevel(marker: Marker, seed = 0): number {
-  const archetype = getLairArchetypeForMarker(marker.type);
-  const hash = Math.abs((marker.i * 31 + marker.cell * 17 + seed * 13) % 4);
-  const level = archetype.baseLevel + hash - 1;
-  return Math.max(3, Math.min(6, level));
-}
-
-/** Construct an active ProvinceLair object directly from a danger marker */
-export function createLairFromMarker(marker: Marker, unitTypes?: Record<string, UnitType>): ProvinceLair {
-  const archetype = getLairArchetypeForMarker(marker.type);
-  const def = getLairDef(archetype.lairId);
-  const level = computeMarkerThreatLevel(marker);
-  const isWater = pack.cells?.h ? pack.cells.h[marker.cell] < 20 : false;
-  const isMaritime = archetype.isMaritime || isWater;
-  const provinceId = pack.cells?.province?.[marker.cell] ?? 0;
-
-  return {
-    id: def.id,
-    name: marker.name || def.name,
-    level,
-    theme: archetype.defaultTheme,
-    cell: marker.cell,
-    markerId: marker.i,
-    provinceId,
-    maritime: isMaritime,
-    raidThreshold: def.raidThreshold,
-    raidUnits: instantiateLairUnits(def.raidUnits, unitTypes),
-    defenders: instantiateLairUnits(def.defenderUnits, unitTypes),
-    fortified: def.fortified,
-    raidPending: false,
-    seasonsActive: 0
-  };
 }
 
 /** Converts a cleared danger marker into a historical ruin landmark, keeping historical continuity */

@@ -595,7 +595,7 @@ Top level:
 
 `StatePolitySim`:
 
-- `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `resolve_trouble`, `clear_lair`, `suppress_faction`
+- `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `hire_adventurers`, `suppress_faction`
 - `unravel`, `warExhaustion`, `claims`, `grudges` - the collapse clock, peace pressure and the memory of lost burgs and wrongs
 - `faith`, `happiness`, `yieldsPerTurn`, `currentTechId`, `researchQueue`, `researchedTechs` - optional OpenCiv empire fields
 - `warTurns`, `peaceTreatyTurns` - optional war/truce clocks
@@ -605,7 +605,7 @@ A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` /
 
 `BurgSimState` carries `development`, `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, the OpenCiv city fields (`citizens`, `foodStored`, worked/locked cells) and the `productionQueue` (`{ kind: "unit" | "building" | "wonder" | "trouble" | "operation", id, targetFactionId?, targetNodeKey? }`) with its per-item progress. Suppression uses a `faction-suppression` operation (`6 + tier × 4` Production) queued in the host burg; wilderness HQs are military-only and never queue it.
 
-`ProvinceSimState` carries `order`, `stability`, `development`, `developmentProgress`, and the active `trouble` / `lair`.
+`ProvinceSimState` carries `order`, `stability`, `development`, `developmentProgress`, and the active `trouble` (hazards only — dangerous factions live in `pack.factions`).
 
 `ArmySimState` carries `movement`, `maxMovement`, `stance` (`march`, `encamp`, `fortify`, `raid`, `ambush`), `hasFought` and the last `lastBattle` record.
 
