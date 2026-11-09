@@ -4,7 +4,6 @@ import { currentContent } from "@/data/roster-store";
 import { valueModifier } from "@/data/saves-helpers";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
-import { getPetitionDef } from "@/data/living-petitions";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import type { Good } from "@/model/economy/goods-generator";
 import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
@@ -14,8 +13,7 @@ import { Military, syncRegimentTotals } from "@/model/political/military-generat
 import type { Marker } from "@/model/story/markers-generator";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { Faction } from "@/types/factions";
-import type { HistoricalFigure } from "@/types/history";
-import type { HistoricalRelic } from "@/types/living";
+import type { StateAgenda } from "@/types/living";
 import { createRng } from "@/utils/rng";
 import {
   activeCivThemeId,
@@ -25,14 +23,11 @@ import {
   citizensFromPopulation,
   classifyGood,
   figureBias,
-  figureCheckRoll,
-  figureLevel,
   foodNeededForGrowth,
   getCellResource,
   getCellTerrainInfo,
   getCellYieldSources,
   getCellYields,
-  guildTierForRenown,
   happinessCombatMultiplier,
   happinessGrowthFactor,
   hasStackingConflict,
@@ -42,8 +37,6 @@ import {
   isTechSelectable,
   Living,
   LUXURY_HAPPINESS,
-  maxHeroesForTier,
-  maxPartyForTier,
   populationFromCitizens,
   regionTierFromPop,
   settlementTierFromPop,
@@ -55,31 +48,6 @@ import {
   UPKEEP_FREE,
   unitMovementCost
 } from "./living-generator";
-
-function makeGuildFigure(i: number, overrides: Partial<HistoricalFigure> = {}): HistoricalFigure {
-  return {
-    i,
-    name: `Hero ${i}`,
-    culture: 1,
-    birth: 980,
-    roles: [{ type: "adventurer", target: { kind: "culture", id: 1 }, from: 1000 }],
-    alignment: "neutral",
-    virtues: [],
-    vices: [],
-    skills: { m: 0, w: 0, s: 0, c: 0 },
-    xp: 0,
-    cell: 1,
-    ...overrides
-  };
-}
-
-function addGuildHero(skills: { m: number; w: number; s: number; c: number }): number {
-  pack.history.figures ??= [];
-  const figures = pack.history.figures;
-  const heroId = figures.length;
-  figures.push(makeGuildFigure(heroId, { skills }));
-  return heroId;
-}
 
 describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War & Unravel)", () => {
   beforeEach(() => {
@@ -915,7 +883,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     // Advance 1 tick so chooseAgenda and stepAgenda run
     Living.tick(1);
 
-    // Agenda should have targeted the hostile faction (either clear_lair or hire_adventurers) or processed it
+    // Agenda should have targeted the hostile faction (either clear_faction or hire_adventurers) or processed it
     expect(sSim.agenda?.targetProvinceId ?? living.recentNews.some(item => item.kind === "faction")).toBeTruthy();
 
     // Active adventurer contract commits +1 W load
@@ -928,970 +896,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     };
   });
 
-  it("claims a guild bounty popup and banks its gold and renown", () => {
-    Living.init();
-    const guild = Living.getGuild();
-    guild.popups.push({
-      id: 1,
-      kind: "bounty_trouble",
-      cell: 1,
-      title: "Monsters in Aelor",
-      subtitle: "Level 5 trouble",
-      createdTick: 0,
-      expiresAtTick: 3,
-      rewardGold: 20,
-      rewardRenown: 5
-    });
-
-    const claimed = Living.claimPopup(1);
-
-    expect(claimed?.title).toBe("Monsters in Aelor");
-    expect(Living.getGuild().gold).toBe(20);
-    expect(Living.getGuild().renown).toBe(5);
-    expect(Living.getPopups()).toHaveLength(0);
-  });
-
-  it("expires an unclaimed popup after three seasons", () => {
-    Living.init();
-    Living.getGuild().popups.push({
-      id: 9,
-      kind: "bounty_lair",
-      cell: 1,
-      title: "A lair stirs",
-      subtitle: "Level 6 lair",
-      createdTick: 0,
-      expiresAtTick: 3,
-      rewardGold: 10,
-      rewardRenown: 2
-    });
-
-    Living.tick(3);
-
-    expect(Living.getPopups().some(popup => popup.id === 9)).toBe(false);
-  });
-
-  it("queues a bounty popup when a high-level trouble festers", () => {
-    Living.init();
-    Living.spawnTrouble(1, "flooding", "burg", 5);
-
-    Living.tick(1);
-
-    expect(Living.getPopups().some(popup => popup.kind === "bounty_trouble" && popup.provinceId === 1)).toBe(true);
-    expect(Living.getGuild().tier).toBe(1);
-  });
-
-  describe("Guild spine (slice 2)", () => {
-    it("initializes guild defaults, headquarters and passive chapter dues", () => {
-      Living.init();
-      const guild = Living.getGuild();
-
-      expect(guild.tier).toBe(1);
-      expect(guild.gold).toBe(0);
-      expect(guild.renown).toBe(0);
-      expect(guild.sandboxGodMode).toBe(false);
-      expect(guild.doctrine).toBe("auto_bounties");
-      expect(guild.hqBurgId).toBe(1);
-      expect(guild.chapterBurgIds).toEqual([1]);
-      expect(guild.favoredStateId).toBe(1);
-      expect(guild.roster).toEqual([]);
-      expect(guild.missions).toEqual([]);
-
-      const before = guild.gold;
-      Living.tick(1);
-      expect(guild.gold).toBe(before + 2);
-    });
-
-    it("recruits candidates for gold and enforces the tier roster cap", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      pack.history.figures ??= [];
-      const figures = pack.history.figures;
-      const ids = [0, 1, 2, 3].map(() => {
-        const index = figures.length;
-        figures.push(makeGuildFigure(index));
-        return index;
-      });
-      guild.candidates = [...ids];
-      guild.gold = 1000;
-
-      expect(Living.recruitCost()).toBe(60);
-      expect(Living.recruitCandidate(ids[0]!)).toBe(true);
-      expect(Living.recruitCandidate(ids[1]!)).toBe(true);
-      expect(Living.recruitCandidate(ids[2]!)).toBe(true);
-      expect(Living.recruitCandidate(ids[3]!)).toBe(false);
-      expect(guild.roster).toEqual(ids.slice(0, 3));
-      expect(guild.gold).toBe(1000 - 3 * 60);
-      expect(guild.candidates).toEqual([ids[3]!]);
-    });
-
-    it("mints tavern candidates with archetypes, disciplines and starting levels", () => {
-      Living.init();
-      Living.tick(4);
-      const guild = Living.getGuild();
-      const figures = pack.history.figures ?? [];
-
-      expect(guild.candidates).toHaveLength(3);
-      for (const id of guild.candidates) {
-        const figure = figures.find(entry => entry.i === id)!;
-        expect(figure.archetype).toBeDefined();
-        expect(figure.disciplines?.length).toBeGreaterThanOrEqual(3);
-        expect(figure.progression?.appliedLevel).toBe(figureLevel(figure.xp ?? 0));
-        expect(figure.skills!.m + figure.skills!.w + figure.skills!.s + figure.skills!.c).toBeGreaterThanOrEqual(3);
-      }
-    });
-
-    it("applies a chosen level 3 path once and clears the pending choice", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      pack.history.figures ??= [];
-      const figures = pack.history.figures;
-      const id = figures.length;
-      figures.push(
-        makeGuildFigure(id, {
-          archetype: "warden",
-          disciplines: ["melee", "tactics", "ride"],
-          skills: { m: 2, w: 0, s: 1, c: 0 },
-          xp: 140,
-          progression: { appliedLevel: 3, pendingChoices: 1, picks: [] }
-        })
-      );
-      guild.roster = [id];
-
-      expect(Living.chooseHeroPath(id, "warden_standard")).toBe(true);
-      const hero = figures.find(entry => entry.i === id)!;
-      expect(hero.skills).toEqual({ m: 2, w: 0, s: 2, c: 0 });
-      expect(hero.disciplines).toEqual(["melee", "tactics", "ride"]);
-      expect(hero.progression?.pendingChoices).toBe(0);
-      expect(hero.progression?.picks).toEqual(["warden_standard"]);
-      expect(Living.getHeroState(id)?.temperament.teamplay).toBeCloseTo(0.95);
-      expect(Living.chooseHeroPath(id, "warden_shieldwall")).toBe(false);
-    });
-
-    it("lazily initializes hero vitals, temperament and per-hero doctrine", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      guild.roster = [id];
-
-      const state = Living.getHeroState(id)!;
-      expect(state.resolve).toBe(state.maxResolve);
-      expect(state.stamina).toBe(state.maxStamina);
-      expect(state.temperament.boldness).toBe(0.6);
-      expect(state.doctrine).toBe("hunt_lairs");
-      expect(state.injuries).toEqual([]);
-
-      expect(Living.setHeroDoctrine(id, "manual")).toBe(true);
-      expect(Living.getHeroState(id)?.doctrine).toBe("manual");
-      expect(Living.setHeroPush(id, true)).toBe(true);
-      expect(Living.getHeroState(id)?.push).toBe(true);
-    });
-
-    it("never dispatches a downed hero", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "manual";
-      Living.spawnTrouble(1, "flooding", "burg", 1);
-      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      guild.roster = [id];
-      const state = Living.getHeroState(id)!;
-      state.resolve = 0;
-      state.downUntilTick = 10;
-
-      expect(Living.dispatchBestHero(1)).toBe(false);
-      expect(Living.dispatchHero(id, 1)).toBe(false);
-      expect(Living.getMissions()).toHaveLength(0);
-    });
-
-    it("spends at most one Stamina per mission below level 5 and two at level 5+", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 3;
-      guild.doctrine = "manual";
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 1);
-      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      guild.roster = [id];
-      const state = Living.getHeroState(id)!;
-      state.stamina = 7;
-      state.push = true;
-
-      expect(Living.dispatchHero(id, 1)).toBe(true);
-      Living.tick(1);
-      expect(state.stamina).toBe(6);
-
-      const veteranId = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      pack.history.figures!.find(figure => figure.i === veteranId)!.xp = 360;
-      guild.roster.push(veteranId);
-      const veteran = Living.getHeroState(veteranId)!;
-      veteran.stamina = 10;
-      veteran.push = true;
-      Living.spawnDangerousFaction(2, "brigand_raiders", "burg", 1);
-
-      expect(Living.dispatchHero(veteranId, 2)).toBe(true);
-      Living.tick(1);
-      expect(veteran.stamina).toBe(8);
-    });
-
-    it("turns a guaranteed fumble into injury, down state, or death only at zero Resolve", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 3;
-      guild.doctrine = "manual";
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 10);
-      const id = addGuildHero({ m: -100, w: 5, s: 0, c: 0 }); // a test-only impossible pool forces the fumble branch
-      guild.roster = [id];
-
-      expect(Living.dispatchHero(id, 1)).toBe(true);
-      Living.tick(2);
-      const figure = pack.history.figures!.find(entry => entry.i === id)!;
-      const state = Living.getHeroState(id)!;
-      if (figure.death !== undefined) {
-        expect(state.resolve).toBe(0);
-      } else {
-        expect(state.injuries.length > 0 || (state.downUntilTick ?? 0) > Living.getState().tick).toBe(true);
-      }
-    });
-
-    it("lets a manual hero doctrine opt out of auto-dispatch", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "auto_bounties";
-      Living.spawnTrouble(1, "flooding", "burg", 1);
-      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      guild.roster = [id];
-      Living.getHeroState(id)!.doctrine = "manual";
-
-      Living.tick(1);
-
-      expect(Living.getMissions()).toHaveLength(0);
-    });
-
-    it("runs paid pacify and charter operations with qualified idle heroes", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "manual";
-      const mediator = addGuildHero({ m: 0, w: 0, s: 5, c: 0 });
-      pack.history.figures!.find(figure => figure.i === mediator)!.archetype = "priest";
-      const factor = addGuildHero({ m: 0, w: 5, s: 0, c: 0 });
-      pack.history.figures!.find(figure => figure.i === factor)!.archetype = "factor";
-      guild.roster = [mediator, factor];
-      guild.gold = 150;
-      living.burgs[1]!.unrest = 40;
-      const orderBefore = living.provinces[1]!.order;
-
-      expect(Living.guildPacifyMediate(1)).toBe(true);
-      expect(living.burgs[1]!.unrest).toBe(0);
-      expect(living.provinces[1]!.order).toBe(orderBefore + 10);
-      expect(guild.gold).toBe(110);
-
-      expect(Living.startBuild(1, 1, "walls3")).toBe(true);
-      expect(Living.guildRushAssetCharter(1)).toBe(true);
-      expect(living.burgs[1]!.construction).toBeNull();
-      expect(living.burgs[1]!.buildings).toContain("walls3");
-      expect(guild.gold).toBe(60);
-    });
-
-    it("runs paid sedition, assassination and war brokerage", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "manual";
-      const shadow = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
-      pack.history.figures!.find(figure => figure.i === shadow)!.archetype = "shadow";
-      const cutthroat = addGuildHero({ m: 0, w: 0, s: 0, c: 30 });
-      pack.history.figures!.find(figure => figure.i === cutthroat)!.archetype = "shadow";
-      const envoy = addGuildHero({ m: 0, w: 0, s: 30, c: 0 });
-      pack.history.figures!.find(figure => figure.i === envoy)!.archetype = "envoy";
-      const diplomat = addGuildHero({ m: 0, w: 0, s: 30, c: 0 });
-      pack.history.figures!.find(figure => figure.i === diplomat)!.archetype = "envoy";
-      guild.roster = [shadow, cutthroat, envoy, diplomat];
-      guild.gold = 400;
-      pack.burgs[4].state = 1;
-      pack.cells.state[5] = 1;
-
-      expect(Living.guildInciteUprising(4)).toBe(true);
-      expect(pack.burgs[4].state).toBe(0);
-      expect(guild.gold).toBe(325);
-
-      const rulerId = living.states[1].rulerId!;
-      expect(Living.guildAssassinateRuler(1)).toBe(true);
-      expect(pack.history.figures!.find(figure => figure.i === rulerId)?.death).toBeDefined();
-      expect(guild.gold).toBe(225);
-
-      expect(Living.guildBrokerWar(1, 2)).toBe(true);
-      expect(pack.states[1].diplomacy?.[2]).toBe("Enemy");
-      expect(guild.gold).toBe(145);
-
-      expect(Living.guildBrokerWar(1, 2)).toBe(true);
-      expect(pack.states[1].diplomacy?.[2]).toBe("Neutral");
-      expect(pack.states[2].diplomacy?.[1]).toBe("Neutral");
-      expect(guild.gold).toBe(65);
-    });
-
-    it("refuses a paid operation without a qualified idle hero or enough gold", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "manual";
-      const wrongHero = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      guild.roster = [wrongHero];
-      guild.gold = 30;
-      living.burgs[1]!.unrest = 40;
-
-      expect(Living.guildPacifyMediate(1)).toBe(false);
-      expect(living.burgs[1]!.unrest).toBe(40);
-      expect(guild.gold).toBe(30);
-    });
-
-    it("round-trips hero vitals and injuries through the map history", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      const id = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      guild.roster = [id];
-      const state = Living.getHeroState(id)!;
-      state.stamina = 2;
-      state.doctrine = "manual";
-      state.push = true;
-      state.injuries = [{ kind: "wounded", untilTick: 4 }];
-
-      const { json, snapshotRecords } = serializeHistory(pack.history, pack.cells.i.length);
-      const restored = parseHistory(json, snapshotRecords, pack.cells.i.length);
-
-      const hero = restored.figures?.find(figure => figure.i === id)?.hero;
-      expect(hero?.condition).toMatchObject({
-        stamina: 2,
-        push: true,
-        injuries: [{ kind: "wounded", untilTick: 4 }]
-      });
-      expect(hero?.doctrine).toBe("manual");
-    });
-
-    it("auto-fills a deterministic tier-limited party", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 1;
-      guild.doctrine = "manual";
-      guild.roster = [
-        addGuildHero({ m: 5, w: 0, s: 0, c: 0 }),
-        addGuildHero({ m: 0, w: 5, s: 0, c: 0 }),
-        addGuildHero({ m: 0, w: 0, s: 0, c: 5 })
-      ];
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 1);
-
-      const first = Living.getPartyPreview(1)!;
-      const second = Living.getPartyPreview(1)!;
-
-      expect(first.party).toEqual(second.party);
-      expect(first.party.length).toBeGreaterThan(1);
-      expect(first.party.length).toBeLessThanOrEqual(maxPartyForTier(1));
-      expect(Living.dispatchBestHero(1)).toBe(true);
-      expect(Living.getMissions()[0]!.party?.length).toBeLessThanOrEqual(maxPartyForTier(1));
-      expect(maxPartyForTier(3)).toBe(3);
-    });
-
-    it("records one result per phase and lets no hero take more than two phases", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 1;
-      guild.doctrine = "manual";
-      const leader = addGuildHero({ m: 30, w: 30, s: 30, c: 30 });
-      guild.roster = [leader, addGuildHero({ m: 30, w: 30, s: 30, c: 30 })];
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 5);
-
-      expect(Living.dispatchHero(leader, 1)).toBe(true);
-      const mission = Living.getMissions()[0]!;
-      expect(mission.party).toHaveLength(2);
-      expect(mission.phases).toHaveLength(3);
-
-      Living.tick(3);
-
-      const results = mission.phaseResults ?? [];
-      expect(results).toHaveLength(3);
-      expect(new Set(results.map(result => result.phaseId)).size).toBe(3);
-      const contributions = new Map<number, number>();
-      for (const result of results) {
-        contributions.set(result.heroId, (contributions.get(result.heroId) ?? 0) + 1);
-      }
-      expect(Math.max(...contributions.values())).toBeLessThanOrEqual(2);
-    });
-
-    it("marks a phase untrained when no party member has the matching pool", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 1;
-      guild.doctrine = "manual";
-      const id = addGuildHero({ m: 0, w: 0, s: 0, c: 0 });
-      guild.roster = [id];
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 1);
-
-      expect(Living.dispatchHero(id, 1)).toBe(true);
-      Living.tick(1);
-
-      expect(Living.getMissions()[0]!.phaseResults?.[0]?.untrained).toBe(true);
-    });
-
-    it("pays every party member on full success and names the leader in the chronicle", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 1;
-      guild.doctrine = "manual";
-      const leader = addGuildHero({ m: 30, w: 30, s: 30, c: 30 });
-      const companion = addGuildHero({ m: 30, w: 30, s: 30, c: 30 });
-      guild.roster = [leader, companion];
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 1);
-
-      expect(Living.dispatchHero(leader, 1)).toBe(true);
-      Living.tick(2);
-
-      const figures = pack.history.figures!;
-      expect(figures.find(figure => figure.i === leader)?.xp).toBe(50);
-      expect(figures.find(figure => figure.i === companion)?.xp).toBe(50);
-      const deed = pack.history.events!.filter(event => event.type === "deed").at(-1)!;
-      expect(deed.actors).toContainEqual({ kind: "figure", id: leader });
-    });
-
-    it("applies partial success to a lair and failure leaves it standing", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 1;
-      guild.doctrine = "manual";
-      const partialHero = addGuildHero({ m: -100, w: 0, s: 0, c: 30 });
-      guild.roster = [partialHero];
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 5);
-
-      const faction = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 5)!;
-      const hpBefore = faction.military[0]!.units![0]!.hp;
-      expect(Living.dispatchHero(partialHero, 1)).toBe(true);
-      Living.tick(2);
-      expect(faction.military[0]!.units![0]!.hp ?? 0).toBeLessThan(hpBefore);
-
-      const failedHero = addGuildHero({ m: -100, w: 0, s: 0, c: -100 });
-      guild.roster = [failedHero];
-      const failedFaction = Living.spawnDangerousFaction(2, "brigand_raiders", "burg", 5)!;
-      expect(Living.dispatchHero(failedHero, 2)).toBe(true);
-      Living.tick(2);
-
-      // Failure leaves the faction standing
-      expect(Factions.active().some(f => f.i === failedFaction.i)).toBe(true);
-    });
-
-    it("maps renown and experience onto the tier and level ladders", () => {
-      expect(guildTierForRenown(0)).toBe(1);
-      expect(guildTierForRenown(49)).toBe(1);
-      expect(guildTierForRenown(50)).toBe(2);
-      expect(guildTierForRenown(150)).toBe(3);
-      expect(guildTierForRenown(350)).toBe(4);
-      expect(guildTierForRenown(700)).toBe(5);
-      expect(maxHeroesForTier(1)).toBe(3);
-      expect(maxHeroesForTier(5)).toBe(10);
-      expect(figureLevel(0)).toBe(1);
-      expect(figureLevel(59)).toBe(1);
-      expect(figureLevel(60)).toBe(2);
-    });
-
-    it("rolls unified figure checks deterministically", () => {
-      const figure = makeGuildFigure(42, {
-        skills: { m: 2, w: 0, s: 0, c: 0 },
-        virtues: ["bold"],
-        vices: []
-      });
-
-      const first = figureCheckRoll(createRng("guild-check"), figure, "m", 4, 12, 1);
-      const second = figureCheckRoll(createRng("guild-check"), figure, "m", 4, 12, 1);
-
-      expect(first).toEqual(second);
-      expect(first.total).toBe(first.roll + 2 + valueModifier(4) + 1 + 1);
-      expect(first.dc).toBe(12);
-      expect(first.success).toBe(first.total >= 12);
-    });
-
-    it("auto-dispatches an idle hero under its doctrine", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "auto_bounties";
-      pack.history.figures ??= [];
-      const figures = pack.history.figures;
-      const heroId = figures.length;
-      figures.push(makeGuildFigure(heroId, { skills: { m: 5, w: 0, s: 0, c: 0 } }));
-      guild.roster = [heroId];
-
-      Living.spawnTrouble(1, "flooding", "burg", 1);
-      Living.tick(1);
-
-      const mission = Living.getMissions().find(entry => entry.figureId === heroId);
-      expect(mission?.kind).toBe("trouble");
-      expect(mission?.required).toBe(2);
-      expect(mission?.tags).toEqual(expect.arrayContaining(["trouble"]));
-    });
-
-    it("auto-dispatches the best-fitting idle hero instead of the lowest id", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "manual";
-      const weakId = addGuildHero({ m: 0, w: 0, s: 0, c: 4 });
-      const strongId = addGuildHero({ m: 5, w: 0, s: 0, c: 0 });
-      guild.roster = [weakId, strongId];
-      Living.setHeroDoctrine(weakId, "hunt_troubles");
-      Living.setHeroDoctrine(strongId, "hunt_troubles");
-
-      Living.spawnTrouble(1, "flooding", "burg", 1);
-      expect(Living.dispatchBestHero(1)).toBe(true);
-
-      const mission = Living.getMissions().find(entry => entry.provinceId === 1);
-      expect(mission?.figureId).toBe(strongId);
-    });
-
-    it("auto-dispatches a pacify mission under the pacify doctrine", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "auto_pacify";
-      living.burgs[1]!.unrest = 40;
-      const heroId = addGuildHero({ m: 0, w: 0, s: 5, c: 0 });
-      guild.roster = [heroId];
-
-      Living.tick(1);
-
-      const mission = Living.getMissions().find(entry => entry.kind === "pacify");
-      expect(mission?.burgId).toBe(1);
-      expect(mission?.figureId).toBe(heroId);
-      expect(mission?.tags).toEqual(["social", "order"]);
-    });
-
-    it("resolves a dispatched mission and pays its gold, renown and xp", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 3;
-      guild.doctrine = "manual";
-      pack.history.figures ??= [];
-      const figures = pack.history.figures;
-      const heroId = figures.length;
-      figures.push(makeGuildFigure(heroId, { skills: { m: 30, w: 0, s: 0, c: 30 } }));
-      guild.roster = [heroId];
-
-      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 1);
-      expect(Living.dispatchHero(heroId, 1)).toBe(true);
-      const mission = Living.getMissions().find(entry => entry.figureId === heroId)!;
-      expect(mission.required).toBe(2);
-
-      const goldBefore = guild.gold;
-      Living.tick(2);
-
-      expect(Living.getMissions().some(entry => entry.figureId === heroId)).toBe(false);
-      expect(Factions.active().some(f => f.hq.burgId === 1 && f.allegiance === "hostile")).toBe(false);
-      expect(guild.gold).toBe(goldBefore + mission.rewardGold + 4);
-      expect(guild.renown).toBe(mission.rewardRenown);
-      expect(figures[heroId]!.xp).toBe(50);
-    });
-
-    it("retires a veteran and mints a protege carrying their best skill", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      pack.history.figures ??= [];
-      const figures = pack.history.figures;
-      const heroId = figures.length;
-      figures.push(makeGuildFigure(heroId, { birth: 940, skills: { m: 3, w: 1, s: 0, c: 2 }, xp: 120, cell: 2 }));
-      guild.roster = [heroId];
-
-      const before = figures.length;
-      const protegeId = Living.retireHero(heroId);
-
-      expect(protegeId).not.toBeNull();
-      expect(figures.length).toBe(before + 1);
-      expect(guild.roster).toContain(protegeId);
-      expect(guild.roster).not.toContain(heroId);
-
-      const protege = figures.find(figure => figure.i === protegeId)!;
-      expect(protege.skills?.m).toBe(4);
-      expect(protege.skills?.c).toBe(2);
-      expect(protege.roles.some(role => role.type === "adventurer")).toBe(true);
-    });
-
-    it("promotes the guild tier when renown crosses a threshold", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.renown = 150;
-
-      Living.tick(1);
-
-      expect(guild.tier).toBe(3);
-    });
-  });
-
-  describe("Relics & ruin excavation (slice 3)", () => {
-    function addMarker(fixtures: Partial<Marker> & Pick<Marker, "i" | "type" | "cell" | "name">): void {
-      pack.markers ??= [];
-      const [x, y] = pack.cells.p[fixtures.cell] ?? [0, 0];
-      pack.markers.push({ icon: "🏛️", x, y, ...fixtures });
-    }
-
-    function makeRelic(id: number, overrides: Partial<HistoricalRelic> = {}): HistoricalRelic {
-      return {
-        id,
-        name: `Relic ${id}`,
-        category: "regalia",
-        lore: "An old thing of power.",
-        originYear: 900,
-        bonuses: { s: 2 },
-        holder: { kind: "vault" },
-        ...overrides
-      };
-    }
-
-    it("targets any unexcavated ruin marker under auto_excavate with a tier-scaled DC", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.doctrine = "auto_excavate";
-      pack.markers = [];
-      // a wild, non-chronicle ruin is still a valid dig site
-      addMarker({ i: 0, type: "ruins", cell: 1, name: "Old Stones" });
-      guild.roster = [addGuildHero({ m: 0, w: 0, s: 0, c: 5 })];
-
-      Living.tick(1);
-
-      const mission = Living.getMissions().find(entry => entry.kind === "excavate");
-      expect(mission?.markerId).toBe(0);
-      expect(mission?.dc).toBe(6); // action ladder: old 14
-    });
-
-    it("mints a realm-named relic when excavating a chronicle site", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 5;
-      guild.doctrine = "manual";
-      pack.history.realms = [
-        {
-          i: 0,
-          name: "Vhaelen Empire",
-          coa: {} as (typeof pack.history.realms)[number]["coa"],
-          center: 1,
-          founded: 300,
-          fallen: 890,
-          cause: "collapse",
-          successors: []
-        }
-      ];
-      pack.markers = [];
-      addMarker({ i: 0, type: "ruins", cell: 1, name: "Old Vhaelen", chronicle: true });
-      const heroId = addGuildHero({ m: 0, w: 30, s: 0, c: 30 });
-      guild.roster = [heroId];
-
-      expect(Living.dispatchHeroToMarker(heroId, 0)).toBe(true);
-      const mission = Living.getMissions()[0]!;
-      expect(mission.rewardRelic).toBe(true);
-
-      const goldBefore = guild.gold;
-      Living.tick(2);
-
-      expect(guild.excavatedMarkers).toContain(0);
-      expect(guild.relics).toHaveLength(1);
-      const relic = guild.relics[0]!;
-      expect(relic.holder).toEqual({ kind: "figure", id: heroId });
-      expect(relic.originRealmId).toBe(0);
-      expect(["Vhaelen", "Old Vhaelen"].some(part => relic.name.includes(part))).toBe(true);
-      expect(relic.lore.length).toBeGreaterThan(0);
-      expect(guild.gold).toBe(goldBefore + 4 + mission.rewardGold);
-      expect(pack.history.figures?.find(figure => figure.i === heroId)?.xp).toBe(30);
-    });
-
-    it("yields either a relic or a 40-80 gold cache from a wild ruin", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 5;
-      guild.doctrine = "manual";
-      pack.markers = [];
-      addMarker({ i: 0, type: "ruins", cell: 1, name: "Old Stones" });
-      const heroId = addGuildHero({ m: 0, w: 30, s: 0, c: 30 });
-      guild.roster = [heroId];
-
-      expect(Living.dispatchBestHeroToMarker(0)).toBe(true);
-      const mission = Living.getMissions()[0]!;
-
-      Living.tick(2);
-
-      expect(guild.excavatedMarkers).toContain(0);
-      if (mission.rewardRelic) {
-        expect(guild.relics).toHaveLength(1);
-      } else {
-        expect(guild.relics).toHaveLength(0);
-        expect(mission.rewardGold).toBeGreaterThanOrEqual(40);
-        expect(mission.rewardGold).toBeLessThanOrEqual(80);
-        expect(guild.gold).toBe(4 + mission.rewardGold);
-      }
-    });
-
-    it("excavates instantly in sandbox mode and mint per marker-type categories", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      pack.markers = [];
-      addMarker({ i: 0, type: "libraries", cell: 1, name: "Great Library", chronicle: true });
-
-      expect(Living.excavateMarker(0)).toBe(true);
-      expect(guild.excavatedMarkers).toContain(0);
-      expect(guild.relics).toHaveLength(1);
-      expect(guild.relics[0]!.category).toBe("tome");
-      expect(Living.excavateMarker(0)).toBe(false);
-      expect(Living.excavateMarker(99)).toBe(false);
-    });
-
-    it("caps the vault at the guild tier and holds overflow in reserve", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 1;
-      guild.relics = [makeRelic(1)];
-      pack.markers = [];
-      addMarker({ i: 0, type: "libraries", cell: 1, name: "Great Library", chronicle: true });
-
-      expect(Living.excavateMarker(0)).toBe(true);
-      expect(guild.relics).toHaveLength(2);
-      expect(guild.relics[0]!.holder).toEqual({ kind: "vault" });
-      expect(guild.relics[1]!.holder).toEqual({ kind: "reserve" });
-      expect(Living.enshrineRelic(2)).toBe(false);
-    });
-
-    it("equips one relic per hero and caps enshrinement at the guild tier", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      const heroId = addGuildHero({ m: 1, w: 0, s: 0, c: 0 });
-      guild.roster = [heroId];
-      guild.relics = [makeRelic(1), makeRelic(2)];
-      guild.tier = 2;
-
-      expect(Living.equipRelic(1, heroId)).toBe(true);
-      expect(guild.relics[0]!.holder).toEqual({ kind: "figure", id: heroId });
-
-      // one relic per hero: the previous carry returns to the vault
-      expect(Living.equipRelic(2, heroId)).toBe(true);
-      expect(guild.relics[0]!.holder).toEqual({ kind: "vault" });
-      expect(guild.relics[1]!.holder).toEqual({ kind: "figure", id: heroId });
-
-      guild.tier = 1; // vault cap 1, already holding relic 1
-      expect(Living.enshrineRelic(2)).toBe(false);
-      expect(Living.recallRelic(2)).toBe(true);
-      expect(guild.relics[1]!.holder).toEqual({ kind: "reserve" });
-
-      // free the vault and the reserve relic can be enshrined
-      const secondHero = addGuildHero({ m: 0, w: 0, s: 0, c: 0 });
-      guild.roster.push(secondHero);
-      expect(Living.equipRelic(1, secondHero)).toBe(true);
-      expect(Living.enshrineRelic(2)).toBe(true);
-      expect(guild.relics[1]!.holder).toEqual({ kind: "vault" });
-    });
-
-    it("leases a relic to a state, adding generation, tribute and unravel relief", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      const sSim = living.states[1];
-      guild.relics = [makeRelic(1, { category: "regalia", bonuses: { s: 2 } })];
-
-      expect(Living.leaseRelic(1, 1)).toBe(true);
-      expect(guild.relics[0]!.holder).toEqual({ kind: "state", id: 1 });
-
-      sSim.unravel = 10;
-      const goldBefore = guild.gold;
-      Living.tick(1);
-
-      expect(guild.gold).toBe(goldBefore + 2 + 10); // chapter dues + lease tribute
-      expect(sSim.unravel).toBe(7); // -2 seasonal peace, -1 relic lease
-      expect(Living.leaseRelic(1, 1)).toBe(false); // already leased, not in vault
-    });
-
-    it("drops leased relics into a chronicle ruin when the capital falls and recovers them by excavation", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 5;
-      guild.doctrine = "manual";
-      pack.markers = [];
-      const baseS = living.states[1].yieldsPerTurn?.gold ?? 0;
-      guild.relics = [makeRelic(1, { category: "regalia", bonuses: { s: 2 } })];
-      expect(Living.leaseRelic(1, 1)).toBe(true);
-      expect(living.states[1].yieldsPerTurn?.gold ?? 0).toBeGreaterThanOrEqual(baseS);
-
-      const dropped = Living.dropStateRelicsToRuin(1, pack.burgs[1]);
-
-      expect(dropped).toHaveLength(1);
-      const relic = guild.relics[0]!;
-      const holder = relic.holder;
-      expect(holder.kind).toBe("ruin");
-      const ruinMarkerId = holder.kind === "ruin" ? holder.markerId : -1;
-      const ruinMarker = (pack.markers ?? []).find(marker => marker.i === ruinMarkerId);
-      expect(ruinMarker?.type).toBe("ruins");
-      expect(ruinMarker?.chronicle).toBe(true);
-      expect(ruinMarker?.cell).toBe(1);
-      expect(living.states[1].yieldsPerTurn?.gold ?? 0).toBeGreaterThanOrEqual(0);
-
-      const heroId = addGuildHero({ m: 0, w: 30, s: 0, c: 30 });
-      guild.roster = [heroId];
-      expect(Living.dispatchBestHeroToMarker(ruinMarkerId)).toBe(true);
-
-      Living.tick(2);
-
-      expect(relic.holder).toEqual({ kind: "figure", id: heroId });
-      // the chronicle ruin also yields its own fresh relic
-      expect(guild.relics).toHaveLength(2);
-    });
-
-    it("adds carried relic bonuses to figure checks", () => {
-      const figure = makeGuildFigure(9, { skills: { m: 2, w: 0, s: 0, c: 0 } });
-      const withRelic = figureCheckRoll(createRng("relic-check"), figure, "m", 0, 12, 0, 2);
-      const withoutRelic = figureCheckRoll(createRng("relic-check"), figure, "m", 0, 12, 0, 0);
-      expect(withRelic.total).toBe(withoutRelic.total + 2);
-    });
-  });
-
-  describe("Guild petitions (slice 4)", () => {
-    function pushPetition(
-      guild: ReturnType<typeof Living.getGuild>,
-      petitionId: string,
-      anchors: { provinceId?: number; burgId?: number; stateId?: number } = {}
-    ): number {
-      const id = guild.popups.reduce((max, popup) => Math.max(max, popup.id), 0) + 1;
-      guild.popups.push({
-        id,
-        kind: "guild_petition",
-        cell: 1,
-        title: "A petition",
-        subtitle: "The dilemma text",
-        createdTick: 0,
-        expiresAtTick: 20,
-        petitionId,
-        rewardGold: 0,
-        rewardRenown: 0,
-        ...anchors
-      });
-      return id;
-    }
-
-    it("queues a petition anchored to an active crisis every ~5 seasons", () => {
-      Living.init();
-      Living.spawnTrouble(1, "demagogue", "burg", 7);
-
-      // the deterministic phase decides which season within the 5-season cycle asks
-      const phase = createRng("test-living-seed:guild:petition:phase").int(0, 4);
-      Living.tick(phase === 0 ? 5 : 5 - phase);
-
-      const petitions = Living.getPopups().filter(popup => popup.kind === "guild_petition");
-      expect(petitions).toHaveLength(1);
-      expect(petitions[0]!.petitionId).toBeTruthy();
-      expect(petitions[0]!.title.length).toBeGreaterThan(0);
-      expect(petitions[0]!.subtitle).not.toContain("{");
-      expect(getPetitionDef(petitions[0]!.petitionId)).toBeDefined();
-    });
-
-    it("resolves a petition choice, trading guild gold for quelling the trouble", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      Living.spawnTrouble(1, "flooding", "burg", 5)
-      const popupId = pushPetition(guild, "harsh_levy", { provinceId: 1, burgId: 1, stateId: 1 });
-      guild.gold = 100;
-
-      const outcome = Living.resolvePetition(popupId, 0)!;
-
-      expect(outcome.summary).toContain("the trouble was quelled");
-      expect(living.provinces[1].trouble).toBeNull();
-      expect(guild.gold).toBe(70);
-      expect(guild.renown).toBe(8);
-      expect(Living.getPopups().some(popup => popup.id === popupId)).toBe(false);
-      expect(Living.resolvePetition(popupId, 1)).toBeNull();
-    });
-
-    it("lets the selfish choice bank gold while the crisis festers", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      Living.spawnTrouble(1, "flooding", "burg", 5)
-      const popupId = pushPetition(guild, "harsh_levy", { provinceId: 1, burgId: 1, stateId: 1 });
-
-      const outcome = Living.resolvePetition(popupId, 1)!;
-
-      expect(outcome.gold).toBe(10);
-      expect(guild.gold).toBe(10);
-      expect(guild.renown).toBe(Math.max(0, -4));
-      expect(living.provinces[1].trouble).not.toBeNull();
-    });
-
-    it("banishes or profits from a cursed relic", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.relics = [
-        {
-          id: 1,
-          name: "Blood-Idol of the Dread Cloister",
-          category: "idol",
-          lore: "It whispers.",
-          originYear: 700,
-          bonuses: { m: 1, c: 1 },
-          cursed: true,
-          holder: { kind: "vault" }
-        }
-      ];
-      const popupId = pushPetition(guild, "cursed_idol");
-
-      const outcome = Living.resolvePetition(popupId, 0)!;
-
-      expect(outcome.summary).toContain("was destroyed");
-      expect(guild.relics).toHaveLength(0);
-      expect(guild.renown).toBe(12);
-
-      // with no cursed relic left, the dark sale yields nothing but gold
-      const secondId = pushPetition(guild, "cursed_idol");
-      const outcome2 = Living.resolvePetition(secondId, 1)!;
-      expect(outcome2.gold).toBe(80);
-      expect(outcome2.summary).toContain("takes its cut");
-    });
-
-    it("purges a lair when the Guild refuses the dark tithe", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      Living.quellTrouble(1);
-      const faction = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 5)!;
-      const popupId = pushPetition(guild, "dark_tithe", { provinceId: 1, burgId: 1, stateId: 1 });
-      guild.gold = 50;
-
-      const outcome = Living.resolvePetition(popupId, 0)!;
-
-      expect(outcome.summary).toContain("was broken up");
-      expect(Factions.active().some(f => f.i === faction.i)).toBe(false);
-    });
-
-    it("resolves a succession dispute by selling out the ruler", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      const rulerId = living.states[1].rulerId;
-      const popupId = pushPetition(guild, "palace_coup", { stateId: 1 });
-
-      const outcome = Living.resolvePetition(popupId, 1)!;
-
-      expect(outcome.summary).toContain("the ruler fell");
-      expect(pack.history.figures?.find(figure => figure.i === rulerId)?.death).toBeDefined();
-    });
-
-    it("refuses expired petitions and ignored ones leave the world unchanged", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      Living.spawnTrouble(1, "flooding", "burg", 5)
-      const popup = {
-        id: 77,
-        kind: "guild_petition" as const,
-        cell: 1,
-        title: "A late petition",
-        subtitle: "Too late",
-        createdTick: 0,
-        expiresAtTick: 0,
-        provinceId: 1,
-        petitionId: "harsh_levy",
-        rewardGold: 0,
-        rewardRenown: 0
-      };
-      guild.popups.push(popup);
-
-      expect(Living.resolvePetition(77, 0)).toBeNull();
-      expect(living.provinces[1].trouble).not.toBeNull();
-
-      Living.tick(1);
-
-      expect(Living.getPopups().some(entry => entry.id === 77)).toBe(false);
-      expect(living.provinces[1].trouble).not.toBeNull();
-    });
-  });
-
   describe("Wheel of Ages (slice 5)", () => {
-    it("tracks the eschaton clock from mighty lairs and evil conquests", () => {
+    it("tracks the eschaton clock from mighty factions and evil conquests", () => {
       const living = Living.init();
       expect(Living.getEschaton()).toBe(0);
 
@@ -1921,31 +927,21 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(Living.getEschaton()).toBe(3);
     });
 
-    it("winds the eschaton back when a lair is purged", () => {
+    it("winds the eschaton back when a dangerous faction is purged", () => {
       const living = Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 3;
-      guild.doctrine = "manual";
-      const doom = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 9)!;
-      doom.seasonsActive = 8;
+      Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 9)!.seasonsActive = 8;
       Living.tick(1);
       expect(Living.getEschaton()).toBe(1);
 
-      guild.roster = [addGuildHero({ m: 30, w: 0, s: 0, c: 30 })];
-      expect(Living.dispatchBestHero(1)).toBe(true);
-      const mission = Living.getMissions()[0]!;
-      mission.dc = 2;
-      mission.phases = mission.phases?.map(phase => ({ ...phase, dc: 2 }));
+      expect(Living.smiteFaction(1)).toBe(true);
+      Living.relieveEschaton(living);
 
-      Living.tick(2);
-
-      expect(Factions.active().some(f => f.i === doom.i)).toBe(false);
+      expect(Factions.active().some(f => f.hq.burgId === 1 && f.allegiance === "hostile")).toBe(false);
       expect(Living.getEschaton()).toBe(0);
     });
 
-    it("turns the wheel: bakes the epoch, retires unraveling realms and seeds relic ruins", () => {
+    it("turns the wheel: bakes the epoch, retires unraveling realms and seeds ruins", () => {
       const living = Living.init();
-      const guild = Living.getGuild();
       living.states[2].unravel = 60;
       const yearBefore = options.map.lore.calendar.year;
 
@@ -1965,13 +961,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         marker => marker.type === "ruins" && marker.chronicle && marker.name === "Ruins of Khazadia"
       );
       expect(ruin).toBeDefined();
-      const buried = guild.relics.find(entry => entry.holder.kind === "ruin" && entry.holder.markerId === ruin!.i);
-      expect(buried).toBeDefined();
-      expect(buried!.originRealmId).toBe(realm!.i);
-      expect(["regalia", "charter"]).toContain(buried!.category);
 
       expect(pack.history.eras?.at(-1)?.name).toBe(result.era);
-      expect(guild.ageCount).toBe(1);
       expect(Living.getEschaton()).toBe(0);
 
       // the surviving state resets and crowns a fresh young ruler
@@ -2001,49 +992,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(pack.burgs[3].state).toBeGreaterThan(2);
     });
 
-    it("carries the vault forward and mints scions for veteran heroes", () => {
-      Living.init();
-      const guild = Living.getGuild();
-      guild.tier = 4;
-      pack.history.figures ??= [];
-      const figures = pack.history.figures;
-      const heroId = figures.length;
-      figures.push(
-        makeGuildFigure(heroId, { skills: { m: 3, w: 1, s: 0, c: 2 }, xp: 300, virtues: ["bold"], cell: 1 })
-      );
-      const rookieId = heroId + 1;
-      figures.push(makeGuildFigure(rookieId, { xp: 0 }));
-      guild.roster = [heroId, rookieId];
-      guild.relics = [
-        {
-          id: 1,
-          name: "Old Crown",
-          category: "regalia",
-          lore: "A battered diadem.",
-          originYear: 500,
-          bonuses: { s: 2 },
-          holder: { kind: "vault" }
-        }
-      ];
-
-      const result = Living.turnAge();
-
-      expect(guild.ageCount).toBe(1);
-      expect(guild.legacyTier).toBe(1);
-      expect(guild.tier).toBe(4);
-      expect(guild.relics).toHaveLength(1);
-      expect(guild.relics[0]!.holder).toEqual({ kind: "vault" });
-      expect(guild.chapterBurgIds).toEqual([1]);
-
-      expect(figures[heroId]!.death).toBe(result.year);
-      expect(guild.roster).not.toContain(heroId);
-      expect(guild.roster).not.toContain(rookieId); // level 1 heroes leave no bloodline
-
-      const scion = figures.find(figure => figure.i === guild.roster[0])!;
-      expect(scion.skills?.m).toBe(5); // ancestor 3 + 1 + 1 legacyTier, capped at 5
-      expect(scion.virtues).toContain("bold");
-      expect(scion.roles[0]!.type).toBe("adventurer");
-    });
   });
 
   describe("OpenCiv slice 2: cell yields, resources, improvements & minor burgs", () => {
@@ -3438,7 +2386,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     });
   });
 
-  describe("OpenCiv slice 6: religion, diplomacy & relic perks", () => {
+  describe("OpenCiv slice 6: religion and diplomacy", () => {
     const makeRegiment = (i: number, cell: number, state = 1) => ({
       i,
       name: `Regiment ${i}`,
@@ -3453,16 +2401,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       n: 0,
       icon: "⚔️",
       state
-    });
-
-    const makeRelic = (id: number, category: HistoricalRelic["category"], stateId = 1): HistoricalRelic => ({
-      id,
-      name: `${category} relic`,
-      category,
-      lore: "A relic.",
-      originYear: 900,
-      bonuses: {},
-      holder: { kind: "state", id: stateId }
     });
 
     beforeEach(() => {
@@ -3568,20 +2506,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       expect(pack.cells.state[regiment.cell]).not.toBe(2);
       expect(living.armies?.["1-0"]).toBeDefined();
-    });
-
-    it("applies leased relic perks to yields and happiness", () => {
-      const living = Living.init();
-      const guild = Living.getGuild();
-      guild.relics = [makeRelic(0, "regalia"), makeRelic(1, "charter"), makeRelic(2, "idol")];
-
-      Living.tick(1);
-
-      const sSim = living.states[1];
-      expect(sSim.happinessBreakdown?.relics).toBe(4);
-      expect(sSim.yieldsPerTurn?.faith).toBeGreaterThanOrEqual(4);
-      expect(sSim.yieldsPerTurn?.culture).toBeGreaterThanOrEqual(2);
-      expect(sSim.yieldsPerTurn?.gold).toBeGreaterThan(5);
     });
 
     it("keeps religion state lazy on old saves", () => {
@@ -4014,6 +2938,666 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(new Set([...stateWorked, ...factionWorked]).size).toBe(stateWorked.length + factionWorked.length);
       expect(faction.hq.sim?.cityYields?.food ?? 0).toBeGreaterThan(0);
       expect(faction.hq.sim?.cityYields?.gold ?? 0).toBeGreaterThanOrEqual(0);
+    });
+
+    describe("State suppression administrative campaign (Phase 2)", () => {
+      function queueSuppression(living: ReturnType<typeof Living.init>, faction: Faction, nodeKey: string, progress = 13) {
+        const b1 = living.burgs[1];
+        b1.productionQueue = [
+          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: nodeKey }
+        ];
+        b1.productionProgress = { "operation:faction-suppression": progress };
+        living.states[1].agenda = {
+          kind: "suppress_faction",
+          label: `Suppressing ${faction.name} in Aelor`,
+          targetFactionId: faction.i,
+          targetBurgId: 1,
+          progress: 0,
+          required: 1
+        };
+      }
+
+      it("starts one suppression operation and agenda via the public API", () => {
+        Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        const b1 = Living.getState().burgs[1];
+        expect(b1.productionQueue).toEqual([
+          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: "outpost:1" }
+        ]);
+        expect(Living.getState().states[1].agenda).toMatchObject({
+          kind: "suppress_faction",
+          targetFactionId: faction.i,
+          targetBurgId: 1
+        });
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(false);
+        expect(
+          Living.getState().recentNews.some(item => item.kind === "faction" && item.text.includes("began suppressing"))
+        ).toBe(true);
+      });
+
+      it("chooses a suppression agenda once the state fields an army", () => {
+        const living = Living.init();
+        pack.states[1].military = [
+          {
+            i: 0,
+            name: "Aeloria Regiment",
+            a: 100,
+            cell: 9,
+            x: 90,
+            y: 90,
+            bx: 90,
+            by: 90,
+            u: { spear: 100 },
+            units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 1,
+            icon: "⚔️"
+          } as unknown as NonNullable<NonNullable<(typeof pack.states)[number]>["military"]>[number]
+        ];
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        Living.tick(1);
+
+        expect(living.states[1].agenda).toMatchObject({ kind: "suppress_faction", targetFactionId: faction.i });
+        expect(
+          (living.burgs[1].productionQueue ?? []).some(
+            item => item.kind === "operation" && item.targetFactionId === faction.i
+          )
+        ).toBe(true);
+      });
+
+      it("applies order/secrecy pressure and pillages a depleted outpost", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 3, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        queueSuppression(living, faction, "outpost:1");
+
+        Living.tick(1);
+
+        expect(faction.outposts[0].pillaged).toBe(true);
+        expect(faction.outposts[0].influence).toBe(0);
+        expect(living.states[1].agenda).toBeNull();
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("razed"))).toBe(true);
+        // Pillaged nodes are skipped from empire rollups.
+        expect(Living.getFactionYieldBreakdown(faction).outposts).toHaveLength(0);
+      });
+
+      it("pauses pressure while a faction guard defends the node", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 10, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        faction.military = [
+          {
+            i: 1,
+            name: "Silver Guard",
+            a: 100,
+            cell: 5,
+            x: 50,
+            y: 50,
+            bx: 50,
+            by: 50,
+            u: { spear: 100 },
+            units: Array.from({ length: 13 }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 0,
+            icon: "⚔️",
+            rosterId: faction.rosterId
+          } as unknown as (typeof faction.military)[number]
+        ];
+        queueSuppression(living, faction, "outpost:1");
+
+        Living.tick(1);
+
+        expect(faction.outposts[0].influence).toBe(10);
+        expect(faction.outposts[0].pillaged).toBeFalsy();
+        expect(living.states[1].agenda?.kind).toBe("suppress_faction");
+        expect(living.states[1].agenda?.stallUntilTick).toBeGreaterThan(living.tick);
+      });
+
+      it("relocates the HQ to the strongest surviving outpost when it falls", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          researchedTechs: ["pottery"],
+          hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 2, assets: [] },
+          outposts: [
+            { burgId: 5, cell: 4, tier: 1, influence: 50, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        queueSuppression(living, faction, "hq");
+
+        Living.tick(1);
+
+        expect(faction.removed).toBeFalsy();
+        expect(faction.hq.burgId).toBe(5);
+        expect(faction.hq.pillaged).toBe(false);
+        expect(faction.outposts).toHaveLength(0);
+        expect(faction.researchedTechs).toContain("pottery");
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("fled to"))).toBe(true);
+      });
+
+      it("dissolves the faction when its HQ falls with no surviving outposts", () => {
+        const living = Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 2, assets: [] }
+        });
+        queueSuppression(living, faction, "hq");
+
+        Living.tick(1);
+
+        expect(faction.removed).toBe(true);
+        expect(living.states[1].agenda).toBeNull();
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("dissolved"))).toBe(true);
+      });
+    });
+
+    describe("State suppression armed stronghold clearing (Phase 3)", () => {
+      function fieldArmy(blocks: number, cell = 9) {
+        pack.states[1].military = [
+          {
+            i: 0,
+            name: "Aeloria Regiment",
+            a: 100,
+            cell,
+            x: 90,
+            y: 90,
+            bx: 90,
+            by: 90,
+            u: { spear: 100 },
+            units: Array.from({ length: blocks }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 1,
+            icon: "⚔️"
+          } as unknown as NonNullable<NonNullable<(typeof pack.states)[number]>["military"]>[number]
+        ];
+      }
+
+      function guardRegiment(faction: Faction, blocks: number) {
+        faction.military = [
+          {
+            i: 1,
+            name: "Silver Guard",
+            a: 100,
+            cell: 5,
+            x: 50,
+            y: 50,
+            bx: 50,
+            by: 50,
+            u: { spear: 100 },
+            units: Array.from({ length: blocks }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 0,
+            icon: "⚔️",
+            rosterId: faction.rosterId
+          } as unknown as (typeof faction.military)[number]
+        ];
+      }
+
+      it("builds a capped militia garrison from citizens, tier and fortification", () => {
+        Living.init();
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          hq: { cell: 5, burgId: 1, fortified: true, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 1, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+
+        expect(Living.factionGarrisonBlocks(faction, faction.hq, true)).toHaveLength(6);
+        expect(Living.factionGarrisonBlocks(faction, faction.outposts[0], false)).toHaveLength(2);
+      });
+
+      it("lets the state field army defeat a faction guard in range", () => {
+        const living = Living.init();
+        fieldArmy(13);
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+        guardRegiment(faction, 13);
+        living.states[1].agenda = {
+          kind: "suppress_faction",
+          label: "Suppressing Silver Hand in Aelor",
+          targetFactionId: faction.i,
+          targetBurgId: 1,
+          progress: 0,
+          required: 1
+        };
+
+        const guardHpBefore = (faction.military[0]?.units ?? []).reduce((sum, b) => sum + b.hp, 0);
+        Living.tick(1);
+
+        const guardHpAfter = (faction.military.find(r => r.i === 1)?.units ?? []).reduce(
+          (sum, b) => sum + b.hp,
+          0
+        );
+        expect(guardHpAfter).toBeLessThan(guardHpBefore);
+        expect(living.armies?.[Living.unitKey(1, 0)]?.lastBattle).toBeDefined();
+        expect(living.recentNews.some(item => item.kind === "battle")).toBe(true);
+      });
+
+      it("storms a low-influence unguarded outpost and pillages it on victory", () => {
+        Living.init();
+        fieldArmy(13);
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 10, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+
+        expect(Living.assaultFactionNode(1, faction.i, "outpost:1")).toBe(true);
+        expect(faction.outposts[0].pillaged).toBe(true);
+        expect(Living.getState().recentNews.some(item => item.text.includes("razed"))).toBe(true);
+      });
+
+      it("retreats and delays suppression when the storm fails", () => {
+        Living.init();
+        fieldArmy(1);
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 5, burgId: 1, fortified: true, secrecy: 0, influence: 70, assets: [] }
+        });
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+
+        expect(Living.assaultFactionNode(1, faction.i, "hq")).toBe(false);
+        expect(faction.hq.pillaged).toBeFalsy();
+        const agenda = Living.getState().states[1].agenda;
+        expect(agenda?.kind).toBe("suppress_faction");
+        expect(agenda?.stallUntilTick).toBeGreaterThan(Living.getState().tick);
+        expect(pack.states[1].military[0]?.cell).not.toBe(5);
+        expect(Living.getState().recentNews.some(item => item.text.includes("failed to storm"))).toBe(true);
+      });
+
+      it("refuses a distant storm until the army marches into range", () => {
+        Living.init();
+        fieldArmy(13, 10);
+        const faction = Factions.add({
+          name: "Silver Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 10, assets: [] }
+        });
+
+        expect(Living.assaultFactionNode(1, faction.i, "hq")).toBe(false);
+        expect(faction.hq.pillaged).toBeFalsy();
+      });
+    });
+
+    describe("State suppression UI and saved-map compatibility (Phase 4)", () => {
+      it("initializes legacy factions and suppress agendas without new-save fields", () => {
+        setupCityWorld();
+        pack.factions = [{ i: 0 } as Faction];
+        const legacy = {
+          i: 1,
+          name: "Legacy Hand",
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          color: "#123456",
+          icon: "🗡️",
+          culture: 1,
+          foundedYear: 1000,
+          memberIds: [],
+          alignment: "evil",
+          values: ["honor"],
+          expansionism: 1,
+          expansionScope: "state",
+          sovereignAmbition: false,
+          hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 5, cell: 4, tier: 1, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ],
+          science: 2,
+          currentTechId: null,
+          researchQueue: [],
+          researchedTechs: [],
+          researchedProgress: {},
+          treasury: 100,
+          influence: 30,
+          military: [],
+          stateRelations: { 1: "Enemy" },
+          factionRelations: {},
+          agenda: null,
+          seasonsActive: 0,
+          removed: false
+        } as unknown as Faction;
+        pack.factions.push(legacy);
+
+        const living = Living.init();
+        expect(legacy.hq.pillaged).toBeUndefined();
+        expect(legacy.hq.influence).toBe(70);
+        expect(living.states[1]).toBeDefined();
+
+        // A suppress agenda saved without targetFactionId clears safely on step.
+        living.states[1].agenda = {
+          kind: "suppress_faction",
+          label: "Suppressing Legacy Hand in Aelor",
+          targetBurgId: 1,
+          progress: 0,
+          required: 1
+        } as unknown as StateAgenda;
+        expect(() => Living.tick(1)).not.toThrow();
+        expect(living.states[1].agenda?.kind).not.toBe("suppress_faction");
+      });
+    });
+
+    describe("State suppression tests and balance (Phase 5)", () => {
+      function hostileFaction(name: string, overrides: Partial<Faction> = {}): Faction {
+        return Factions.add({
+          name,
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ],
+          ...overrides
+        });
+      }
+
+      it("makes lawful and non-hostile factions ineligible for suppression", () => {
+        Living.init();
+        const patron = hostileFaction("Patron Guard", {
+          allegiance: "state_arm",
+          patronStateId: 1,
+          stateRelations: { 1: "Ally" }
+        });
+        const chartered = hostileFaction("Chartered Guild", {
+          allegiance: "chartered",
+          patronStateId: 1,
+          stateRelations: { 1: "Friendly" }
+        });
+        const neutral = hostileFaction("Neutral Circle", {
+          allegiance: "autonomous",
+          stateRelations: { 1: "Neutral" }
+        });
+        const hostile = hostileFaction("Silver Hand");
+
+        expect(Living.isHostileToState(patron.i, 1)).toBe(false);
+        expect(Living.isHostileToState(chartered.i, 1)).toBe(false);
+        expect(Living.isHostileToState(neutral.i, 1)).toBe(false);
+        expect(Living.isHostileToState(hostile.i, 1)).toBe(true);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).toContain(hostile.i);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(patron.i);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(chartered.i);
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(neutral.i);
+        expect(Living.startFactionSuppression(1, patron.i)).toBe(false);
+        expect(Living.startFactionSuppression(1, neutral.i)).toBe(false);
+      });
+
+      it("accumulates production progress without spending gold", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        pack.states[1].treasury = 500;
+
+        Living.tick(1);
+
+        const b1 = living.burgs[1];
+        const progress = b1.productionProgress?.["operation:faction-suppression"] ?? 0;
+        expect(progress).toBeGreaterThan(0);
+        expect(progress).toBeLessThan(14);
+        expect(pack.states[1].treasury).toBeGreaterThanOrEqual(500);
+        expect(faction.outposts[0].influence).toBe(40);
+      });
+
+      it("hurries an operation for gold while retaining the reserve", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        const b1 = living.burgs[1];
+        b1.productionProgress = { "operation:faction-suppression": 0 };
+        const remaining = 6 + 2 * 4;
+        const price = hurryGoldCost(remaining, false);
+
+        // Too thin: the state keeps its 100 Gold reserve.
+        pack.states[1].treasury = price + 50;
+        expect(Living.hurryProduction(1)).toBe(false);
+        expect(pack.states[1].treasury).toBe(price + 50);
+
+        pack.states[1].treasury = 1000;
+        expect(Living.hurryProduction(1)).toBe(true);
+        expect(pack.states[1].treasury).toBe(1000 - price);
+        expect(faction.outposts[0].influence).toBe(37);
+      });
+
+      it("reduces influence by the order/secrecy formula per completed operation", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        living.provinces[1].order = 70;
+        const b1 = living.burgs[1];
+        b1.productionQueue = [
+          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: "outpost:1" }
+        ];
+        b1.productionProgress = { "operation:faction-suppression": 13 };
+        living.states[1].agenda = {
+          kind: "suppress_faction",
+          label: `Suppressing ${faction.name} in Aelor`,
+          targetFactionId: faction.i,
+          targetBurgId: 1,
+          progress: 0,
+          required: 1
+        };
+
+        Living.tick(1);
+
+        expect(faction.outposts[0].influence).toBe(37);
+        expect(faction.outposts[0].pillaged).toBeFalsy();
+        expect(living.provinces[1].order).toBeGreaterThanOrEqual(72);
+      });
+
+      it("progresses slowly without collapsing when local production is low", () => {
+        const living = Living.init();
+        const faction = hostileFaction("Silver Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+
+        Living.tick(2);
+
+        expect(faction.removed).toBe(false);
+        expect(faction.outposts[0].pillaged).toBeFalsy();
+        expect(faction.outposts[0].influence).toBeGreaterThan(0);
+        const progress = living.burgs[1].productionProgress?.["operation:faction-suppression"] ?? 0;
+        const queued = (living.burgs[1].productionQueue ?? []).some(
+          item => item.kind === "operation" && item.targetFactionId === faction.i
+        );
+        expect(progress > 0 || queued).toBe(true);
+      });
+    });
+
+    describe("State suppression wilderness strongholds", () => {
+      function wildernessFaction(name: string, overrides: Partial<Faction> = {}): Faction {
+        return Factions.add({
+          name,
+          category: "underworld",
+          type: "thieves_guild",
+          allegiance: "hostile",
+          stateRelations: { 1: "Enemy" },
+          hq: { cell: 9, fortified: false, secrecy: 0, assets: [] } as Faction["hq"],
+          outposts: [],
+          ...overrides
+        });
+      }
+
+      function fieldArmy(blocks: number, cell = 10) {
+        pack.states[1].military = [
+          {
+            i: 0,
+            name: "Aeloria Regiment",
+            a: 100,
+            cell,
+            x: 100,
+            y: 100,
+            bx: 100,
+            by: 100,
+            u: { spear: 100 },
+            units: Array.from({ length: blocks }, () => ({ type: "spear", hp: 1, exp: 0 })),
+            n: 0,
+            state: 1,
+            icon: "⚔️"
+          } as unknown as NonNullable<NonNullable<(typeof pack.states)[number]>["military"]>[number]
+        ];
+      }
+
+      it("targets a wilderness HQ on a state-owned cell but not on free land", () => {
+        Living.init();
+        const faction = wildernessFaction("Pale Hand");
+        expect(faction.hq.burgId).toBeFalsy();
+
+        const targets = Living.eligibleFactionSuppressionTargets(1);
+        expect(targets.map(t => t.faction.i)).toContain(faction.i);
+        expect(targets.find(t => t.faction.i === faction.i)?.wilderness).toBe(true);
+        expect(targets.find(t => t.faction.i === faction.i)?.burg).toBeNull();
+        expect(targets.find(t => t.faction.i === faction.i)?.cell).toBe(9);
+
+        // Moving the HQ to a cell owned by state 2 removes eligibility.
+        faction.hq.cell = 7;
+        expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(faction.i);
+      });
+
+      it("starts a military-only agenda with no production queue for a wilderness HQ", () => {
+        const living = Living.init();
+        const faction = wildernessFaction("Pale Hand");
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        const agenda = living.states[1].agenda;
+        expect(agenda?.kind).toBe("suppress_faction");
+        expect(agenda?.targetCell).toBe(9);
+        expect(agenda?.targetBurgId).toBeUndefined();
+        expect(agenda?.label).toContain("wild");
+        for (const bSim of Object.values(living.burgs)) {
+          expect(
+            (bSim.productionQueue ?? []).some(item => item.kind === "operation" && item.id === "faction-suppression")
+          ).toBe(false);
+        }
+        expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("began suppressing"))).toBe(
+          true
+        );
+      });
+
+      it("storms a wilderness HQ and dissolves the faction with no outposts left", () => {
+        Living.init();
+        fieldArmy(13);
+        const faction = wildernessFaction("Pale Hand");
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        expect(Living.assaultFactionNode(1, faction.i, "hq")).toBe(true);
+        expect(faction.hq.pillaged).toBe(true);
+        expect(faction.removed).toBe(true);
+        expect(Living.getState().states[1].agenda).toBeNull();
+      });
+
+      it("relocates a wilderness HQ to its strongest surviving outpost", () => {
+        Living.init();
+        fieldArmy(13);
+        const faction = wildernessFaction("Pale Hand", {
+          outposts: [
+            { burgId: 1, cell: 5, tier: 2, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }
+          ]
+        });
+
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        expect(Living.assaultFactionNode(1, faction.i, "hq")).toBe(true);
+        expect(faction.removed).toBeFalsy();
+        expect(faction.hq.burgId).toBe(1);
+        expect(faction.hq.pillaged).toBe(false);
+        expect(faction.outposts).toHaveLength(0);
+      });
+
+      it("keeps a wilderness agenda without production after a tick until the army can march", () => {
+        const living = Living.init();
+        fieldArmy(13, 1); // far from cell 9: cannot storm yet
+        const faction = wildernessFaction("Pale Hand");
+        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+
+        Living.tick(1);
+
+        for (const bSim of Object.values(living.burgs)) {
+          expect(
+            (bSim.productionQueue ?? []).some(item => item.kind === "operation" && item.id === "faction-suppression")
+          ).toBe(false);
+        }
+        // Either the marching army reached the stronghold this tick (pillaged,
+        // agenda retargeted/cleared) or it is still marching (agenda intact):
+        // in no case did an administrative operation appear.
+        if (faction.hq.pillaged) {
+          expect(faction.removed).toBe(true);
+        } else {
+          expect(living.states[1].agenda?.kind).toBe("suppress_faction");
+          expect(living.states[1].agenda?.targetCell).toBe(9);
+        }
+      });
     });
   });
 });
@@ -4755,42 +4339,6 @@ describe("Faction clear-trouble production clock (trouble conversion Phase 2)", 
 describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & Ascension)", () => {
   beforeEach(() => {
     buildStubPack();
-  });
-
-  it("bridges getGuild with getPlayerFaction and synchronizes roster, missions, and relics", () => {
-    const living = Living.init();
-    const playerFaction = Living.getPlayerFaction();
-    expect(playerFaction).toBeDefined();
-    expect(playerFaction.i).toBeGreaterThan(0);
-    expect(living.playerFactionId).toBe(playerFaction.i);
-
-    // Guild getters and setters mirror player faction
-    const guild = Living.getGuild();
-    expect(guild.gold).toBe(playerFaction.treasury);
-
-    playerFaction.treasury = 500;
-    playerFaction.influence = 200;
-    playerFaction.memberIds = [101, 102];
-    Living.syncPlayerFaction(living);
-
-    const updatedGuild = Living.getGuild();
-    expect(updatedGuild.gold).toBe(500);
-    expect(updatedGuild.renown).toBe(200);
-    expect(updatedGuild.roster).toEqual([101, 102]);
-
-    // Switching player faction
-    const newFaction = Factions.add({
-      name: "Iron Vanguard",
-      category: "martial",
-      type: "mercenary_company",
-      allegiance: "autonomous",
-      hq: { cell: 1, fortified: true, secrecy: 0, assets: ["muster_camp"] },
-      treasury: 750,
-      influence: 350
-    });
-    expect(Living.setPlayerFaction(newFaction.i)).toBe(true);
-    expect(Living.getPlayerFaction().i).toBe(newFaction.i);
-    expect(Living.getGuild().gold).toBe(750);
   });
 
   it("advances faction economy, applies yields, upkeeps, and progresses tech research with host-state spillover", () => {

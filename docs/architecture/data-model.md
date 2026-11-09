@@ -244,14 +244,14 @@ Non-territorial organizations stored as an array of objects with strict element 
 - `patronStateId`: `number` - optional host/patron state id
 - `color`: `string` - faction color in hex
 - `icon`: `string` - marker icon
-- `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, secrecy, assets: string[], sim?: BurgSimState }`
+- `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, pillaged?, influence?, secrecy, assets: string[], sim?: BurgSimState }` (`influence` 0–100, defaults to 70; `pillaged` marks a razed urban or wilderness stronghold)
 - `outposts`: `FactionOutpost[]` - `{ burgId, cell, tier: 1|2|3, influence, secrecy, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
 - `tier`: `number` - `1..5`, derived from scale
 - `science`: `number` - current science per season (mirrors `yieldsPerTurn.science`)
 - `currentTechId` / `researchQueue` / `researchedTechs` / `researchedProgress` / `freeTechs?` - OpenCiv research state
 - `yieldsPerTurn?` / `happiness?` / `happinessBreakdown?` - empire rollup yields and happiness
 - `treasury`: `number` - faction gold balance
-- `influence`: `number` - empire influence (mirrors guild renown for the player faction)
+- `influence`: `number` - empire influence
 - `military`: `Regiment[]` - `ArmyBlock[]` composition; living sim keys are `f{factionId}-{regimentId}` in `living.units`/`living.armies`
 - `stateRelations` / `factionRelations`: `Record<number, FactionRelation>` - `Ally`, `Friendly`, `Neutral`, `Suspicion`, `Rival` or `Enemy` with states and other factions
 - `seasonsActive`: `number` - seasons simulated, used for sovereignty thresholds
@@ -591,19 +591,19 @@ Top level:
 - `cells`: `Record<number, CellSimState>` - optional tile improvements and pillage state
 - `armies`: `Record<string, ArmySimState>` - optional per-tick combat-army state, keyed by `${stateId}-${regimentId}`
 - `units`: `Record<string, UnitSimState>` - optional utility-regiment state (settlers, builders, missionaries, ...)
-- `recentNews`, `eschaton`, `guild`, `playerFactionId`, `worldWonders` - optional presentation, Age Finale, guild and ownership state
+- `recentNews`, `eschaton`, `worldWonders` - optional presentation and Age Finale state
 
 `StatePolitySim`:
 
-- `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `resolve_trouble`, `clear_faction`
+- `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `hire_adventurers`, `suppress_faction`
 - `unravel`, `warExhaustion`, `claims`, `grudges` - the collapse clock, peace pressure and the memory of lost burgs and wrongs
 - `faith`, `happiness`, `yieldsPerTurn`, `currentTechId`, `researchQueue`, `researchedTechs` - optional OpenCiv empire fields
 - `warTurns`, `peaceTreatyTurns` - optional war/truce clocks
 - `treaties`: `Record<number, TreatyKind[]>` - optional positive agreements per other state (`nonAggression`, `trade`, `defensiveAlliance`, `militaryAccess`); symmetric
 
-A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` / `targetProvinceId` / `targetBurgId` / `targetCell` / `buildingId`, and `progress` / `required`.
+A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` / `targetProvinceId` / `targetBurgId` / `targetCell` / `buildingId`, plus `targetFactionId` and `stallUntilTick` for `suppress_faction`, and `progress` / `required`.
 
-`BurgSimState` carries `development`, `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, the OpenCiv city fields (`citizens`, `foodStored`, worked/locked cells) and the `productionQueue` (`{ kind: "unit" | "building" | "wonder" | "trouble", id }`) with its per-item progress.
+`BurgSimState` carries `development`, `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, the OpenCiv city fields (`citizens`, `foodStored`, worked/locked cells) and the `productionQueue` (`{ kind: "unit" | "building" | "wonder" | "trouble" | "operation", id, targetFactionId?, targetNodeKey? }`) with its per-item progress. Suppression uses a `faction-suppression` operation (`6 + tier × 4` Production) queued in the host burg; wilderness HQs are military-only and never queue it.
 
 `ProvinceSimState` carries `order`, `stability`, `development`, `developmentProgress`, and the active `trouble` (hazards only — dangerous factions live in `pack.factions`).
 
@@ -641,7 +641,7 @@ A hero sheet (`HeroSheet`) holds the compact character stat block:
 - `condition`: optional `{ resolve, stamina, maxResolve, maxStamina, injuries, downUntilTick, push }`
 - `doctrine`, `temperament`, `cooldownUntil`: optional seasonal-play fields
 
-Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them. Mission phases also carry an `action`, not a pool.
+Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them.
 
 ## Legends
 

@@ -1280,7 +1280,7 @@ function spawnEmergentState(opts: {
     const oldSim = living.states[oldOwnerId]!;
     const kind = oldSim.agenda?.kind;
     if (
-      (kind === "clear_lair" || kind === "hire_adventurers") &&
+      (kind === "clear_faction" || kind === "hire_adventurers") &&
       oldSim.agenda?.targetProvinceId === province.i
     ) {
       oldSim.agenda = null;

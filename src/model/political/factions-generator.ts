@@ -31,6 +31,7 @@ export function ensureFactionNodeSim(node: FactionHq | FactionOutpost, isHq: boo
   const civBuildings = Array.from(new Set([...(node.assets ?? []), ...(node.sim?.civBuildings ?? [])]));
   node.assets = [...civBuildings];
   const baseHp = isHq ? 200 : 100;
+  if (isHq && node.influence === undefined) node.influence = 70;
 
   if (!node.sim) {
     node.sim = {
@@ -709,8 +710,6 @@ class FactionsModule {
       factionRelations: params.factionRelations || {},
       doctrine: params.doctrine,
       agenda: params.agenda ?? null,
-      missions: params.missions,
-      relics: params.relics,
       seasonsActive: params.seasonsActive || 0,
       tags: params.tags,
       lock: params.lock,
