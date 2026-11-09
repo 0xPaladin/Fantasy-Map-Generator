@@ -2,10 +2,9 @@ import { Controllers } from "@/controllers";
 import { ALIGNMENTS, type Alignment } from "@/data/culture-traits";
 import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { factionSuppressionProductionCost, Living } from "@/model/physical/living-generator";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
-import { Military } from "@/model/political/military-generator";
+import type { Regiment } from "@/model/political/military-generator";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
 import type { Faction, FactionAllegiance, FactionCategory, FactionOutpost } from "@/types/factions";
@@ -102,44 +101,6 @@ function totalCitizens(faction: Faction): number {
 
 function totalWorkedCells(faction: Faction): number {
   return factionNodes(faction).reduce((sum, node) => sum + (node?.sim?.workedCells?.length ?? 0), 0);
-}
-
-function _productionSummary(faction: Faction): string {
-  const sim = faction.hq?.sim;
-  const item = sim?.productionQueue?.[0];
-  if (!item) return "—";
-  const def =
-    item.kind === "unit"
-      ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
-      : CIV_BUILDING_BY_ID[item.id];
-  const progress = Math.round(sim?.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
-  const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 0);
-  return `${def?.name ?? item.id} ${progress}/${cost}`;
-}
-
-function _nodeDetailsText(
-  faction: Faction,
-  node: NonNullable<Faction["hq"]> | Faction["outposts"][number],
-  isHq: boolean
-): string {
-  void faction;
-  const sim = node.sim;
-  if (!sim) return "—";
-  const yields = sim.cityYields;
-  const yieldText = yields ? formatYields(yields) : "—";
-  const queue = (sim.productionQueue ?? [])
-    .map(item => {
-      const def =
-        item.kind === "unit"
-          ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
-          : CIV_BUILDING_BY_ID[item.id];
-      const progress = Math.round(sim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
-      const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 0);
-      return `${def?.name ?? item.id} ${progress}/${cost}`;
-    })
-    .join(", ");
-  const workedCount = sim.workedCells?.length ?? 0;
-  return `${isHq ? "HQ" : "Outpost"} · ${sim.citizens ?? 0} citizens · ${workedCount} worked cells · ${yieldText}${queue ? ` · Queue: ${queue}` : ""}`;
 }
 
 let filterState: { search: string; category: string; allegiance: string; alignment: string };
@@ -459,7 +420,7 @@ function renderFactionsPage(view: TableView<Faction>): void {
       const hqName = f.hq.burgId
         ? (pack.burgs?.[f.hq.burgId]?.name ?? `Burg ${f.hq.burgId}`)
         : f.hq.markerId !== undefined
-          ? (pack.markers?.[f.hq.markerId]?.legend ?? `Marker ${f.hq.markerId}`)
+          ? ((pack.markers?.[f.hq.markerId] as { legend?: string; name?: string } | undefined)?.legend ?? pack.markers?.[f.hq.markerId]?.name ?? `Marker ${f.hq.markerId}`)
           : `Cell ${f.hq.cell}`;
 
       const catOptions = categories
@@ -652,8 +613,27 @@ function exportCsv(): void {
   Csv.download("Factions", CSV_COLUMNS, rows);
 }
 
+function formatRegimentComposition(reg: Regiment): string {
+  if (reg.units && reg.units.length > 0) {
+    const counts: Record<string, number> = {};
+    for (const b of reg.units) {
+      counts[b.type] = (counts[b.type] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([type, count]) => `${count}× ${capitalize(type)}`)
+      .join(", ");
+  }
+  if (reg.u && Object.keys(reg.u).length > 0) {
+    return Object.entries(reg.u)
+      .filter(([, count]) => count > 0)
+      .map(([type, count]) => `${count} ${capitalize(type)}`)
+      .join(", ");
+  }
+  return reg.n ? t("Fleet") : t("Regiment");
+}
+
 /** Open Outposts & Assets Management Dialog for a single Faction */
-export function openOutpostsDialog(factionId: number): void {
+export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "assets" | "forces" = "outposts"): void {
   const faction = pack.factions?.[factionId];
   if (!faction) return;
 
@@ -662,6 +642,8 @@ export function openOutpostsDialog(factionId: number): void {
 
   const dialogDomId = "factionOutpostsDialog";
   Dialog.destroy(dialogDomId);
+
+  let currentTab = activeTab;
 
   const hqBurg = faction.hq.burgId ? pack.burgs?.[faction.hq.burgId] : null;
   const hqName = hqBurg?.name ?? (faction.hq.markerId ? `Marker ${faction.hq.markerId}` : `Cell ${faction.hq.cell}`);
@@ -688,10 +670,10 @@ export function openOutpostsDialog(factionId: number): void {
 
   const hqRowHtml = /* html */ `
     <div class="states" style="background: rgba(255, 255, 255, 0.03);">
-      <div style="overflow: hidden; text-overflow: ellipsis;">⭐ <b>${escapeHtml(hqName)}</b></div>
+      <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">⭐ <b>${escapeHtml(hqName)}</b></div>
       <div style="justify-content: center; text-align: center;">2</div>
       <div style="justify-content: center; text-align: center;">${Math.round(faction.hq.influence ?? 70)}%${hqStatusText}${hqSuppressionText}</div>
-      <div style="overflow: hidden; text-overflow: ellipsis;">${hqYields}</div>
+      <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hqYields}</div>
       <div style="justify-content: center; text-align: center;">${hqCitizens}</div>
       <div style="justify-content: center; text-align: center;">${hqCells}</div>
       <div></div>
@@ -720,13 +702,13 @@ export function openOutpostsDialog(factionId: number): void {
       const statusText = op.pillaged ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>` : "";
       return /* html */ `
       <div class="states">
-        <div style="overflow: hidden; text-overflow: ellipsis;"><b>${escapeHtml(burgName)}</b></div>
+        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><b>${escapeHtml(burgName)}</b></div>
         <div style="justify-content: center; text-align: center;">${op.tier}</div>
         <div style="justify-content: center; text-align: center;">${op.influence}%${statusText}${suppressionText}</div>
-        <div style="overflow: hidden; text-overflow: ellipsis;">${yields}</div>
+        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${yields}</div>
         <div style="justify-content: center; text-align: center;">${citizens}</div>
         <div style="justify-content: center; text-align: center;">${cells}</div>
-        <div style="justify-content: flex-end; text-align: right;">
+        <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
           <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
         </div>
       </div>
@@ -829,13 +811,13 @@ export function openOutpostsDialog(factionId: number): void {
         .map(
           r => `
           <div class="states">
-            <div style="overflow: hidden; text-overflow: ellipsis;"><b>${escapeHtml(r.name)}</b></div>
-            <div style="overflow: hidden; text-overflow: ellipsis;">${escapeHtml(r.location)}</div>
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><b>${escapeHtml(r.name)}</b></div>
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(r.location)}</div>
             <div style="justify-content: center; text-align: center;">
               <span style="font-weight: 600; color: ${r.isComplete ? "#4ade80" : "#fbbf24"};" ${r.progressTip ? `data-tip="${escapeHtml(r.progressTip)}"` : ""}>${escapeHtml(r.progress)}</span>
             </div>
-            <div style="overflow: hidden; text-overflow: ellipsis;">${r.benefits}</div>
-            <div style="justify-content: flex-end; text-align: right;">
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.benefits}</div>
+            <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
               ${r.assetIndex >= 0 ? `<button class="btn icon-trash removeAssetBtn" data-node="${r.nodeType}" data-outpost-index="${r.outpostIndex ?? ""}" data-index="${r.assetIndex}" data-tip="${t("Dismantle asset")}"></button>` : ""}
             </div>
           </div>
@@ -856,9 +838,101 @@ export function openOutpostsDialog(factionId: number): void {
     .map(a => `<option value="${a.id}">${escapeHtml(a.name)} (T${a.tier} · ${a.cost}g)</option>`)
     .join("");
 
+  // Forces table rows
+  const forcesRowsHtml = (faction.military ?? []).length
+    ? (faction.military ?? [])
+        .map(r => {
+          let locName = `Cell ${r.cell}`;
+          if (r.cell === faction.hq.cell) locName = `⭐ ${hqName} (HQ)`;
+          else {
+            const op = faction.outposts.find(o => o.cell === r.cell || pack.burgs?.[o.burgId]?.cell === r.cell);
+            if (op) locName = pack.burgs?.[op.burgId]?.name ?? `Outpost`;
+            else {
+              const burgId = Number(pack.cells?.burg?.[r.cell] ?? 0);
+              if (burgId && pack.burgs?.[burgId]) locName = pack.burgs[burgId].name ?? `Burg ${burgId}`;
+              else {
+                const provId = Number(pack.cells?.province?.[r.cell] ?? 0);
+                if (provId && pack.provinces?.[provId]) locName = pack.provinces[provId].name ?? `Province ${provId}`;
+                else if ((pack.cells?.h?.[r.cell] ?? 20) < 20) locName = t("At Sea");
+              }
+            }
+          }
+
+          const compText = formatRegimentComposition(r);
+
+          return /* html */ `
+            <div class="states" data-reg-id="${r.i}">
+              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                ⚔️ <b>${escapeHtml(r.name)}</b>
+              </div>
+              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                ${escapeHtml(locName)}
+              </div>
+              <div style="justify-content: center; text-align: center;">${(r.a ?? 0).toLocaleString()}</div>
+              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(compText)}</div>
+              <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
+                <button class="btn icon-search zoomForceBtn" data-cell="${r.cell}" data-x="${r.x}" data-y="${r.y}" data-tip="${t("Zoom to force")}"></button>
+                <button class="btn icon-trash removeForceBtn" data-reg-id="${r.i}" data-tip="${t("Disband force")}"></button>
+              </div>
+            </div>
+          `;
+        })
+        .join("")
+    : `<div class="states" style="display: flex; justify-content: center; padding: 6px; opacity: 0.7;">${t("No military forces mustered yet.")}</div>`;
+
+  const forceLocationOptions = [
+    `<option value="hq">⭐ ${escapeHtml(hqName)} (HQ)</option>`,
+    ...faction.outposts.map((op, idx) => {
+      const burg = pack.burgs?.[op.burgId];
+      return `<option value="outpost:${idx}">${escapeHtml(burg?.name ?? `Outpost ${idx + 1}`)}</option>`;
+    })
+  ].join("");
+
   const markup = /* html */ `
-    <div id="${dialogDomId}" class="dialog stable editorDialog" style="width: auto; min-width: 540px;">
+    <div id="${dialogDomId}" class="dialog stable editorDialog" style="width: 100%; min-width: 860px; max-width: 95vw; max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
       <style>
+        #${dialogDomId}::-webkit-scrollbar {
+          width: 8px;
+        }
+        #${dialogDomId}::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        #${dialogDomId}::-webkit-scrollbar-thumb {
+          background-color: rgba(94, 79, 162, 0.35);
+          border-radius: 4px;
+        }
+        #${dialogDomId}::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(94, 79, 162, 0.6);
+        }
+        #${dialogDomId} .dialogTabs {
+          display: flex;
+          gap: 4px;
+          border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+          margin-bottom: 12px;
+          padding: 0 4px;
+        }
+        #${dialogDomId} .tabBtn {
+          padding: 6px 14px;
+          cursor: pointer;
+          border: 1px solid transparent;
+          border-bottom: none;
+          border-radius: 4px 4px 0 0;
+          background: none;
+          font-size: 0.95em;
+          color: inherit;
+          margin-bottom: -2px;
+          transition: all 0.15s ease;
+        }
+        #${dialogDomId} .tabBtn:hover {
+          background-color: rgba(94, 79, 162, 0.06);
+        }
+        #${dialogDomId} .tabBtn.active {
+          font-weight: bold;
+          background-color: rgba(94, 79, 162, 0.12);
+          border-color: rgba(94, 79, 162, 0.4);
+          border-bottom: 2px solid #5e4fa2;
+          color: #5e4fa2;
+        }
         #${dialogDomId} .table > .states:nth-child(even) {
           background-image: none;
           background-color: rgba(0, 0, 0, 0.04);
@@ -888,15 +962,28 @@ export function openOutpostsDialog(factionId: number): void {
       <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 4px;">
         <span style="color: ${faction.color};">${faction.icon || "⚔️"}</span> ${escapeHtml(faction.name)}
       </div>
-      <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 12px;">
+      <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 8px;">
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.category)}</span>
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.allegiance)}</span>
         <span class="badge">${capitalize(faction.alignment)}</span>
       </div>
 
-      <div style="margin-bottom: 14px; width: 0; min-width: 100%;">
-        <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ & Outposts")}:</div>
-        <div id="outpostsTable" class="table" style="--table-columns: 10em 3.5em 6.5em minmax(18em, 1fr) 4.5em 4em 2em; width: 0; min-width: 100%;">
+      <!-- Tab Buttons -->
+      <div class="dialogTabs">
+        <button type="button" class="tabBtn ${activeTab === "outposts" ? "active" : ""}" data-tab="outposts">
+          🏛️ ${t("HQ & Outposts")} (${1 + faction.outposts.length})
+        </button>
+        <button type="button" class="tabBtn ${activeTab === "assets" ? "active" : ""}" data-tab="assets">
+          🪙 ${t("Assets")} (${assetEntries.length})
+        </button>
+        <button type="button" class="tabBtn ${activeTab === "forces" ? "active" : ""}" data-tab="forces">
+          ⚔️ ${t("Forces")} (${faction.military?.length ?? 0})
+        </button>
+      </div>
+
+      <!-- Tab 1: HQ & Outposts -->
+      <div class="tabPanel" data-panel="outposts" style="display: ${activeTab === "outposts" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
+        <div id="outpostsTable" class="table" style="--table-columns: 10em 3.5em 6.5em minmax(28em, 3fr) 4.5em 4em 2em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Burg")}</div>
             <div style="justify-content: center; text-align: center;">${t("Tier")}</div>
@@ -914,9 +1001,9 @@ export function openOutpostsDialog(factionId: number): void {
         </div>
       </div>
 
-      <div style="margin-bottom: 8px; width: 0; min-width: 100%;">
-        <div style="font-weight: bold; margin-bottom: 4px;">${t("Assets")}:</div>
-        <div id="assetsTable" class="table" style="--table-columns: 11em 10em 5.5em minmax(18em, 1fr) 2em; width: 0; min-width: 100%;">
+      <!-- Tab 2: Assets -->
+      <div class="tabPanel" data-panel="assets" style="display: ${activeTab === "assets" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
+        <div id="assetsTable" class="table" style="--table-columns: 11em 10em 5.5em minmax(26em, 3fr) 2.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Asset")}</div>
             <div>${t("Location")}</div>
@@ -932,6 +1019,26 @@ export function openOutpostsDialog(factionId: number): void {
           <button id="addAssetBtn" class="btn">${t("+ Asset")}</button>
         </div>
       </div>
+
+      <!-- Tab 3: Forces -->
+      <div class="tabPanel" data-panel="forces" style="display: ${activeTab === "forces" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
+        <div id="forcesTable" class="table" style="--table-columns: minmax(11em, 1.3fr) minmax(10em, 1.2fr) 5.5em minmax(26em, 3fr) 4.5em; width: 0; min-width: 100%;">
+          <div class="header">
+            <div>${t("Force")}</div>
+            <div>${t("Location")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Troops")}</div>
+            <div>${t("Composition")}</div>
+            <div style="justify-content: flex-end; text-align: right;"></div>
+          </div>
+          ${forcesRowsHtml}
+        </div>
+        <div style="width: 0; min-width: 100%; display: flex; gap: 4px; margin-top: 4px;">
+          <select id="newFactionForceLocationSelect" style="flex: 1;">${forceLocationOptions}</select>
+          <input id="newFactionForceNameInput" type="text" placeholder="${t("Force name")}" style="flex: 1.2;" />
+          <input id="newFactionForceTroopsInput" type="number" min="10" step="50" value="100" style="width: 5.5em;" />
+          <button id="addFactionForceBtn" class="btn">${t("+ Force")}</button>
+        </div>
+      </div>
     </div>
   `;
 
@@ -939,10 +1046,29 @@ export function openOutpostsDialog(factionId: number): void {
 
   Dialog.open(dialogDomId, {
     title: `${t("Manage Outposts & Assets")} - ${faction.name}`,
-    width: "fit-content",
+    width: "auto",
+    minWidth: 860,
+    maxHeight: Math.round((window.innerHeight || 800) * 0.85),
     position: { my: "center", at: "center", of: "svg" },
     onClose: () => Dialog.destroy(dialogDomId)
   });
+
+  // Tab switching listener
+  ensureEl(dialogDomId)
+    ?.querySelectorAll(".tabBtn")
+    .forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const tab = target.dataset.tab as "outposts" | "assets" | "forces";
+        if (!tab) return;
+        currentTab = tab;
+        ensureEl(dialogDomId)?.querySelectorAll(".tabBtn").forEach(b => b.classList.remove("active"));
+        target.classList.add("active");
+        ensureEl(dialogDomId)?.querySelectorAll(".tabPanel").forEach(p => {
+          (p as HTMLElement).style.display = (p as HTMLElement).dataset.panel === tab ? "block" : "none";
+        });
+      });
+    });
 
   // Attach Outposts & Assets listeners
   ensureEl("addAssetBtn")?.addEventListener("click", () => {
@@ -973,7 +1099,7 @@ export function openOutpostsDialog(factionId: number): void {
     }
 
     Layers.draw("factions");
-    openOutpostsDialog(factionId);
+    openOutpostsDialog(factionId, currentTab);
     factionsTable.refresh();
   });
 
@@ -1007,7 +1133,7 @@ export function openOutpostsDialog(factionId: number): void {
         }
 
         Layers.draw("factions");
-        openOutpostsDialog(factionId);
+        openOutpostsDialog(factionId, currentTab);
         factionsTable.refresh();
       });
     });
@@ -1030,7 +1156,7 @@ export function openOutpostsDialog(factionId: number): void {
       syncFactionState(faction);
       Living.refreshFactionNodeYields(faction, newOutpost, false);
       Layers.draw("factions");
-      openOutpostsDialog(factionId);
+      openOutpostsDialog(factionId, currentTab);
       factionsTable.refresh();
     }
   });
@@ -1044,12 +1170,75 @@ export function openOutpostsDialog(factionId: number): void {
         faction.outposts.splice(idx, 1);
         syncFactionState(faction);
         Layers.draw("factions");
-        openOutpostsDialog(factionId);
+        openOutpostsDialog(factionId, currentTab);
         factionsTable.refresh();
       });
     });
-}
 
+  // Forces listeners
+  ensureEl(dialogDomId)
+    ?.querySelectorAll(".zoomForceBtn")
+    .forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const x = Number(target.dataset.x);
+        const y = Number(target.dataset.y);
+        if (!isNaN(x) && !isNaN(y)) zoomTo(x, y, 8, 1600);
+      });
+    });
+
+  ensureEl(dialogDomId)
+    ?.querySelectorAll(".removeForceBtn")
+    .forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const regId = Number(target.dataset.regId);
+        if (!regId) return;
+        faction.military = (faction.military ?? []).filter(r => r.i !== regId);
+        syncFactionState(faction);
+        openOutpostsDialog(factionId, currentTab);
+        factionsTable.refresh();
+      });
+    });
+
+  ensureEl("addFactionForceBtn")?.addEventListener("click", () => {
+    const locSel = ensureEl<HTMLSelectElement>("newFactionForceLocationSelect");
+    const nameInput = ensureEl<HTMLInputElement>("newFactionForceNameInput");
+    const troopsInput = ensureEl<HTMLInputElement>("newFactionForceTroopsInput");
+    const locVal = locSel?.value ?? "hq";
+    let cell = faction.hq.cell;
+    if (locVal.startsWith("outpost:")) {
+      const opIdx = Number(locVal.split(":")[1]);
+      const op = faction.outposts[opIdx];
+      if (op) cell = op.cell ?? pack.burgs?.[op.burgId]?.cell ?? cell;
+    }
+    const [x, y] = pack.cells?.p?.[cell] ?? [0, 0];
+    const troops = Math.max(10, Number(troopsInput?.value) || 100);
+    const name = nameInput?.value.trim() || `${faction.name} Company ${((faction.military?.length ?? 0) + 1)}`;
+
+    faction.military ??= [];
+    const maxI = faction.military.length ? Math.max(...faction.military.map(r => r.i ?? 0)) : 0;
+    const newReg: Regiment = {
+      i: maxI + 1,
+      name,
+      a: troops,
+      cell,
+      x,
+      y,
+      bx: x,
+      by: y,
+      state: 0,
+      n: 0,
+      u: { garrison: troops },
+      icon: "⚔️",
+      tags: []
+    };
+    faction.military.push(newReg);
+    syncFactionState(faction);
+    openOutpostsDialog(factionId, "forces");
+    factionsTable.refresh();
+  });
+}
 export const FactionsEditor = {
   open,
   close: () => Dialog.close("factionsEditor"),

@@ -231,5 +231,83 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     cityRows = document.querySelectorAll("#stateCitiesTable > .states");
     expect(cityRows?.length).toBe(2);
     expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).not.toContain("Riverbend");
+  });
+  it("supports tab switching between Major Cities, Assets, and Forces", () => {
+    openStateCitiesDialog(1);
+
+    const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`) as HTMLElement;
+    expect(dialog).not.toBeNull();
+
+    const citiesTabBtn = dialog.querySelector<HTMLButtonElement>('.tabBtn[data-tab="cities"]')!;
+    const assetsTabBtn = dialog.querySelector<HTMLButtonElement>('.tabBtn[data-tab="assets"]')!;
+    const forcesTabBtn = dialog.querySelector<HTMLButtonElement>('.tabBtn[data-tab="forces"]')!;
+
+    const citiesPanel = dialog.querySelector<HTMLElement>('.tabPanel[data-panel="cities"]')!;
+    const assetsPanel = dialog.querySelector<HTMLElement>('.tabPanel[data-panel="assets"]')!;
+    const forcesPanel = dialog.querySelector<HTMLElement>('.tabPanel[data-panel="forces"]')!;
+
+    // Initial state: cities tab active
+    expect(citiesTabBtn.classList.contains("active")).toBe(true);
+    expect(assetsTabBtn.classList.contains("active")).toBe(false);
+    expect(citiesPanel.style.display).toBe("block");
+    expect(assetsPanel.style.display).toBe("none");
+    expect(forcesPanel.style.display).toBe("none");
+
+    // Click assets tab
+    assetsTabBtn.click();
+    expect(citiesTabBtn.classList.contains("active")).toBe(false);
+    expect(assetsTabBtn.classList.contains("active")).toBe(true);
+    expect(citiesPanel.style.display).toBe("none");
+    expect(assetsPanel.style.display).toBe("block");
+    expect(forcesPanel.style.display).toBe("none");
+
+    // Click forces tab
+    forcesTabBtn.click();
+    expect(forcesTabBtn.classList.contains("active")).toBe(true);
+    expect(assetsTabBtn.classList.contains("active")).toBe(false);
+    expect(forcesPanel.style.display).toBe("block");
+    expect(assetsPanel.style.display).toBe("none");
+  });
+
+  it("supports viewing, adding, and disbanding military forces in the Forces tab", () => {
+    openStateCitiesDialog(1, "forces");
+
+    const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`) as HTMLElement;
+    expect(dialog).not.toBeNull();
+
+    // Initially no forces
+    expect(dialog.innerHTML).toContain("No military forces mustered yet");
+
+    // Add a new force
+    const locSelect = document.querySelector<HTMLSelectElement>("#newStateForceLocationSelect")!;
+    const nameInput = document.querySelector<HTMLInputElement>("#newStateForceNameInput")!;
+    const troopsInput = document.querySelector<HTMLInputElement>("#newStateForceTroopsInput")!;
+    const addBtn = document.querySelector<HTMLButtonElement>("#addStateForceBtn")!;
+
+    expect(locSelect).not.toBeNull();
+    locSelect.value = "burg:1";
+    nameInput.value = "Royal Guard";
+    troopsInput.value = "200";
+    addBtn.click();
+
+    // Verify force added to state.military
+    const state = pack.states[1];
+    expect(state.military?.length).toBe(1);
+    expect(state.military![0].name).toBe("Royal Guard");
+    expect(state.military![0].a).toBe(200);
+
+    // Verify dialog re-rendered with the force row
+    const forceRows = document.querySelectorAll("#stateForcesTable > .states");
+    expect(forceRows.length).toBe(1);
+    expect(document.querySelector("#stateForcesTable")?.innerHTML).toContain("Royal Guard");
+    expect(document.querySelector("#stateForcesTable")?.innerHTML).toContain("200");
+
+    // Disband the force
+    const removeBtn = document.querySelector<HTMLButtonElement>('.removeForceBtn[data-reg-id="0"]')!;
+    expect(removeBtn).not.toBeNull();
+    removeBtn.click();
+
+    expect(state.military?.length).toBe(0);
+    expect(document.querySelector("#stateForcesTable")?.innerHTML).toContain("No military forces mustered yet");
   });
 });

@@ -11,13 +11,13 @@ import {
   settlementTierFromPop
 } from "@/model/physical/living-generator";
 import type { Burg } from "@/model/political/burgs-generator";
-import { Military } from "@/model/political/military-generator";
+import { Military, type Regiment } from "@/model/political/military-generator";
 import type { YieldValues } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { zoomTo } from "@/ui/map/zoom";
 import { t } from "@/utils/i18n";
 import { ensureEl } from "@/utils/node-utils";
-import { escapeHtml } from "@/utils/string-utils";
+import { capitalize, escapeHtml } from "@/utils/string-utils";
 
 export const STATE_CITIES_DIALOG_ID = "stateCitiesDialog" as const;
 
@@ -49,8 +49,27 @@ function formatBuildingBenefits(buildingId?: string): string {
   return parts.length ? parts.join(", ") : (civ.effects ? t("Special effect") : "—");
 }
 
+function formatRegimentComposition(reg: Regiment): string {
+  if (reg.units && reg.units.length > 0) {
+    const counts: Record<string, number> = {};
+    for (const b of reg.units) {
+      counts[b.type] = (counts[b.type] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([type, count]) => `${count}× ${capitalize(type)}`)
+      .join(", ");
+  }
+  if (reg.u && Object.keys(reg.u).length > 0) {
+    return Object.entries(reg.u)
+      .filter(([, count]) => count > 0)
+      .map(([type, count]) => `${count} ${capitalize(type)}`)
+      .join(", ");
+  }
+  return reg.n ? t("Fleet") : t("Regiment");
+}
+
 /** Open Cities & Yields Management Dialog for a single State */
-export function openStateCitiesDialog(stateId: number): void {
+export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "assets" | "forces" = "cities"): void {
   const state = pack.states?.[stateId];
   if (!state || state.removed) return;
 
@@ -69,6 +88,8 @@ export function openStateCitiesDialog(stateId: number): void {
   const techName = currentTech ? resolveCivTechName(activeCivThemeId(), currentTech) : undefined;
   const techProgress = currentTech ? Math.round(sSim?.researchedProgress?.[currentTech.id] ?? 0) : 0;
   const techCost = currentTech?.cost ?? 0;
+
+  let currentTab = activeTab;
 
   // Burg candidate options for "+ City"
   const stateBurgs = (pack.burgs ?? []).filter(
@@ -232,6 +253,55 @@ export function openStateCitiesDialog(stateId: number): void {
     .map(b => `<option value="${b.id}">${escapeHtml(b.name)}${b.cost ? ` (${b.cost}🔨)` : ""}</option>`)
     .join("");
 
+  // Forces table rows
+  const forcesRowsHtml = (state.military ?? []).length
+    ? (state.military ?? [])
+        .map(r => {
+          let locName = `Cell ${r.cell}`;
+          const burgId = Number(pack.cells?.burg?.[r.cell] ?? 0);
+          if (burgId && pack.burgs?.[burgId]) {
+            const isCap = Boolean(state.capital === burgId);
+            const isProv = !isCap && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === burgId));
+            locName = `${isCap ? "⭐ " : isProv ? "★ " : ""}${pack.burgs[burgId].name ?? `Burg ${burgId}`}`;
+          } else {
+            const provId = Number(pack.cells?.province?.[r.cell] ?? 0);
+            if (provId && pack.provinces?.[provId]) locName = pack.provinces[provId].name ?? `Province ${provId}`;
+            else if ((pack.cells?.h?.[r.cell] ?? 20) < 20) locName = t("At Sea");
+          }
+
+          const compText = formatRegimentComposition(r);
+
+          return /* html */ `
+            <div class="states" data-reg-id="${r.i}">
+              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                ⚔️ <b>${escapeHtml(r.name)}</b>
+              </div>
+              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                ${escapeHtml(locName)}
+              </div>
+              <div style="justify-content: center; text-align: center;">${(r.a ?? 0).toLocaleString()}</div>
+              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(compText)}</div>
+              <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
+                <button class="btn icon-search zoomForceBtn" data-cell="${r.cell}" data-x="${r.x}" data-y="${r.y}" data-tip="${t("Zoom to force")}"></button>
+                <button class="btn icon-trash removeForceBtn" data-reg-id="${r.i}" data-tip="${t("Disband force")}"></button>
+              </div>
+            </div>
+          `;
+        })
+        .join("")
+    : `<div class="states" style="display: flex; justify-content: center; padding: 6px; opacity: 0.7;">${t("No military forces mustered yet.")}</div>`;
+
+  const forceCityOptions = breakdown.cities.length
+    ? breakdown.cities
+        .map(c => {
+          const isStateCapital = Boolean(c.isCapital || state.capital === c.burgId);
+          const isProvCapital = !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.burgId));
+          const prefix = isStateCapital ? "⭐ " : isProvCapital ? "★ " : "";
+          return `<option value="${c.burgId}">${prefix}${escapeHtml(c.name)}</option>`;
+        })
+        .join("")
+    : `<option disabled>${t("No cities available")}</option>`;
+
   const markup = /* html */ `
     <div id="${STATE_CITIES_DIALOG_ID}" class="dialog stable editorDialog" style="width: 100%; min-width: 860px; max-width: 95vw; max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
       <style>
@@ -247,6 +317,35 @@ export function openStateCitiesDialog(stateId: number): void {
         }
         #${STATE_CITIES_DIALOG_ID}::-webkit-scrollbar-thumb:hover {
           background-color: rgba(94, 79, 162, 0.6);
+        }
+        #${STATE_CITIES_DIALOG_ID} .dialogTabs {
+          display: flex;
+          gap: 4px;
+          border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+          margin-bottom: 12px;
+          padding: 0 4px;
+        }
+        #${STATE_CITIES_DIALOG_ID} .tabBtn {
+          padding: 6px 14px;
+          cursor: pointer;
+          border: 1px solid transparent;
+          border-bottom: none;
+          border-radius: 4px 4px 0 0;
+          background: none;
+          font-size: 0.95em;
+          color: inherit;
+          margin-bottom: -2px;
+          transition: all 0.15s ease;
+        }
+        #${STATE_CITIES_DIALOG_ID} .tabBtn:hover {
+          background-color: rgba(94, 79, 162, 0.06);
+        }
+        #${STATE_CITIES_DIALOG_ID} .tabBtn.active {
+          font-weight: bold;
+          background-color: rgba(94, 79, 162, 0.12);
+          border-color: rgba(94, 79, 162, 0.4);
+          border-bottom: 2px solid #5e4fa2;
+          color: #5e4fa2;
         }
         #${STATE_CITIES_DIALOG_ID} .table > .states:nth-child(even) {
           background-image: none;
@@ -283,15 +382,28 @@ export function openStateCitiesDialog(stateId: number): void {
         </div>
       </div>
 
-      <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 4px;">
+      <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
         <span class="badge">${t("Culture")}: ${escapeHtml(cultureName)}</span>
         <span class="badge">${t("Capital")}: ${escapeHtml(capitalName)}</span>
         <span class="badge">${t("Treasury")}: 🪙 ${Math.round(state.treasury ?? 0)}</span>
         ${techName ? `<span class="badge">🔬 ${escapeHtml(techName)} (${techProgress}/${techCost})</span>` : ""}
       </div>
 
-      <div style="margin-bottom: 14px; width: 0; min-width: 100%;">
-        <div style="font-weight: bold; margin-bottom: 4px;">${t("Major Cities")}:</div>
+      <!-- Tab Buttons -->
+      <div class="dialogTabs">
+        <button type="button" class="tabBtn ${activeTab === "cities" ? "active" : ""}" data-tab="cities">
+          🏛️ ${t("Major Cities")} (${breakdown.cities.length})
+        </button>
+        <button type="button" class="tabBtn ${activeTab === "assets" ? "active" : ""}" data-tab="assets">
+          🪙 ${t("Assets")} (${assetEntries.length})
+        </button>
+        <button type="button" class="tabBtn ${activeTab === "forces" ? "active" : ""}" data-tab="forces">
+          ⚔️ ${t("Forces")} (${state.military?.length ?? 0})
+        </button>
+      </div>
+
+      <!-- Tab 1: Major Cities -->
+      <div class="tabPanel" data-panel="cities" style="display: ${activeTab === "cities" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
         <div id="stateCitiesTable" class="table" style="--table-columns: minmax(12em, 1.3fr) 5.5em 4.5em 4em minmax(29em, 3fr) 5.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("City")}</div>
@@ -311,8 +423,8 @@ export function openStateCitiesDialog(stateId: number): void {
         </div>
       </div>
 
-      <div style="margin-bottom: 8px; width: 0; min-width: 100%;">
-        <div style="font-weight: bold; margin-bottom: 4px;">${t("Assets")}:</div>
+      <!-- Tab 2: Assets -->
+      <div class="tabPanel" data-panel="assets" style="display: ${activeTab === "assets" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
         <div id="stateAssetsTable" class="table" style="--table-columns: minmax(12em, 1.2fr) minmax(10em, 1fr) 5.5em minmax(27em, 3fr) 4.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Asset")}</div>
@@ -334,6 +446,28 @@ export function openStateCitiesDialog(stateId: number): void {
         </div>
       </div>
 
+      <!-- Tab 3: Forces -->
+      <div class="tabPanel" data-panel="forces" style="display: ${activeTab === "forces" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
+        <div id="stateForcesTable" class="table" style="--table-columns: minmax(12em, 1.2fr) minmax(10em, 1fr) 5.5em minmax(27em, 3fr) 4.5em; width: 0; min-width: 100%;">
+          <div class="header">
+            <div>${t("Force")}</div>
+            <div>${t("Location")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Troops")}</div>
+            <div>${t("Composition")}</div>
+            <div style="justify-content: flex-end; text-align: right;"></div>
+          </div>
+          ${forcesRowsHtml}
+        </div>
+        <div style="width: 0; min-width: 100%; display: flex; gap: 4px; margin-top: 4px;">
+          <select id="newStateForceLocationSelect" style="flex: 1;" ${breakdown.cities.length ? "" : "disabled"}>
+            ${forceCityOptions}
+          </select>
+          <input id="newStateForceNameInput" type="text" placeholder="${t("Force name")}" style="flex: 1.2;" />
+          <input id="newStateForceTroopsInput" type="number" min="10" step="50" value="100" style="width: 5.5em;" />
+          <button id="addStateForceBtn" class="btn" ${breakdown.cities.length ? "" : "disabled"}>${t("+ Force")}</button>
+        </div>
+      </div>
+
       <div style="display: flex; justify-content: flex-end; margin-top: 8px; width: 0; min-width: 100%;">
         <button id="stateCitiesOverviewBurgsBtn" class="btn">${t("All Burgs Overview")}</button>
       </div>
@@ -350,6 +484,23 @@ export function openStateCitiesDialog(stateId: number): void {
     position: { my: "center", at: "center", of: "svg" },
     onClose: () => Dialog.destroy(STATE_CITIES_DIALOG_ID)
   });
+
+  // Tab switching listener
+  ensureEl(STATE_CITIES_DIALOG_ID)
+    ?.querySelectorAll(".tabBtn")
+    .forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const tab = target.dataset.tab as "cities" | "assets" | "forces";
+        if (!tab) return;
+        currentTab = tab;
+        ensureEl(STATE_CITIES_DIALOG_ID)?.querySelectorAll(".tabBtn").forEach(b => b.classList.remove("active"));
+        target.classList.add("active");
+        ensureEl(STATE_CITIES_DIALOG_ID)?.querySelectorAll(".tabPanel").forEach(p => {
+          (p as HTMLElement).style.display = (p as HTMLElement).dataset.panel === tab ? "block" : "none";
+        });
+      });
+    });
 
   // Attach button listeners
   ensureEl(STATE_CITIES_DIALOG_ID)
@@ -390,7 +541,7 @@ export function openStateCitiesDialog(stateId: number): void {
         if (burg) Living.refreshStateBurgYields(state, burg);
         const newBreakdown = Living.getStateYieldBreakdown(state, living);
         if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
-        openStateCitiesDialog(stateId);
+        openStateCitiesDialog(stateId, currentTab);
       });
     });
 
@@ -426,7 +577,7 @@ export function openStateCitiesDialog(stateId: number): void {
     Living.refreshStateBurgYields(state, burg);
     const newBreakdown = Living.getStateYieldBreakdown(state, living);
     if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
-    openStateCitiesDialog(stateId);
+    openStateCitiesDialog(stateId, "cities");
   });
 
   // Dismantle Asset listener
@@ -450,7 +601,7 @@ export function openStateCitiesDialog(stateId: number): void {
         if (burg) Living.refreshStateBurgYields(state, burg);
         const newBreakdown = Living.getStateYieldBreakdown(state, living);
         if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
-        openStateCitiesDialog(stateId);
+        openStateCitiesDialog(stateId, "assets");
       });
     });
 
@@ -489,7 +640,65 @@ export function openStateCitiesDialog(stateId: number): void {
     Living.refreshStateBurgYields(state, burg);
     const newBreakdown = Living.getStateYieldBreakdown(state, living);
     if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
-    openStateCitiesDialog(stateId);
+    openStateCitiesDialog(stateId, "assets");
+  });
+
+  // Zoom to force listener
+  ensureEl(STATE_CITIES_DIALOG_ID)
+    ?.querySelectorAll(".zoomForceBtn")
+    .forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const target = (e.currentTarget as HTMLElement);
+        const x = Number(target.dataset.x);
+        const y = Number(target.dataset.y);
+        if (!isNaN(x) && !isNaN(y)) zoomTo(x, y, 8, 1600);
+      });
+    });
+
+  // Disband force listener
+  ensureEl(STATE_CITIES_DIALOG_ID)
+    ?.querySelectorAll(".removeForceBtn")
+    .forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const target = (e.currentTarget as HTMLElement);
+        const regId = Number(target.dataset.regId);
+        if (!regId) return;
+        state.military = (state.military ?? []).filter(r => r.i !== regId);
+        openStateCitiesDialog(stateId, "forces");
+      });
+    });
+
+  // Add Force listener
+  ensureEl("addStateForceBtn")?.addEventListener("click", () => {
+    const locSel = ensureEl<HTMLSelectElement>("newStateForceLocationSelect");
+    const nameInput = ensureEl<HTMLInputElement>("newStateForceNameInput");
+    const troopsInput = ensureEl<HTMLInputElement>("newStateForceTroopsInput");
+    const burgId = Number(locSel?.value);
+    const burg = burgId ? pack.burgs?.[burgId] : undefined;
+    const cell = burg?.cell ?? state.center ?? 0;
+    const [x, y] = pack.cells?.p?.[cell] ?? [burg?.x ?? 0, burg?.y ?? 0];
+    const troops = Math.max(10, Number(troopsInput?.value) || 100);
+    const name = nameInput?.value.trim() || `${state.name} Regiment ${((state.military?.length ?? 0) + 1)}`;
+
+    state.military ??= [];
+    const maxI = state.military.length ? Math.max(...state.military.map(r => r.i ?? 0)) : 0;
+    const newReg: Regiment = {
+      i: maxI + 1,
+      name,
+      a: troops,
+      cell,
+      x,
+      y,
+      bx: x,
+      by: y,
+      state: stateId,
+      n: 0,
+      u: { infantry: troops },
+      icon: "⚔️",
+      tags: []
+    };
+    state.military.push(newReg);
+    openStateCitiesDialog(stateId, "forces");
   });
 
   ensureEl("stateCitiesOverviewBurgsBtn")?.addEventListener("click", () => {
