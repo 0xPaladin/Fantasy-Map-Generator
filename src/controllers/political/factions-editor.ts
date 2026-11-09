@@ -674,9 +674,9 @@ export function openOutpostsDialog(factionId: number): void {
       item.targetNodeKey === "hq"
   );
   const hqSuppressionText = hqSuppressionItem
-    ? `<div style="opacity: 0.8;">Suppressing ${Math.round(hqHostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: 2 })}</div>`
+    ? `<span style="opacity: 0.8; font-size: 0.85em; margin-left: 4px;">(Suppressing ${Math.round(hqHostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: 2 })})</span>`
     : "";
-  const hqStatusText = faction.hq.pillaged ? `<div style="opacity: 0.7;">Pillaged</div>` : "";
+  const hqStatusText = faction.hq.pillaged ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>` : "";
   const hqYields = formatYields(breakdown.hq?.yields ?? faction.hq.sim?.cityYields);
   const hqCitizens = breakdown.hq?.citizens ?? faction.hq.sim?.citizens ?? 0;
   const hqCells = breakdown.hq?.workedCells ?? faction.hq.sim?.workedCells?.length ?? 0;
@@ -687,15 +687,15 @@ export function openOutpostsDialog(factionId: number): void {
     .join("");
 
   const hqRowHtml = /* html */ `
-    <tr>
-      <td>⭐ <b>${escapeHtml(hqName)}</b></td>
-      <td style="text-align: center;">2</td>
-      <td style="text-align: center;">${Math.round(faction.hq.influence ?? 70)}%${hqStatusText}${hqSuppressionText}</td>
-      <td>${hqYields}</td>
-      <td style="text-align: center;">${hqCitizens}</td>
-      <td style="text-align: center;">${hqCells}</td>
-      <td></td>
-    </tr>
+    <div class="states" style="background: rgba(255, 255, 255, 0.03);">
+      <div style="overflow: hidden; text-overflow: ellipsis;">⭐ <b>${escapeHtml(hqName)}</b></div>
+      <div style="justify-content: center; text-align: center;">2</div>
+      <div style="justify-content: center; text-align: center;">${Math.round(faction.hq.influence ?? 70)}%${hqStatusText}${hqSuppressionText}</div>
+      <div style="overflow: hidden; text-overflow: ellipsis;">${hqYields}</div>
+      <div style="justify-content: center; text-align: center;">${hqCitizens}</div>
+      <div style="justify-content: center; text-align: center;">${hqCells}</div>
+      <div></div>
+    </div>
   `;
 
   const outpostsRowsHtml = faction.outposts
@@ -715,21 +715,21 @@ export function openOutpostsDialog(factionId: number): void {
           item.targetNodeKey === `outpost:${op.burgId}`
       );
       const suppressionText = suppressionItem
-        ? `<div style="opacity: 0.8;">Suppressing ${Math.round(hostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: op.tier })}</div>`
+        ? `<span style="opacity: 0.8; font-size: 0.85em; margin-left: 4px;">(Suppressing ${Math.round(hostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: op.tier })})</span>`
         : "";
-      const statusText = op.pillaged ? `<div style="opacity: 0.7;">Pillaged</div>` : "";
+      const statusText = op.pillaged ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>` : "";
       return /* html */ `
-      <tr>
-        <td><b>${escapeHtml(burgName)}</b></td>
-        <td style="text-align: center;">${op.tier}</td>
-        <td style="text-align: center;">${op.influence}%${statusText}${suppressionText}</td>
-        <td>${yields}</td>
-        <td style="text-align: center;">${citizens}</td>
-        <td style="text-align: center;">${cells}</td>
-        <td style="text-align: right;">
+      <div class="states">
+        <div style="overflow: hidden; text-overflow: ellipsis;"><b>${escapeHtml(burgName)}</b></div>
+        <div style="justify-content: center; text-align: center;">${op.tier}</div>
+        <div style="justify-content: center; text-align: center;">${op.influence}%${statusText}${suppressionText}</div>
+        <div style="overflow: hidden; text-overflow: ellipsis;">${yields}</div>
+        <div style="justify-content: center; text-align: center;">${citizens}</div>
+        <div style="justify-content: center; text-align: center;">${cells}</div>
+        <div style="justify-content: flex-end; text-align: right;">
           <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
-        </td>
-      </tr>
+        </div>
+      </div>
     `;
     })
     .join("");
@@ -828,21 +828,21 @@ export function openOutpostsDialog(factionId: number): void {
     ? assetEntries
         .map(
           r => `
-          <tr>
-            <td><b>${escapeHtml(r.name)}</b></td>
-            <td>${escapeHtml(r.location)}</td>
-            <td style="text-align: center;">
+          <div class="states">
+            <div style="overflow: hidden; text-overflow: ellipsis;"><b>${escapeHtml(r.name)}</b></div>
+            <div style="overflow: hidden; text-overflow: ellipsis;">${escapeHtml(r.location)}</div>
+            <div style="justify-content: center; text-align: center;">
               <span style="font-weight: 600; color: ${r.isComplete ? "#4ade80" : "#fbbf24"};" ${r.progressTip ? `data-tip="${escapeHtml(r.progressTip)}"` : ""}>${escapeHtml(r.progress)}</span>
-            </td>
-            <td>${r.benefits}</td>
-            <td style="text-align: right;">
+            </div>
+            <div style="overflow: hidden; text-overflow: ellipsis;">${r.benefits}</div>
+            <div style="justify-content: flex-end; text-align: right;">
               ${r.assetIndex >= 0 ? `<button class="btn icon-trash removeAssetBtn" data-node="${r.nodeType}" data-outpost-index="${r.outpostIndex ?? ""}" data-index="${r.assetIndex}" data-tip="${t("Dismantle asset")}"></button>` : ""}
-            </td>
-          </tr>
+            </div>
+          </div>
         `
         )
         .join("")
-    : `<tr><td colspan="5" style="padding: 10px; opacity: 0.7; text-align: center;">${t("No assets constructed yet.")}</td></tr>`;
+    : `<div class="states" style="display: flex; justify-content: center; padding: 6px; opacity: 0.7;">${t("No assets constructed yet.")}</div>`;
 
   const assetLocationOptions = [
     `<option value="hq">⭐ ${escapeHtml(hqName)} (HQ)</option>`,
@@ -857,37 +857,31 @@ export function openOutpostsDialog(factionId: number): void {
     .join("");
 
   const markup = /* html */ `
-    <div id="${dialogDomId}" class="dialog" style="width: 100%; box-sizing: border-box;">
+    <div id="${dialogDomId}" class="dialog stable editorDialog" style="width: auto; min-width: 540px;">
       <style>
-        #${dialogDomId} {
-          width: 100%;
-          box-sizing: border-box;
+        #${dialogDomId} .table > .states:nth-child(even) {
+          background-image: none;
+          background-color: rgba(0, 0, 0, 0.04);
         }
-        #${dialogDomId} table.factionTable {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 0.85em;
-          margin-bottom: 6px;
+        #${dialogDomId} .table > .states:nth-child(odd) {
+          background-image: none;
+          background-color: transparent;
         }
-        #${dialogDomId} table.factionTable th {
-          background: rgba(0, 0, 0, 0.08);
-          padding: 5px 6px;
-          border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+        #${dialogDomId} .table > .states:hover {
+          background-image: none;
+          background-color: rgba(94, 79, 162, 0.08);
+          border-color: #c4c4c4;
+        }
+        #${dialogDomId} .header {
+          position: sticky;
+          top: 0;
+          z-index: 1;
+          width: auto;
+          line-height: 2em;
+          background: #f3f4f7;
+          border: 1px solid transparent;
+          padding: 0 0.2em;
           font-weight: 600;
-        }
-        #${dialogDomId} table.factionTable td {
-          padding: 5px 6px;
-          border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-          vertical-align: middle;
-        }
-        #${dialogDomId} table.factionTable tbody tr:nth-child(even) {
-          background: rgba(0, 0, 0, 0.04);
-        }
-        #${dialogDomId} table.factionTable tbody tr:nth-child(odd) {
-          background: transparent;
-        }
-        #${dialogDomId} table.factionTable tbody tr:hover {
-          background: rgba(94, 79, 162, 0.08);
         }
       </style>
 
@@ -900,51 +894,39 @@ export function openOutpostsDialog(factionId: number): void {
         <span class="badge">${capitalize(faction.alignment)}</span>
       </div>
 
-      <div style="margin-bottom: 14px;">
+      <div style="margin-bottom: 14px; width: 0; min-width: 100%;">
         <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ & Outposts")}:</div>
-        <div id="outpostsList" style="width: 100%; overflow-x: auto;">
-          <table class="factionTable">
-            <thead>
-              <tr style="text-align: left;">
-                <th style="padding: 5px 6px;">${t("Burg")}</th>
-                <th style="padding: 5px 6px; text-align: center; width: 3.5em;">${t("Tier")}</th>
-                <th style="padding: 5px 6px; text-align: center; width: 6.5em;">${t("Influence")}</th>
-                <th style="padding: 5px 6px;">${t("Yields")}</th>
-                <th style="padding: 5px 6px; text-align: center; width: 4.5em;">${t("Citizens")}</th>
-                <th style="padding: 5px 6px; text-align: center; width: 4em;">${t("Cells")}</th>
-                <th style="padding: 5px 6px; text-align: right; width: 2.5em;"></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${locationsTableRows}
-            </tbody>
-          </table>
+        <div id="outpostsTable" class="table" style="--table-columns: 10em 3.5em 6.5em minmax(18em, 1fr) 4.5em 4em 2em; width: 0; min-width: 100%;">
+          <div class="header">
+            <div>${t("Burg")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Tier")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Influence")}</div>
+            <div>${t("Yields")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Citizens")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Cells")}</div>
+            <div></div>
+          </div>
+          ${locationsTableRows}
         </div>
-        <div style="width: 100%; display: flex; gap: 4px; margin-top: 6px;">
+        <div style="width: 0; min-width: 100%; display: flex; gap: 4px; margin-top: 4px;">
           <select id="newOutpostBurgSelect" style="flex-grow: 1;">${burgOptions}</select>
           <button id="addOutpostBtn" class="btn">${t("+ Outpost")}</button>
         </div>
       </div>
 
-      <div style="margin-bottom: 8px;">
+      <div style="margin-bottom: 8px; width: 0; min-width: 100%;">
         <div style="font-weight: bold; margin-bottom: 4px;">${t("Assets")}:</div>
-        <div id="assetsTableList" style="width: 100%; overflow-x: auto;">
-          <table class="factionTable">
-            <thead>
-              <tr style="text-align: left;">
-                <th style="padding: 5px 6px; width: 11em;">${t("Asset")}</th>
-                <th style="padding: 5px 6px; width: 10em;">${t("Location")}</th>
-                <th style="padding: 5px 6px; text-align: center; width: 5.5em;">${t("Progress")}</th>
-                <th style="padding: 5px 6px;">${t("Benefits")}</th>
-                <th style="padding: 5px 6px; text-align: right; width: 2.5em;"></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${assetsRowsHtml}
-            </tbody>
-          </table>
+        <div id="assetsTable" class="table" style="--table-columns: 11em 10em 5.5em minmax(18em, 1fr) 2em; width: 0; min-width: 100%;">
+          <div class="header">
+            <div>${t("Asset")}</div>
+            <div>${t("Location")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Progress")}</div>
+            <div>${t("Benefits")}</div>
+            <div></div>
+          </div>
+          ${assetsRowsHtml}
         </div>
-        <div style="width: 100%; display: flex; gap: 4px; margin-top: 6px;">
+        <div style="width: 0; min-width: 100%; display: flex; gap: 4px; margin-top: 4px;">
           <select id="newAssetLocationSelect" style="flex: 1;">${assetLocationOptions}</select>
           <select id="newAssetSelect" style="flex: 1.5;">${assetOptions}</select>
           <button id="addAssetBtn" class="btn">${t("+ Asset")}</button>
@@ -957,9 +939,7 @@ export function openOutpostsDialog(factionId: number): void {
 
   Dialog.open(dialogDomId, {
     title: `${t("Manage Outposts & Assets")} - ${faction.name}`,
-    width: 700,
-    minWidth: 540,
-    resizable: true,
+    width: "fit-content",
     position: { my: "center", at: "center", of: "svg" },
     onClose: () => Dialog.destroy(dialogDomId)
   });
