@@ -29,20 +29,23 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
         p: [
           [0, 0],
           [20, 20],
-          [50, 50]
+          [50, 50],
+          [60, 60]
         ],
-        state: [0, 1, 1],
+        state: [0, 1, 1, 1],
         c: [
           [1, 2],
           [0, 2],
-          [0, 1]
+          [0, 1],
+          [1, 2]
         ]
       },
       cultures: [{ i: 0 }, { i: 1, name: "Aelorian" }],
       burgs: [
         { i: 0 },
         { i: 1, name: "Aelor", x: 20, y: 20, cell: 1, state: 1, population: 20, capital: true },
-        { i: 2, name: "Oakhaven", x: 50, y: 50, cell: 2, state: 1, population: 10 }
+        { i: 2, name: "Oakhaven", x: 50, y: 50, cell: 2, state: 1, population: 10 },
+        { i: 3, name: "Riverbend", x: 60, y: 60, cell: 3, state: 1, population: 5 }
       ],
       provinces: [{ i: 0 }, { i: 1, state: 1, burg: 2, name: "Oak Province" }],
       states: [
@@ -145,10 +148,10 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     expect(recomputed).toEqual(breakdown.total);
   });
 
-  it("renders State Cities & Yields dialog with header and city rows", () => {
+  it("renders State Cities & Yields dialog with header, wide table, scroll styling, add city and add asset controls", () => {
     openStateCitiesDialog(1);
 
-    const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`);
+    const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`) as HTMLElement;
     expect(dialog).not.toBeNull();
     expect(dialog?.innerHTML).toContain("Kingdom of Aeloria");
     expect(dialog?.innerHTML).toContain("Aelorian");
@@ -158,16 +161,75 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     expect(dialog?.innerHTML).toContain("Library");
     expect(dialog?.innerHTML).toContain("Granary");
 
-    // Cities table has 2 rows for major cities
-    const cityRows = dialog?.querySelectorAll("#stateCitiesTable > .states");
-    expect(cityRows?.length).toBe(2);
+    // Dialog styling has width and y-axis scroll
+    expect(dialog?.style.overflowY).toBe("auto");
+    expect(dialog?.style.minWidth).toContain("860px");
 
-    // Assets table has 2 rows for the constructed buildings (Library, Granary)
-    const assetRows = dialog?.querySelectorAll("#stateAssetsTable > .states");
-    expect(assetRows?.length).toBe(2);
+    // Cities table has 2 rows for initial major cities
+    let cityRows = dialog?.querySelectorAll("#stateCitiesTable > .states");
+    expect(cityRows?.length).toBe(2);
 
     // Capital has gold star, province capital has small black star
     expect(cityRows?.[0]?.innerHTML).toContain("⭐");
     expect(cityRows?.[1]?.innerHTML).toContain("★");
+
+    // Capital does not have remove city button, but province capital does
+    expect(cityRows?.[0]?.querySelector(".removeCityBtn")).toBeNull();
+    expect(cityRows?.[1]?.querySelector(".removeCityBtn")).not.toBeNull();
+
+    // Add city controls
+    const citySelect = document.querySelector<HTMLSelectElement>("#newStateCitySelect");
+    const addCityBtn = document.querySelector<HTMLButtonElement>("#addStateCityBtn");
+    expect(citySelect).not.toBeNull();
+    expect(addCityBtn).not.toBeNull();
+    expect(citySelect?.innerHTML).toContain("Riverbend");
+
+    // Add asset controls
+    const assetCitySelect = document.querySelector<HTMLSelectElement>("#newStateAssetCitySelect");
+    const assetSelect = document.querySelector<HTMLSelectElement>("#newStateAssetSelect");
+    const addAssetBtn = document.querySelector<HTMLButtonElement>("#addStateAssetBtn");
+    expect(assetCitySelect).not.toBeNull();
+    expect(assetSelect).not.toBeNull();
+    expect(addAssetBtn).not.toBeNull();
+    expect(assetCitySelect?.innerHTML).toContain("Aelor");
+    expect(assetSelect?.innerHTML).toContain("Monument");
+
+    // Test adding Riverbend as a major city
+    citySelect!.value = "3";
+    addCityBtn!.click();
+
+    // Dialog re-renders with 3 major cities
+    cityRows = document.querySelectorAll("#stateCitiesTable > .states");
+    expect(cityRows?.length).toBe(3);
+    expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).toContain("Riverbend");
+
+    // Test adding an asset (Monument) to Aelor
+    const assetCitySelAfter = document.querySelector<HTMLSelectElement>("#newStateAssetCitySelect");
+    const assetSelAfter = document.querySelector<HTMLSelectElement>("#newStateAssetSelect");
+    const addAssetBtnAfter = document.querySelector<HTMLButtonElement>("#addStateAssetBtn");
+    assetCitySelAfter!.value = "1";
+    assetSelAfter!.value = "monument";
+    addAssetBtnAfter!.click();
+
+    let assetRows = document.querySelectorAll("#stateAssetsTable > .states");
+    expect(assetRows?.length).toBe(3);
+    expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).toContain("Monument");
+
+    // Test dismantling the newly added Monument
+    const removeMonumentBtn = document.querySelector<HTMLButtonElement>('.removeAssetBtn[data-building-id="monument"]');
+    expect(removeMonumentBtn).not.toBeNull();
+    removeMonumentBtn!.click();
+
+    assetRows = document.querySelectorAll("#stateAssetsTable > .states");
+    expect(assetRows?.length).toBe(2);
+
+    // Test removing Riverbend from major cities
+    const removeRiverbendBtn = document.querySelector<HTMLButtonElement>('.removeCityBtn[data-burg-id="3"]');
+    expect(removeRiverbendBtn).not.toBeNull();
+    removeRiverbendBtn!.click();
+
+    cityRows = document.querySelectorAll("#stateCitiesTable > .states");
+    expect(cityRows?.length).toBe(2);
+    expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).not.toContain("Riverbend");
   });
 });

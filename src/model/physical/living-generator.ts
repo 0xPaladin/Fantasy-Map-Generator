@@ -581,6 +581,7 @@ export function isMajorBurg(burg: Burg | undefined | null): boolean {
   if (burg.capital === 1) return true;
   if (burg.state && pack.states?.[burg.state]?.capital === burg.i) return true;
   if (pack.provinces?.some(province => province?.i && !province.removed && province.burg === burg.i)) return true;
+  if (pack?.history?.living?.burgs?.[burg.i]?.isMajor) return true;
   return !burg.state && settlementTierFromPop(burg.population ?? 0) >= 3;
 }
 
@@ -1545,7 +1546,7 @@ class LivingModel {
         existing.civBuildings = syncCivBuildingsFromFlags(burg, existing.civBuildings ?? []);
         syncCivFlagsFromBuildings(burg, existing.civBuildings);
         syncBurgFlagsFromBuildings(burg, existing.buildings);
-        existing.isMajor = isMajorBurg(burg);
+        existing.isMajor = isMajorBurg(burg) || Boolean(existing.isMajor);
       }
     }
   }
@@ -1828,7 +1829,7 @@ class LivingModel {
   /** Every Major Burg of a state that has a live simulation record. */
   private majorBurgsOfState(stateId: number, living: LivingWorldState): Burg[] {
     return pack.burgs.filter(
-      burg => burg?.i && !burg.removed && burg.state === stateId && isMajorBurg(burg) && Boolean(living.burgs[burg.i])
+      burg => burg?.i && !burg.removed && burg.state === stateId && (isMajorBurg(burg) || Boolean(living.burgs[burg.i]?.isMajor)) && Boolean(living.burgs[burg.i])
     );
   }
 
