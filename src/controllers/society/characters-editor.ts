@@ -199,8 +199,8 @@ function renderDialog(): void {
     <div id="${dialogId}" class="dialog stable editorDialog">
       ${renderEditorHeader({ dialogId, columns })}
       <div id="charactersBodySection" class="table" data-type="absolute" style="max-height: 480px; overflow-y: auto;"></div>
-      <div id="charactersFilters" class="editorFilters" style="display: flex; gap: 8px; align-items: center; padding: 6px;">
-        <label for="charactersSearch">${t("Search")}: <input id="charactersSearch" type="search" style="width: 140px;" /></label>
+      <div id="charactersFilters" class="editorFilters" data-tip="${t("Apply a filter")}">
+        <label for="charactersSearch">${t("Search")}: <input id="charactersSearch" type="search" /></label>
         <label for="charactersStatusFilter">${t("Status")}:
           <select id="charactersStatusFilter">
             <option value="all">${t("All")}</option>
@@ -386,29 +386,35 @@ function renderDetails(character: HistoricalFigure): string {
     .join("");
 
   return /* html */ `
-    <div id="${detailsId}" class="dialog stable" style="padding: 10px; max-height: 72vh; overflow-y: auto;">
+    <div id="${detailsId}" class="dialog stable" style="padding: 8px; max-height: 72vh; overflow-y: auto; font-size: 0.85em;">
       <section class="editorSection">
         <h4>${t("Identity")}</h4>
-        <label>${t("Name")} <input id="characterName" value="${escapeHtml(character.name)}" style="width: 16em;" /></label>
-        <label>${t("Culture")} <select id="characterCulture">${cultures}</select></label>
-        <label>${t("Birth")} <input id="characterBirth" type="number" value="${character.birth}" style="width: 6em;" /></label>
-        <label>${t("Death")} <input id="characterDeath" type="number" value="${character.death ?? ""}" style="width: 6em;" /></label>
-        <label>${t("Gender")} <input id="characterGender" value="${escapeHtml(character.gender ?? "")}" style="width: 8em;" /></label>
-        <label>${t("Cell")} <input id="characterCell" type="number" value="${character.cell ?? ""}" style="width: 6em;" /></label>
-        <label><input id="characterManual" type="checkbox" ${character.manual ? "checked" : ""}/> ${t("Manual")}</label>
-        <label><input id="characterLock" type="checkbox" ${character.lock ? "checked" : ""}/> ${t("Locked")}</label>
-        <label style="display: block;">${t("Tags")} <input id="characterTags" value="${escapeHtml((character.tags ?? []).join(", "))}" style="width: 100%;" /></label>
-        <label style="display: block;">${t("Notes")} <textarea id="characterNote" style="width: 100%; height: 3em;">${escapeHtml(character.note ?? "")}</textarea></label>
+        <div style="display: flex; gap: 6px; margin-bottom: 4px;">
+          <label style="flex: 2; display: flex; flex-direction: column;">${t("Name")}<input id="characterName" value="${escapeHtml(character.name)}" style="width: 100%;" /></label>
+          <label style="flex: 2; display: flex; flex-direction: column;">${t("Culture")}<select id="characterCulture" style="width: 100%;">${cultures}</select></label>
+        </div>
+        <div style="display: flex; gap: 6px; margin-bottom: 4px;">
+          <label style="flex: 1; display: flex; flex-direction: column;">${t("Birth")}<input id="characterBirth" type="number" value="${character.birth}" style="width: 100%;" /></label>
+          <label style="flex: 1; display: flex; flex-direction: column;">${t("Death")}<input id="characterDeath" type="number" value="${character.death ?? ""}" style="width: 100%;" /></label>
+          <label style="flex: 1; display: flex; flex-direction: column;">${t("Gender")}<input id="characterGender" value="${escapeHtml(character.gender ?? "")}" style="width: 100%;" /></label>
+          <label style="flex: 1; display: flex; flex-direction: column;">${t("Cell")}<input id="characterCell" type="number" value="${character.cell ?? ""}" style="width: 100%;" /></label>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 4px;">
+          <label><input id="characterManual" type="checkbox" ${character.manual ? "checked" : ""}/> ${t("Manual")}</label>
+          <label><input id="characterLock" type="checkbox" ${character.lock ? "checked" : ""}/> ${t("Locked")}</label>
+        </div>
+        <label style="display: flex; flex-direction: column;">${t("Tags")}<input id="characterTags" value="${escapeHtml((character.tags ?? []).join(", "))}" style="width: 100%;" /></label>
+        <label style="display: flex; flex-direction: column;">${t("Notes")}<textarea id="characterNote" style="width: 100%; height: 2.5em;">${escapeHtml(character.note ?? "")}</textarea></label>
       </section>
 
       <section class="editorSection">
         <h4>${t("Traits")}</h4>
-        <label>${t("Alignment")} <select id="characterAlignment">
+        <label style="display: flex; flex-direction: column;">${t("Alignment")}<select id="characterAlignment" style="width: 100%;">
           <option value="">${t("None")}</option>
           ${ALIGNMENTS.map(alignment => `<option value="${alignment}" ${character.alignment === alignment ? "selected" : ""}>${capitalize(alignment)}</option>`).join("")}
         </select></label>
-        <label style="display: block;">${t("Virtues")} <input id="characterVirtues" value="${escapeHtml((character.virtues ?? []).join(", "))}" style="width: 100%;" /></label>
-        <label style="display: block;">${t("Vices")} <input id="characterVices" value="${escapeHtml((character.vices ?? []).join(", "))}" style="width: 100%;" /></label>
+        <label style="display: flex; flex-direction: column;">${t("Virtues")}<input id="characterVirtues" value="${escapeHtml((character.virtues ?? []).join(", "))}" style="width: 100%;" /></label>
+        <label style="display: flex; flex-direction: column;">${t("Vices")}<input id="characterVices" value="${escapeHtml((character.vices ?? []).join(", "))}" style="width: 100%;" /></label>
       </section>
 
       <section class="editorSection">
@@ -426,9 +432,9 @@ function renderDetails(character: HistoricalFigure): string {
         <h4>${t("Relations")}</h4>
         <div id="characterRelationsRows">${relationRows(character)}</div>
         <div style="display: flex; gap: 4px; align-items: end;">
-          <label>${t("Kind")} <select id="newRelationKind">${RELATION_KINDS.map(kind => `<option value="${kind}">${capitalize(kind)}</option>`).join("")}</select></label>
-          <label>${t("Target")} <input id="newRelationTarget" type="number" min="0" style="width: 5em;" /></label>
-          <label>${t("Relation")} <select id="newRelationTier">${RELATIONS.map(rel => `<option value="${rel}">${rel}</option>`).join("")}</select></label>
+          <label style="flex: 1; display: flex; flex-direction: column;">${t("Kind")}<select id="newRelationKind" style="width: 100%;">${RELATION_KINDS.map(kind => `<option value="${kind}">${capitalize(kind)}</option>`).join("")}</select></label>
+          <label style="flex: 0 0 5em; display: flex; flex-direction: column;">${t("Target")}<input id="newRelationTarget" type="number" min="0" style="width: 100%;" /></label>
+          <label style="flex: 1; display: flex; flex-direction: column;">${t("Relation")}<select id="newRelationTier" style="width: 100%;">${RELATIONS.map(rel => `<option value="${rel}">${rel}</option>`).join("")}</select></label>
           <button id="addRelationButton" class="btn">${t("+ Relation")}</button>
         </div>
       </section>
@@ -445,47 +451,47 @@ function renderHeroSection(hero: HeroSheet): string {
   const attributes = (["might", "agility", "wits", "presence"] as const)
     .map(
       attribute =>
-        `<label>${capitalize(attribute)} <input data-attr="${attribute}" type="number" min="-1" max="2" step="1" value="${hero.attributes[attribute]}" style="width: 3.5em;" /></label>`
+        `<label style="flex: 1; display: flex; flex-direction: column;">${capitalize(attribute)}<input data-attr="${attribute}" type="number" min="-1" max="2" step="1" value="${hero.attributes[attribute]}" style="width: 100%;" /></label>`
     )
-    .join(" ");
+    .join("");
   const actions = ACTIONS.map(
     action =>
-      `<label>${escapeHtml(ACTION_DEFS[action].label)} <select data-action="${action}">
+      `<label style="display: flex; flex-direction: column;">${escapeHtml(ACTION_DEFS[action].label)}<select data-action="${action}" style="width: 100%;">
         ${DICE.map(die => `<option value="${die}" ${hero.actions[action] === die ? "selected" : ""}>${die}</option>`).join("")}
       </select></label>`
-  ).join(" ");
+  ).join("");
   const condition = hero.condition;
 
   return /* html */ `
-    <div><b>${t("Archetype")}:</b> ${escapeHtml(hero.archetype ?? "—")}</div>
-    <div style="margin: 4px 0;">${attributes}</div>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0;">${actions}</div>
-    <label style="display: block;">${t("Abilities")} <textarea id="heroAbilities" style="width: 100%; height: 3em;">${escapeHtml((hero.abilities ?? []).join("\n"))}</textarea></label>
-    <label style="display: block;">${t("Inventory")} <textarea id="heroInventory" style="width: 100%; height: 2.5em;">${escapeHtml((hero.inventory ?? []).join("\n"))}</textarea></label>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
-      <label>${t("XP")} <input id="heroXp" type="number" min="0" value="${hero.xp ?? 0}" style="width: 5em;" /></label>
-      <label>${t("Resolve")} <input id="heroResolve" type="number" value="${condition?.resolve ?? 0}" style="width: 4em;" /></label>
-      <label>${t("Stamina")} <input id="heroStamina" type="number" value="${condition?.stamina ?? 0}" style="width: 4em;" /></label>
-      <label>${t("Max Resolve")} <input id="heroMaxResolve" type="number" value="${condition?.maxResolve ?? 0}" style="width: 4em;" /></label>
-      <label>${t("Max Stamina")} <input id="heroMaxStamina" type="number" value="${condition?.maxStamina ?? 0}" style="width: 4em;" /></label>
-      <label><input id="heroPush" type="checkbox" ${condition?.push ? "checked" : ""}/> ${t("Push")}</label>
+    <div style="margin-bottom: 4px;"><b>${t("Archetype")}:</b> ${escapeHtml(hero.archetype ?? "—")}</div>
+    <div style="display: flex; gap: 4px; margin-bottom: 4px;">${attributes}</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 4px;">${actions}</div>
+    <label style="display: flex; flex-direction: column;">${t("Abilities")}<textarea id="heroAbilities" style="width: 100%; height: 2.5em;">${escapeHtml((hero.abilities ?? []).join("\n"))}</textarea></label>
+    <label style="display: flex; flex-direction: column;">${t("Inventory")}<textarea id="heroInventory" style="width: 100%; height: 2em;">${escapeHtml((hero.inventory ?? []).join("\n"))}</textarea></label>
+    <div style="display: flex; gap: 4px; margin-top: 4px;">
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("XP")}<input id="heroXp" type="number" min="0" value="${hero.xp ?? 0}" style="width: 100%;" /></label>
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Resolve")}<input id="heroResolve" type="number" value="${condition?.resolve ?? 0}" style="width: 100%;" /></label>
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Stamina")}<input id="heroStamina" type="number" value="${condition?.stamina ?? 0}" style="width: 100%;" /></label>
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Max Resolve")}<input id="heroMaxResolve" type="number" value="${condition?.maxResolve ?? 0}" style="width: 100%;" /></label>
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Max Stamina")}<input id="heroMaxStamina" type="number" value="${condition?.maxStamina ?? 0}" style="width: 100%;" /></label>
+      <label style="display: flex; align-items: center;"><input id="heroPush" type="checkbox" ${condition?.push ? "checked" : ""}/> ${t("Push")}</label>
     </div>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
-      <label>${t("Applied Level")} <input id="heroAppliedLevel" type="number" min="0" value="${hero.progression?.appliedLevel ?? 0}" style="width: 4em;" /></label>
-      <label>${t("Pending Choices")} <input id="heroPendingChoices" type="number" min="0" max="2" value="${hero.progression?.pendingChoices ?? 0}" style="width: 4em;" /></label>
-      <label>${t("Picks")} <input id="heroPicks" value="${escapeHtml((hero.progression?.picks ?? []).join(", "))}" style="width: 10em;" /></label>
+    <div style="display: flex; gap: 4px; margin-top: 4px;">
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Applied Level")}<input id="heroAppliedLevel" type="number" min="0" value="${hero.progression?.appliedLevel ?? 0}" style="width: 100%;" /></label>
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Pending Choices")}<input id="heroPendingChoices" type="number" min="0" max="2" value="${hero.progression?.pendingChoices ?? 0}" style="width: 100%;" /></label>
+      <label style="flex: 2; display: flex; flex-direction: column;">${t("Picks")}<input id="heroPicks" value="${escapeHtml((hero.progression?.picks ?? []).join(", "))}" style="width: 100%;" /></label>
     </div>`;
 }
 
 function roleRow(role: HistoricalRole): string {
   return /* html */ `
     <div class="characterRoleRow" data-role-row style="display: flex; gap: 4px; align-items: end; margin-bottom: 3px;">
-      <label>${t("Type")} <select data-role="type">${ROLE_TYPES.map(type => `<option value="${type}" ${role.type === type ? "selected" : ""}>${capitalize(type)}</option>`).join("")}</select></label>
-      <label>${t("Target")} <select data-role="targetKind">${REF_KINDS.map(kind => `<option value="${kind}" ${role.target.kind === kind ? "selected" : ""}>${capitalize(kind)}</option>`).join("")}</select></label>
-      <label>${t("Id")} <input data-role="targetId" type="number" min="0" value="${role.target.id}" style="width: 4em;" /></label>
-      <label>${t("From")} <input data-role="from" type="number" value="${role.from}" style="width: 5em;" /></label>
-      <label>${t("To")} <input data-role="to" type="number" value="${role.to ?? ""}" style="width: 5em;" /></label>
-      <label>${t("Specialty")} <input data-role="specialty" value="${escapeHtml(role.specialty ?? "")}" style="width: 7em;" /></label>
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Type")}<select data-role="type" style="width: 100%;">${ROLE_TYPES.map(type => `<option value="${type}" ${role.type === type ? "selected" : ""}>${capitalize(type)}</option>`).join("")}</select></label>
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Target")}<select data-role="targetKind" style="width: 100%;">${REF_KINDS.map(kind => `<option value="${kind}" ${role.target.kind === kind ? "selected" : ""}>${capitalize(kind)}</option>`).join("")}</select></label>
+      <label style="flex: 0 0 4em; display: flex; flex-direction: column;">${t("Id")}<input data-role="targetId" type="number" min="0" value="${role.target.id}" style="width: 100%;" /></label>
+      <label style="flex: 0 0 5em; display: flex; flex-direction: column;">${t("From")}<input data-role="from" type="number" value="${role.from}" style="width: 100%;" /></label>
+      <label style="flex: 0 0 5em; display: flex; flex-direction: column;">${t("To")}<input data-role="to" type="number" value="${role.to ?? ""}" style="width: 100%;" /></label>
+      <label style="flex: 2; display: flex; flex-direction: column;">${t("Specialty")}<input data-role="specialty" value="${escapeHtml(role.specialty ?? "")}" style="width: 100%;" /></label>
       <button class="btn icon-trash" data-remove-role></button>
     </div>`;
 }
