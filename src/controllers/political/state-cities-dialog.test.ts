@@ -158,8 +158,16 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     expect(dialog?.innerHTML).toContain("Library");
     expect(dialog?.innerHTML).toContain("Granary");
 
-    // Table has 2 rows for major cities
-    const rows = dialog?.querySelectorAll("tbody tr");
-    expect(rows?.length).toBe(2);
+    // Cities table has 2 rows for major cities
+    const cityRows = dialog?.querySelectorAll("#stateCitiesTable > .states");
+    expect(cityRows?.length).toBe(2);
+
+    // Assets table has 2 rows for the constructed buildings (Library, Granary)
+    const assetRows = dialog?.querySelectorAll("#stateAssetsTable > .states");
+    expect(assetRows?.length).toBe(2);
+
+    // Capital has gold star, province capital has small black star
+    expect(cityRows?.[0]?.innerHTML).toContain("⭐");
+    expect(cityRows?.[1]?.innerHTML).toContain("★");
   });
 });
