@@ -8,6 +8,7 @@ vi.mock("./providers", async importOriginal => ({
 }));
 
 import type { Chat, TranscriptItem } from "../chats";
+import { deleteSkill, saveInstructions, saveSkill } from "../customization";
 import { askProvider } from "./answerer";
 import { save } from "./connection";
 import { fromChatResponse } from "./openai";
@@ -481,4 +482,74 @@ it("lets the model correct null arguments and keeps the answer history", async (
   expect(chat.messages[4].content[0]).toMatchObject({ content: "Found it", is_error: false });
   expect(items.at(-1)).toEqual({ kind: "answer", text: "Done." });
   expect(chat.messages).toHaveLength(6);
+});
+
+it("serves an enabled skill through read_skill and carries custom content in the system prompt", async () => {
+  saveInstructions("Name rivers after local saints.");
+  const skill = saveSkill({ name: "Naming", description: "How to name things", body: "Use the old tongue." });
+  try {
+    const calls = vi.fn();
+    completeMock.mockImplementation(async request => {
+      calls(request);
+      if (calls.mock.calls.length === 1)
+        return {
+          content: [{ type: "tool_use", id: "s1", name: "read_skill", input: { name: "naming" } }],
+          usage: { input: 1, output: 1, cached: 0 }
+        };
+      return { content: [{ type: "text", text: "Named." }], usage: { input: 1, output: 1, cached: 0 } };
+    });
+    const chat = newChat();
+    await askProvider(chat, "Name a river", () => {}, new AbortController().signal, {
+      tools: [],
+      context: async () => "map"
+    });
+
+    const system = calls.mock.calls[0][0].system;
+    expect(system).toHaveLength(3);
+    expect(system[1].text).toContain("Name rivers after local saints.");
+    expect(system[2].text).toContain("- Naming: How to name things");
+    const result = chat.messages.at(-2)!.content[0];
+    expect(result).toMatchObject({ tool_use_id: "s1", content: "Use the old tongue.", is_error: false });
+    expect(chat.messages.at(-1)!.content[0]).toMatchObject({ text: "Named." });
+  } finally {
+    deleteSkill(skill.id);
+    saveInstructions("");
+  }
+});
+
+it("read_skill names the available skills when asked for an unknown one", async () => {
+  const skill = saveSkill({ name: "Naming", description: "d", body: "b" });
+  try {
+    completeMock
+      .mockResolvedValueOnce({
+        content: [{ type: "tool_use", id: "s2", name: "read_skill", input: { name: "Heralding" } }],
+        usage: { input: 1, output: 1, cached: 0 }
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "Sorry." }],
+        usage: { input: 1, output: 1, cached: 0 }
+      });
+    const chat = newChat();
+    await askProvider(chat, "Read it", () => {}, new AbortController().signal, {
+      tools: [],
+      context: async () => "map"
+    });
+    expect(chat.messages.at(-2)!.content[0]).toMatchObject({
+      content: 'No skill named "Heralding". Available: Naming.',
+      is_error: true
+    });
+  } finally {
+    deleteSkill(skill.id);
+  }
+});
+
+it("offers no read_skill when no skill is enabled", async () => {
+  completeMock.mockResolvedValueOnce({
+    content: [{ type: "text", text: "Answer." }],
+    usage: { input: 1, output: 1, cached: 0 }
+  });
+  await askProvider(newChat(), "Hi", () => {}, new AbortController().signal, { tools: [], context: async () => "map" });
+  const names = completeMock.mock.calls[0][0].tools.map((tool: { name: string }) => tool.name);
+  expect(names).toContain("read_help");
+  expect(names).not.toContain("read_skill");
 });

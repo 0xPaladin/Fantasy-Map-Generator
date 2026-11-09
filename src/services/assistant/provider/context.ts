@@ -155,6 +155,26 @@ ${DATA_FIELDS}`;
 
 const staticPrompt = [ROLE, SCRIPTS, UNITS, GOTCHAS, ANSWERS, CHANGES, ASKING, FIELDS].join("\n\n");
 
-export const SYSTEM_PROMPT: SystemBlock[] = [
-  { type: "text", text: staticPrompt, cache_control: { type: "ephemeral" } }
-];
+export interface CustomContext {
+  instructions: string; // the user's AGENTS-style instructions, may be empty
+  skills: { name: string; description: string }[]; // enabled skills only
+}
+
+/** The built-in prompt first, then the user's instructions and the skill index, so the prefix stays
+ * cacheable; the cache mark sits on the last block. Custom content only changes when the user edits it */
+export function systemBlocks(custom?: CustomContext): SystemBlock[] {
+  const blocks: SystemBlock[] = [{ type: "text", text: staticPrompt }];
+  const instructions = custom?.instructions.trim();
+  if (instructions)
+    blocks.push({
+      type: "text",
+      text: `# The user's instructions\n\n${instructions}\n\nThese are the user's preferences for their worlds; the rules above still hold when they conflict.`
+    });
+  if (custom?.skills.length)
+    blocks.push({
+      type: "text",
+      text: `# Skills\n\n${custom.skills.map(skill => `- ${skill.name}: ${skill.description}`).join("\n")}\n\nCall read_skill("<name>") before a task that matches a skill.`
+    });
+  blocks.at(-1)!.cache_control = { type: "ephemeral" };
+  return blocks;
+}
