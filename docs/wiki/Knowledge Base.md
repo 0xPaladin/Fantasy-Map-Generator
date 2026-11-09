@@ -638,7 +638,7 @@ Guests and Members on the official site can ask documentation questions without 
 
 ### Which AI providers and models can Azgaar Assistant use?
 
-Anthropic, OpenAI, Mistral, Qwen, DeepSeek, and an OpenAI-compatible local server such as Ollama. Choose a Provider in the key sheet. The Assistant discovers models available to the key and also accepts any typed model id. One default is offered while discovery is pending.
+Anthropic, OpenAI, OpenRouter, Z.ai, Gemini, Mistral, Qwen, DeepSeek, and an OpenAI-compatible local server such as Ollama. Choose a Provider in the key sheet. The Assistant discovers models available to the key and also accepts any typed model id. One default is offered while discovery is pending. OpenRouter serves many providers behind one key, including free models (marked ":free"), and its model list only offers models that can call tools. Z.ai serves the GLM models, with glm-4.5-flash free of charge.
 
 ### Can Azgaar Assistant see my map or images?
 

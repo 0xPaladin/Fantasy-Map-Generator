@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { completeOpenAI } from "./openai";
-import { type CompletionRequest, complete, type Message, markCached } from "./providers";
+import {
+  type CompletionRequest,
+  complete,
+  endpoint,
+  keyStorageForProvider,
+  type Message,
+  markCached,
+  providerById
+} from "./providers";
 
 const globals = globalThis as Record<string, unknown>;
 
@@ -63,6 +71,55 @@ describe("cloud providers", () => {
     const answer = complete({ ...cloud, signal: cancel.signal });
     cancel.abort();
     await expect(answer).rejects.not.toThrow(/did not answer/);
+  });
+});
+
+describe("openrouter and zai providers", () => {
+  it("expose their endpoint, key storage and fallback model", () => {
+    const openrouter = providerById("openrouter");
+    const zai = providerById("zai");
+    expect(openrouter?.baseUrl).toBe("https://openrouter.ai/api/v1");
+    expect(endpoint("openrouter")).toBe("https://openrouter.ai/api/v1");
+    expect(keyStorageForProvider("openrouter")).toBe("fmg-ai-kl-openrouter");
+    expect(zai?.baseUrl).toBe("https://api.z.ai/api/paas/v4");
+    expect(endpoint("zai")).toBe("https://api.z.ai/api/paas/v4");
+    expect(keyStorageForProvider("zai")).toBe("fmg-ai-kl-zai");
+    expect(openrouter?.fallbackModel).toBeTruthy();
+    expect(zai?.fallbackModel).toBeTruthy();
+  });
+
+  it("sends the attribution headers OpenRouter asks for, and none to Z.ai", async () => {
+    const globals2 = globalThis as Record<string, unknown>;
+    globals2.location = { origin: "https://example.com" };
+    try {
+      await completeOpenAI("https://openrouter.ai/api/v1", {
+        ...request,
+        provider: "openrouter",
+        model: "anthropic/claude-sonnet-4.5",
+        key: "sk-or"
+      });
+      let headers = sent()[1].headers as Record<string, string>;
+      expect(headers["HTTP-Referer"]).toBe("https://example.com");
+      expect(headers["X-Title"]).toBe("Fantasy Map Generator");
+      expect(headers.Authorization).toBe("Bearer sk-or");
+
+      await completeOpenAI("https://api.z.ai/api/paas/v4", {
+        ...request,
+        provider: "zai",
+        model: "glm-4.6",
+        key: "sk-z"
+      });
+      headers = (fetchStub.mock.calls[1][1] as RequestInit).headers as Record<string, string>;
+      expect(headers["HTTP-Referer"]).toBeUndefined();
+      expect(headers.Authorization).toBe("Bearer sk-z");
+    } finally {
+      delete globals2.location;
+    }
+  });
+
+  it("gives reasoning models a larger output limit", async () => {
+    await completeOpenAI("https://api.z.ai/api/paas/v4", { ...request, provider: "zai", model: "glm-4.6" });
+    expect(JSON.parse(sent()[1].body as string).max_tokens).toBe(8192);
   });
 });
 
