@@ -63,6 +63,35 @@ function formatYields(yields?: YieldValues): string {
   return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)}`;
 }
 
+export function formatAssetBenefits(assetId?: string): string {
+  if (!assetId) return "—";
+  const def = getFactionAsset(assetId);
+  if (!def) return "—";
+  const parts: string[] = [];
+  if (def.yields?.gold) parts.push(`+${def.yields.gold} 🪙`);
+  if (def.yields?.science) parts.push(`+${def.yields.science} 🔬`);
+  if (def.yields?.influence) parts.push(`+${def.yields.influence} 🎭`);
+  if (def.yields?.militaryCap) parts.push(`+${def.yields.militaryCap} ⚔️`);
+  if (def.yields?.secrecy) parts.push(`+${def.yields.secrecy} 👁️`);
+  if (def.burgImpact?.order) parts.push(`+${def.burgImpact.order} Order`);
+  if (def.burgImpact?.unrest) parts.push(`${def.burgImpact.unrest > 0 ? "+" : ""}${def.burgImpact.unrest} Unrest`);
+  if (def.burgImpact?.prod) parts.push(`+${def.burgImpact.prod} 🔨`);
+
+  if (parts.length === 0) {
+    const civ = CIV_BUILDING_BY_ID[assetId];
+    if (civ?.stats) {
+      if (civ.stats.gold) parts.push(`+${civ.stats.gold} 🪙`);
+      if (civ.stats.production) parts.push(`+${civ.stats.production} 🔨`);
+      if (civ.stats.food) parts.push(`+${civ.stats.food} 🌾`);
+      if (civ.stats.science) parts.push(`+${civ.stats.science} 🔬`);
+      if (civ.stats.culture) parts.push(`+${civ.stats.culture} 🎭`);
+      if (civ.stats.faith) parts.push(`+${civ.stats.faith} ✨`);
+    }
+  }
+
+  return parts.length ? parts.join(", ") : (def.description || "—");
+}
+
 function factionNodes(faction: Faction) {
   return [faction.hq, ...(faction.outposts ?? [])].filter(Boolean);
 }
@@ -160,35 +189,35 @@ const columns: EditorColumn<Faction>[] = [
     label: t("Outposts"),
     width: "5em",
     sortBy: f => f.outposts?.length || 0,
-    sortType: "numeric"
+    sortType: "number"
   },
   {
     key: "treasury",
     label: t("Treasury"),
     width: "5em",
     sortBy: f => f.treasury || 0,
-    sortType: "numeric"
+    sortType: "number"
   },
   {
     key: "citizens",
     label: t("Citizens"),
     width: "7em",
     sortBy: f => totalCitizens(f),
-    sortType: "numeric"
+    sortType: "number"
   },
   {
     key: "worked",
     label: t("Cells"),
     width: "5em",
     sortBy: f => totalWorkedCells(f),
-    sortType: "numeric"
+    sortType: "number"
   },
   {
     key: "military",
     label: t("Forces"),
     width: "4em",
     sortBy: f => f.military?.length || 0,
-    sortType: "numeric"
+    sortType: "number"
   },
   { key: "details", width: "1.2em" },
   { key: "remove", width: "1.2em", permanent: true }
@@ -634,6 +663,8 @@ export function openOutpostsDialog(factionId: number): void {
   const dialogDomId = "factionOutpostsDialog";
   Dialog.destroy(dialogDomId);
 
+  const hqBurg = faction.hq.burgId ? pack.burgs?.[faction.hq.burgId] : null;
+  const hqName = hqBurg?.name ?? (faction.hq.markerId ? `Marker ${faction.hq.markerId}` : `Cell ${faction.hq.cell}`);
   const hqHostSim = pack.history?.living?.burgs?.[faction.hq.burgId ?? 0];
   const hqSuppressionItem = (hqHostSim?.productionQueue ?? []).find(
     item =>
@@ -642,76 +673,188 @@ export function openOutpostsDialog(factionId: number): void {
       item.targetFactionId === faction.i &&
       item.targetNodeKey === "hq"
   );
-  const hqStatus = faction.hq.pillaged
-    ? "Pillaged"
-    : hqSuppressionItem
-      ? `Suppressing ${Math.round(hqHostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: 2 })}`
-      : `Influence ${Math.round(faction.hq.influence ?? 70)}%`;
+  const hqSuppressionText = hqSuppressionItem
+    ? `<div style="opacity: 0.8;">Suppressing ${Math.round(hqHostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: 2 })}</div>`
+    : "";
+  const hqStatusText = faction.hq.pillaged ? `<div style="opacity: 0.7;">Pillaged</div>` : "";
+  const hqYields = formatYields(breakdown.hq?.yields ?? faction.hq.sim?.cityYields);
+  const hqCitizens = breakdown.hq?.citizens ?? faction.hq.sim?.citizens ?? 0;
+  const hqCells = breakdown.hq?.workedCells ?? faction.hq.sim?.workedCells?.length ?? 0;
+
   const burgOptions = (pack.burgs ?? [])
     .filter(b => b?.i && !b.removed && b.i !== faction.hq.burgId && !faction.outposts.some(o => o.burgId === b.i))
-    .map(b => `<option value="${b.i}">${escapeHtml(b.name)} (Pop: ${b.population || 0})</option>`)
+    .map(b => `<option value="${b.i}">${escapeHtml(b.name ?? "")} (Pop: ${b.population || 0})</option>`)
     .join("");
 
+  const hqRowHtml = /* html */ `
+    <tr style="border-bottom: 1px solid #444; background: rgba(255,255,255,0.03);">
+      <td style="padding: 4px;">⭐ <b>${escapeHtml(hqName)}</b></td>
+      <td style="padding: 4px; text-align: center;">2</td>
+      <td style="padding: 4px; text-align: center;">${Math.round(faction.hq.influence ?? 70)}%${hqStatusText}${hqSuppressionText}</td>
+      <td style="padding: 4px;">${hqYields}</td>
+      <td style="padding: 4px; text-align: center;">${hqCitizens}</td>
+      <td style="padding: 4px; text-align: center;">${hqCells}</td>
+      <td style="padding: 4px; text-align: right;"></td>
+    </tr>
+  `;
+
+  const outpostsRowsHtml = faction.outposts
+    .map((op, idx) => {
+      const burg = pack.burgs?.[op.burgId];
+      const burgName = burg?.name ?? `Burg ${op.burgId}`;
+      const nodeBreakdown = breakdown.outposts.find(b => b.node === op);
+      const yields = formatYields(nodeBreakdown?.yields ?? op.sim?.cityYields);
+      const citizens = nodeBreakdown?.citizens ?? op.sim?.citizens ?? 0;
+      const cells = nodeBreakdown?.workedCells ?? op.sim?.workedCells?.length ?? 0;
+      const hostSim = pack.history?.living?.burgs?.[op.burgId];
+      const suppressionItem = (hostSim?.productionQueue ?? []).find(
+        item =>
+          item.kind === "operation" &&
+          item.id === "faction-suppression" &&
+          item.targetFactionId === faction.i &&
+          item.targetNodeKey === `outpost:${op.burgId}`
+      );
+      const suppressionText = suppressionItem
+        ? `<div style="opacity: 0.8;">Suppressing ${Math.round(hostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: op.tier })}</div>`
+        : "";
+      const statusText = op.pillaged ? `<div style="opacity: 0.7;">Pillaged</div>` : "";
+      return /* html */ `
+      <tr style="border-bottom: 1px solid #444;">
+        <td style="padding: 4px;"><b>${escapeHtml(burgName)}</b></td>
+        <td style="padding: 4px; text-align: center;">${op.tier}</td>
+        <td style="padding: 4px; text-align: center;">${op.influence}%${statusText}${suppressionText}</td>
+        <td style="padding: 4px;">${yields}</td>
+        <td style="padding: 4px; text-align: center;">${citizens}</td>
+        <td style="padding: 4px; text-align: center;">${cells}</td>
+        <td style="padding: 4px; text-align: right;">
+          <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
+        </td>
+      </tr>
+    `;
+    })
+    .join("");
+
+  const locationsTableRows = hqRowHtml + outpostsRowsHtml;
+
+  interface AssetEntry {
+    name: string;
+    location: string;
+    progress: string;
+    isComplete: boolean;
+    benefits: string;
+    nodeType: "hq" | "outpost";
+    outpostIndex?: number;
+    assetIndex: number;
+  }
+
+  const assetEntries: AssetEntry[] = [];
+
+  // HQ completed assets
+  (faction.hq.assets ?? []).forEach((aid, idx) => {
+    const def = getFactionAsset(aid);
+    assetEntries.push({
+      name: def?.name ?? aid,
+      location: `⭐ ${hqName}`,
+      progress: t("Complete"),
+      isComplete: true,
+      benefits: formatAssetBenefits(aid),
+      nodeType: "hq",
+      assetIndex: idx
+    });
+  });
+
+  // HQ in-progress assets
+  (faction.hq.sim?.productionQueue ?? []).forEach(item => {
+    if (item.kind === "building" && !faction.hq.assets?.includes(item.id)) {
+      const def = getFactionAsset(item.id);
+      const prog = Math.round(faction.hq.sim?.productionProgress?.[item.id] ?? faction.hq.sim?.productionProgress?.[item.kind + ":" + item.id] ?? 0);
+      const cost = CIV_BUILDING_BY_ID[item.id]?.cost ?? def?.cost ?? 100;
+      const pct = Math.min(100, Math.round((prog / Math.max(1, cost)) * 100));
+      assetEntries.push({
+        name: def?.name ?? item.id,
+        location: `⭐ ${hqName}`,
+        progress: `${pct}% (${prog}/${cost})`,
+        isComplete: false,
+        benefits: formatAssetBenefits(item.id),
+        nodeType: "hq",
+        assetIndex: -1
+      });
+    }
+  });
+
+  // Outpost assets
+  (faction.outposts ?? []).forEach((op, opIdx) => {
+    const burg = pack.burgs?.[op.burgId];
+    const burgName = burg?.name ?? `Burg ${op.burgId}`;
+
+    (op.assets ?? []).forEach((aid, aIdx) => {
+      const def = getFactionAsset(aid);
+      assetEntries.push({
+        name: def?.name ?? aid,
+        location: burgName,
+        progress: t("Complete"),
+        isComplete: true,
+        benefits: formatAssetBenefits(aid),
+        nodeType: "outpost",
+        outpostIndex: opIdx,
+        assetIndex: aIdx
+      });
+    });
+
+    (op.sim?.productionQueue ?? []).forEach(item => {
+      if (item.kind === "building" && !op.assets?.includes(item.id)) {
+        const def = getFactionAsset(item.id);
+        const prog = Math.round(op.sim?.productionProgress?.[item.id] ?? op.sim?.productionProgress?.[item.kind + ":" + item.id] ?? 0);
+        const cost = CIV_BUILDING_BY_ID[item.id]?.cost ?? def?.cost ?? 100;
+        const pct = Math.min(100, Math.round((prog / Math.max(1, cost)) * 100));
+        assetEntries.push({
+          name: def?.name ?? item.id,
+          location: burgName,
+          progress: `${pct}% (${prog}/${cost})`,
+          isComplete: false,
+          benefits: formatAssetBenefits(item.id),
+          nodeType: "outpost",
+          outpostIndex: opIdx,
+          assetIndex: -1
+        });
+      }
+    });
+  });
+
+  const assetsRowsHtml = assetEntries.length
+    ? assetEntries
+        .map(
+          r => `
+          <tr style="border-bottom: 1px solid #444;">
+            <td style="padding: 4px;"><b>${escapeHtml(r.name)}</b></td>
+            <td style="padding: 4px;">${escapeHtml(r.location)}</td>
+            <td style="padding: 4px; text-align: center;">
+              ${r.isComplete ? `<span style="color: #4ade80;">${escapeHtml(r.progress)}</span>` : `<span style="color: #fbbf24;">${escapeHtml(r.progress)}</span>`}
+            </td>
+            <td style="padding: 4px;">${r.benefits}</td>
+            <td style="padding: 4px; text-align: right;">
+              ${r.assetIndex >= 0 ? `<button class="btn icon-trash removeAssetBtn" data-node="${r.nodeType}" data-outpost-index="${r.outpostIndex ?? ""}" data-index="${r.assetIndex}" data-tip="${t("Dismantle asset")}"></button>` : ""}
+            </td>
+          </tr>
+        `
+        )
+        .join("")
+    : `<tr><td colspan="5" style="padding: 6px; opacity: 0.7; text-align: center;">${t("No assets constructed yet.")}</td></tr>`;
+
+  const assetLocationOptions = [
+    `<option value="hq">⭐ ${escapeHtml(hqName)} (HQ)</option>`,
+    ...faction.outposts.map((op, idx) => {
+      const burg = pack.burgs?.[op.burgId];
+      return `<option value="outpost:${idx}">${escapeHtml(burg?.name ?? `Outpost ${idx + 1}`)}</option>`;
+    })
+  ].join("");
+
   const assetOptions = Object.values(FACTION_ASSETS_CATALOG)
-    .filter(a => !faction.hq.assets.includes(a.id))
     .map(a => `<option value="${a.id}">${escapeHtml(a.name)} (T${a.tier} · ${a.cost}g)</option>`)
     .join("");
 
-  const outpostsHtml = faction.outposts.length
-    ? faction.outposts
-        .map((op, idx) => {
-          const burg = pack.burgs?.[op.burgId];
-          const burgName = burg?.name ?? `Burg ${op.burgId}`;
-          const assetsText = op.assets.join(", ") || t("None");
-          const nodeBreakdown = breakdown.outposts.find(b => b.node === op);
-          const yields = formatYields(nodeBreakdown?.yields ?? op.sim?.cityYields);
-          const citizens = nodeBreakdown?.citizens ?? op.sim?.citizens ?? 0;
-          const cells = nodeBreakdown?.workedCells ?? op.sim?.workedCells?.length ?? 0;
-          const hostSim = pack.history?.living?.burgs?.[op.burgId];
-          const suppressionItem = (hostSim?.productionQueue ?? []).find(
-            item =>
-              item.kind === "operation" &&
-              item.id === "faction-suppression" &&
-              item.targetFactionId === faction.i &&
-              item.targetNodeKey === `outpost:${op.burgId}`
-          );
-          const suppressionText = suppressionItem
-            ? `<div style="opacity: 0.8;">Suppressing ${Math.round(hostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: op.tier })}</div>`
-            : "";
-          const statusText = op.pillaged ? `<div style="opacity: 0.7;">Pillaged</div>` : "";
-          return /* html */ `
-          <tr style="border-bottom: 1px solid #444;">
-            <td style="padding: 4px;"><b>${escapeHtml(burgName)}</b></td>
-            <td style="padding: 4px; text-align: center;">${op.tier}</td>
-            <td style="padding: 4px; text-align: center;">${op.influence}%${statusText}${suppressionText}</td>
-            <td style="padding: 4px;">${assetsText}</td>
-            <td style="padding: 4px;">${yields}</td>
-            <td style="padding: 4px; text-align: center;">${citizens}</td>
-            <td style="padding: 4px; text-align: center;">${cells}</td>
-            <td style="padding: 4px; text-align: right;">
-              <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
-            </td>
-          </tr>
-        `;
-        })
-        .join("")
-    : `<tr><td colspan="8" style="padding: 6px; opacity: 0.7; text-align: center;">${t("No outposts established yet.")}</td></tr>`;
-
-  const hqAssetsHtml = faction.hq.assets.length
-    ? faction.hq.assets
-        .map(
-          (aid, idx) => `
-            <span class="badge" style="margin: 2px;">
-              ${escapeHtml(getFactionAsset(aid)?.name ?? aid)}
-              <span class="pointer removeHqAssetBtn" data-index="${idx}" style="margin-left: 4px; color: #f87171;">✕</span>
-            </span>
-          `
-        )
-        .join("")
-    : `<span style="opacity: 0.7;">${t("No assets constructed.")}</span>`;
-
   const markup = /* html */ `
-    <div id="${dialogDomId}" class="dialog" style="min-width: 380px; max-width: 500px; padding: 10px;">
+    <div id="${dialogDomId}" class="dialog" style="min-width: 480px; max-width: 580px; padding: 10px;">
       <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 4px;">
         <span style="color: ${faction.color};">${faction.icon || "⚔️"}</span> ${escapeHtml(faction.name)}
       </div>
@@ -721,41 +864,56 @@ export function openOutpostsDialog(factionId: number): void {
         <span class="badge">${capitalize(faction.alignment)}</span>
       </div>
       <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 4px;">${escapeHtml(formatYields(breakdown.total))}</div>
-      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${breakdown.totalCitizens} citizens · ${breakdown.totalWorkedCells} cells · HQ: ${hqStatus}</div>
+      <div style="font-size: 0.85em; opacity: 0.85; margin-bottom: 8px;">${breakdown.totalCitizens} citizens · ${breakdown.totalWorkedCells} cells · HQ: ${escapeHtml(hqName)}</div>
 
       <div style="margin-bottom: 12px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
-        <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ Assets")}:</div>
-        <div id="hqAssetsList" style="margin-bottom: 6px;">${hqAssetsHtml}</div>
-        <div style="width: 100%; display: flex; gap: 4px;">
-          <select id="newHqAssetSelect" style="flex-grow: 1;">${assetOptions}</select>
-          <button id="addHqAssetBtn" class="btn">${t("+ Asset")}</button>
-        </div>
-      </div>
-
-      <div style="margin-bottom: 8px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
-        <div style="font-weight: bold; margin-bottom: 4px;">${t("Established Outposts")}:</div>
+        <div style="font-weight: bold; margin-bottom: 4px;">${t("HQ & Outposts")}:</div>
         <div id="outpostsList" style="width: 100%; overflow-x: auto; margin-bottom: 6px;">
           <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
             <thead>
               <tr style="text-align: left; border-bottom: 1px solid #555;">
                 <th style="padding: 4px;">${t("Burg")}</th>
-                <th style="padding: 4px;">${t("Tier")}</th>
-                <th style="padding: 4px;">${t("Influence")}</th>
-                <th style="padding: 4px;">${t("Assets")}</th>
+                <th style="padding: 4px; text-align: center;">${t("Tier")}</th>
+                <th style="padding: 4px; text-align: center;">${t("Influence")}</th>
                 <th style="padding: 4px;">${t("Yields")}</th>
-                <th style="padding: 4px;">${t("Citizens")}</th>
-                <th style="padding: 4px;">${t("Cells")}</th>
+                <th style="padding: 4px; text-align: center;">${t("Citizens")}</th>
+                <th style="padding: 4px; text-align: center;">${t("Cells")}</th>
                 <th style="padding: 4px; text-align: right;"></th>
               </tr>
             </thead>
             <tbody>
-              ${outpostsHtml}
+              ${locationsTableRows}
             </tbody>
           </table>
         </div>
         <div style="width: 100%; display: flex; gap: 4px;">
           <select id="newOutpostBurgSelect" style="flex-grow: 1;">${burgOptions}</select>
           <button id="addOutpostBtn" class="btn">${t("+ Outpost")}</button>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 8px; background: rgba(255,255,255,0.04); padding: 8px; border-radius: 4px;">
+        <div style="font-weight: bold; margin-bottom: 4px;">${t("Assets")}:</div>
+        <div id="assetsTableList" style="width: 100%; overflow-x: auto; margin-bottom: 6px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+            <thead>
+              <tr style="text-align: left; border-bottom: 1px solid #555;">
+                <th style="padding: 4px;">${t("Asset")}</th>
+                <th style="padding: 4px;">${t("Location")}</th>
+                <th style="padding: 4px; text-align: center;">${t("Progress")}</th>
+                <th style="padding: 4px;">${t("Benefits")}</th>
+                <th style="padding: 4px; text-align: right;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${assetsRowsHtml}
+            </tbody>
+          </table>
+        </div>
+        <div style="width: 100%; display: flex; gap: 4px;">
+          <select id="newAssetLocationSelect" style="flex: 1;">${assetLocationOptions}</select>
+          <select id="newAssetSelect" style="flex: 1.5;">${assetOptions}</select>
+          <button id="addAssetBtn" class="btn">${t("+ Asset")}</button>
         </div>
       </div>
     </div>
@@ -770,29 +928,67 @@ export function openOutpostsDialog(factionId: number): void {
   });
 
   // Attach Outposts & Assets listeners
-  ensureEl("addHqAssetBtn")?.addEventListener("click", () => {
-    const sel = ensureEl<HTMLSelectElement>("newHqAssetSelect");
-    if (sel.value) {
-      faction.hq.assets.push(sel.value);
+  ensureEl("addAssetBtn")?.addEventListener("click", () => {
+    const locSel = ensureEl<HTMLSelectElement>("newAssetLocationSelect");
+    const assetSel = ensureEl<HTMLSelectElement>("newAssetSelect");
+    const loc = locSel?.value ?? "hq";
+    const assetId = assetSel?.value;
+    if (!assetId) return;
+
+    if (loc === "hq") {
+      faction.hq.assets.push(assetId);
+      if (faction.hq.sim) {
+        faction.hq.sim.civBuildings = [...faction.hq.assets];
+      }
       syncFactionState(faction);
       Living.refreshFactionNodeYields(faction, faction.hq, true);
-      Layers.draw("factions");
-      openOutpostsDialog(factionId);
-      factionsTable.refresh();
+    } else if (loc.startsWith("outpost:")) {
+      const opIdx = Number(loc.split(":")[1]);
+      const outpost = faction.outposts[opIdx];
+      if (outpost) {
+        outpost.assets.push(assetId);
+        if (outpost.sim) {
+          outpost.sim.civBuildings = [...outpost.assets];
+        }
+        syncFactionState(faction);
+        Living.refreshFactionNodeYields(faction, outpost, false);
+      }
     }
+
+    Layers.draw("factions");
+    openOutpostsDialog(factionId);
+    factionsTable.refresh();
   });
 
   ensureEl(dialogDomId)
-    ?.querySelectorAll(".removeHqAssetBtn")
+    ?.querySelectorAll(".removeAssetBtn")
     .forEach(btn => {
-      btn.addEventListener("click", function () {
-        const idx = Number((this as HTMLElement).dataset.index);
-        faction.hq.assets.splice(idx, 1);
-        if (faction.hq.sim) {
-          faction.hq.sim.civBuildings = [...faction.hq.assets];
+      btn.addEventListener("click", (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const nodeType = target.dataset.node;
+        const assetIdx = Number(target.dataset.index);
+        if (assetIdx < 0) return;
+
+        if (nodeType === "hq") {
+          faction.hq.assets.splice(assetIdx, 1);
+          if (faction.hq.sim) {
+            faction.hq.sim.civBuildings = [...faction.hq.assets];
+          }
+          syncFactionState(faction);
+          Living.refreshFactionNodeYields(faction, faction.hq, true);
+        } else if (nodeType === "outpost") {
+          const opIdx = Number(target.dataset.outpostIndex);
+          const outpost = faction.outposts[opIdx];
+          if (outpost) {
+            outpost.assets.splice(assetIdx, 1);
+            if (outpost.sim) {
+              outpost.sim.civBuildings = [...outpost.assets];
+            }
+            syncFactionState(faction);
+            Living.refreshFactionNodeYields(faction, outpost, false);
+          }
         }
-        syncFactionState(faction);
-        Living.refreshFactionNodeYields(faction, faction.hq, true);
+
         Layers.draw("factions");
         openOutpostsDialog(factionId);
         factionsTable.refresh();
@@ -825,8 +1021,9 @@ export function openOutpostsDialog(factionId: number): void {
   ensureEl(dialogDomId)
     ?.querySelectorAll(".removeOutpostBtn")
     .forEach(btn => {
-      btn.addEventListener("click", function () {
-        const idx = Number((this as HTMLElement).dataset.index);
+      btn.addEventListener("click", (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const idx = Number(target.dataset.index);
         faction.outposts.splice(idx, 1);
         syncFactionState(faction);
         Layers.draw("factions");
