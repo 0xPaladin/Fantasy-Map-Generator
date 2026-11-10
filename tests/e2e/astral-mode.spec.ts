@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { waitForMap } from "./wait-for-map";
 
+// the app's console surface, see src/app/fmg.ts
+declare const FMG: any;
+
 // The Astral view is a presentation mode: entering swaps the Layers tab for the Astral list, applies
 // the star chart style and layers, and takes the preset save/remove buttons with it. Leaving restores
 // exactly what was there before — list, preset value, layer state and style.
@@ -19,7 +22,7 @@ declare const pack: import("@/types/packed-graph").PackedGraph;
 declare const grid: import("@/types/grid-graph").GridGraph;
 declare const Services: { ExportMap: { getMapURL(type: string): Promise<string> } };
 
-const layerItem = (id: string) => `#mapLayers > li[data-layer="${id}"]`;
+const layerItem = (id: string) => `#mapLayers > button[data-layer="${id}"]`;
 
 async function openLayersTab(page: Page): Promise<void> {
   if (await page.locator("#layersContent").isVisible().catch(() => false)) return;
@@ -59,7 +62,7 @@ test.describe("Astral view mode", () => {
     await expect(page.locator(layerItem("nebulae"))).toHaveCount(0);
 
     // a layer set that no preset names offers the save button; entering must take it away
-    await page.locator("#mapLayers > li.buttonoff").first().click();
+    await page.locator("#mapLayers > button.buttonoff").first().click();
     await expect(page.locator("#savePresetButton")).toBeVisible();
     await page.locator("#layersPreset").selectOption("political");
     await expect(page.locator("#savePresetButton")).toBeHidden();
@@ -93,11 +96,11 @@ test.describe("Astral view mode", () => {
 
     // the default chart draws systems, empires and hyperlanes; dust, composition, nebulae and
     // density stay off by button — each is one click away in the same Astral list
-    expect(await page.evaluate(() => Layers.isOn("systems"))).toBe(true);
-    expect(await page.evaluate(() => Layers.isOn("states"))).toBe(true);
-    expect(await page.evaluate(() => Layers.isOn("routes"))).toBe(true);
-    expect(await page.evaluate(() => Layers.isOn("starDensity"))).toBe(false);
-    expect(await page.evaluate(() => Layers.isOn("dustDensity"))).toBe(false);
+    expect(await page.evaluate(() => FMG.Layers.isOn("systems"))).toBe(true);
+    expect(await page.evaluate(() => FMG.Layers.isOn("states"))).toBe(true);
+    expect(await page.evaluate(() => FMG.Layers.isOn("routes"))).toBe(true);
+    expect(await page.evaluate(() => FMG.Layers.isOn("starDensity"))).toBe(false);
+    expect(await page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(false);
     await expect(page.locator(layerItem("starDensity"))).toBeVisible();
 
     // a marker per burg, and the hyperlanes really are drawn
@@ -115,14 +118,14 @@ test.describe("Astral view mode", () => {
 
     // off by default, and the shared border path the Standard view draws is faded out in Astral so it
     // cannot compete with the blue hyperlanes
-    expect(await page.evaluate(() => Layers.isOn("borders"))).toBe(false);
+    expect(await page.evaluate(() => FMG.Layers.isOn("borders"))).toBe(false);
     expect(await page.evaluate(() => document.getElementById("statesHalo")!.style.display)).toBe("none");
     expect(await page.evaluate(() => styles.borders.groups.stateBorders.attrs.opacity)).toBe(0);
     expect(await page.evaluate(() => getComputedStyle(document.getElementById("stateBorders")!).opacity)).toBe("0");
 
     // the button brings them on: one path per empire, clipped to itself so only its inner half shows
     await page.locator(layerItem("borders")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("borders"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("borders"))).toBe(true);
     await expect.poll(() => page.evaluate(() => document.getElementById("statesHalo")!.style.display)).not.toBe(
       "none"
     );
@@ -142,7 +145,7 @@ test.describe("Astral view mode", () => {
 
     // pressing it again takes them away
     await page.locator(layerItem("borders")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("borders"))).toBe(false);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("borders"))).toBe(false);
     expect(await page.evaluate(() => document.getElementById("statesHalo")!.style.display)).toBe("none");
   });
 
@@ -150,15 +153,15 @@ test.describe("Astral view mode", () => {
     await enterAstral(page);
     const bands = page.locator("#dustDensity [data-group] path");
 
-    expect(await page.evaluate(() => Layers.isOn("dustDensity"))).toBe(false);
+    expect(await page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(false);
     expect(await bands.count()).toBe(0);
 
     await page.locator(layerItem("dustDensity")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("dustDensity"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(true);
     await expect(bands.first()).toBeAttached();
 
     await page.locator(layerItem("dustDensity")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("dustDensity"))).toBe(false);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(false);
     await expect(bands).toHaveCount(0);
   });
 
@@ -168,7 +171,7 @@ test.describe("Astral view mode", () => {
       preset: options.map.style.preset,
       href: styles.texture.options.href,
       layersPreset: (document.getElementById("layersPreset") as HTMLSelectElement).value,
-      active: [...Layers.state.active].sort()
+      active: [...FMG.Layers.state.active].sort()
     }));
 
     await enterAstral(page);
@@ -184,9 +187,9 @@ test.describe("Astral view mode", () => {
       preset: options.map.style.preset,
       href: styles.texture.options.href,
       astral: options.map.astral,
-      active: [...Layers.state.active].sort(),
-      systemsOn: Layers.isOn("systems"),
-      nebulaeOn: Layers.isOn("nebulae"),
+      active: [...FMG.Layers.state.active].sort(),
+      systemsOn: FMG.Layers.isOn("systems"),
+      nebulaeOn: FMG.Layers.isOn("nebulae"),
       nebulaeHidden: document.getElementById("nebulae") === null
     }));
     expect(after.preset).toBe(before.preset);
@@ -229,12 +232,12 @@ test.describe("Astral view mode", () => {
   test("export smoke: the exported SVG carries the chart", async ({ page }) => {
     await enterAstral(page);
     const svg = await page.evaluate(async () => {
-      const url = await Services.ExportMap.getMapURL("svg");
+      const url = await FMG.Services.ExportMap.getMapURL("svg");
       return await (await fetch(url)).text();
     });
     // the default chart carries systems and hyperlanes
     expect(svg).toContain('id="systems"');
-    expect(svg).toMatch(/data-group="[GFKABM]");
+    expect(svg).toMatch(/data-group="[GFKABM]"/);
     expect(svg).toContain('id="routes"');
   });
 });

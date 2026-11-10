@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { waitForMap } from "./wait-for-map";
 
+// the app's console surface, see src/app/fmg.ts
+declare const FMG: any;
+
 // Markers are read as anomalies in Astral: a type's default icon swaps to its space reading and
 // the tooltip names it. The marker record keeps its fantasy type and icon — leaving the view
 // restores the chart exactly.
@@ -34,7 +37,7 @@ async function pickMarker(page: Page): Promise<{ id: number; reading: string }> 
 const readIcon = (page: Page, id: number) =>
   page.evaluate(markerId => document.querySelector(`#marker${markerId} use`)?.getAttribute("href") ?? null, id);
 
-const showMarkers = (page: Page) => page.evaluate(() => Layers.show("markers"));
+const showMarkers = (page: Page) => page.evaluate(() => FMG.Layers.show("markers"));
 
 // FMG's version-update changelog opens a dialog over the map centre and eats the wheel: dismiss it
 async function dismissChangelog(page: Page): Promise<void> {
@@ -63,7 +66,7 @@ test.describe("Astral anomalies", () => {
     const fantasyIcon = await readIcon(page, id);
     expect(fantasyIcon).toMatch(/^#/);
 
-    await page.evaluate(() => Controllers.AstralMode.enter());
+    await page.evaluate(() => FMG.Controllers.AstralMode.enter());
     await showMarkers(page);
     await expect.poll(() => readIcon(page, id)).not.toBe(fantasyIcon);
 
@@ -83,7 +86,7 @@ test.describe("Astral anomalies", () => {
     expect(shownNote).not.toBe(storedNote.trim());
     expect(shownNote.length).toBeGreaterThan(0);
 
-    await page.evaluate(() => Controllers.AstralMode.exit());
+    await page.evaluate(() => FMG.Controllers.AstralMode.exit());
     await showMarkers(page);
     await expect.poll(() => readIcon(page, id)).toBe(fantasyIcon);
 
@@ -102,7 +105,7 @@ test.describe("Astral anomalies", () => {
       }, markerId);
     const before = await read(id);
 
-    await page.evaluate(() => Controllers.AstralMarkers.apply());
+    await page.evaluate(() => FMG.Controllers.AstralMarkers.apply());
     await page.locator(".ui-dialog:has(#alert) button", { hasText: "Convert" }).click();
 
     const after = await read(id);
@@ -117,7 +120,7 @@ test.describe("Astral anomalies", () => {
     await expect.poll(() => readIcon(page, id)).toBe(`#${after.icon}`);
 
     // idempotent: a second run leaves the converted marker alone
-    await page.evaluate(() => Controllers.AstralMarkers.apply());
+    await page.evaluate(() => FMG.Controllers.AstralMarkers.apply());
     await page.waitForTimeout(200);
     expect((await read(id)).note).toBe(after.note);
   });
