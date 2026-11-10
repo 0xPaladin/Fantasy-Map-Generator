@@ -62,6 +62,49 @@ export interface Burg {
   label?: Label;
   note?: string;
   tags?: string[];
+  flying?: 1;
+  underdark?: 1;
+  underwater?: 1;
+  skyPort?: 1;
+  underdarkGate?: 1;
+  /** vertical offset in feet relative to the cell's surface: sky +50..+500, underdark -200..-3000, underwater -50..-2000 */
+  altitude?: number;
+}
+
+/** the vertical layer a burg belongs to; see docs/plans/multi-realm.md */
+export type BurgRealm = "surface" | "sky" | "underdark" | "underwater";
+
+export function getBurgRealm(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): BurgRealm {
+  if (!b) return "surface";
+  if (b.flying) return "sky";
+  if (b.underdark) return "underdark";
+  if (b.underwater) return "underwater";
+  return "surface";
+}
+
+export function isSurfaceBurg(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): boolean {
+  return getBurgRealm(b) === "surface";
+}
+
+export function isBurgInRealm(
+  b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined,
+  realm: BurgRealm
+): boolean {
+  return getBurgRealm(b) === realm;
+}
+
+/** value to write to `pack.cells.burg[cell]` when placing `burg` onto `cell`: the slot stays
+ * reserved for the primary surface burg, so non-surface burgs never claim it */
+export function groundSlotOnPlacement(
+  currentSlot: number,
+  burg: Pick<Burg, "i" | "flying" | "underdark" | "underwater">
+): number {
+  return isSurfaceBurg(burg) ? burg.i : currentSlot;
+}
+
+/** value to write to `pack.cells.burg[cell]` when removing/moving `removedBurgId` */
+export function cellSlotAfterRemoval(currentSlot: number, removedBurgId: number): number {
+  return currentSlot === removedBurgId ? 0 : currentSlot;
 }
 
 // A burg that could become a port on a given water body.
@@ -452,6 +495,47 @@ class BurgModule {
 
   getDefaultGroups(): BurgGroup[] {
     return [
+      // realm groups resolve first: a realm capital carries `capital` too and would
+      // otherwise match the surface `capital` group; see docs/plans/multi-realm.md
+      {
+        name: "skyheart",
+        active: true,
+        features: { flying: true, capital: true },
+        order: 5
+      },
+      {
+        name: "skyhold",
+        active: true,
+        features: { flying: true, capital: false },
+        order: 6,
+        zoomThreshold: 1.5
+      },
+      {
+        name: "underdark_capital",
+        active: true,
+        features: { underdark: true, capital: true },
+        order: 7
+      },
+      {
+        name: "underdark_hold",
+        active: true,
+        features: { underdark: true, capital: false },
+        order: 8,
+        zoomThreshold: 1.5
+      },
+      {
+        name: "underwater_capital",
+        active: true,
+        features: { underwater: true, capital: true },
+        order: 9
+      },
+      {
+        name: "underwater_settlement",
+        active: true,
+        features: { underwater: true, capital: false },
+        order: 10,
+        zoomThreshold: 1.5
+      },
       {
         name: "capital",
         active: true,

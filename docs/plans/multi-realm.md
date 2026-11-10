@@ -5,6 +5,10 @@ Updated: 2026-11-10. Inputs:
 - [barrulus skyburg overhaul design](https://github.com/barrulus/Fantasy-Map-Generator/blob/main/docs/superpowers/specs/2026-06-11-skyburg-overhaul-design.md)
 - `docs/architecture/architecture.md`, `docs/architecture/data-model.md`
 
+Progress:
+- Phase 1 — Data Model, Options & Realm Helpers: ✅ done
+- Phase 2 – Phase 8: pending
+
 ---
 
 ## Goal
@@ -57,7 +61,7 @@ Because `pack.cells.burg` (Uint16Array) and `pack.cells.state` (Uint16Array) are
 | `burgGroup` schema with `features: z.record(z.string(), z.boolean())` | ✅ present | `src/model/options/options-schema.ts` |
 | `fitStateLabel` zero-cell fallback (`!cellsNumber` → horizontal point label) | ✅ present | `src/renderers/labels/fit-state-label.ts` |
 | Fantasy/Underdark/Aquatic cultures in culture sets | ✅ present | `src/data/culture-sets.ts` |
-| `BurgRealm` helpers (`flying`, `underdark`, `underwater`, `skyPort`, `underdarkGate`, `altitude`) | ❌ missing | `src/model/political/burgs-generator.ts` |
+| `BurgRealm` helpers (`flying`, `underdark`, `underwater`, `skyPort`, `underdarkGate`, `altitude`) | ✅ present | `src/model/political/burgs-generator.ts` |
 | Multi-realm burg generation & cell-slot protection | ❌ missing | `src/model/political/burgs-generator.ts` |
 | Zero-surface-territory states (`sky`, `underdark`, `underwater`) | ❌ missing | `src/model/political/states-generator.ts` |
 | Multi-realm route networks (`airroutes`, `underdarkroutes`, `undersearoutes`) | ❌ missing | `src/model/economy/routes-generator.ts` |

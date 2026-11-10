@@ -92,6 +92,7 @@ class OptionsModel {
         astral: false,
         extents: "whole",
         burgs: { groups: Burgs.getDefaultGroups() },
+        population: { skyBurgs: true, underdarkBurgs: true, underwaterBurgs: true },
         labels: { groups: Labels.getDefaultGroups() },
         military: { units: getDefaultMilitaryUnits() },
         transports: Transports.getDefaults(),
@@ -285,6 +286,7 @@ class OptionsModel {
     map.style = previous.style;
     map.astral = previous.astral;
     map.burgs.groups = previous.burgs.groups;
+    map.population = previous.population;
     map.labels.groups = previous.labels.groups;
     map.military.units = previous.military.units;
     map.transports = previous.transports;

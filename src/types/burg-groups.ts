@@ -13,4 +13,6 @@ export type BurgGroup = {
   cultures?: number[];
   religions?: number[];
   preview?: string;
+  /** the zoom scale a group becomes visible at; unset means visible at every scale */
+  zoomThreshold?: number;
 };
