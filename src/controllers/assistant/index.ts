@@ -591,7 +591,10 @@ function showView(next: View): void {
 /** Customize is a toggle from the title bar, like Chats */
 function openCustomize(): void {
   if (busy) return;
-  if (view === "customize") return showView("chat");
+  if (view === "customize") {
+    showView("chat");
+    return;
+  }
   showView("customize");
   Customize.fill();
 }
