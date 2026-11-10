@@ -1,6 +1,6 @@
 // Living World seasonal simulation engine. See docs/plans/living-world.md
 
-import { type Alignment, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
+import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import {
   CIV_BELIEF_BY_ID,
   CIV_ENHANCER_BELIEFS,
@@ -45,6 +45,7 @@ import { Production } from "@/model/economy/production-generator";
 import { Prosperity as UpstreamProsperity } from "@/model/economy/prosperity";
 import { Routes } from "@/model/economy/routes-generator";
 import { StateOrders } from "@/model/economy/state-orders";
+import { type FigureBias, figureBias } from "@/model/physical/figure-bias";
 import {
   armyHp,
   armyIsEmpty,
@@ -68,6 +69,8 @@ import {
   toBattleUnits,
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
+import { canReadUpstreamEconomy, factionUpstreamIncome, SEASON_DAYS } from "@/model/physical/living-faction-economy";
+import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
@@ -144,10 +147,11 @@ const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
 const SCHOLARLY_BUILDINGS = new Set(["library", "university", "public_school"]);
 const DEVELOPMENT_DECAY_SLACK = 3; // rural cells keep a little more than their land allows
-const SEASON_DAYS = 90; // upstream cash flows are a day's; a season banks ninety of them
 const SCHOLARLY_GOODS = ["Paper", "Ink", "Books", "Glass"] as const;
 const SCHOLAR_SCIENCE_CAP = 5; // books light a city's lamps but cannot replace schools
 const COURT_PROVISION_YIELD = 3; // culture and faith a fully served court provides per season
+const CHARTER_TITHE = "Chartered Faction Tithes"; // the state budget line charters pay
+const SABOTAGE_ORDER = 15; // public order a ruined working costs its province
 
 const ERA_EPITHETS = ["Ash", "the Compact", "Drowned Kings", "Iron and Salt", "Quiet Stars", "Broken Crowns"] as const;
 const ERA_ORDINALS = [
@@ -238,12 +242,7 @@ export function regionTierFromPop(populationThousands: number): number {
   return tier;
 }
 
-export interface FigureBias {
-  martial: number;
-  civic: number;
-  pious: number;
-  cruel: number;
-}
+export { type FigureBias, figureBias } from "./figure-bias";
 
 const GRUDGE_WEIGHTS: Record<GrudgeReason, number> = {
   conquest: 40,
@@ -252,48 +251,6 @@ const GRUDGE_WEIGHTS: Record<GrudgeReason, number> = {
   slain_general: 35,
   repulsed: 20
 };
-
-const MARTIAL_TRAITS = ["brave", "daring", "decisive", "wrathful", "vengeful", "boastful", "reckless"];
-const CIVIC_TRAITS = ["just", "diligent", "temperate", "thrifty", "methodical", "prudent"];
-const PIOUS_TRAITS = ["reverent", "zealous", "faithful", "tolerant", "merciful"];
-const CRUEL_TRAITS = ["cruel", "greedy", "merciless", "callous", "domineering", "paranoid", "selfish", "bigoted"];
-
-/** Weight a ruler's traits and their culture's values towards war, works, faith or cruelty. */
-export function figureBias(
-  figure: { alignment?: Alignment; virtues?: string[]; vices?: string[] },
-  values: readonly string[] = []
-): FigureBias {
-  const words = new Set([...(figure.virtues ?? []), ...(figure.vices ?? [])]);
-  const held = new Set(values);
-  const bias: FigureBias = { martial: 0.1, civic: 0.1, pious: 0.1, cruel: 0 };
-
-  const add = (key: keyof FigureBias, list: string[], cultural: string[]) => {
-    for (const word of list) if (words.has(word)) bias[key] += 0.12;
-    for (const value of cultural) if (held.has(value)) bias[key] += 0.1;
-  };
-
-  add("martial", MARTIAL_TRAITS, ["conflict", "power", "subjugation", "hatred"]);
-  add("civic", CIVIC_TRAITS, ["investment", "advancement", "knowledge", "balance"]);
-  add("pious", PIOUS_TRAITS, ["order", "honor", "loyalty", "truth"]);
-  add("cruel", CRUEL_TRAITS, ["greed", "control", "subjugation"]);
-
-  if (figure.alignment === "evil") {
-    bias.martial += 0.15;
-    bias.cruel += 0.15;
-  } else if (figure.alignment === "chaotic") {
-    bias.martial += 0.1;
-  } else if (figure.alignment === "lawful") {
-    bias.civic += 0.1;
-  } else if (figure.alignment === "good") {
-    bias.civic += 0.05;
-    bias.pious += 0.05;
-  }
-
-  for (const key of ["martial", "civic", "pious", "cruel"] as const) {
-    bias[key] = Math.min(0.8, Math.round(bias[key] * 100) / 100);
-  }
-  return bias;
-}
 
 /** Reconcile roster building IDs from FMG Burg feature flags (walls, plaza, temple, citadel) */
 export function syncBurgBuildingsFromFlags(burg: Burg, existing: string[]): string[] {
@@ -1812,7 +1769,7 @@ class LivingModel {
 
   /** Upstream accounts are readable only after a full economy run on a whole map. */
   private canReadUpstreamEconomy(): boolean {
-    return Boolean(pack.deals?.length && pack.cells.market && options.map.goods?.length);
+    return canReadUpstreamEconomy();
   }
 
   private upstreamAccounts(stateId: number): ReturnType<typeof Accounts.ofState> {
@@ -4376,6 +4333,10 @@ class LivingModel {
     let totalScience = 0;
     let totalCitizens = 0;
     let totalWorkedCells = 0;
+    let totalUpstreamGold = 0;
+    let totalCharterTithe = 0;
+    let charterPatronId = 0;
+    let totalInfluence = 0;
     let hqBreakdown: FactionNodeYieldBreakdown | null = null;
     const outpostsBreakdown: FactionNodeYieldBreakdown[] = [];
 
@@ -4399,7 +4360,9 @@ class LivingModel {
         maintenance += CIV_BUILDING_BY_ID[id]?.maintenance ?? 0;
       }
 
-      const grossGold = cityYields.gold;
+      // §5.1: the node also earns off the host burg's upstream product, trade and graft
+      const upstream = factionUpstreamIncome(faction, node);
+      const grossGold = cityYields.gold + upstream.gold;
       const nodeScience = this.citySciencePerTick(sim);
       const netGold = Math.round((grossGold - maintenance) * 100) / 100;
       const roundedScience = Math.round(nodeScience * 100) / 100;
@@ -4424,7 +4387,9 @@ class LivingModel {
         maintenance,
         science: roundedScience,
         citizens,
-        workedCells
+        workedCells,
+        upstreamGold: upstream.gold,
+        charterTithe: upstream.charterTithe
       };
 
       nodes.push(breakdown);
@@ -4443,6 +4408,12 @@ class LivingModel {
       totalScience += nodeScience;
       totalCitizens += citizens;
       totalWorkedCells += workedCells;
+      totalUpstreamGold += upstream.gold;
+      totalInfluence += upstream.influence;
+      if (upstream.charterTithe > 0) {
+        totalCharterTithe += upstream.charterTithe;
+        charterPatronId = upstream.patronStateId;
+      }
     }
 
     const unitTypes = Military.getUnitTypes();
@@ -4471,7 +4442,11 @@ class LivingModel {
       maintenance: totalMaintenance,
       nodes,
       hq: hqBreakdown,
-      outposts: outpostsBreakdown
+      outposts: outpostsBreakdown,
+      upstreamGold: Math.round(totalUpstreamGold * 100) / 100,
+      charterTithe: Math.round(totalCharterTithe * 100) / 100,
+      charterPatronId,
+      influence: Math.round(totalInfluence * 100) / 100
     };
   }
 
@@ -4677,13 +4652,34 @@ class LivingModel {
   /** One seasonal faction empire tick: yields, happiness, research and treasury. */
   stepFactionEmpire(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
+    const charters = new Map<number, number>();
     for (const faction of Factions.active()) {
       faction.seasonsActive = (faction.seasonsActive || 0) + 1;
       syncFactionState(faction);
-      faction.yieldsPerTurn = this.recomputeFactionYields(faction);
+      const breakdown = this.getFactionYieldBreakdown(faction);
+      faction.yieldsPerTurn = breakdown.total;
+      // §5.1: temples and chanceries grow their influence with the court's spending
+      faction.influence = minmax((faction.influence ?? 0) + breakdown.influence, 0, 100);
+      if (breakdown.charterPatronId && breakdown.charterTithe > 0) {
+        const patron = breakdown.charterPatronId;
+        charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
+      }
       this.recomputeFactionHappiness(faction, living);
       this.applyFactionResearch(faction, living);
       this.applyFactionTreasury(faction, living);
+    }
+    this.applyCharterTithes(living, charters);
+  }
+
+  /** §5.1: charters pay their patron states, as a named line of the state's budget */
+  private applyCharterTithes(living: LivingWorldState, charters: Map<number, number>): void {
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const others = (state.economy.adjustments ?? []).filter(line => line.name !== CHARTER_TITHE);
+      const value = Math.round(((charters.get(state.i) ?? 0) / SEASON_DAYS) * 100) / 100; // a day's, as adjustments are
+      if (value === (state.economy.adjustments ?? []).find(line => line.name === CHARTER_TITHE)?.value) continue;
+      state.economy.adjustments = value > 0 ? [...others, { name: CHARTER_TITHE, value }] : others;
+      living.economyDirty = true;
     }
   }
 
@@ -4732,6 +4728,58 @@ class LivingModel {
     if ((sSim.researchedTechs ?? []).includes(techId)) return false;
 
     this.completeTech(state, sSim, tech, living, true);
+    return true;
+  }
+
+  /**
+   * §5.2 A ruler's audit: officials' cut lowered and the graft they held recovered into the
+   * treasury. Returns the gold recovered; 0 without a treasury to recover it into.
+   */
+  auditCorruption(stateId: number): number {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed || !living.states[stateId]) return 0;
+
+    const budget = state.economy.budget;
+    budget.corruption = Math.max(0, Math.round((budget.corruption ?? 0) - AUDIT_CORRUPTION_CUT));
+    const recovered = auditRecovery(Number(state.economy.pocketed ?? 0), rulerBias(stateId));
+    if (recovered > 0) {
+      state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) + recovered) * 100) / 100;
+    }
+    living.economyDirty = true; // the run's graft rate follows the budget
+    this.pushNews(living, {
+      kind: "develop",
+      text: `${state.name} audited its officials: graft cut to ${budget.corruption}%, ${recovered} recovered.`,
+      cell: state.center,
+      stateId
+    });
+    return recovered;
+  }
+
+  /** §5.2 Sabotage a deposit: its cell's output drops and its province loses order. */
+  sabotageDeposit(cellId: number): boolean {
+    const living = this.getState();
+    const cell = Math.floor(Number(cellId));
+    if (!Number.isInteger(cell) || cell < 0 || !pack.cells.i?.includes(cell)) return false;
+    if (!Number(pack.cells.good?.[cell] ?? 0)) return false; // no deposit to spoil
+
+    living.cells ??= {};
+    living.cells[cell] ??= {};
+    const cellSim = living.cells[cell];
+    if (cellSim.pillaged) return false;
+    cellSim.pillaged = true;
+    living.economyDirty = true;
+
+    const provinceId = Number(pack.cells.province?.[cell] ?? 0);
+    const province = provinceId ? living.provinces?.[provinceId] : undefined;
+    if (province) province.order = minmax(province.order - SABOTAGE_ORDER, 0, 100);
+
+    this.pushNews(living, {
+      kind: "trouble",
+      text: `Saboteurs wrecked a working near ${pack.burgs?.[Number(pack.cells.burg?.[cell] ?? 0)]?.name ?? "the frontier"}.`,
+      cell,
+      stateId: pack.cells.state?.[cell] ?? 0
+    });
     return true;
   }
 
@@ -7083,9 +7131,10 @@ class LivingModel {
       }
     }
 
-    // Decide: assault or continue besieging.
+    // Decide: assault or continue besieging; a martial ruler presses the siege harder (§5.2)
     const odds = this.estimateSiegeOdds(state, army, garrison, types, burg);
-    const shouldAssault = (bSim.siegeProgress ?? 0) >= 2 || odds >= 40;
+    const momentum = (bSim.siegeProgress ?? 0) * stateEconomyModifiers(state.i).siege;
+    const shouldAssault = momentum >= 2 || odds >= 40;
     if (!shouldAssault) {
       bSim.hp = Math.max(1, bSim.hp ?? 1);
       return true;

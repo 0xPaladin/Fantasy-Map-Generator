@@ -5,6 +5,7 @@ import { Accounts } from "@/model/economy/accounts";
 import { Goods } from "@/model/economy/goods-generator";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
+import { stateEconomyModifiers } from "@/model/physical/living-rulers";
 import type { ArmyBlock } from "@/types/battle";
 import type { MilitaryUnit } from "@/types/military";
 import { nth } from "@/utils/language-utils";
@@ -965,7 +966,7 @@ class MilitaryModule {
    * `MIN_UPKEEP`.
    */
   getLivingBattleUpkeep(stateId: number): number {
-    const upkeep = this.getUpkeep(stateId);
+    const upkeep = this.getUpkeep(stateId) * stateEconomyModifiers(stateId).upkeep; // §5.2: a martial ruler keeps troops keen
     const funded = Number(pack.states[stateId]?.economy?.treasury ?? 0) > 0;
     return funded ? minmax(upkeep, 0.5, 1.15) : Math.max(MIN_UPKEEP, upkeep);
   }

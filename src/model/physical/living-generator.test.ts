@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_TECH_BY_ID, computePolityTechDevelopment } from "@/data/living-civ-techs";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
+import { Deals } from "@/model/economy/deals";
 import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
@@ -2191,6 +2192,138 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(state.economy.treasury).toBe(0);
       expect(block?.type).toBe("levy_spear"); // the sword took service as a levy
       expect(living.recentNews.some(entry => entry.text.includes("took service as"))).toBe(true);
+    });
+  });
+
+  describe("Factions & characters on the upstream foundation (economy alignment Phase 5)", () => {
+    beforeEach(() => {
+      setupCityWorld();
+      pack.factions = [{ i: 0 } as Faction];
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    /** An economy run to read: a dealt market at the capital, and a product to tax */
+    function runEconomy(): void {
+      pack.cells.market[5] = 1;
+      pack.markets = [{ i: 1 } as never];
+      pack.deals = [[1, 1, 1, 2, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+      pack.burgs[1].product = 10;
+      vi.spyOn(Deals, "getGoodsValue").mockReturnValue(20);
+    }
+
+    it("pays a chartered faction's tithe into its patron's budget as a named line", () => {
+      const living = Living.init();
+      runEconomy();
+
+      const charter = Factions.add({
+        name: "Golden Scales Charter",
+        category: "commercial",
+        type: "merchant_consortium",
+        allegiance: "chartered",
+        patronStateId: 1,
+        stateRelations: { 1: "Friendly" },
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
+      });
+      const treasuryBefore = charter.treasury ?? 0;
+
+      Living.stepFactionEmpire(living);
+
+      const breakdown = Living.getFactionYieldBreakdown(charter);
+      expect(breakdown.charterTithe).toBeGreaterThan(0);
+      expect(breakdown.upstreamGold).toBeGreaterThan(0);
+      expect(charter.treasury).toBeGreaterThan(treasuryBefore);
+
+      const line = pack.states[1].economy.adjustments.find(entry => entry.name === "Chartered Faction Tithes");
+      expect(line).toBeDefined();
+      expect(line!.value).toBeCloseTo(breakdown.charterTithe / 90, 2); // a day's tithe, as adjustments are
+    });
+
+    it("enriches an underworld faction from the host province's official graft", () => {
+      const guild = Factions.add({
+        name: "Nightblade Syndicate",
+        category: "underworld",
+        type: "thieves_guild",
+        allegiance: "clandestine",
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 70, assets: ["safe_house"] }
+      });
+      Living.init();
+      runEconomy();
+      pack.states[1].economy.pocketed = 0;
+      expect(Living.getFactionYieldBreakdown(guild).upstreamGold).toBe(0);
+
+      pack.states[1].economy.pocketed = 30;
+      expect(Living.getFactionYieldBreakdown(guild).upstreamGold).toBeGreaterThan(0);
+    });
+
+    it("draws a temple's tithe from the court's spending", () => {
+      const temple = Factions.add({
+        name: "Order of the Dawn",
+        category: "religious",
+        type: "religious_order",
+        allegiance: "autonomous",
+        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+      const living = Living.init();
+      runEconomy();
+      pack.states[1].economy.spent.court = 0;
+      expect(Living.getFactionYieldBreakdown(temple).upstreamGold).toBe(0);
+
+      pack.states[1].economy.spent.court = 40;
+      Living.stepFactionEmpire(living);
+      expect(Living.getFactionYieldBreakdown(temple).upstreamGold).toBeGreaterThan(0);
+      expect(temple.influence).toBeGreaterThan(0);
+    });
+
+    it("audits corruption: officials' cut lowered and graft recovered into the treasury", () => {
+      const living = Living.init();
+      const state = pack.states[1];
+      state.economy.budget.corruption = 20;
+      state.economy.treasury = 10;
+      state.economy.pocketed = 8;
+
+      const recovered = Living.auditCorruption(1);
+
+      expect(state.economy.budget.corruption).toBeLessThan(20);
+      expect(recovered).toBeGreaterThan(0);
+      expect(state.economy.treasury).toBeCloseTo(10 + recovered, 2);
+      expect(living.recentNews.some(entry => entry.text.includes("audited"))).toBe(true);
+    });
+
+    it("sabotages a deposit: its output spoiled and its province's order lost", () => {
+      const living = Living.init();
+      pack.cells.good[3] = 1;
+      pack.cells.state[3] = 1;
+      pack.cells.province[3] = 1;
+      const order = living.provinces[1].order;
+
+      expect(Living.sabotageDeposit(3)).toBe(true);
+      expect(living.cells?.[3]?.pillaged).toBe(true);
+      expect(living.provinces[1].order).toBe(order - 15);
+      expect(living.economyDirty).toBe(true);
+
+      expect(Living.sabotageDeposit(3)).toBe(false); // already spoiled
+      expect(Living.sabotageDeposit(4)).toBe(false); // nothing worked there
+    });
+
+    it("keeps troops keen when a martial ruler leads", () => {
+      const map = options.map as { military?: unknown; units?: unknown };
+      map.military = { units: [{ name: "spear", power: 1 }] };
+      map.units = { population: { scale: 1, urbanization: { rate: 1 } } };
+      const living = Living.init();
+      pack.deals = [[1, 1, 1, 3, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+      pack.states[1].economy.spent.military = 2000;
+      pack.states[1].economy.treasury = 100;
+      const plain = Military.getLivingBattleUpkeep(1);
+
+      const ruler = pack.history.figures!.find(figure => figure.i === living.states[1].rulerId)!;
+      ruler.virtues = ["brave", "daring", "decisive"];
+      ruler.vices = [];
+      ruler.alignment = "chaotic";
+
+      expect(Military.getLivingBattleUpkeep(1)).toBeGreaterThan(plain);
     });
   });
 

@@ -1,5 +1,6 @@
 import { sum } from "d3";
 import { EXPENSES, type Expense, noExpenses } from "@/data/expenses";
+import { stateEconomyModifiers } from "@/model/physical/living-rulers";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { State } from "@/model/political/states-generator";
 import type { DemandCategory, Good, Market } from "@/types/economy";
@@ -126,7 +127,11 @@ class StateOrdersModule {
   getProvision(state: State | undefined, expense: keyof typeof PROVISION_NEED): number {
     if (!state?.i || state.removed) return 0;
     const need = PROVISION_NEED[expense] * ((state.urban || 0) + (state.rural || 0));
-    return need ? Math.min(1, (state.economy.spent[expense] || 0) / need) : 0;
+    if (!need) return 0;
+    // §5.2: a pious court and a civic administration get more out of what they are paid
+    const ruler = stateEconomyModifiers(state.i);
+    const efficiency = expense === "court" ? ruler.court : ruler.administration;
+    return Math.min(1, ((state.economy.spent[expense] || 0) / need) * efficiency);
   }
 
   /** How fully last run's infrastructure spending served each province, 0 to 1, by province id */
@@ -185,7 +190,7 @@ class StateOrdersModule {
 
   /** The province's corruption before administration, or the state's without provinces */
   private tendency(state: State, province: ProvinceCorruption | undefined): number {
-    return province ? Corruption.getTendency(state, province) : state.economy.budget.corruption;
+    return province ? Corruption.getTendency(state, province) : Corruption.effectiveBudget(state);
   }
 
   /** A state pays no sales tax or tariff to itself */

@@ -1,4 +1,5 @@
 import { Pack } from "@/model/graph/pack-generator";
+import { stateCorruption } from "@/model/physical/living-rulers";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { State } from "@/model/political/states-generator";
 import { getDecima } from "@/model/units";
@@ -38,16 +39,21 @@ class CorruptionModule {
 
   /** Before administration: the state's, higher where more remote or diverse than its average */
   getTendency(state: State, province: ProvinceCorruption): number {
-    return Math.min(100, state.economy.budget.corruption * province.factor);
+    return Math.min(100, this.effectiveBudget(state) * province.factor);
+  }
+
+  /** The state's official corruption budget as its ruler leaves it (§5.2) */
+  effectiveBudget(state: State): number {
+    return stateCorruption(state);
   }
 
   /** The state's before administration, weighed as ofState */
   getStateTendency(state: State): number {
-    return this.byExpenses(state, d => this.getTendency(state, d)) ?? state.economy.budget.corruption;
+    return this.byExpenses(state, d => this.getTendency(state, d)) ?? this.effectiveBudget(state);
   }
 
   /** Percent officials pocket once this much is collected, curbed as administration meets its need */
-  curb(state: State, collected: number, corruption = state.economy.budget.corruption): number {
+  curb(state: State, collected: number, corruption = this.effectiveBudget(state)): number {
     const { administration } = state.economy.budget;
     const need = ADMINISTRATION_NEED * ((state.urban || 0) + (state.rural || 0));
     if (!corruption || !need || collected <= 0) return corruption;
