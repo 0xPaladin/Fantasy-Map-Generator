@@ -349,6 +349,8 @@ const STYLES = /* html */ `
     #assistantCustomRow { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0 .35em; padding: .3em 0; border-bottom: 1px solid rgb(0 0 0 / 8%); }
     #assistantCustomRow small { grid-column: 1 / -1; opacity: .75; overflow-wrap: anywhere; }
     #assistantCustomRow.off .assistantCustomName { opacity: .5; text-decoration: line-through; }
+    #assistantCustomRow.active .assistantCustomName { font-weight: 600; }
+    #assistantCustomRow.active { background: rgb(0 0 0 / 3%); border-radius: .3em; }
     #assistantCustomToggle { display: flex; align-items: center; gap: .4em; margin: 0; font-size: 1em; min-width: 0; }
     #assistantCustomName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #assistantCustomizeEditor { margin-top: .8em; padding: .6em; border: 1px solid rgb(0 0 0 / 15%); border-radius: .5em; background: rgb(0 0 0 / 3%); }
@@ -408,14 +410,13 @@ function renderDialog(): void {
       <p>${t("Custom content is used when your own key answers.")}</p>
       <div id="assistantCustomizeError" role="status"></div>
 
-      <h3>${t("Instructions")}<span id="assistantInstructionsCount"></span></h3>
-      <p>${t("Standing instructions the Assistant follows in every chat, like an AGENTS.md file. Import one, or write it here.")}</p>
-      <textarea id="assistantInstructions" rows="6" spellcheck="false" aria-label="${t("Instructions")}"></textarea>
+      <h3>${t("Instructions")}</h3>
+      <p>${t("Standing instructions the Assistant follows in every chat, like an AGENTS.md file. Pick the profile to use; the buttons in the rows edit it.")}</p>
+      <div id="assistantInstructionsProfileList"></div>
       <div class="assistantSheetActions">
-        <button type="button" class="assistantButton" data-action="export-instructions">${t("Export")}</button>
         <label class="assistantButton" for="assistantInstructionsFile">${t("Import")}</label>
-        <input id="assistantInstructionsFile" type="file" accept=".md,text/markdown" hidden />
-        <button type="button" class="assistantButton assistantPrimary" data-action="save-instructions">${t("Save")}</button>
+        <input id="assistantInstructionsFile" type="file" accept=".md,text/markdown" multiple hidden />
+        <button type="button" class="assistantButton" data-action="new-instructions">+ ${t("New profile")}</button>
       </div>
 
       <h3>${t("Skills")}</h3>
