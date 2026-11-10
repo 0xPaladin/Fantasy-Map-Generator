@@ -28,7 +28,8 @@ import {
 } from "@/services/assistant/chats";
 import { askProvider } from "@/services/assistant/provider/answerer";
 import * as Connection from "@/services/assistant/provider/connection";
-import { PROVIDERS } from "@/services/assistant/provider/providers";
+import { listModels } from "@/services/assistant/provider/models";
+import { PROVIDERS, type ProviderSpec } from "@/services/assistant/provider/providers";
 import { markAssistantOpen } from "@/ui/assistant-bubble";
 import { Dialog } from "@/ui/dialog/dialog";
 import { t } from "@/utils/i18n";
@@ -301,6 +302,14 @@ const STYLES = /* html */ `
     #assistant .assistantFooter > span { display: flex; flex-wrap: wrap; align-items: center; gap: .2em .7em; }
     #assistant .assistantFooter a { color: inherit; }
     #assistantTier { padding: 0 .5em; border-radius: 1em; background: var(--header); color: #fff; }
+    #assistantStatus { white-space: nowrap; opacity: .8; }
+    #assistantFooterKey { padding: .1em .2em; border: 0; border-radius: .3em; background: none; font-size: 1.05em; line-height: 1; }
+    #assistantFooterKey:hover, #assistantFooterKey:focus-visible { background: rgb(0 0 0 / 8%); }
+    #assistantFooterModelField { display: inline-flex; align-items: center; gap: .3em; min-width: 0; }
+    #assistantFooterModel { width: 11.5em; min-width: 7em; padding: .12em .35em; border: 1px solid transparent; border-radius: .3em; background: transparent; font-size: .85em; color: inherit; }
+    #assistantFooterModel:hover, #assistantFooterModel:focus { border-color: rgb(0 0 0 / 18%); background: rgb(255 255 255 / 60%); outline: none; }
+    #assistantFooterReasoning { padding: .12em .2em; border: 1px solid transparent; border-radius: .3em; background: transparent; font-size: .85em; color: inherit; max-width: 7em; }
+    #assistantFooterReasoning:hover, #assistantFooterReasoning:focus { border-color: rgb(0 0 0 / 18%); background: rgb(255 255 255 / 60%); outline: none; }
 
     #assistant .assistantViewHeader { display: flex; justify-content: space-between; align-items: center; padding-bottom: .45em; border-bottom: 1px solid rgb(0 0 0 / 15%); }
     #assistant .assistantChatRow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .1em .6em; padding: .45em .3em; border-bottom: 1px solid rgb(0 0 0 / 8%); }
@@ -474,6 +483,17 @@ function renderDialog(): void {
       </span>
       <span id="assistantAccount">
         <span id="assistantTier"></span>
+        <button type="button" id="assistantFooterKey" class="assistantLink" data-action="key" title="${t("Connect your AI key")}" aria-label="${t("Connect your AI key")}" hidden>🔑</button>
+        <span id="assistantFooterModelField" hidden>
+          <input id="assistantFooterModel" list="assistantFooterModelList" autocomplete="off" spellcheck="false" aria-label="${t("Model")}" />
+          <datalist id="assistantFooterModelList"></datalist>
+          <select id="assistantFooterReasoning" aria-label="${t("Reasoning")}">
+            <option value="none">${t("None")}</option>
+            <option value="low">${t("Low")}</option>
+            <option value="medium">${t("Medium")}</option>
+            <option value="high">${t("High")}</option>
+          </select>
+        </span>
         <span id="assistantStatus"></span>
         <button type="button" id="assistantSignIn" class="assistantLink" data-action="sign-in">${t("Sign in")}</button>
         <button type="button" id="assistantSignOut" class="assistantLink" data-action="sign-out">${t("Sign out")}</button>
@@ -503,6 +523,8 @@ function renderDialog(): void {
     connect();
   });
   el("assistantPromptButton").addEventListener("click", () => togglePromptMenu());
+  el("assistantFooterModel").addEventListener("change", saveFooterModel);
+  el("assistantFooterReasoning").addEventListener("change", () => saveFooterReasoning());
   KeySheet.wire();
   Customize.wire();
 }
@@ -586,6 +608,25 @@ function deleteChat(id: string): void {
     AssistantWidgets.clearMarks();
   }
   renderChats();
+}
+
+/** The footer model box: an empty value is not allowed, so it reverts to the saved one */
+function saveFooterModel(): void {
+  const input = el<HTMLInputElement>("assistantFooterModel");
+  const connection = Connection.get();
+  const model = input.value.trim();
+  if (!model) {
+    input.value = connection.model;
+    return;
+  }
+  Connection.save({ ...connection, model });
+  renderFooter();
+}
+
+/** The footer reasoning level applies from the next question */
+function saveFooterReasoning(): void {
+  const reasoning = el<HTMLSelectElement>("assistantFooterReasoning").value as "none" | "low" | "medium" | "high";
+  Connection.save({ ...Connection.get(), reasoning });
 }
 
 function showView(next: View): void {
@@ -755,16 +796,53 @@ function renderFooter(): void {
   const connection = Connection.get();
   el("assistantTier").hidden = now !== "guest" && now !== "member";
   el("assistantTier").textContent = now === "member" ? "Member" : "Guest";
+  el("assistantFooterKey").hidden = now !== "key";
+  el("assistantFooterModelField").hidden = now !== "key";
+  if (now === "key") {
+    const model = el<HTMLInputElement>("assistantFooterModel");
+    if (document.activeElement !== model) model.value = connection.model;
+    model.disabled = busy || !initialized;
+    const reasoning = el<HTMLSelectElement>("assistantFooterReasoning");
+    reasoning.value = connection.reasoning;
+    reasoning.disabled = busy || !initialized;
+    reasoning.hidden = connection.provider === "local";
+    void discoverFooterModels(connection);
+  }
   el("assistantStatus").textContent =
     now === "key"
-      ? `${connection.provider === "local" ? "Local" : "🔑"} ${connection.model} · ${si(tokens(chat))} tokens`
+      ? `${si(tokens(chat))} tokens`
       : now && limits
         ? limitsLabel(limits)
         : "";
   el("assistantSignIn").hidden = now !== "guest";
   el("assistantSignOut").hidden = now !== "member";
-  el("assistantUseKey").textContent = now === "key" ? "Key" : "Use key";
+  el("assistantUseKey").textContent = "Use key";
+  el("assistantUseKey").hidden = now === "key";
   for (const button of el("assistantAccount").querySelectorAll("button")) button.disabled = busy || !initialized;
+}
+
+/** The footer's model list, cached by connection; a failure just leaves typed ids working */
+let footerDiscovery: AbortController | null = null;
+let footerModelKey = "";
+
+async function discoverFooterModels(connection: {
+  provider: ProviderSpec["id"];
+  key: string;
+  localUrl: string;
+}): Promise<void> {
+  const signature = [connection.provider, connection.key, connection.localUrl].join("|");
+  if (signature === footerModelKey) return;
+  footerDiscovery?.abort();
+  footerDiscovery = new AbortController();
+  const { signal } = footerDiscovery;
+  try {
+    const found = await listModels(connection.provider, connection.key, connection.localUrl, signal);
+    if (signal.aborted) return;
+    footerModelKey = signature;
+    el("assistantFooterModelList").replaceChildren(...found.map(model => new Option(model)));
+  } catch {
+    if (!signal.aborted) el("assistantFooterModelList").replaceChildren();
+  }
 }
 
 function renderNotice(): void {

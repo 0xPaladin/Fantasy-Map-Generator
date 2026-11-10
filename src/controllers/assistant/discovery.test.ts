@@ -153,3 +153,57 @@ it("hides the reasoning level for local servers and saves it for cloud providers
   expect(reasoning.hidden).toBe(true);
   expect(reasoningLabel.hidden).toBe(true);
 });
+
+it("shows the model and reasoning level in the footer once a key is connected", async () => {
+  discovery.list.mockResolvedValue(["gpt-6-luna", "gpt-6-sol"]);
+  await openSheet();
+  enterKey("openai-key");
+  click("Connect");
+
+  const model = document.getElementById("assistantFooterModel") as HTMLInputElement;
+  const reasoning = document.getElementById("assistantFooterReasoning") as HTMLSelectElement;
+  expect((document.getElementById("assistantFooterModelField") as HTMLElement).hidden).toBe(false);
+  expect((document.getElementById("assistantFooterKey") as HTMLElement).hidden).toBe(false);
+  expect((document.getElementById("assistantUseKey") as HTMLElement).hidden).toBe(true);
+  expect(document.getElementById("assistantStatus")?.textContent).toContain("tokens");
+
+  // the datalist is filled from discovery, so typing offers only known chat models
+  await vi.waitFor(() => expect(document.querySelectorAll("#assistantFooterModelList option").length).toBe(2));
+  expect(model.value).toBe("gpt-6-luna");
+
+  filterInput(model, "gpt-6-sol");
+  expect(localStorage.getItem("fmg-ai-model-openai")).toBe("gpt-6-sol");
+
+  // an empty model is reverted rather than saved
+  filterInput(model, "   ");
+  expect(localStorage.getItem("fmg-ai-model-openai")).toBe("gpt-6-sol");
+  expect(model.value).toBe("gpt-6-sol");
+
+  reasoning.value = "low";
+  reasoning.dispatchEvent(new Event("change"));
+  expect(localStorage.getItem("fmg-ai-reasoning-openai")).toBe("low");
+
+  // the key image opens the key sheet
+  (document.getElementById("assistantFooterKey") as HTMLButtonElement).click();
+  expect((document.getElementById("assistantKey") as HTMLElement).hidden).toBe(false);
+});
+
+it("hides the reasoning level in the footer for a local server", async () => {
+  discovery.list.mockResolvedValue(["llama3.2"]);
+  await openSheet();
+  const provider = document.getElementById("assistantProvider") as HTMLSelectElement;
+  provider.value = "local";
+  provider.dispatchEvent(new Event("change"));
+  const model = document.getElementById("assistantModel") as HTMLInputElement;
+  model.value = "llama3.2";
+  click("Connect");
+
+  const reasoning = document.getElementById("assistantFooterReasoning") as HTMLSelectElement;
+  expect((document.getElementById("assistantModel") as HTMLInputElement).value).toBe("llama3.2");
+  expect(reasoning.hidden).toBe(true);
+});
+
+function filterInput(input: HTMLInputElement, value: string): void {
+  input.value = value;
+  input.dispatchEvent(new Event("change"));
+}
