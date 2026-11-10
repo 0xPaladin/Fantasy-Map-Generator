@@ -15,7 +15,7 @@ import { Precipitation } from "@/model/physical/precipitation-generator";
 import { Relief } from "@/model/physical/relief-generator";
 import { Rivers } from "@/model/physical/river-generator";
 import { Temperature } from "@/model/physical/temperature-generator";
-import { Burgs } from "@/model/political/burgs-generator";
+import { Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { States } from "@/model/political/states-generator";
 import { Journeys } from "@/model/story/journeys/journeys-generator";
@@ -69,7 +69,7 @@ class MapRestorationModule {
   applyHeights(heights: Uint8Array, { erosion }: { erosion: boolean }): void {
     this.transaction(() => {
       for (const burg of pack.burgs) {
-        if (!burg.i || burg.removed) continue;
+        if (!burg.i || burg.removed || !isSurfaceBurg(burg)) continue; // realm burgs do not pin the surface
         const gridCell = pack.cells.g[burg.cell];
         if (heights[gridCell] < 20) heights[gridCell] = 20;
       }
@@ -687,6 +687,11 @@ class MapRestorationModule {
       // a port can lie just off the map edge: its cell decides whether the burg is still on the map
       const home = this.projectPoint(parent, burg.cell, projection) ?? [x, y];
       if (!this.isInMap(...home)) continue;
+      // a realm burg keeps its spot: it takes no land and claims no cell slot
+      if (!isSurfaceBurg(burg)) {
+        placed.set(burg.i, this.findCell(x, y));
+        continue;
+      }
       const under = this.findCell(x, y);
       if (cells.h[under] < 20 || taken.has(under)) {
         displaced.push([x, y, burg.i]);
@@ -713,7 +718,8 @@ class MapRestorationModule {
         return { ...burg, removed: true, lock: false, capital: 0 };
       }
 
-      cells.burg[cell] = burg.i;
+      // the cell slot stays reserved for surface burgs
+      if (isSurfaceBurg(burg)) cells.burg[cell] = burg.i;
       const [x, y] = projection(burg.x, burg.y).map(value => rn(value, 2));
       const haven = cells.haven[cell];
       const under = this.findCell(x, y);
@@ -768,7 +774,7 @@ class MapRestorationModule {
 
     // a burg belongs to the state whose land it is on; a capital moved off its state's land turns ordinary
     for (const burg of burgs) {
-      if (!burg.i || burg.removed) continue;
+      if (!burg.i || burg.removed || !isSurfaceBurg(burg)) continue; // realm burgs answer to their realm states
       const state = cells.state[burg.cell];
       if (burg.capital && state !== burg.state) {
         burg.capital = 0;

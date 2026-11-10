@@ -22,7 +22,7 @@ import { getPolesOfInaccessibility } from "@/utils/path-utils";
 import { each, gauss, generateSeed, P, ra, rand, rw } from "@/utils/probability-utils";
 import { escapeHtml } from "@/utils/string-utils";
 import { requireAdjustments, requireName, requireOneOf } from "@/utils/validation-utils";
-import { Burgs } from "./burgs-generator";
+import { Burgs, isSurfaceBurg } from "./burgs-generator";
 import type { Regiment } from "./military-generator";
 import type { Province } from "./provinces-generator";
 import { Provinces } from "./provinces-generator";
@@ -396,7 +396,8 @@ class StatesModule {
     const sizeVariety = options.generation.states.sizeVariety;
 
     pack.burgs.forEach(burg => {
-      if (!burg.i || !burg.capital) return;
+      // realm capitals found zero-surface-territory realm states, never surface ones
+      if (!burg.i || !burg.capital || !isSurfaceBurg(burg)) return;
 
       const expansionism = rn(Math.random() * sizeVariety + 1, 1);
       const basename = burg.name!.length < 9 && each5th(burg.cell) ? burg.name! : Names.getCultureShort(burg.culture!);
@@ -473,7 +474,8 @@ class StatesModule {
 
     const locked = new Set(pack.states.filter(state => state.lock && !state.removed).map(state => state.i));
     const candidates = pack.burgs.filter(
-      burg => burg.i && !burg.removed && !burg.capital && !locked.has(pack.cells.state[burg.cell])
+      burg =>
+        burg.i && !burg.removed && !burg.capital && isSurfaceBurg(burg) && !locked.has(pack.cells.state[burg.cell])
     );
     const hash = seedHash(options.map.seed);
     return candidates
@@ -564,6 +566,8 @@ class StatesModule {
     burgs
       .filter(b => b.i && !b.removed)
       .forEach(b => {
+        // realm burgs are owned by their realm states, not by the surface cells below them
+        if (!isSurfaceBurg(b)) return;
         b.state = cells.state[b.cell]; // assign state to burgs
       });
     log.timeEnd("expandStates");

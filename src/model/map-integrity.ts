@@ -3,6 +3,7 @@
 import { Routes } from "@/model/economy/routes-generator";
 import { Pack } from "@/model/graph/pack-generator";
 import { Transports } from "@/model/story/journeys/transports-generator";
+import { isSurfaceBurg } from "@/model/political/burgs-generator";
 import { isWater } from "@/utils/height-utils";
 
 export type IntegrityRule = (typeof RULES)[number];
@@ -30,12 +31,12 @@ const RULES = [
   "journey-points",
   "journey-steps", // by land or water, consecutive cells are neighbors
   "marker-cells", // a marker's cell is the cell under it
-  "burg-cells", // a burg owns a land cell no other burg has
+  "burg-cells", // a surface burg owns a land cell no other surface burg has
   "burg-positions", // a burg lies in its cell
   "burg-features", // feature and port water fit the cell
   "burg-routes", // a burg is on the route network, so it can trade
   "burg-markets", // a burg's cell belongs to a living market, so it takes part in the economy
-  "cell-burgs", // cells.burg points at living burgs that point back
+  "cell-burgs", // cells.burg points at living surface burgs that point back
   "state-centers",
   "state-capitals", // a living state has a living capital
   "state-provinces", // a state lists living provinces only
@@ -169,9 +170,12 @@ class MapIntegrityModule {
     const burgsByCell = new Set<number>();
     const marketIds = new Set((pack.markets ?? []).map(market => market.i));
     for (const burg of living(pack.burgs)) {
-      if (!land(burg.cell) || cells.burg[burg.cell] !== burg.i || burgsByCell.has(burg.cell))
-        fail("burg-cells", burg.i);
-      burgsByCell.add(burg.cell);
+      // only surface burgs own a land cell slot; realm burgs may share cells freely
+      if (isSurfaceBurg(burg)) {
+        if (!land(burg.cell) || cells.burg[burg.cell] !== burg.i || burgsByCell.has(burg.cell))
+          fail("burg-cells", burg.i);
+        burgsByCell.add(burg.cell);
+      }
       if (valid(burg.cell) && Pack.findCell(burg.x, burg.y) !== burg.cell) fail("burg-positions", burg.i);
       const port = burg.port ? features[burg.port] : undefined;
       if (burg.feature !== cells.f[burg.cell] || (burg.port && (!port || port.land))) fail("burg-features", burg.i);
@@ -180,7 +184,11 @@ class MapIntegrityModule {
     }
     for (let cell = 0; cell < n; cell++) {
       const burgId = cells.burg[cell];
-      if (burgId && (!alive(pack.burgs, burgId) || pack.burgs[burgId].cell !== cell)) fail("cell-burgs", cell);
+      if (
+        burgId &&
+        (!alive(pack.burgs, burgId) || !isSurfaceBurg(pack.burgs[burgId]) || pack.burgs[burgId].cell !== cell)
+      )
+        fail("cell-burgs", cell);
     }
 
     for (const state of living(pack.states)) {

@@ -7,7 +7,18 @@ Updated: 2026-11-10. Inputs:
 
 Progress:
 - Phase 1 — Data Model, Options & Realm Helpers: ✅ done
-- Phase 2 – Phase 8: pending
+- Phase 2 — Multi-Realm Burg Generation: ✅ done
+- Phase 3 – Phase 8: pending
+
+Implementation notes:
+- Realm rolls run on their own seeded stream (`Math.random = Alea(seed + ":realms")`, restored after), so the
+  surface map stays byte-identical to pre-realm generation for the same seed; `Burgs.specify()` re-seeds a
+  `:realm-specify` stream per run for realm population, emblems, features and skyport picks
+- Realm capitals carry `capital: 1` from Phase 2, so `States.createStates`, `expandStates` burg assignment,
+  `getFreeBurgs` and `MapRestoration.restoreStates`/`restoreBurgs` already skip non-surface burgs; Phase 3
+  replaces the interim skip in `createStates` with real realm states
+- `applyHeights` only pins land under surface burgs, so underwater and skyburgs do not raise seafloors
+- `map-integrity` `burg-cells`/`cell-burgs` rules are realm-aware (only surface burgs own cell slots)
 
 ---
 
@@ -62,7 +73,7 @@ Because `pack.cells.burg` (Uint16Array) and `pack.cells.state` (Uint16Array) are
 | `fitStateLabel` zero-cell fallback (`!cellsNumber` → horizontal point label) | ✅ present | `src/renderers/labels/fit-state-label.ts` |
 | Fantasy/Underdark/Aquatic cultures in culture sets | ✅ present | `src/data/culture-sets.ts` |
 | `BurgRealm` helpers (`flying`, `underdark`, `underwater`, `skyPort`, `underdarkGate`, `altitude`) | ✅ present | `src/model/political/burgs-generator.ts` |
-| Multi-realm burg generation & cell-slot protection | ❌ missing | `src/model/political/burgs-generator.ts` |
+| Multi-realm burg generation & cell-slot protection | ✅ present | `src/model/political/burgs-generator.ts` |
 | Zero-surface-territory states (`sky`, `underdark`, `underwater`) | ❌ missing | `src/model/political/states-generator.ts` |
 | Multi-realm route networks (`airroutes`, `underdarkroutes`, `undersearoutes`) | ❌ missing | `src/model/economy/routes-generator.ts` |
 | Multi-realm production & cross-realm market linking | ❌ missing | `src/model/economy/production-generator.ts`, `markets-generator.ts` |
