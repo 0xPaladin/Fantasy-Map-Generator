@@ -10,6 +10,7 @@ import {
   signOut
 } from "@/services/assistant/azgaar-server/api";
 import { getToken } from "@/services/assistant/azgaar-server/auth";
+import { listPrompts } from "@/services/assistant/customization";
 import {
   append,
   type Chat,
@@ -35,6 +36,7 @@ import { renderMarkdown } from "@/utils/markdown";
 import { ensureEl, findEl } from "@/utils/node-utils";
 import { si } from "@/utils/number-utils";
 import { errorText, escapeHtml } from "@/utils/string-utils";
+import { Customize } from "./customize";
 import { AssistantImages } from "./images";
 import { KeySheet } from "./key-sheet";
 import { AssistantMap } from "./map";
@@ -42,7 +44,7 @@ import { ProposalCard } from "./proposal-card";
 import { Proposals } from "./proposals";
 import { AssistantWidgets, type WidgetContext } from "./widgets";
 
-type View = "chat" | "chats" | "key";
+type View = "chat" | "chats" | "key" | "customize";
 type Notice = { text: string; item?: TranscriptItem; retry?: () => void };
 
 const dialogId = "assistant";
@@ -126,6 +128,15 @@ function build(): void {
         className: "icon-list-bullet",
         onClick: () => {
           if (!busy && initialized) showView(view === "chats" ? "chat" : "chats");
+        }
+      },
+      {
+        id: "assistantOpenCustomize",
+        label: "Customize",
+        tip: t("Customize"),
+        className: "icon-pencil",
+        onClick: () => {
+          if (!busy && initialized) openCustomize();
         }
       }
     ],
@@ -310,6 +321,27 @@ const STYLES = /* html */ `
     #assistantLocalHint { font-size: .9em; opacity: .8; }
     #assistantDiscoveryError { min-height: 1.2em; color: #a3262e; font-size: .9em; overflow-wrap: anywhere; }
     #assistant .assistantSheetActions { display: flex; justify-content: flex-end; gap: .5em; margin-top: .4em; }
+
+    #assistantCustomize { flex: 1; min-height: 0; overflow: hidden auto; padding-right: .2em; line-height: 1.45; }
+    #assistantCustomize h3 { margin: .8em 0 .3em; font-size: 1.05em; }
+    #assistantCustomize h3:first-of-type { margin-top: 0; }
+    #assistantCustomize p { margin: 0 0 .5em; }
+    #assistantCustomize textarea { width: 100%; box-sizing: border-box; font-family: var(--monospace); font-size: .9em; resize: vertical; }
+    #assistantCustomize input[type="text"] { width: 100%; box-sizing: border-box; }
+    #assistantCustomize label { display: block; margin: .4em 0 .15em; font-size: .9em; }
+    #assistantInstructionsCount { float: right; font-size: .85em; opacity: .7; font-weight: normal; }
+    #assistantCustomizeError { min-height: 1.2em; margin: .3em 0; color: #a3262e; font-size: .9em; overflow-wrap: anywhere; }
+    #assistantCustomize .assistantEmpty { padding: .5em 0; opacity: .65; font-size: .9em; }
+    #assistantCustomRow { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0 .35em; padding: .3em 0; border-bottom: 1px solid rgb(0 0 0 / 8%); }
+    #assistantCustomRow small { grid-column: 1 / -1; opacity: .75; overflow-wrap: anywhere; }
+    #assistantCustomRow.off .assistantCustomName { opacity: .5; text-decoration: line-through; }
+    #assistantCustomToggle { display: flex; align-items: center; gap: .4em; margin: 0; font-size: 1em; min-width: 0; }
+    #assistantCustomName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #assistantCustomizeEditor { margin-top: .8em; padding: .6em; border: 1px solid rgb(0 0 0 / 15%); border-radius: .5em; background: rgb(0 0 0 / 3%); }
+    #assistantCustomizeEditor h3 { margin-top: 0; }
+    #assistantPromptMenu { display: grid; grid-template-columns: minmax(0, 1fr); gap: .1em; max-height: 12em; overflow-y: auto; }
+    #assistantPromptMenu button { text-align: left; padding: .3em .5em; border: 0; border-radius: .3em; background: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #assistantPromptMenu button:hover, #assistantPromptMenu button:focus-visible { background: rgb(0 0 0 / 8%); }
   </style>`;
 
 function renderDialog(): void {
@@ -351,6 +383,58 @@ function renderDialog(): void {
       </div>
     </form>
 
+    <div id="assistantCustomize" hidden>
+      <p>${t("Custom content is used when your own key answers.")}</p>
+      <div id="assistantCustomizeError" role="status"></div>
+
+      <h3>${t("Instructions")}<span id="assistantInstructionsCount"></span></h3>
+      <p>${t("Standing instructions the Assistant follows in every chat, like an AGENTS.md file. Import one, or write it here.")}</p>
+      <textarea id="assistantInstructions" rows="6" spellcheck="false" aria-label="${t("Instructions")}"></textarea>
+      <div class="assistantSheetActions">
+        <button type="button" class="assistantButton" data-action="export-instructions">${t("Export")}</button>
+        <label class="assistantButton" for="assistantInstructionsFile">${t("Import")}</label>
+        <input id="assistantInstructionsFile" type="file" accept=".md,text/markdown" hidden />
+        <button type="button" class="assistantButton assistantPrimary" data-action="save-instructions">${t("Save")}</button>
+      </div>
+
+      <h3>${t("Skills")}</h3>
+      <p>${t("A skill is a document the Assistant reads only when a task matches it.")}</p>
+      <div id="assistantSkillList"></div>
+      <div class="assistantSheetActions">
+        <label class="assistantButton" for="assistantSkillFile">${t("Import")}</label>
+        <input id="assistantSkillFile" type="file" accept=".md,text/markdown" multiple hidden />
+        <button type="button" class="assistantButton" data-action="new-skill">+ ${t("New skill")}</button>
+      </div>
+
+      <h3>${t("Prompts")}</h3>
+      <p>${t("Saved questions you can drop into the box from the composer.")}</p>
+      <div id="assistantPromptList"></div>
+      <div class="assistantSheetActions">
+        <button type="button" class="assistantButton" data-action="new-prompt">+ ${t("New prompt")}</button>
+      </div>
+
+      <form id="assistantCustomizeEditor" hidden>
+        <h3 id="assistantEditorTitle"></h3>
+        <div id="assistantEditorNameField">
+          <label for="assistantEditorName">${t("Name")}</label>
+          <input id="assistantEditorName" type="text" maxlength="40" autocomplete="off" spellcheck="false" />
+        </div>
+        <div id="assistantEditorDescriptionField">
+          <label for="assistantEditorDescription">${t("Description")}</label>
+          <input id="assistantEditorDescription" type="text" maxlength="120" autocomplete="off" spellcheck="false" />
+        </div>
+        <label id="assistantEditorBodyLabel" for="assistantEditorBody">${t("Body")}</label>
+        <textarea id="assistantEditorBody" rows="8" spellcheck="false"></textarea>
+        <label id="assistantEditorEnabledField" for="assistantEditorEnabled">
+          <input id="assistantEditorEnabled" type="checkbox" /> ${t("Enabled")}
+        </label>
+        <div class="assistantSheetActions">
+          <button type="button" class="assistantButton" data-action="close-editor">${t("Cancel")}</button>
+          <button type="submit" class="assistantButton assistantPrimary">${t("Save")}</button>
+        </div>
+      </form>
+    </div>
+
     <div id="assistantContext" hidden></div>
 
     <div id="assistantNotice" role="status" hidden>
@@ -369,8 +453,11 @@ function renderDialog(): void {
     <div id="assistantComposer">
       <div id="assistantAttachments" hidden></div>
       <textarea id="assistantQuestion" rows="1" maxlength="${MAX_QUESTION_LENGTH}" aria-label="${t("Your question")}" placeholder="${t("Ask a question…")}"></textarea>
+      <button id="assistantPromptButton" type="button" class="icon-star-empty" title="${t("Prompts")}" aria-label="${t("Prompts")}" aria-expanded="false"></button>
       <button id="assistantAsk" type="button"></button>
     </div>
+
+    <div id="assistantPromptMenu" hidden role="menu" aria-label="${t("Prompts")}"></div>
 
     <div class="assistantFooter">
       <span>
@@ -408,7 +495,9 @@ function renderDialog(): void {
     event.preventDefault();
     connect();
   });
+  el("assistantPromptButton").addEventListener("click", () => togglePromptMenu());
   KeySheet.wire();
+  Customize.wire();
 }
 
 function handleClick(event: MouseEvent): void {
@@ -433,6 +522,9 @@ function handleClick(event: MouseEvent): void {
   else if (action === "choose") void choose(Number(index), Number(target.dataset.choice));
   else if (action === "inset") revealInset(Number(index));
   else if (action === "detach") detach(Number(index));
+  else if (action === "use-prompt" && id) usePrompt(id);
+  else if (action === "customize") openCustomize();
+  else if (action === "close-customize") showView("chat");
 }
 
 async function initialize(): Promise<void> {
@@ -491,8 +583,17 @@ function deleteChat(id: string): void {
 
 function showView(next: View): void {
   if (view === "key" && next !== "key") KeySheet.cancelDiscovery();
+  if (next !== "chat") closePromptMenu();
   view = next;
   render();
+}
+
+/** Customize is a toggle from the title bar, like Chats */
+function openCustomize(): void {
+  if (busy) return;
+  if (view === "customize") return showView("chat");
+  showView("customize");
+  Customize.fill();
 }
 
 function render(keepScroll = false): void {
@@ -500,10 +601,15 @@ function render(keepScroll = false): void {
   el("assistantTranscript").hidden = view !== "chat";
   el("assistantChats").hidden = view !== "chats";
   el("assistantKey").hidden = view !== "key";
+  el("assistantCustomize").hidden = view !== "customize";
   el("assistantComposer").hidden = view !== "chat" || readOnly;
   renderContextChip();
   const openChats = findEl<HTMLButtonElement>("assistantOpenChats");
   if (openChats) openChats.disabled = busy || !initialized;
+  const openCustomizeButton = findEl<HTMLButtonElement>("assistantOpenCustomize");
+  if (openCustomizeButton) openCustomizeButton.disabled = busy || !initialized;
+  const promptButton = findEl<HTMLButtonElement>("assistantPromptButton");
+  if (promptButton) promptButton.disabled = busy;
   const ask = el<HTMLButtonElement>("assistantAsk");
   ask.className = busy ? "busy icon-cancel" : "icon-right-big";
   ask.setAttribute("aria-label", busy ? "Stop" : "Send");
@@ -683,6 +789,49 @@ function clearNotice(): void {
 function fitInput(input: HTMLTextAreaElement): void {
   input.style.height = "";
   if (input.value) input.style.height = `${input.scrollHeight}px`;
+}
+
+const promptMenuOpen = (): boolean => !el("assistantPromptMenu").hidden;
+
+function togglePromptMenu(): void {
+  if (busy) return;
+  if (promptMenuOpen()) closePromptMenu();
+  else openPromptMenu();
+}
+
+/** A flat list of the saved prompts, newest first; empty is explained rather than shown blank */
+function openPromptMenu(): void {
+  const prompts = listPrompts();
+  const menu = el("assistantPromptMenu");
+  menu.innerHTML = prompts.length
+    ? prompts
+        .map(
+          prompt =>
+            `<button type="button" role="menuitem" data-action="use-prompt" data-id="${prompt.id}" title="${escapeHtml(prompt.text)}">${escapeHtml(prompt.name)}</button>`
+        )
+        .join("")
+    : `<div class="assistantEmpty">${t("No prompts yet.")} <button type="button" class="assistantLink" data-action="customize">${t("Add one")}</button></div>`;
+  menu.hidden = false;
+  el("assistantPromptButton").setAttribute("aria-expanded", "true");
+}
+
+function closePromptMenu(): void {
+  const menu = findEl("assistantPromptMenu");
+  if (!menu) return;
+  menu.hidden = true;
+  findEl("assistantPromptButton")?.setAttribute("aria-expanded", "false");
+}
+
+/** Drop a prompt into the composer: fills an empty box, otherwise starts a new line */
+function usePrompt(id: string): void {
+  const prompt = listPrompts().find(entry => entry.id === id);
+  closePromptMenu();
+  if (!prompt) return;
+  const input = el<HTMLTextAreaElement>("assistantQuestion");
+  const current = input.value.trimEnd();
+  input.value = current ? `${current}\n${prompt.text}` : prompt.text;
+  fitInput(input);
+  input.focus();
 }
 
 async function refreshContextChip(): Promise<void> {
