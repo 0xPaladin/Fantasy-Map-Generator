@@ -62,11 +62,6 @@ const OPTION_BINDINGS: Record<string, OptionBinding> = {
   mapWidth: { read: o => o.generation.graph.width, update: onMapSizeChange, pin: "mapWidth", event: "change" },
   mapHeight: { read: o => o.generation.graph.height, update: onMapSizeChange, pin: "mapHeight", event: "change" },
   seed: { read: o => o.map.seed, update: generateMapWithSeed, event: "change" },
-  extents: {
-    read: o => o.map.extents,
-    update: value => applyExtents(value),
-    event: "change"
-  },
   graphPreset: { read: o => getGraphPreset(o.generation.graph), update: applyGraphPreset },
   sampling: option({
     read: o => o.generation.graph.sampling,
@@ -249,20 +244,6 @@ const TEMPLATE = /* html */ `
     ${t("Map settings (apply to new maps)")}:
   </p>
   <table>
-    <tr data-tip="${t("The part of the world the map covers, or whether it is an Astral star chart. Astral cannot be undone")}">
-      <td><i data-locked="0" id="lock_extents" class="icon-lock-open"></i></td>
-      <td>${t("Extents")}</td>
-      <td>
-        <select id="extentsInput" data-option="extents">
-          <option value="whole">${t("Whole world")}</option>
-          <option value="northern">${t("Northern")}</option>
-          <option value="tropical">${t("Tropical")}</option>
-          <option value="southern">${t("Southern")}</option>
-          <option value="astral">${t("Astral")}</option>
-        </select>
-      </td>
-      <td></td>
-    </tr>
     <tr
       data-tip="${t("Map seed number. Press 'Enter' to apply. A seed reproduces the same map only if the map size and the settings are the same")}"
     >
@@ -684,7 +665,6 @@ export function syncOptionInputs(): void {
   syncCultures();
   syncPngResolution();
   syncViewOnly();
-  syncExtentsLock();
   syncDebugModes();
 }
 
@@ -767,28 +747,6 @@ function onOptionInput(event: Event): void {
 /** The part of the world the next map covers: Whole / Northern / Tropical / Southern mirror the
  * Configure World presets; Astral switches the map to the star chart and cannot be undone.
  * Changing this only sets a preference for the next map: it never alters the current map. */
-async function applyExtents(value: string): Promise<void> {
-  // once astral there is no going back to a standard extent
-  if (options.map.astral === true && value !== "astral") {
-    syncExtentsLock();
-    return;
-  }
-  if (value === options.map.extents) return;
-  Options.set(o => {
-    o.map.extents = value as OptionsData["map"]["extents"];
-    if (value === "astral") o.map.astral = true;
-  });
-  syncExtentsLock();
-}
-
-function syncExtentsLock(): void {
-  const astral = options.map.astral === true;
-  const select = optionInputs<HTMLSelectElement>("extents")[0];
-  if (!select) return;
-  select.disabled = astral;
-  if (astral) select.value = "astral";
-}
-
 /** The extent the next map is generated on: not the window it will be looked at through */
 function onMapSizeChange(): void {
   // a pin outlives the control, so it cannot hold what the input's own `min` would have rejected
