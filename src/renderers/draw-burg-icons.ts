@@ -127,7 +127,8 @@ function part(name: "icons" | "anchors", style: BurgPart, burgs: Burg[], bounds:
     }
 
     const extraShift = scale !== 1 ? rn(-0.5 * (scale - 1), 4) : 0;
-    const transformAttr = extraShift ? ` transform="translate(${extraShift}em, ${extraShift}em)"` : "";
+    // a CSS transform takes em; the SVG transform attribute would not, and the browser would ignore it
+    const transformAttr = extraShift ? ` style="transform: translate(${extraShift}em, ${extraShift}em)"` : "";
     const w = rn(boxWidth * scale, 4);
     const h = rn(boxHeight * scale, 4);
 

@@ -283,6 +283,9 @@ test("state capitals render with a larger circled star icon and province capital
   const stateCap = document.getElementById("burg1")!;
   expect(stateCap.getAttribute("href")).toBe("#burgs-atlas-star-circled");
   expect(stateCap.getAttribute("width")).toBe("2.2em");
+  // the star is re-centred in em through CSS: an SVG transform attribute would drop the unit
+  expect(stateCap.getAttribute("style")).toBe("transform: translate(-0.6em, -0.6em)");
+  expect(stateCap.getAttribute("transform")).toBeNull();
 
   const provCap = document.getElementById("burg2")!;
   expect(provCap.getAttribute("href")).toBe("#burgs-atlas-star");
