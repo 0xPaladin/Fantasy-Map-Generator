@@ -1955,7 +1955,6 @@ class LivingModel {
     }
 
     bSim.workedCells = worked;
-    bSim.isMajor = true;
     return total;
   }
 

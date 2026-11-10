@@ -230,7 +230,8 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
 
     cityRows = document.querySelectorAll("#stateCitiesTable > .states");
     expect(cityRows?.length).toBe(2);
-    expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).not.toContain("Riverbend");
+    // the cities table drops Riverbend; it re-appears only in the add-city select
+    expect(document.querySelector("#stateCitiesTable")?.innerHTML).not.toContain("Riverbend");
   });
 
   it("supports tab switching between Major Cities, Assets, and Forces", () => {
@@ -303,8 +304,8 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     expect(document.querySelector("#stateForcesTable")?.innerHTML).toContain("Royal Guard");
     expect(document.querySelector("#stateForcesTable")?.innerHTML).toContain("200");
 
-    // Disband the force
-    const removeBtn = document.querySelector<HTMLButtonElement>('.removeForceBtn[data-reg-id="0"]')!;
+    // Disband the force (the muster handler ids regiments from 1)
+    const removeBtn = document.querySelector<HTMLButtonElement>('.removeForceBtn[data-reg-id="1"]')!;
     expect(removeBtn).not.toBeNull();
     removeBtn.click();
 

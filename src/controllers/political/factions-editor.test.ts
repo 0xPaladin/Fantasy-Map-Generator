@@ -258,20 +258,20 @@ describe("FactionsEditor", () => {
     const addAssetBtn = document.querySelector<HTMLButtonElement>("#addAssetBtn")!;
 
     locSelect.value = "hq";
-    assetSelect.value = "vault";
+    assetSelect.value = "trade_depot";
     addAssetBtn.click();
 
-    expect(faction.hq.assets).toContain("vault");
+    expect(faction.hq.assets).toContain("trade_depot");
     const assetRows = document.querySelectorAll("#assetsTable > .states");
     expect(assetRows.length).toBe(1);
-    expect(document.querySelector("#assetsTable")?.innerHTML).toContain("Vault");
+    expect(document.querySelector("#assetsTable")?.innerHTML).toContain("Trade Depot");
 
     // Dismantle asset
     const removeBtn = document.querySelector<HTMLButtonElement>('.removeAssetBtn[data-node="hq"][data-index="0"]')!;
     expect(removeBtn).not.toBeNull();
     removeBtn.click();
 
-    expect(faction.hq.assets?.includes("vault")).toBe(false);
+    expect(faction.hq.assets?.includes("trade_depot")).toBe(false);
     expect(document.querySelector("#assetsTable")?.innerHTML).toContain("No assets constructed yet");
   });
 
@@ -306,8 +306,8 @@ describe("FactionsEditor", () => {
     expect(document.querySelector("#forcesTable")?.innerHTML).toContain("Crimson Vanguard");
     expect(document.querySelector("#forcesTable")?.innerHTML).toContain("150");
 
-    // Disband force
-    const removeBtn = document.querySelector<HTMLButtonElement>('.removeForceBtn[data-reg-id="0"]')!;
+    // Disband force (the muster handler ids regiments from 1)
+    const removeBtn = document.querySelector<HTMLButtonElement>('.removeForceBtn[data-reg-id="1"]')!;
     expect(removeBtn).not.toBeNull();
     removeBtn.click();
 
