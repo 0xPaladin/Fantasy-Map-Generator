@@ -7,6 +7,8 @@ import { waitForMap } from "./wait-for-map";
 
 // created on draw, not by the registry - absent until their layer renders
 const LAZY = new Set(["legend/box", "scaleBar/back"]);
+// the astral system layers stamp their groups only in the Astral Cartographer view
+const isLazy = (key: string) => LAZY.has(key) || key.startsWith("systems/");
 
 async function generateMap(page: import("@playwright/test").Page) {
   await page.goto("/");
@@ -54,7 +56,7 @@ test("every styles address resolves in the generated map's DOM", async ({ page }
   });
 
   // a schema key with no stamped element under an existing layer is a contract break
-  expect(result.missing.filter(key => !LAZY.has(key))).toEqual([]);
+  expect(result.missing.filter(key => !isLazy(key))).toEqual([]);
   expect(result.resolved.length).toBeGreaterThan(50);
 
   // dynamic groups: renderers stamp what they create

@@ -230,12 +230,13 @@ test.describe("Diplomacy", () => {
     ids = await page.evaluate(() => {
       const states = pack.states.filter(state => state.i && !state.removed);
       for (const a of states) for (const b of states) a.diplomacy![b.i] = a.i === b.i ? "x" : "Neutral";
-      // the largest, as the dialogs can cover a small state whole
-      const [a, b, c] = [...states].sort((x, y) => y.cells! - x.cells!);
-      a.diplomacy![b.i] = b.diplomacy![a.i] = "Rival";
+      // the overview opens on the first active state; the others by size, as the dialogs can cover a small state whole
+      const [self] = states;
+      const [b, c] = [...states].filter(state => state !== self).sort((x, y) => y.cells! - x.cells!);
+      self.diplomacy![b.i] = b.diplomacy![self.i] = "Rival";
       b.diplomacy![c.i] = c.diplomacy![b.i] = "Ally";
       pack.states[0].diplomacy = [];
-      return [a.i, b.i, c.i];
+      return [self.i, b.i, c.i];
     });
     await page.evaluate(() => FMG.Controllers.DiplomacyOverview.open());
     await expect(page.locator("#diplomacyOverview")).toBeVisible();

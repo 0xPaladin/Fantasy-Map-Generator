@@ -108,43 +108,6 @@
   },
   "#labels": {},
   "#lakes": {},
-  "#lakes > [data-group=\"freshwater\"]": {
-    "opacity": "0.5",
-    "fill": "#a6c1fd",
-    "stroke": "#5f799d",
-    "stroke-width": "0.7"
-  },
-  "#lakes > [data-group=\"salt\"]": {
-    "opacity": "0.5",
-    "fill": "#409b8a",
-    "stroke": "#388985",
-    "stroke-width": "0.7"
-  },
-  "#lakes > [data-group=\"sinkhole\"]": {
-    "opacity": "1",
-    "fill": "#5bc9fd",
-    "stroke": "#53a3b0",
-    "stroke-width": "0.7"
-  },
-  "#lakes > [data-group=\"frozen\"]": {
-    "opacity": "0.95",
-    "fill": "#cdd4e7",
-    "stroke": "#cfe0eb",
-    "stroke-width": "0"
-  },
-  "#lakes > [data-group=\"lava\"]": {
-    "opacity": "0.7",
-    "fill": "#90270d",
-    "stroke": "#f93e0c",
-    "stroke-width": "2",
-    "filter": "url(#crumpled)"
-  },
-  "#lakes > [data-group=\"dry\"]": {
-    "opacity": "1",
-    "fill": "#c9bfa7",
-    "stroke": "#8e816f",
-    "stroke-width": "0.7"
-  },
   "#landmass": {
     "opacity": "1",
     "fill": "#eef6fb"
@@ -221,27 +184,6 @@
   "#rivers": {},
   "#routes": {
     "fill": "none"
-  },
-  "#routes > [data-group=\"roads\"]": {
-    "opacity": "0.9",
-    "stroke": "#d06324",
-    "stroke-width": "0.7",
-    "stroke-dasharray": "2",
-    "stroke-linecap": "butt"
-  },
-  "#routes > [data-group=\"trails\"]": {
-    "opacity": "0.9",
-    "stroke": "#d06324",
-    "stroke-width": "0.25",
-    "stroke-dasharray": ".8 1.6",
-    "stroke-linecap": "butt"
-  },
-  "#routes > [data-group=\"searoutes\"]": {
-    "opacity": "0.9",
-    "stroke": "#ffffff",
-    "stroke-width": "0.35",
-    "stroke-dasharray": "1 2",
-    "stroke-linecap": "round"
   },
   "#ruler": {
     "stroke": "#3d3d3d",
@@ -322,8 +264,8 @@
     "stroke": "#3e3e4b",
     "stroke-width": "1",
     "stroke-linecap": "butt",
-    "font-size": "2%",
-    "data-icon": "burgs-atlas-square",
+    "font-size": "2.2%",
+    "data-icon": "burgs-atlas-star-circled",
     "style": "transform: translate(-0.6em, -0.6em)"
   },
   "#burgIcons > [data-group=\"city\"] > [data-group=\"icons\"]": {
@@ -634,6 +576,64 @@
     "font-family": "Almendra SC",
     "letter-spacing": "0",
     "style": "text-shadow: white 0px 0px 4px"
+  },
+  "#lakes > [data-group=\"freshwater\"]": {
+    "opacity": "0.5",
+    "fill": "#a6c1fd",
+    "stroke": "#5f799d",
+    "stroke-width": "0.7"
+  },
+  "#lakes > [data-group=\"salt\"]": {
+    "opacity": "0.5",
+    "fill": "#409b8a",
+    "stroke": "#388985",
+    "stroke-width": "0.7"
+  },
+  "#lakes > [data-group=\"sinkhole\"]": {
+    "opacity": "1",
+    "fill": "#5bc9fd",
+    "stroke": "#53a3b0",
+    "stroke-width": "0.7"
+  },
+  "#lakes > [data-group=\"frozen\"]": {
+    "opacity": "0.95",
+    "fill": "#cdd4e7",
+    "stroke": "#cfe0eb",
+    "stroke-width": "0"
+  },
+  "#lakes > [data-group=\"lava\"]": {
+    "opacity": "0.7",
+    "fill": "#90270d",
+    "stroke": "#f93e0c",
+    "stroke-width": "2",
+    "filter": "url(#crumpled)"
+  },
+  "#lakes > [data-group=\"dry\"]": {
+    "opacity": "1",
+    "fill": "#c9bfa7",
+    "stroke": "#8e816f",
+    "stroke-width": "0.7"
+  },
+  "#routes > [data-group=\"roads\"]": {
+    "opacity": "0.9",
+    "stroke": "#d06324",
+    "stroke-width": "0.7",
+    "stroke-dasharray": "2",
+    "stroke-linecap": "butt"
+  },
+  "#routes > [data-group=\"trails\"]": {
+    "opacity": "0.9",
+    "stroke": "#d06324",
+    "stroke-width": "0.25",
+    "stroke-dasharray": ".8 1.6",
+    "stroke-linecap": "butt"
+  },
+  "#routes > [data-group=\"searoutes\"]": {
+    "opacity": "0.9",
+    "stroke": "#ffffff",
+    "stroke-width": "0.35",
+    "stroke-dasharray": "1 2",
+    "stroke-linecap": "round"
   },
   "#rivers > [data-group=\"regular\"]": {
     "fill": "#5d97bb"
