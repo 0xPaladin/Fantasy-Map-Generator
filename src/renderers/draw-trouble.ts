@@ -1,10 +1,10 @@
 // Trouble and Lair layer renderer: visual markers and info popups for active provincial threats
 import { getFactionArchetype } from "@/data/factions-catalog";
-import { Factions } from "@/model/political/factions-generator";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import { MapEntities } from "@/model/map-entities";
 import { Living } from "@/model/physical/living-generator";
 import type { Burg } from "@/model/political/burgs-generator";
+import { Factions } from "@/model/political/factions-generator";
 import { Layers } from "@/renderers/layers";
 import { zoomFontSize } from "@/renderers/viewport/viewport";
 import { ViewportLayers, type ViewportRenderContext } from "@/renderers/viewport/viewport-renderer";
@@ -103,7 +103,10 @@ function findNearestBurg(cell: number): Burg | undefined {
 }
 
 function formatFactionInfo(faction: Faction, uniqueId: string): TroubleInfo {
-  const provinceId = faction.hq.provinceId ?? (faction.hq.burgId ? pack.cells.province?.[pack.burgs?.[faction.hq.burgId]?.cell ?? 0] : undefined) ?? pack.cells?.province?.[faction.hq.cell];
+  const provinceId =
+    faction.hq.provinceId ??
+    (faction.hq.burgId ? pack.cells.province?.[pack.burgs?.[faction.hq.burgId]?.cell ?? 0] : undefined) ??
+    pack.cells?.province?.[faction.hq.cell];
   const province = provinceId ? pack.provinces?.[provinceId] : undefined;
   const burg = faction.hq.burgId ? pack.burgs?.[faction.hq.burgId] : findNearestBurg(faction.hq.cell);
   const archetype = getFactionArchetype(faction.type);
@@ -123,11 +126,15 @@ function formatFactionInfo(faction: Faction, uniqueId: string): TroubleInfo {
     `<p><strong>Allegiance:</strong> ${escapeHtml(faction.allegiance)} &nbsp;|&nbsp; <strong>Fighters:</strong> ${men}</p>`,
     `<p><strong>Status:</strong> ${flags}</p>`,
     `<p><strong>Raid Threshold:</strong> ${faction.raidThreshold ?? 6}+ on 1d6 &nbsp;|&nbsp; <strong>Seasons Active:</strong> ${faction.seasonsActive ?? 0}</p>`,
-    archetype?.description ? `<p style="margin-top: 6px; font-style: italic;">${escapeHtml(archetype.description)}</p>` : "",
+    archetype?.description
+      ? `<p style="margin-top: 6px; font-style: italic;">${escapeHtml(archetype.description)}</p>`
+      : "",
     faction.sovereignAmbition
       ? `<p style="margin-top: 6px; color: #6a4c93; font-weight: bold;">⚔️ Sovereign ambition: may proclaim ${escapeHtml(faction.stateForm ?? "a new domain")}</p>`
       : ""
-  ].filter(Boolean).join("");
+  ]
+    .filter(Boolean)
+    .join("");
 
   return {
     id: uniqueId,
@@ -190,7 +197,9 @@ export function getTroubleOrLairFromElement(element: Element | null): TroubleInf
           `<p><strong>Required Counter:</strong> ${escapeHtml(UNIT_ROLE_LABELS[trouble.requiredRole] ?? trouble.requiredRole)} (${trouble.pool.toUpperCase()} Pool)</p>`,
           `<p><strong>Save / Harm:</strong> ${escapeHtml(SAVE_KIND_LABELS[trouble.save] ?? trouble.save)}</p>`,
           tDef?.description ? `<p style="margin-top: 6px; font-style: italic;">${escapeHtml(tDef.description)}</p>` : ""
-        ].filter(Boolean).join("");
+        ]
+          .filter(Boolean)
+          .join("");
 
         return {
           id: `trouble:${provinceId}`,
@@ -251,9 +260,7 @@ function reconcileTrouble({ root, bounds }: ViewportRenderContext): void {
     }
   }
 
-  const threats = Factions.active().filter(
-    f => f.allegiance === "hostile" || f.allegiance === "clandestine"
-  );
+  const threats = Factions.active().filter(f => f.allegiance === "hostile" || f.allegiance === "clandestine");
   for (const faction of threats) {
     cellCounts.set(faction.hq.cell, (cellCounts.get(faction.hq.cell) ?? 0) + 1);
   }
@@ -279,12 +286,7 @@ function reconcileTrouble({ root, bounds }: ViewportRenderContext): void {
     const x = point[0] + offset;
     const y = point[1];
 
-    if (
-      x - drawn / 2 <= bounds.x1 &&
-      y - drawn <= bounds.y1 &&
-      x + drawn / 2 >= bounds.x0 &&
-      y >= bounds.y0
-    ) {
+    if (x - drawn / 2 <= bounds.x1 && y - drawn <= bounds.y1 && x + drawn / 2 >= bounds.x0 && y >= bounds.y0) {
       const icon = getTroubleIcon(trouble);
       markup.push(
         `<svg id="trouble-marker-${province.i}" class="trouble-marker" data-trouble-type="trouble" data-province-id="${province.i}" viewBox="0 0 30 36" width="${size / 100}em" height="${size / 100}em" x="${x}" y="${y}" overflow="visible" style="cursor: pointer;" pointer-events="all">` +
@@ -314,12 +316,7 @@ function reconcileTrouble({ root, bounds }: ViewportRenderContext): void {
       pack.cells?.province?.[hqCell] ??
       0;
 
-    if (
-      x - drawn / 2 <= bounds.x1 &&
-      y - drawn <= bounds.y1 &&
-      x + drawn / 2 >= bounds.x0 &&
-      y >= bounds.y0
-    ) {
+    if (x - drawn / 2 <= bounds.x1 && y - drawn <= bounds.y1 && x + drawn / 2 >= bounds.x0 && y >= bounds.y0) {
       const icon = getFactionIcon(faction);
       const markerAttr = faction.hq.markerId !== undefined ? ` data-marker-id="${faction.hq.markerId}"` : "";
       const elementId = `faction-marker-${faction.i}`;
@@ -330,8 +327,11 @@ function reconcileTrouble({ root, bounds }: ViewportRenderContext): void {
           `<circle cx="15" cy="12" r="7.5" fill="#ffe4e6" stroke="#881337" stroke-width="0.8"/>` +
           `<text x="15" y="15.5" font-size="9" text-anchor="middle" dominant-baseline="central">${icon}</text>` +
           `<rect x="6.5" y="21" width="17" height="6.5" rx="2" fill="#1c1917" stroke="#fecdd3" stroke-width="0.6"/>` +
-          `<text x="15" y="25.8" font-size="4.8" font-weight="bold" fill="#ffe4e6" text-anchor="middle">${faction.allegiance}`
-          .slice(0, 3) + `</text>` +
+          `<text x="15" y="25.8" font-size="4.8" font-weight="bold" fill="#ffe4e6" text-anchor="middle">${faction.allegiance}`.slice(
+            0,
+            3
+          ) +
+          `</text>` +
           `</g></svg>`
       );
     }

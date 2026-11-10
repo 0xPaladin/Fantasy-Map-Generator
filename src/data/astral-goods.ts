@@ -1,4 +1,4 @@
-import type { DemandCategory, Good } from "@/model/economy/goods-generator";
+import type { DemandCategory, Good } from "@/types/economy";
 
 export type AstralWorldType =
   | "Agricultural"
@@ -470,6 +470,7 @@ export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, ind
     name: spec.name,
     tags: [...spec.tags],
     value: spec.value,
+    carriage: 1,
     unit: "ton",
     icon: spec.icon,
     color: spec.color,
@@ -479,7 +480,7 @@ export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, ind
   };
 });
 
-export function isAstralGoodsCatalogue(goods: readonly Good[] = pack.goods): boolean {
+export function isAstralGoodsCatalogue(goods: readonly Good[] = options.map.goods): boolean {
   if (!goods?.length) return false;
   return goods.some(
     good =>

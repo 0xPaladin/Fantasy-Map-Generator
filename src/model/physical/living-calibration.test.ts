@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { currentContent } from "@/data/roster-store";
+import { noFinance } from "@/model/political/states-generator";
 
 const raw = JSON.parse(readFileSync("tests/fixtures/sample-world.json", "utf8"));
 
@@ -42,9 +43,16 @@ describe("Living World army economy calibration", () => {
   it("keeps a burg's 30% army budget at a plausible block count", async () => {
     const { Living } = await import("./living-generator");
 
-    const rawPack = raw.pack as { cells: Array<Record<string, unknown>>; states: Array<{ military?: unknown[] }> };
+    const rawPack = raw.pack as {
+      cells: Array<Record<string, unknown>>;
+      states: Array<{ military?: unknown[]; economy?: unknown }>;
+    };
     (rawPack as Record<string, unknown>).cells = decompressCells(rawPack.cells);
-    for (const state of rawPack.states) if (state) state.military = [];
+    for (const state of rawPack.states) {
+      if (!state) continue;
+      state.military = [];
+      state.economy ??= noFinance(); // the fixture predates the v1.157.0 finances move
+    }
 
     (globalThis as unknown as { options: unknown }).options = {
       ...(raw.settings as Record<string, unknown>),

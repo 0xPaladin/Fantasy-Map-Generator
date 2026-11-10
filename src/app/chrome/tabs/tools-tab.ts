@@ -23,6 +23,9 @@ const TEMPLATE = /* html */ `
     <button id="editCulturesButton" data-tip="${t("Cultures Editor")}" data-shortcut="Shift + C">
       ${t("Cultures")}
     </button>
+    <button id="editDevelopmentButton" data-tip="${t("Development Editor")}" data-shortcut="Shift + X">
+      ${t("Development")}
+    </button>
     <button
       id="editDiplomacyButton"
       data-tip="${t("Diplomacy Overview")}"
@@ -113,7 +116,7 @@ const TEMPLATE = /* html */ `
   <div id="regenerateFeature" class="grid">
     <button
       id="regenerateBurgs"
-      data-tip="${sentences(t("Click to regenerate all unlocked burgs and routes"), t("States will remain as they are"), t("Note: burgs are only generated in populated areas with culture assigned"))}"
+      data-tip="${sentences(t("Click to regenerate all unlocked burgs and routes, then markets and production"), t("States will remain as they are"), t("Note: burgs are only generated in populated areas with culture assigned"))}"
     >
       ${t("Burgs")}
     </button>
@@ -121,12 +124,11 @@ const TEMPLATE = /* html */ `
     <button id="regenerateFactions" data-tip="${t("Click to regenerate procedural factions")}">${t("Factions")}</button>
     <button
       id="regenerateEconomy"
-      data-tip="${t("Rebuild market territories, production, trade deals, and taxes from the current goods and markets")}"
+      data-tip="${t("Open regeneration dialog")}"
     >
       ${t("Economy")}
     </button>
     <button id="regenerateEmblems" data-tip="${t("Click to regenerate all emblems")}">${t("Emblems")}</button>
-    <button id="regenerateGoods" data-tip="${t("Regenerate bonus goods placement")}">${t("Goods")}</button>
     <button id="regenerateHistory" data-tip="${t("Regenerate the chronicle: events, eras and figures. Required after changing the history mode in Set Lore")}">
       ${t("History")}
     </button>
@@ -140,9 +142,6 @@ const TEMPLATE = /* html */ `
     <button id="regenerateMarkers" data-tip="${t("Click to configure markers generation and regenerate unlocked markers")}">
       ${t("Markers")}
     </button>
-    <button id="regenerateMarkets" data-tip="${t("Regenerate markets and their territories")}">
-      ${t("Markets")}
-    </button>
     <button
       id="regenerateMilitary"
       data-tip="${t("Recalculate military forces based on current options")}"
@@ -151,12 +150,6 @@ const TEMPLATE = /* html */ `
     </button>
     <button id="regeneratePopulation" data-tip="${t("Click to recalculate rural and urban population")}">
       ${t("Population")}
-    </button>
-    <button
-      id="regenerateProduction"
-      data-tip="${t("Regenerate production and trade deals")}"
-    >
-      ${t("Production")}
     </button>
     <button
       id="regenerateProvinces"
@@ -177,7 +170,7 @@ const TEMPLATE = /* html */ `
     <button id="regenerateRoutes" data-tip="${t("Click to regenerate all unlocked routes")}">${t("Routes")}</button>
     <button
       id="regenerateStates"
-      data-tip="${t("Click to regenerate non-locked states. Emblems and military forces will be regenerated as well, burgs will remain as they are, but capitals will be different")}"
+      data-tip="${t("Click to regenerate non-locked states. Emblems, military forces and production will be regenerated as well, burgs will remain as they are, but capitals will be different")}"
     >
       ${t("States")}
     </button>

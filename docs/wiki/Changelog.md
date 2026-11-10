@@ -12,6 +12,36 @@ Check out [Dev board](https://github.com/users/Azgaar/projects/3/views/1?sumFiel
 
 Current version of the Fantasy Map Generator is the latest `master` branch. You can download it here: https://github.com/Azgaar/Fantasy-Map-Generator/archive/refs/heads/master.zip. Also see [the wiki](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Q&A#can-i-use-the-generator-offline).
 
+**[1.157.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.157.0) - 2026-11-09**:
+
+- Development: technology level of every cell
+- Zones and markers driven by the economy
+- Economy: prices follow demand and supply
+- Economy: most developed burgs trade first
+- Economy: prosperity of burgs, provinces and states
+- Economy: state budgets, corruption and stability
+- Economy: state and province overview
+- Economy: army strength depends on upkeep
+- Goods: your goods carry over to new maps
+- Trade: traffic sublayer
+- Military: regiments moved to frontlines
+- Rivers: tributaries bend gently into the downstream flow
+- River style groups: regular, frozen, dry, lava and custom
+- Emblems: Armoria pictures in older maps become COAs where possible
+- The tour button on the map is removed: start the tour from the update window or the About tab
+- Update window: the latest releases info; F1 opens it again
+- Image Converter: fit, zoom and move the image before converting it
+- Measurers, regiment controls and editing handles keep their size on zoom
+- Heightmap: contours are spaced in round height units
+- Heightmap: elevation labels
+- Trade animation follows edited and custom routes
+- Hovering a cut value shows its text in the tooltip
+- Editors: cut too long column names
+- Options: the interface size slider no longer jumps while dragged
+- Military units: the limit picker stays on screen with long lists
+
+# Releases
+
 **[1.156.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.156.0) - 2026-10-25**:
 
 - Migration: folders are reworked
@@ -20,14 +50,20 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Loading draws the map from its data; the stored SVG is read only to update older maps
 - Legend boxes are saved as map data
 
-## Unreleased (factions branch)
+## Unreleased (civ branch)
 
 - Living World: the Grand Guild player layer is removed — no guild wallet, missions, relics, petitions or popups; the HUD inspector keeps every intervention as free God Mode, and heroes keep their sheets, vitals, doctrines and paths
 - Factions: states can now suppress hostile factions in the Living World — production-funded `suppress_faction` agenda against urban nodes (influence damage, guard stalls, pillage, HQ relocation/dissolution), military storm of wilderness strongholds on state-owned cells, plus Inspector "Suppress faction" command and pillaged badges
 - Factions: unified OpenCiv engine — HQs/outposts are city-nodes competing for worked cells, gathering seven yields, producing from unified queues, researching with host spillover, and fighting with shared Builders/Settlers/armies/sieges
 - Factions Editor: new Yields, Citizens, Worked Cells and Production columns; Outposts dialog and Burg inspector show per-node yields, citizens, worked cells and production queue
-
-# Releases
+- Economy rework: upstream's goods, markets, prices, taxes, budgets, prosperity and stability replace the old parallel economy, with old maps converted on load
+- Economy: the Living World runs on the new economy — seasonal treasuries, improvements and buildings that raise real output, and prosperity that sways happiness
+- Factions: trade commissions, graft siphoning, smuggling, retainers and court tithes earned from the host economy; charters pay a named **Chartered Faction Tithes** line into the patron's budget
+- Characters: ruler traits now tell on the economy — corruption, court and administration output, army upkeep — and an audit or sabotage changes a state without a regeneration
+- Development: technologies researched in the Living World raise the people's development, unlocking goods and raising output, and the countryside follows its towns each season
+- Military: musters are gated by unit goods (arms, horses, artillery…), short states field levies instead, and funded armies fight better than unpaid ones
+- HUD inspector: the state card shows prosperity, stability, development and army upkeep; the burg card its prosperity and trade balance; alt-clicking a cell opens a cell card with its development, prosperity, deposit and rural output
+- State Cities & Yields and Faction Outposts dialogs: upstream prosperity, stability, development, trade and tithes beside the seasonal yields
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 

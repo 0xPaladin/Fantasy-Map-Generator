@@ -75,6 +75,7 @@ const columns: EditorColumn<HistoricalFigure>[] = [
 ];
 
 const charactersTable = initEditorTable<HistoricalFigure>({
+  dialogId,
   getData: getCharactersData,
   onUpdate: renderCharactersPage
 });

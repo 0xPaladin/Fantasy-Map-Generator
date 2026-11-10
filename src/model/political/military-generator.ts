@@ -1,16 +1,24 @@
 import { quadtree, sum } from "d3";
-import { currentContent } from "@/data/roster-store";
 import type { ResolvedRoster, UnitType } from "@/data/roster-content";
-import type { ArmyBlock } from "@/types/battle";
+import { currentContent } from "@/data/roster-store";
+import { Accounts } from "@/model/economy/accounts";
+import { Goods } from "@/model/economy/goods-generator";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
+import { stateEconomyModifiers } from "@/model/physical/living-rulers";
+import type { ArmyBlock } from "@/types/battle";
 import type { MilitaryUnit } from "@/types/military";
 import { nth } from "@/utils/language-utils";
 import { minmax, rn, si } from "@/utils/number-utils";
 import { gauss, ra, rand } from "@/utils/probability-utils";
 import { findAllInQuadtree } from "@/utils/quadtree";
 import { requireName } from "@/utils/validation-utils";
-import type { State } from "./states-generator";
+import { levies, type State } from "./states-generator";
+
+export const UPKEEP_COST = 20; // military spending a day that keeps troops of power 1, a population point's worth
+const MIN_UPKEEP = 0.05; // unpaid troops still fight, if barely
+const EQUIPMENT = 0.365; // population points of troops equipped by a unit a day a state consumes of their goods
+const REGIMENT_SIZE = 3; // regiment box height at the default style, map units; layout ignores the style
 
 export interface Regiment {
   i: number;
@@ -239,6 +247,7 @@ interface Platoon {
   n: number; // naval unit flag
   s: number; // separate flag (for fleets)
   type: string; // unit type
+  unitName: string; // the config unit's name, which its goods and equipment share are keyed by
   children?: Platoon[]; // merged platoons
 }
 
@@ -520,7 +529,8 @@ class MilitaryModule {
           u: rosterUnitName,
           n,
           s: unit.separate,
-          type: unit.type
+          type: unit.type,
+          unitName: unit.name
         });
       }
     }
@@ -588,9 +598,46 @@ class MilitaryModule {
           u: rosterUnitName,
           n,
           s: unit.separate,
-          type: unit.type
+          type: unit.type,
+          unitName: unit.name
         });
       }
+    }
+
+    // conscripts the state cannot equip with their unit's goods serve as levies where they were raised
+    const levyUnit = options.map.military.units.find(unit => unit.type === "levies");
+    for (const [stateId, draft] of drafts) {
+      const levyName = levyUnit ? selectRosterUnitForCategory("melee", draft.roster, false, false) : undefined;
+      const demand: Record<string, number> = {};
+      for (const platoon of draft.platoons)
+        demand[platoon.unitName] = (demand[platoon.unitName] || 0) + platoon.a / options.map.units.population.scale;
+      const equipped = this.getEquipped(stateId, demand);
+      const raised = new Map<number, Platoon>(); // levies by cell
+      for (const platoon of draft.platoons) {
+        const share = equipped[platoon.unitName] ?? 1;
+        if (share >= 1) continue;
+        const unequipped = rn(platoon.a - platoon.a * share, 3);
+        platoon.a = platoon.t = rn(platoon.a - unequipped, 3);
+        if (!levyName || !unequipped || !levyUnit) continue;
+        const levy = raised.get(platoon.cell);
+        if (levy) levy.a = levy.t = rn(levy.a + unequipped, 3);
+        else {
+          const [x, y] = p[platoon.cell];
+          raised.set(platoon.cell, {
+            cell: platoon.cell,
+            a: unequipped,
+            t: unequipped,
+            x,
+            y,
+            u: levyName,
+            n: 0,
+            s: levyUnit.separate,
+            type: levyUnit.type,
+            unitName: levyUnit.name
+          });
+        }
+      }
+      draft.platoons = draft.platoons.filter(platoon => platoon.a).concat([...raised.values()]);
     }
 
     const expected = 6 * options.map.units.population.scale; // expected regiment size
@@ -866,6 +913,102 @@ class MilitaryModule {
     return `${number}${proper ? ` (${proper}) ` : ` `}${form}`;
   }
 
+  /** Troops a headcount stands for; the fork stores troops, not population points */
+  getTroops(troops = 0): number {
+    return Math.ceil(rn(troops, 3));
+  }
+
+  /** Share of each unit's conscripts what the state consumes of its goods equips; 1 with no goods or before the run */
+  getEquipped(stateId: number, demand: Record<string, number>): Record<string, number> {
+    const units = options.map.military.units;
+    const consumed = Accounts.getConsumption(stateId);
+    const goodsOf = (unit: MilitaryUnit) => (unit.goods ?? []).flatMap(goodId => Goods.get(goodId) ?? []);
+    const needing = (goodId: number) => sum(units, unit => (unit.goods?.includes(goodId) ? demand[unit.name] || 0 : 0));
+
+    const equipped: Record<string, number> = {};
+    for (const unit of units) {
+      const troops = demand[unit.name] || 0;
+      const goods = goodsOf(unit);
+      if (!troops || !goods.length || !pack.deals?.length) {
+        equipped[unit.name] = 1;
+        continue;
+      }
+      const kits = sum(goods, good => {
+        const stock = (consumed[good.i] || 0) * EQUIPMENT * (good.demandCoverage?.military || 1);
+        return (stock * troops) / needing(good.i);
+      });
+      equipped[unit.name] = Math.min(1, kits / troops);
+    }
+    return equipped;
+  }
+
+  /** A state's upkeep, 0 (powerless) to 1 (fully kept); 1 before the run or levying nothing */
+  getUpkeep(stateId: number): number {
+    const state = pack.states[stateId];
+    if (!state || !levies(state) || !pack.deals?.length) return 1;
+    if (!options.map.units?.population || !options.map.military?.units) return 1; // a stripped table cannot measure upkeep
+    const need = this.getUpkeepNeed(stateId);
+    return need ? Math.min(1, state.economy.spent.military / need) : 1;
+  }
+
+  /** The military spending a day that keeps a state's forces in full */
+  getUpkeepNeed(stateId: number): number {
+    return this.getNominalPower(stateId) * UPKEEP_COST;
+  }
+
+  /** How strongly a state's forces fight for their upkeep: it multiplies their power in battle */
+  getBattleUpkeep(stateId: number): number {
+    return Math.max(MIN_UPKEEP, this.getUpkeep(stateId));
+  }
+
+  /**
+   * Battle upkeep through Living World seasons: a funded treasury holds the
+   * line (0.5 at worst), but a bankrupt state's underfunded forces melt toward
+   * `MIN_UPKEEP`.
+   */
+  getLivingBattleUpkeep(stateId: number): number {
+    const upkeep = this.getUpkeep(stateId) * stateEconomyModifiers(stateId).upkeep; // §5.2: a martial ruler keeps troops keen
+    const funded = Number(pack.states[stateId]?.economy?.treasury ?? 0) > 0;
+    return funded ? minmax(upkeep, 0.5, 1.15) : Math.max(MIN_UPKEEP, upkeep);
+  }
+
+  /**
+   * Spare equipment kits of a trade good (§4.3): a day's consumption scaled by
+   * `EQUIPMENT` and military coverage, minus every fielded block whose type
+   * needs the good. `Infinity` before the run or where the good is not traded.
+   */
+  getEquipmentSpare(stateId: number, goodName: string, requires: (typeId: string) => boolean): number {
+    if (!pack.deals?.length) return Infinity;
+    const good = options.map.goods?.find(entry => entry.name === goodName);
+    if (!good) return Infinity; // the good is not traded on this map: no gate
+    const consumed = Accounts.getConsumption(stateId)[good.i] || 0;
+    const kits = consumed * EQUIPMENT * (good.demandCoverage?.military || 1);
+    const fielded = sum(pack.states[stateId]?.military ?? [], regiment =>
+      sum(regiment.units ?? [], block => (block.hp > 0 && requires(block.type) ? 1 : 0))
+    );
+    return kits - fielded;
+  }
+
+  /** The state's forces' battle power: troops × unit power × battle upkeep */
+  getPower(stateId: number): number {
+    return this.getNominalPower(stateId) * this.getBattleUpkeep(stateId);
+  }
+
+  /** A regiment's battle power: troops × unit power × its state's battle upkeep */
+  getRegimentPower(regiment: Regiment): number {
+    return this.getTroopsPower(regiment) * this.getBattleUpkeep(regiment.state);
+  }
+
+  private getNominalPower(stateId: number): number {
+    return sum(pack.states[stateId]?.military ?? [], regiment => this.getTroopsPower(regiment));
+  }
+
+  /** Unit power over the regiment's headcount, read as population points the way the budget counts */
+  private getTroopsPower(regiment: Regiment): number {
+    const scale = options.map.units.population.scale || 1;
+    return sum(options.map.military.units, unit => ((regiment.u[unit.name] || 0) / scale) * (+unit.power || 0));
+  }
+
   // utilize si function to make regiment total text fit regiment box
   getTotal(reg: Regiment) {
     return reg.a > (reg.n ? 999 : 99999) ? si(reg.a) : reg.a;
@@ -1029,7 +1172,7 @@ class MilitaryModule {
     regiment.u = Object.fromEntries(Object.entries(regiment.u).map(([unit, count]) => [unit, Math.ceil(count / 2)]));
     reconcileRegimentBlocks(regiment, this.getUnitTypes());
 
-    const shift = styles.military.options.boxSize * 2;
+    const shift = REGIMENT_SIZE * 2;
     let y = regiment.y + shift;
     while (military.some(other => other.x === regiment.x && other.y === y)) y += shift;
     const i = Math.max(...military.map(other => other.i)) + 1;

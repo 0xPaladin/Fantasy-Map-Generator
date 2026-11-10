@@ -1,20 +1,20 @@
 import { Controllers } from "@/controllers";
-import { currentContent } from "@/data/roster-store";
-import type { BuildingDef } from "@/data/roster-content";
-import { poiCapacityType } from "@/data/tiers";
-import { valueModifier } from "@/data/saves-helpers";
 import { civBuildingCapacity } from "@/data/living-civ-buildings";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import type { BuildingDef } from "@/data/roster-content";
+import { currentContent } from "@/data/roster-store";
+import { valueModifier } from "@/data/saves-helpers";
+import { poiCapacityType } from "@/data/tiers";
+import { classifyGood, Living, regionTierFromPop } from "@/model/physical/living-generator";
 import { Factions } from "@/model/political/factions-generator";
-import type { Faction } from "@/types/factions";
 import type { Province } from "@/model/political/provinces-generator";
 import { Provinces } from "@/model/political/provinces-generator";
-import { classifyGood, Living, regionTierFromPop } from "@/model/physical/living-generator";
 import { Names } from "@/model/society/names-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
 import { getArea, getAreaUnit } from "@/model/units";
 import { Layers } from "@/renderers/layers";
 import { speak } from "@/services/speech";
+import type { Faction } from "@/types/factions";
 import type { LivingWorldState, ProvinceSimState } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { zoomTo } from "@/ui/map/zoom";
@@ -76,7 +76,7 @@ function getLivingState(): LivingWorldState | undefined {
   if (direct) return direct;
 
   try {
-    return typeof Living !== "undefined" && Living.getState ? Living.getState() : undefined;
+    return typeof Living !== "undefined" ? Living.getState?.() : undefined;
   } catch {
     return undefined;
   }
@@ -140,7 +140,11 @@ function getProvinceBuildings(provinceId: number, living?: LivingWorldState): st
 }
 
 function getProvinceConstruction(provinceId: number, living?: LivingWorldState) {
-  const pSim = living?.provinces?.[provinceId] as (ProvinceSimState & { construction?: any }) | undefined;
+  const pSim = living?.provinces?.[provinceId] as
+    | (ProvinceSimState & {
+        construction?: { buildingId: string; turnsLeft: number; checks?: { m?: boolean; w?: boolean; s?: boolean } };
+      })
+    | undefined;
   if (pSim?.construction) return pSim.construction;
   return null;
 }
@@ -166,7 +170,7 @@ export function computeProvinceCapacity(
 
   // Capital court bonus: +2 C if province holds state capital
   const state = pack.states?.[p.state];
-  if (state?.capital && (p.burg === state.capital || (p.burgs && p.burgs.includes(state.capital)))) {
+  if (state?.capital && (p.burg === state.capital || p.burgs?.includes(state.capital))) {
     c += 2;
   }
 
@@ -194,7 +198,7 @@ export function computeProvinceCapacity(
     for (const cell of provCells) {
       const goodId = pack.cells.good[cell];
       if (!goodId) continue;
-      const good = pack.goods?.[goodId];
+      const good = options.map.goods?.[goodId];
       if (!good) continue;
       const cl = classifyGood(good);
       if (cl === "strategic") m++;

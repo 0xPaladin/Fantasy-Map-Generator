@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { Factions } from "@/model/political/factions-generator";
-import type { Faction } from "@/types/factions";
-import type { LivingWorldState } from "@/types/living";
 import type { Burg } from "@/model/political/burgs-generator";
+import { Factions } from "@/model/political/factions-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import type { State } from "@/model/political/states-generator";
+import type { Faction } from "@/types/factions";
+import type { LivingWorldState } from "@/types/living";
 import {
   ascendFactionToState,
   migrateLegacyThreats,
@@ -69,7 +69,10 @@ describe("living-threats", () => {
       },
       provinces: [{ i: 0 }, { i: 1, name: "Heartlands", state: 1, center: 1 } as Province],
       cultures: [{ i: 0 }, { i: 1, name: "Aeloran", base: 0 }],
-      states: [{ i: 0 }, { i: 1, name: "Aeloria", color: "#3b82f6", culture: 1, center: 1, military: [] } as unknown as State],
+      states: [
+        { i: 0 },
+        { i: 1, name: "Aeloria", color: "#3b82f6", culture: 1, center: 1, military: [] } as unknown as State
+      ],
       burgs: [{ i: 0 }, { i: 1, name: "Aelor", state: 1, cell: 1, population: 10 } as Burg],
       markers: [
         { i: 0, type: "brigands", cell: 1, name: "Bandit Hideout" },

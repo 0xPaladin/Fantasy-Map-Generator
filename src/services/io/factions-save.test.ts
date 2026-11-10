@@ -8,7 +8,6 @@ describe("Factions .map Serialization and Legacy Migration", () => {
     name: "The Gilded Compass Consortium",
     category: "commercial",
     type: "merchant_consortium",
-    scale: "province",
     allegiance: "chartered",
     patronStateId: 2,
     color: "#ffaa00",
@@ -39,7 +38,6 @@ describe("Factions .map Serialization and Legacy Migration", () => {
         establishedYear: 140
       }
     ],
-    tier: 2,
     science: 3,
     currentTechId: "banking",
     researchQueue: ["banking", "economics"],
@@ -54,55 +52,56 @@ describe("Factions .map Serialization and Legacy Migration", () => {
     seasonsActive: 16
   };
 
-  it("correctly identifies record 54 for factions and 55 for history", () => {
-    expect(HISTORY_RECORD).toBe(55);
-    expect(FIRST_SNAPSHOT_RECORD).toBe(56);
+  // Mirrors the legacy shift in load.ts, which moves old history/factions records past
+  // upstream's prosperity and development records.
+  function migrate(data: string[]): void {
+    if (data[53]?.trim().startsWith("{")) data.splice(53, 0, "", "", "", "");
+    else if (data[54]?.trim().startsWith("{")) data.splice(54, 0, "", "", "");
+    else if (data[54]?.trim().startsWith("[")) data.splice(54, 0, "", "");
+  }
+
+  const historyJson = (text: string) =>
+    JSON.stringify({ events: [{ i: 0, year: 100, type: "founding", text }], realms: [], eras: [] });
+
+  it("places history at record 57 and snapshots at 58", () => {
+    expect(HISTORY_RECORD).toBe(57);
+    expect(FIRST_SNAPSHOT_RECORD).toBe(58);
   });
 
-  it("migrates legacy map where record 54 was history (JSON object)", () => {
-    const legacyHistoryJson = JSON.stringify({
-      events: [{ i: 0, year: 100, type: "founding", text: "Founded" }],
-      realms: [],
-      eras: []
-    });
+  it("migrates a legacy map where record 53 was history", () => {
+    const data: string[] = Array.from({ length: 53 }, () => "");
+    data[53] = historyJson("Founded");
 
-    // Emulate loaded data array where record 54 is history JSON and 55+ are snapshots
-    const data: string[] = Array.from({ length: 54 }, () => "");
-    data[54] = legacyHistoryJson; // legacy map format
+    migrate(data);
 
-    // Emulate load.ts migration logic
-    if (data[54] && !data[54].startsWith("[")) {
-      data.splice(54, 0, JSON.stringify([{ i: 0 }]));
-    }
-
-    const factions: Faction[] = JSON.parse(data[54]);
-    expect(factions).toHaveLength(1);
-    expect(factions[0].i).toBe(0);
-
-    // Verify history now sits at HISTORY_RECORD (55)
+    expect(data[56]).toBe("");
+    expect(data[57]).toBe(historyJson("Founded"));
     const history = parseHistory(data[HISTORY_RECORD], data.slice(FIRST_SNAPSHOT_RECORD), 0);
     expect(history.events).toHaveLength(1);
     expect(history.events[0].text).toBe("Founded");
   });
 
-  it("loads new map where record 54 is factions array and 55 is history", () => {
-    const factionsJson = JSON.stringify([{ i: 0 }, sampleFaction]);
-    const historyJson = JSON.stringify({
-      events: [{ i: 1, year: 150, type: "war", text: "Border war" }],
-      realms: [],
-      eras: []
-    });
+  it("migrates a legacy map where record 54 was history", () => {
+    const data: string[] = Array.from({ length: 54 }, () => "");
+    data[54] = historyJson("Founded");
 
+    migrate(data);
+
+    expect(data[56]).toBe("");
+    const history = parseHistory(data[HISTORY_RECORD], data.slice(FIRST_SNAPSHOT_RECORD), 0);
+    expect(history.events).toHaveLength(1);
+    expect(history.events[0].text).toBe("Founded");
+  });
+
+  it("migrates a legacy map where record 54 was factions and 55 was history", () => {
+    const factionsJson = JSON.stringify([{ i: 0 }, sampleFaction]);
     const data: string[] = Array.from({ length: 54 }, () => "");
     data[54] = factionsJson;
-    data[55] = historyJson;
+    data[55] = historyJson("Border war");
 
-    // Load logic
-    if (data[54] && !data[54].startsWith("[")) {
-      data.splice(54, 0, JSON.stringify([{ i: 0 }]));
-    }
+    migrate(data);
 
-    const factions: Faction[] = JSON.parse(data[54]);
+    const factions: Faction[] = JSON.parse(data[56]);
     expect(factions).toHaveLength(2);
     expect(factions[1].name).toBe("The Gilded Compass Consortium");
     expect(factions[1].hq.assets).toEqual(["trade_depot", "counting_house"]);
@@ -113,14 +112,31 @@ describe("Factions .map Serialization and Legacy Migration", () => {
     expect(history.events[0].text).toBe("Border war");
   });
 
-  it("handles ancient maps with no record 54", () => {
+  it("loads a new map with prosperity, development, factions and history records", () => {
+    const factionsJson = JSON.stringify([{ i: 0 }, sampleFaction]);
+    const data: string[] = Array.from({ length: 54 }, () => "");
+    data[54] = "1,2,3"; // prosperity
+    data[55] = "4,5,6"; // development
+    data[56] = factionsJson;
+    data[57] = historyJson("Border war");
+
+    migrate(data); // no legacy record matches, so nothing shifts
+
+    const factions: Faction[] = JSON.parse(data[56]);
+    expect(factions).toHaveLength(2);
+    expect(factions[1].name).toBe("The Gilded Compass Consortium");
+
+    const history = parseHistory(data[HISTORY_RECORD], data.slice(FIRST_SNAPSHOT_RECORD), 0);
+    expect(history.events).toHaveLength(1);
+    expect(history.events[0].text).toBe("Border war");
+  });
+
+  it("handles ancient maps with no faction record", () => {
     const data: string[] = Array.from({ length: 50 }, () => "");
 
-    if (data[54] && !data[54].startsWith("[")) {
-      data.splice(54, 0, JSON.stringify([{ i: 0 }]));
-    }
+    migrate(data);
 
-    const factions: Faction[] = data[54] ? JSON.parse(data[54]) : [{ i: 0 } as Faction];
+    const factions: Faction[] = data[56] ? JSON.parse(data[56]) : [{ i: 0 } as Faction];
     expect(factions).toHaveLength(1);
     expect(factions[0].i).toBe(0);
   });

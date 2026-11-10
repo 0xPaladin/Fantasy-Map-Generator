@@ -5,15 +5,15 @@ import {
   deletePrompt,
   deleteSkill,
   getInstructions,
-  importFile,
   INSTRUCTIONS_LIMIT,
+  importFile,
   listPrompts,
   listSkills,
   type Prompt,
+  type Skill,
   saveInstructions,
   savePrompt,
   saveSkill,
-  type Skill,
   skillToMarkdown
 } from "@/services/assistant/customization";
 import { downloadFile } from "@/utils/file-utils";
@@ -79,9 +79,9 @@ class CustomizeSheet {
     el("assistantEditorTitle").textContent = skill ? t("Skill") : t("Prompt");
     el("assistantEditorDescriptionField").hidden = !skill;
     el("assistantEditorEnabledField").hidden = !skill;
-    el<HTMLInputElement>("assistantEditorName").value = target.kind === "skill" ? target.skill.name : target.prompt.name;
-    el<HTMLInputElement>("assistantEditorDescription").value =
-      target.kind === "skill" ? target.skill.description : "";
+    el<HTMLInputElement>("assistantEditorName").value =
+      target.kind === "skill" ? target.skill.name : target.prompt.name;
+    el<HTMLInputElement>("assistantEditorDescription").value = target.kind === "skill" ? target.skill.description : "";
     el<HTMLTextAreaElement>("assistantEditorBody").value =
       target.kind === "skill" ? target.skill.body : target.prompt.text;
     el("assistantEditorBodyLabel").textContent = skill ? t("Body") : t("Text");
@@ -123,7 +123,10 @@ class CustomizeSheet {
   }
 
   private editSkill(skill?: Skill): void {
-    editing = { kind: "skill", skill: skill ?? { id: "", name: "", description: "", body: "", enabled: true, updated: 0 } };
+    editing = {
+      kind: "skill",
+      skill: skill ?? { id: "", name: "", description: "", body: "", enabled: true, updated: 0 }
+    };
     this.render();
   }
 

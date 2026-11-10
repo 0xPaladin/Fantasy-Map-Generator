@@ -4,7 +4,8 @@ Updated: 2026-11-03. Status: **delivered — Slices 1–6 complete** (Living Wor
 
 Companions: [living-world.md](living-world.md), [living-idle-guild.md](living-idle-guild.md),
 [lair-ascension.md](lair-ascension.md), [history-epochs.md](history-epochs.md),
-[culture-traits.md](culture-traits.md), [unified-figures.md](unified-figures.md).
+[culture-traits.md](culture-traits.md), [unified-figures.md](unified-figures.md),
+[upstream-economy-alignment.md](upstream-economy-alignment.md) — the economy layer the sim now reads.
 
 ---
 
@@ -35,7 +36,7 @@ Every OpenCiv subsystem reads and mutates FMG's live `pack` directly so all nati
 | OpenCiv Subsystem | FMG `pack` Source of Truth | Bidirectional Reconciliation |
 | :--- | :--- | :--- |
 | **Tiles & Terrain** | `pack.cells` (`biome`, `h`, `r`, `fl`, `f`, `harbor`) | Elevation `h < 20` = water (`freshwater` lake vs `shallow_ocean` coast vs `ocean`), `20..49` = flat land, `50..69` = hill, `>= 70` = mountain. `cells.r[c]` & `fl[c]` = rivers/floodplains. |
-| **Map Resources** | `pack.goods` & `pack.cells.good[c]` | Classified by `good.demandCoverage`: `food`/`utilities`/`construction` $\rightarrow$ **Bonus**, `military` $\rightarrow$ **Strategic** (gated by tech), `luxury` $\rightarrow$ **Luxury** (`+4 Happiness` per unique connected good). |
+| **Map Resources** | `options.map.goods` & `pack.cells.good[c]` | Classified by `good.demandCoverage`: `food`/`utilities`/`construction` $\rightarrow$ **Bonus**, `military` $\rightarrow$ **Strategic** (gated by tech), `luxury` $\rightarrow$ **Luxury** (`+4 Happiness` per unique connected good). |
 | **Improvements & Roads** | `pack.routes`, `pack.cells.routes`, `living.cells[c]` | Roads are native `pack.routes` (`1/3` movement cost; river bridges with `Engineering`). Builders construct `farm`, `mine`, `plantation`, `camp`, `pasture`, `quarry`, `lumber_mill`, `trading_post`, and new roads. |
 | **Cities & Citizens** | `pack.burgs[b]` (Major Burgs) | `citizens` derives from and writes back to `burg.population`. Buildings sync bidirectionally with `burg.walls`, `burg.citadel`, `burg.plaza`, `burg.temple`, `burg.port`, and `burg.capital`. |
 | **Villages / Hamlets** | `pack.burgs[b]` (Minor Burgs) | Non-capital burgs act as super-improvements on `burg.cell` (`+1 Food, +2 Gold` + flag bonuses) worked by their Province Capital; pillaging sets `burg.shanty = 1`. |
@@ -76,7 +77,7 @@ Each Voronoi cell `c` computes its 7 OpenCiv yields (`food`, `production`, `gold
    - A cell has fresh water if `pack.cells.r[c] > 0` or it borders a `freshwater` lake feature or desert oasis.
    - Stepping between two cells where the destination or shared border crosses a river (`cells.r[c1] !== cells.r[c2]` and `cells.r[c2] > 0`) imposes OpenCiv's `-20%` melee attack penalty and drains remaining movement unless connected by a road in `pack.cells.routes` and the state has researched `Engineering` (`BRIDGE_TECH`).
 
-3. **FMG Trade Goods as OpenCiv Resources (`pack.cells.good[c]`, `pack.goods`)**:
+3. **FMG Trade Goods as OpenCiv Resources (`pack.cells.good[c]`, `options.map.goods`)**:
    - Every good placed on the map in `pack.cells.good[c]` maps automatically to one of OpenCiv's 3 resource classes via `good.demandCoverage`:
      - **Luxury Goods (`demandCoverage.luxury > 0`, e.g., Gold, Silver, Gems, Marble, Wine, Silk, Incense, Spices, Furs, Ivory, Dyes)**:
        - Unimproved: `+1 Gold` (or `+1 Food/+1 Prod` by tag). Improved: `+2 Gold` (or `+1 Prod, +2 Gold`).

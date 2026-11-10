@@ -39,7 +39,7 @@ const showMarkers = (page: Page) => page.evaluate(() => Layers.show("markers"));
 // FMG's version-update changelog opens a dialog over the map centre and eats the wheel: dismiss it
 async function dismissChangelog(page: Page): Promise<void> {
   if (await page.locator("#alert").isVisible().catch(() => false))
-    await page.evaluate(() => window.closeDialogs?.());
+    await page.evaluate(() => (window as any).FMG?.Dialog?.closeAll?.());
 }
 
 test.describe("Astral anomalies", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { LAIR_CATALOG } from "./living-lairs";
 import { getFactionArchetype } from "./factions-catalog";
+import { LAIR_CATALOG } from "./living-lairs";
 import {
   BURG_FACTION_IDS,
   BURG_TROUBLE_IDS,

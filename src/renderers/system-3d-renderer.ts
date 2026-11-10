@@ -11,8 +11,8 @@ import { type CelestialBody, SolarSystem } from "@/model/system/solar-system";
 import { setViewMode } from "@/renderers/view-mode";
 import { t } from "@/utils/i18n";
 import { log } from "@/utils/logger";
-import { escapeHtml } from "@/utils/string-utils";
 import { rn } from "@/utils/number-utils";
+import { escapeHtml } from "@/utils/string-utils";
 
 // --- pure orrery math (unit-tested) ------------------------------------------
 
@@ -37,10 +37,10 @@ export const bodySceneRadius = (radiusKmOrMm: number, kind: "planet" | "moon"): 
   const earthRatio = Math.max(0.08, rKm / 6371);
 
   if (kind === "moon") {
-    return Math.min(0.07, Math.max(0.022, 0.038 * Math.pow(earthRatio, 0.5)));
+    return Math.min(0.07, Math.max(0.022, 0.038 * earthRatio ** 0.5));
   }
 
-  return Math.min(0.60, Math.max(0.045, 0.11 * Math.pow(earthRatio, 0.55)));
+  return Math.min(0.6, Math.max(0.045, 0.11 * earthRatio ** 0.55));
 };
 
 /** banded gas-giant palette: three palette colors per body, deterministic per body id */
@@ -642,11 +642,7 @@ function zoomToPlanet(planetId: string): void {
 
   const frameDist = Math.max(planetRadius * 4.5, maxMoonDist * 1.8);
   focusTarget = worldPos.clone();
-  cameraTargetPos = new THREE.Vector3(
-    worldPos.x,
-    worldPos.y + frameDist * 0.45,
-    worldPos.z + frameDist * 0.95
-  );
+  cameraTargetPos = new THREE.Vector3(worldPos.x, worldPos.y + frameDist * 0.45, worldPos.z + frameDist * 0.95);
 
   if (controls) {
     controls.minDistance = Math.max(0.15, planetRadius * 1.1);
@@ -673,11 +669,7 @@ function zoomToMoon(moonId: string): void {
   const frameDist = Math.max(0.45, moonRadius * 8);
 
   focusTarget = worldPos.clone();
-  cameraTargetPos = new THREE.Vector3(
-    worldPos.x,
-    worldPos.y + frameDist * 0.45,
-    worldPos.z + frameDist * 0.95
-  );
+  cameraTargetPos = new THREE.Vector3(worldPos.x, worldPos.y + frameDist * 0.45, worldPos.z + frameDist * 0.95);
 
   if (controls) {
     controls.minDistance = Math.max(0.04, moonRadius * 1.1);

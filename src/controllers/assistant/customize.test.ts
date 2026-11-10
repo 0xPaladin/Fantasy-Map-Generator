@@ -37,8 +37,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const el = <T extends HTMLElement = HTMLElement>(id: string): T =>
-  document.getElementById(id) as unknown as T;
+const el = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as unknown as T;
 
 const click = (selector: string): void => {
   const control = document.querySelector<HTMLElement>(selector);
@@ -111,11 +110,7 @@ it("creates, edits, disables and deletes a skill", async () => {
   expect(customization.enabledSkills()).toEqual([]);
 
   click('[data-action="export-skill"]');
-  expect(download).toHaveBeenCalledWith(
-    expect.stringContaining("name: Naming"),
-    "Naming.md",
-    "text/markdown"
-  );
+  expect(download).toHaveBeenCalledWith(expect.stringContaining("name: Naming"), "Naming.md", "text/markdown");
 
   click(`[data-action="delete-skill"][data-id="${skills[0].id}"]`);
   expect(customization.listSkills()).toEqual([]);

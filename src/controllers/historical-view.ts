@@ -5,7 +5,7 @@
 // leave through goToPresent() whatever happened. See docs/plans/history-epochs.md (slice 4)
 
 import { mapHistory } from "@/model/map-history";
-import type { State } from "@/model/political/states-generator";
+import { noFinance, type State } from "@/model/political/states-generator";
 import { clearLegend, drawLegend, getLegendData, hasLegend } from "@/renderers/draw-legend";
 import { Layers } from "@/renderers/layers";
 import type { Point } from "@/types/global";
@@ -145,9 +145,7 @@ function neutral(): State {
     center: 0,
     culture: 0,
     coa: {} as State["coa"],
-    salesTax: 0,
-    pollTax: 0,
-    treasury: 0
+    economy: noFinance()
   };
 }
 
@@ -170,9 +168,7 @@ function toState(polity: EpochPolity, index: number): State {
     type: pack.cultures[culture]?.type ?? "Generic",
     expansionism: 1,
     coa: {} as State["coa"],
-    salesTax: 0,
-    pollTax: 0,
-    treasury: 0
+    economy: noFinance()
   };
 }
 

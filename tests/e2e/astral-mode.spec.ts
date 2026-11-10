@@ -37,20 +37,6 @@ async function enterAstral(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => styles.texture.options.href)).toContain("starfield");
 }
 
-/** the mount-family icons, the drawn remnants, and how the drawn ones fall across the classes */
-async function remnantStats(page: Page): Promise<{ family: number; total: number; perClass: number }> {
-  return page.evaluate(() => {
-    const family = pack.relief.filter(
-      icon => "type" in icon && ["mount", "mountSnow", "vulcan"].includes(icon.type)
-    ).length;
-    const total = document.querySelectorAll("#remnants [data-id]").length;
-    const perClass = ["blackHole", "pulsar", "neutron"]
-      .map(cls => document.querySelectorAll(`#remnants [data-group="${cls}"] [data-id]`).length)
-      .reduce((a, b) => a + b, 0);
-    return { family, total, perClass };
-  });
-}
-
 test.describe("Astral view mode", () => {
   test.setTimeout(120_000);
 

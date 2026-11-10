@@ -1,16 +1,8 @@
 // Living World Threats Engine: manages troubles, danger markers, hostile factions, and emergent sovereign ascension.
-import { currentContent } from "@/data/roster-store";
-import { assignStateRoster } from "@/data/roster-content";
-import type { ArmyUnit } from "@/types/battle";
-import { finalizeBattle, initBattleSession, stepBattleRound } from "@/model/battle/battle";
-import {
-  type Alignment,
-  aggressiveTraits,
-  rollAlignment,
-  rollFigureTraits,
-  traitsRng
-} from "@/data/culture-traits";
+
+import { type Alignment, aggressiveTraits, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { convertDangerMarkerToRuins, getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
+import { getFactionArchetype } from "@/data/factions-catalog";
 import { getLairDef, instantiateLairUnits, LAIR_CATALOG } from "@/data/living-lairs";
 import {
   BURG_FACTION_IDS,
@@ -24,28 +16,26 @@ import {
   TROUBLE_CATALOG,
   TROUBLE_TO_LAIR
 } from "@/data/living-troubles";
-import { getFactionArchetype } from "@/data/factions-catalog";
+import { assignStateRoster } from "@/data/roster-content";
+import { currentContent } from "@/data/roster-store";
+import { valueModifier } from "@/data/saves-helpers";
+import { finalizeBattle, initBattleSession, stepBattleRound } from "@/model/battle/battle";
 import { fromBattleUnitsMen, toBattleUnitsMen } from "@/model/physical/living-armies";
+import type { Burg } from "@/model/political/burgs-generator";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { Military, type Regiment, syncRegimentTotals } from "@/model/political/military-generator";
+import type { Province } from "@/model/political/provinces-generator";
+import { noFinance, type State } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import type { ArmyUnit } from "@/types/battle";
 import type { Faction } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef } from "@/types/history";
-import type {
-  LivingWorldState,
-  ProvinceSimState,
-  ProvinceTrouble,
-  TroubleTheme
-} from "@/types/living";
-import type { Burg } from "@/model/political/burgs-generator";
-import type { Province } from "@/model/political/provinces-generator";
-import type { State } from "@/model/political/states-generator";
+import type { LivingWorldState, ProvinceSimState, ProvinceTrouble, TroubleTheme } from "@/types/living";
 import { minmax } from "@/utils/number-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
 import { syncBurgFlagsFromBuildings } from "./living-generator";
-import { valueModifier } from "@/data/saves-helpers";
 
 export interface ThreatHost {
   getState(): LivingWorldState;
@@ -385,9 +375,13 @@ export function spawnTrouble(
 
   // Phase E: mint the civic response as a burg production action — the
   // province's major burg works the trouble off like any building asset.
-  const major = pack.burgs.find(
-    b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
-  ) ?? pack.burgs.find(b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId);
+  const major =
+    pack.burgs.find(
+      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
+    ) ??
+    pack.burgs.find(
+      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId
+    );
   if (major) {
     const bSim = living.burgs[major.i];
     if (bSim) {
@@ -437,11 +431,7 @@ export function spawnDangerousFaction(
     factionType = getTroubleFactionType(troubleId);
   } else {
     const table =
-      finalTheme === "burg"
-        ? BURG_FACTION_IDS
-        : finalTheme === "ruin"
-          ? RUIN_FACTION_IDS
-          : RESOURCE_FACTION_IDS;
+      finalTheme === "burg" ? BURG_FACTION_IDS : finalTheme === "ruin" ? RUIN_FACTION_IDS : RESOURCE_FACTION_IDS;
     factionType = getTroubleFactionType(rng.choice(table) ?? "brigand_raiders");
   }
   const arch = getFactionArchetype(factionType);
@@ -449,7 +439,9 @@ export function spawnDangerousFaction(
 
   const finalLevel = minmax(level ?? rng.d(4) + 1, 1, 10);
   const lairDef = getLairDef(
-    TROUBLE_TO_LAIR[factionType] ?? TROUBLE_TO_LAIR[troubleId ?? ""] ?? (LAIR_CATALOG[factionType] ? factionType : "aspiring_warlord")
+    TROUBLE_TO_LAIR[factionType] ??
+      TROUBLE_TO_LAIR[troubleId ?? ""] ??
+      (LAIR_CATALOG[factionType] ? factionType : "aspiring_warlord")
   );
   const scale = Math.max(1, Math.min(2, Math.round(finalLevel / 5)));
   const templates = lairDef.defenderUnits.map(t => ({ ...t, count: Math.max(1, Math.round(t.count * scale)) }));
@@ -461,8 +453,7 @@ export function spawnDangerousFaction(
   // HQ: capital burg, then any burg in the province, then a danger marker, then wilderness.
   const major =
     pack.burgs.find(
-      b =>
-        b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
+      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
     ) ??
     pack.burgs.find(
       b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId
@@ -576,7 +567,11 @@ export function migrateLegacyThreats(living: LivingWorldState): void {
     delete (pSim as unknown as { lair?: unknown }).lair;
   }
   // Legacy living.activeLairs register from pre-faction saves
-  const legacyLairs = (living as unknown as { activeLairs?: Record<string, { provinceId?: number; id: string; theme?: TroubleTheme; level?: number }> }).activeLairs;
+  const legacyLairs = (
+    living as unknown as {
+      activeLairs?: Record<string, { provinceId?: number; id: string; theme?: TroubleTheme; level?: number }>;
+    }
+  ).activeLairs;
   if (legacyLairs) {
     for (const lair of Object.values(legacyLairs)) {
       if (lair.provinceId) spawnDangerousFaction(lair.provinceId, lair.id, lair.theme, lair.level);
@@ -614,7 +609,8 @@ function factionThreatInProvince(provinceId: number): Faction | null {
     return provId === provinceId;
   });
   candidates.sort((a, b) => {
-    const men = (f: Faction) => (f.military ?? []).reduce((s, r) => s + (r.units?.reduce((t, u) => t + (u.hp ?? 0), 0) ?? 0), 0);
+    const men = (f: Faction) =>
+      (f.military ?? []).reduce((s, r) => s + (r.units?.reduce((t, u) => t + (u.hp ?? 0), 0) ?? 0), 0);
     return men(b) - men(a);
   });
   return candidates[0] ?? null;
@@ -642,7 +638,10 @@ export function assaultFaction(stateId: number, provinceId: number): boolean {
   const unitTypes = Military.getUnitTypes();
   const attackerUnits = toBattleUnitsMen(army.units ?? [], unitTypes);
   const factionReg = faction.military?.[0];
-  const defenderUnits = toBattleUnitsMen((factionReg?.units ?? []).filter(u => u.hp > 0), unitTypes);
+  const defenderUnits = toBattleUnitsMen(
+    (factionReg?.units ?? []).filter(u => u.hp > 0),
+    unitTypes
+  );
 
   if (attackerUnits.length === 0 || defenderUnits.length === 0) return false;
 
@@ -934,7 +933,7 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
       newState.formName = faction.stateForm;
       newState.fullName = faction.stateForm ? `${faction.stateForm} of ${newState.name}` : faction.name;
       newState.color = faction.color;
-      newState.treasury = faction.treasury;
+      newState.economy.treasury = faction.treasury;
       const newSim = living.states?.[newStateId];
       if (newSim) newSim.researchedTechs = [...faction.researchedTechs];
       newState.military = [...(faction.military ?? [])];
@@ -1207,9 +1206,12 @@ function spawnEmergentState(opts: {
     rosterId: resolvedRosterId,
     military: [],
     coa: oldOwner?.coa ?? ({} as State["coa"]),
-    salesTax: oldOwner?.salesTax ?? 0,
-    pollTax: oldOwner?.pollTax ?? 0,
-    treasury: 150
+    economy: {
+      ...noFinance(),
+      salesTax: oldOwner?.economy?.salesTax ?? 0,
+      pollTax: oldOwner?.economy?.pollTax ?? 0,
+      treasury: 150
+    }
   };
   pack.states.push(newState);
   capital.capital = 1;
@@ -1279,10 +1281,7 @@ function spawnEmergentState(opts: {
   if (oldOwnerId && living.states[oldOwnerId]) {
     const oldSim = living.states[oldOwnerId]!;
     const kind = oldSim.agenda?.kind;
-    if (
-      (kind === "clear_faction" || kind === "hire_adventurers") &&
-      oldSim.agenda?.targetProvinceId === province.i
-    ) {
+    if ((kind === "clear_faction" || kind === "hire_adventurers") && oldSim.agenda?.targetProvinceId === province.i) {
       oldSim.agenda = null;
     }
   }
@@ -1357,6 +1356,3 @@ export const LivingThreats = {
   ascendFactionToState,
   spawnRemnantFaction
 };
-
-
-

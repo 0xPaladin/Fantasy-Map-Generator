@@ -1288,3 +1288,100 @@ export const CIV_TECH_BY_ID: Record<string, CivTechDef> = Object.fromEntries(
 export function getCivTech(id: string): CivTechDef | undefined {
   return CIV_TECH_BY_ID[id];
 }
+
+/**
+ * Upstream development band `[from, to]` each tech row unlocks, on the 1..100 scale.
+ * See docs/plans/upstream-economy-alignment.md §2.1.
+ */
+export const CIV_TECH_ROW_DEVELOPMENT: readonly (readonly [number, number])[] = [
+  [6, 11], // ancient, bronze
+  [12, 17], // ancient, iron
+  [18, 23], // classical
+  [24, 26], // late antiquity
+  [27, 32], // early middle ages
+  [33, 39], // high middle ages
+  [40, 44], // renaissance
+  [45, 59], // discovery & scientific revolution
+  [60, 69], // enlightenment
+  [70, 79], // industrial revolution
+  [80, 82], // machine age
+  [83, 84], // machine age
+  [85, 86], // atomic
+  [87, 89], // atomic
+  [90, 93], // information
+  [94, 96], // information
+  [97, 100] // post-human
+];
+
+/** Techs of one row, in the order they are learned. */
+export function techRowTechs(row: number): CivTechDef[] {
+  return CIV_TECHS.filter(tech => tech.row === row).sort((a, b) => a.slot - b.slot || a.id.localeCompare(b.id));
+}
+
+/** Highest tech row a development level reaches; -1 for foragers below the first row. */
+export function developmentToTechRow(development: number): number {
+  let row = -1;
+  CIV_TECH_ROW_DEVELOPMENT.forEach((band, i) => {
+    if (development >= band[0]) row = i;
+  });
+  return row;
+}
+
+/** The development a technology lifts its polity toward: the top of its row's band. */
+export function techTargetDevelopment(tech: CivTechDef): number {
+  return CIV_TECH_ROW_DEVELOPMENT[tech.row]?.[1] ?? 0;
+}
+
+/** Development a polity's knowledge stands for: its top row's band, scaled by how much of that row is known. */
+export function computePolityTechDevelopment(researchedTechs: readonly string[]): number {
+  let row = -1;
+  for (const id of researchedTechs) {
+    const tech = CIV_TECH_BY_ID[id];
+    if (tech) row = Math.max(row, tech.row);
+  }
+  if (row < 0) return 0;
+
+  const [from, to] = CIV_TECH_ROW_DEVELOPMENT[row]!;
+  const rowTechs = techRowTechs(row);
+  const known = rowTechs.filter(tech => researchedTechs.includes(tech.id)).length;
+  const share = rowTechs.length > 0 ? known / rowTechs.length : 1;
+  return Math.round(from + (to - from) * share);
+}
+
+/**
+ * Technologies a polity at this development already knows (upstream -> sim seeding),
+ * plus the research already banked into the next one. Prerequisites are respected,
+ * so the remainder of the row stays reachable through normal research.
+ */
+export function seedTechsFromDevelopment(development: number): {
+  researched: string[];
+  progress: Record<string, number>;
+} {
+  const row = developmentToTechRow(development);
+  if (row < 0) return { researched: [], progress: {} };
+
+  const researched = CIV_TECHS.filter(tech => tech.row < row).map(tech => tech.id);
+  const known = new Set(researched);
+  const rowTechs = techRowTechs(row);
+  const [from, to] = CIV_TECH_ROW_DEVELOPMENT[row]!;
+  const span = Math.max(1, to - from + 1);
+  const share = Math.min(1, Math.max(0, (development - from + 1) / span));
+  const quota = Math.max(1, Math.floor(rowTechs.length * share)); // entering a row teaches its first tech
+
+  let taken = 0;
+  for (const tech of rowTechs) {
+    if (taken >= quota) break;
+    if (!tech.prerequisites.every(id => known.has(id))) continue;
+    known.add(tech.id);
+    researched.push(tech.id);
+    taken += 1;
+  }
+
+  // Whatever is left of the share is already banked into the next reachable tech
+  const progress: Record<string, number> = {};
+  const fraction = rowTechs.length * share - taken;
+  const next = rowTechs.find(tech => !known.has(tech.id) && tech.prerequisites.every(id => known.has(id)));
+  if (next && fraction > 0.05) progress[next.id] = Math.round(next.cost * fraction);
+
+  return { researched, progress };
+}

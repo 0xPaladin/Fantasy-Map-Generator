@@ -187,6 +187,10 @@ export interface FactionNodeYieldBreakdown {
   science: number;
   citizens: number;
   workedCells: number;
+  /** upstream economy gold of the node's season, already net of the charter tithe */
+  upstreamGold: number;
+  /** what the node pays its patron state of its upstream gold */
+  charterTithe: number;
 }
 
 export interface FactionYieldBreakdown {
@@ -198,4 +202,11 @@ export interface FactionYieldBreakdown {
   nodes: FactionNodeYieldBreakdown[];
   hq: FactionNodeYieldBreakdown | null;
   outposts: FactionNodeYieldBreakdown[];
+  /** upstream gold the empire's nodes earned this season, net of charters */
+  upstreamGold: number;
+  /** what the empire's charters pay its patron states this season, and which state they pay */
+  charterTithe: number;
+  charterPatronId: number;
+  /** influence the court's spending lends its temples and its chancery */
+  influence: number;
 }

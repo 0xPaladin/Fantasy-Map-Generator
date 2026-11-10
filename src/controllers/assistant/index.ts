@@ -10,7 +10,6 @@ import {
   signOut
 } from "@/services/assistant/azgaar-server/api";
 import { getToken } from "@/services/assistant/azgaar-server/auth";
-import { listPrompts } from "@/services/assistant/customization";
 import {
   append,
   type Chat,
@@ -26,6 +25,7 @@ import {
   type TranscriptItem,
   touch
 } from "@/services/assistant/chats";
+import { listPrompts } from "@/services/assistant/customization";
 import { askProvider } from "@/services/assistant/provider/answerer";
 import * as Connection from "@/services/assistant/provider/connection";
 import { PROVIDERS } from "@/services/assistant/provider/providers";
@@ -591,7 +591,10 @@ function showView(next: View): void {
 /** Customize is a toggle from the title bar, like Chats */
 function openCustomize(): void {
   if (busy) return;
-  if (view === "customize") return showView("chat");
+  if (view === "customize") {
+    showView("chat");
+    return;
+  }
   showView("customize");
   Customize.fill();
 }

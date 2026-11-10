@@ -67,7 +67,7 @@ function reconcileBurgIcons({ root, bounds }: ViewportRenderContext): void {
     if (!entry) continue;
     const groupName = escapeHtml(name);
     const burgs = burgsByGroup.get(name) ?? [];
-    markup.push(`<g id="${groupName}" data-group="${groupName}">`);
+    markup.push(`<g data-group="${groupName}">`);
     markup.push(part("icons", entry.groups.icons, burgs, bounds, false));
     markup.push(part("anchors", entry.groups.anchors, burgs, bounds, true));
     markup.push("</g>");
@@ -127,7 +127,8 @@ function part(name: "icons" | "anchors", style: BurgPart, burgs: Burg[], bounds:
     }
 
     const extraShift = scale !== 1 ? rn(-0.5 * (scale - 1), 4) : 0;
-    const transformAttr = extraShift ? ` transform="translate(${extraShift}em, ${extraShift}em)"` : "";
+    // a CSS transform takes em; the SVG transform attribute would not, and the browser would ignore it
+    const transformAttr = extraShift ? ` style="transform: translate(${extraShift}em, ${extraShift}em)"` : "";
     const w = rn(boxWidth * scale, 4);
     const h = rn(boxHeight * scale, 4);
 

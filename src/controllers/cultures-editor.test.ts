@@ -80,6 +80,7 @@ beforeEach(() => {
     area: Array(CELLS).fill(1),
     pop: Array(CELLS).fill(10),
     burg: Array(CELLS).fill(0),
+    development: Array(CELLS).fill(0),
     p: Array.from({ length: CELLS }, (_, i) => [i * 10, 0]),
     culture: [0, 1, 1, 2, 2, 2, 3, 3, 3, 1, 2, 3]
   };

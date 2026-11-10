@@ -7,6 +7,8 @@ import { waitForMap } from "./wait-for-map";
 
 // created on draw, not by the registry - absent until their layer renders
 const LAZY = new Set(["legend/box", "scaleBar/back"]);
+// the astral system layers stamp their groups only in the Astral Cartographer view
+const isLazy = (key: string) => LAZY.has(key) || key.startsWith("systems/");
 
 async function generateMap(page: import("@playwright/test").Page) {
   await page.goto("/");
@@ -54,7 +56,7 @@ test("every styles address resolves in the generated map's DOM", async ({ page }
   });
 
   // a schema key with no stamped element under an existing layer is a contract break
-  expect(result.missing.filter(key => !LAZY.has(key))).toEqual([]);
+  expect(result.missing.filter(key => !isLazy(key))).toEqual([]);
   expect(result.resolved.length).toBeGreaterThan(50);
 
   // dynamic groups: renderers stamp what they create
@@ -73,16 +75,17 @@ test("the library styles the live map through the contract", async ({ page }, te
   await page.screenshot({ path: testInfo.outputPath("styles-demo-before.png") });
 
   const result = await page.evaluate(async () => {
-    const { Styles } = await import("/Fantasy-Map-Generator/model/styles/styles.ts");
+    const served = "/Fantasy-Map-Generator/model/styles/styles.ts"; // a served path, not one tsc can resolve
+    const { Styles } = await import(served);
     const styles = globalThis.styles;
-    styles.rivers.attrs.fill = "#ff00aa";
+    styles.rivers.groups.regular.attrs.fill = "#ff00aa";
     styles.routes.groups.roads.attrs.stroke = "#00e5ff";
     styles.routes.groups.roads.attrs["stroke-width"] = 2;
     styles.lakes.groups.freshwater.attrs.fill = "#ffe000";
     styles.states.groups.statesHalo.attrs.filter = null; // null = remove
     Styles.apply("rivers", "routes", "lakes", "states");
     return {
-      riverFill: document.querySelector('[data-layer="rivers"]')?.getAttribute("fill"),
+      riverFill: document.querySelector('[data-layer="rivers"] > [data-group="regular"]')?.getAttribute("fill"),
       roadStroke: document.querySelector('[data-group="roads"]')?.getAttribute("stroke"),
       lakeFill: document.querySelector('[data-group="freshwater"]')?.getAttribute("fill"),
       haloFilterRemoved: !document.querySelector('[data-group="statesHalo"]')?.hasAttribute("filter"),

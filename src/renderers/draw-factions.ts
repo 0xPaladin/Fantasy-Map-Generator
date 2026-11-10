@@ -113,7 +113,7 @@ function reconcileFactions({ root, bounds }: ViewportRenderContext): void {
       const hqLocationName = faction.hq.burgId
         ? (pack.burgs?.[faction.hq.burgId]?.name ?? `Burg ${faction.hq.burgId}`)
         : faction.hq.markerId !== undefined
-          ? (pack.markers?.[faction.hq.markerId]?.legend ?? `Marker ${faction.hq.markerId}`)
+          ? (pack.markers?.[faction.hq.markerId]?.note ?? `Marker ${faction.hq.markerId}`)
           : `Cell ${faction.hq.cell}`;
       const pillagedBadge = faction.hq.pillaged ? `<br/>${t("Pillaged")}` : "";
       const hqTip = `<b>${escapeHtml(faction.name)}</b><br/>${capitalize(faction.category)} • ${capitalize(faction.alignment)}<br/>${t("Allegiance")}: ${capitalize(faction.allegiance)}<br/>HQ: ${escapeHtml(hqLocationName)}${pillagedBadge}<br/>${t("Treasury")}: ${faction.treasury}g • ${t("Influence")}: ${faction.influence}`;
