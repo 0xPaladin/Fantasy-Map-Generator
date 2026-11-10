@@ -77,6 +77,17 @@ Standing toward factions, states and other characters uses the same tiers as fac
 
 Characters have no `renown`; standing is the relationship matrix on the sheet. Faction membership is derived from `memberIds` / `candidateIds`, never stored on the character.
 
+### Rulers and the economy
+
+In the Living World a state's ruler and its **magistrate** specialist lean on the [economy](Economy.md#the-living-world-economy):
+
+* a just, diligent ruler curbs official corruption by a few points and gets more out of administration and infrastructure;
+* a pious one gets more out of the court, which steadies stability and adds culture and faith;
+* a cruel or greedy one lets corruption rise, and with it unrest;
+* a martial one keeps troops keen and presses sieges harder.
+
+Their culture's values count too, and the magistrate's traits count for half. A ruler may also **audit** the officials — cutting corruption and recovering graft into the treasury — or **sabotage** a rival's working.
+
 ### Where to read more
 
 * [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) — the seasonal simulation and god-mode inspector.

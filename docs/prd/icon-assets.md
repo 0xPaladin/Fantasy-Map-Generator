@@ -423,7 +423,7 @@ through `normalizeStyles` (`styles-legacy.ts`), which every style path already r
 localStorage presets and the shipped presets — so `#icon-anchor|harbor` → `#ports-…` and every other
 `#icon-<name>` → `#burgs-atlas-<name>`, or `#burgs-<name>` for the `watabou-`/`illustrated-` names that
 already carried their style, on `burgIcons` icons and anchors. The 1.154 step then rewrites
-`pack.goods[].icon` (`good-<name>` → `goods-<name>`, `good-custom-<id>` → `custom-goods-<id>`) and the
+`options.map.goods[].icon` (`good-<name>` → `goods-<name>`, `good-custom-<id>` → `custom-goods-<id>`) and the
 ids of the field-45 elements already inserted into the defs. `default-styles.json` and
 `public/styles/*.json` are updated in place.
 
@@ -452,7 +452,7 @@ ids of the field-45 elements already inserted into the defs. `default-styles.jso
   without changing the saved descriptor. Verify concurrent callers share an attempt, failure leaves
   no partial definitions, redraws do not retry failed loads, and `retry` starts a fresh attempt.
   Browser-facing loader tests verify one console error and error-type tip per failed attempt.
-- `auto-update.test.ts`: the goods id rename in `pack.goods` and on inserted custom elements; the
+- `auto-update.test.ts`: the goods id rename in `options.map.goods` and on inserted custom elements; the
   anchor recovery ends in `#ports-anchor` and burg icons in `#burgs-…`; the variant table (`-bw`,
   `-illustrated`, mixed-set) and pin recovery from the incoming `data[48]`, with the current global set
   deliberately different. A colored map holding

@@ -145,6 +145,15 @@ Troops for each cell and burg form a _platoon_. Conscription and platoon cluster
 
 Once formed, land regiments are stationed and based out of their province capital (with multiple regiments slightly offset around the capital to prevent visual overlap), while naval fleets are based at the province's port or coastal waters. Regiments are named for their province of birth with province-scoped numbering (e.g. *1st (Northmark) Regiment*, *2nd (Northmark) Regiment*). If a state has no provinces, regiments are based out of the state capital and named after the state.
 
+### Living World musters and upkeep
+
+When the [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) runs, the roster in the units editor decides what a state may field, and the [economy](Economy.md) decides how well it fights.
+
+- **Roster goods.** Each culture roster unit records the goods it takes: levies and militia none; melee and ranged **Arms**, and heavy infantry **Iron**; cavalry **Horses** and **Harnesses**, heavy lancers also **Arms**; artillery **Wood**, **Ropes** and **Iron**, or **Artillery** and **Gunpowder** once its gunpowder technology is known; monsters **Gemstones**; spellcasters **Incense** and **Books**.
+- **Muster gate.** A block is raised only if the state has spare kits of the goods its unit needs: a day's consumption (`Accounts.getConsumption`) × `0.365` × the good's military coverage, less every block already in the field that needs it. Queued units finishing in a city and mustered armies pass the same check. A block short on goods spawns as the roster's **levy** instead — with a dispatch saying what it lacked, such as "its forges ran short of Arms" — or at half capability where the roster has no levy. Before the economy has run the check is unlimited, so nothing is gated on a stripped or pre-economy map.
+- **Living battle upkeep.** A state with a treasury keeps its forces at `0.5–1.15` times the old power (`Military.getLivingBattleUpkeep`, from the share of the day's military need its spending covers, raised by a martial ruler); a bankrupt state that underfunds its military falls toward `0.05`. The multiplier scales both sides' power in battles and the win odds shown on the map.
+- **Unpaid troops.** A treasury that falls below zero disbands the newest block. If the state is both broke and underfunding its military, the newest equipped elite first takes service as a levy, at half its experience, before anything is disbanded.
+
 ## Regiment Editor
 
 ![](https://cdn.discordapp.com/attachments/587406457725779968/720385818694254602/regiment_editor.png)

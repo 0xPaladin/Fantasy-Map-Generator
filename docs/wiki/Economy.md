@@ -101,6 +101,8 @@ So 🟡 1 is a lot of money for one person and modest for a town. The anchor is 
 - A **state's treasury balance** (**Balance** in the tables) is what it keeps of what it collected that day, below zero if it spent more: its sales taxes and tariffs, plus the **poll tax** its people paid and the **market licenses** of its markets, less what its **budget** spent and what **corruption** took. The poll tax collected can be less than the poll tax they owed; the state's Revenue card shows the share collected. What officials pocket never reaches the treasury.
 - **Markets hold no money**, but the Markets overview shows what passed through them. **Sales** is what burgs paid the market for its goods, carriage included, less the taxes handed to the states and its center burg's margin. **Buys** is what the market paid burgs for theirs, plus that margin. **Value** is Sales minus Buys, plus the unsold stock at its prices. The market keeps the carriage, as if its merchants did the carrying. Rural people's purchases and goods a burg kept for itself are not counted.
 
+Both balances are one day's money, recomputed with the economy. When the _Living World_ runs, a season of those flows is banked onto a persistent reserve instead: see [The Living World economy](#the-living-world-economy).
+
 ## Taxes and tariffs
 
 Every state sets these in its taxes dialog (_Tools_ → _States_, click a Prosperity value to open the state's Economy dialog, then the bank button on its Revenue or Expenses card):
@@ -171,7 +173,7 @@ Each trade shows the net price, the carriage, tax and tariff per unit, the units
 
 Living on bare needs is about 17%, or 32% under full infrastructure. Ten levels of 10% each: **Desolate**, **Destitute**, **Poor**, **Modest**, **Comfortable**, **Thriving**, **Affluent**, **Opulent**, **Splendid** and **Peerless**. The typical burg is Modest, its people on average Thriving, and a few of the richest reach Peerless. Most rural cells are Poor or Modest. Rural people grow their own needs and buy their wants at their market with what their produce earns, and keep what of their produce goes unsold, so their prosperity counts too, and it varies from place to place: a valley on a rich deposit lives better than barren hills nearby, and fertile country whose harvest its market cannot absorb lives comfortably. Villages are measured by village standards, so a Comfortable village still consumes less than a Comfortable town.
 
-Wealth and prosperity differ: an export town makes a lot and saves it, while a market center lives well on its merchants' margins. Prosperity is not happiness either: the generator knows nothing of health, safety or freedom.
+Wealth and prosperity differ: an export town makes a lot and saves it, while a market center lives well on its merchants' margins. Prosperity is not happiness either: the generator knows nothing of health, safety or freedom. The Living World lets a prosperous people's contentment sway its **Empire Happiness**, but only as one input among many.
 
 Prosperity shows in the _Burgs overview_ (click it, or Wealth, to open the burg's Economy Overview), the _Burg Editor_ and the Economy Overview, and for states in the _States Editor_.
 
@@ -187,6 +189,19 @@ A state's treasury only shows its cut. A trade republic with low taxes has a sma
 Provinces have their own economy dialog: open _Tools_ → _Provinces_ and click a province's **Prosperity** or **Corruption**. It is laid out like the state's: cards for its population, product, wealth, prosperity, taxes collected, corruption, infrastructure and stability, each ranked among its state's provinces and set against the state's; its sectors and how its people live; one block of the **taxes collected** there for its state, in red as its people pay them, and the **state orders** placed at its burgs, in green as they benefit from them (its capital's, and at the state's capital the court's and the army's), with the corruption officials took of its share; and its most valuable goods. Provinces have no budgets or taxes of their own: the state sets them.
 
 Open several states' dialogs to compare them side by side. The neutral lands have one too: click their Prosperity, Product or Wealth. The total line shows the average prosperity, and the average balance when the Balance column is shown. The bank button on the Revenue or Expenses card opens the state's taxes, budget and tariffs. In the States Editor's percent mode, product shows as a share of the world's, and wealth and prosperity against the world average.
+
+# The Living World economy
+
+The [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) plays this economy forward, season by season, and gives back to it. With the simulation off, none of it applies.
+
+- **Improvements and pillage.** Land worked by a Builder improvement produces more: a **farm** or **pasture** `+35%` for its goods, a **mine** `+40%`, a quarry, plantation, camp, lumber mill or fishing boats `+40%`, more with the right technology, and a **trading post** `+20%` rural earnings. A pillaged cell keeps only a quarter of its output until it is restored.
+- **Buildings.** A burg's **workshop** adds `15%` to its manufactures, a **windmill** `10%`, a **factory** `35%`, a forge `20%` on metal and arms, an armory forge `25%` on arms and artillery.
+- **Treasuries.** The Living World reruns the economy each spring or when the map changes, and banks a season's flows — ninety days — onto a lasting reserve: a state's collected taxes less corruption and spending, a burg's product less its poll tax. That reserve funds production, armies and diplomacy, and a state that runs out disbands its newest block.
+- **Charters.** Factions that live off the economy pay their patron state a share, and their tithes appear as a named line, **Chartered Faction Tithes**, in the state's Revenue card.
+- **Rulers.** A ruler's [traits](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Characters) tell on the state's books: a just, diligent ruler curbs officials' cut by a few points and gets more out of administration; a pious one gets more out of the court; a cruel or greedy one lets corruption rise; a martial one keeps troops keen. Their **magistrate** specialist helps with the graft and the works.
+- **Actions.** An **audit** cuts the state's official corruption and recovers the graft officials held into the treasury; **sabotage** pillages a working, spoiling its output until it is rebuilt.
+
+Prosperity, Stability and Development feed the simulation in turn: prosperous people are happier, and research raises a people's development, which unlocks goods and raises output. The HUD's state card shows the state's prosperity, stability, development and army upkeep, the burg card its prosperity and trade balance, and clicking a cell shows its development, prosperity, deposit and rural output.
 
 # Shaping the economy for your world
 

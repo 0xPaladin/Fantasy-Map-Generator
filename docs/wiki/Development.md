@@ -1,6 +1,6 @@
 Every cell where people live has a technological **development** from 1 to 100: how advanced its people are. Land nobody lives on, and water, have none (0). Development comes from the map's cultures: dwarves forge steel while giants still hunt with stone. It stays with each people, shaped by the land, and it decides what each region can produce and how rich it gets.
 
-Development is part of the world's lore, not a clock: it does not grow over time.
+Development is part of the world's lore, not a clock: it does not grow over time by itself. Under the [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) simulation a people's research raises it — see [Development in the Living World](#development-in-the-living-world).
 
 # The scale
 
@@ -80,6 +80,17 @@ Peoples before the Bronze Age (development under 12 at the capital) know no king
 ## Who trades first
 
 The [economy](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Economy) plays out one day in which burgs take turns choosing their trades. The more developed and the larger a burg, the earlier it picks: the leaders take the best trades, and backward lands are left the rest. So rich and poor regions follow development: about one burg in five meets less than half its needs where development is 30 or more, one in twenty at 40 or more, and over half where it is under 30.
+
+# Development in the Living World
+
+When the [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) simulation runs, development is not only a setting: it moves with a people's research, and the research starts from what they already know.
+
+- **A people starts where its land is.** When the simulation first meets a state or a faction, its people's average development decides how much of the technology tree it already knows. A dwarven realm living at 53 begins with the technologies of its era; a tribal people at 12 begins in the Bronze Age.
+- **Research raises it.** Completing a technology raises the people's towns — the capital and every burg of the state, and every faction HQ and outpost — toward the level their technologies imply, with a bonus of 2 where they keep a library, university or public school. Research never lowers a level.
+- **It spreads.** Each season the countryside of the state steps a point toward its towns' level, adjusted by the land (a river or a coast helps, harsh biomes hold it back). Villages may run a little ahead of what their land allows before falling back; a town never loses what it learned.
+- **It pays off.** The next economy run reads the new levels: newly reachable goods appear, and every field, mine and workshop produces a third more for each step past the High Middle Ages. The Development Editor, the State card and the cell inspector all show the result with its era.
+
+Nothing in this overrides the editor: painting development or pressing **Regenerate** sets the field, and the simulation carries on from there.
 
 # Seeing and changing it
 

@@ -82,7 +82,7 @@ No hoverable element of their own — painted across cells, or drawn per burg. T
 from the entity's row and from the Notes Editor, never from hover. These are documentation fields,
 not legends.
 
-`pack.cultures[i].note`, `pack.religions[i].note`, `pack.biomes[i].note`, `pack.goods[i].note`
+`pack.cultures[i].note`, `pack.religions[i].note`, `pack.biomes[i].note`, `options.map.goods[i].note`
 
 ### Excluded
 

@@ -128,3 +128,7 @@ The current status of each KPI is in the [economy doc](../domain/economy.md#kpis
 2. **Rich and poor regions, output apart from people**: scale returns, merchants.
 3. **Taxes that follow wealth**: narrower rate jitter, less or wealth-scaled poll tax.
 4. **Treasury concentration**: the hubs' margins pile up in few treasuries (the capitals' rural rent was removed); luxury supply limits what the rich can spend.
+
+## The Living World on top
+
+The fork's seasonal [Living World](../wiki/Living-World.md) does not change any rule above: it runs this economy as designed and reads the last run. Its [bridge](../domain/economy.md#the-living-world-bridge) adds only decorated inputs (Builder improvements, `CIV_BUILDINGS`, pillage), banks a season of the same flows onto persistent treasuries, lets factions and rulers earn off the run, and feeds prosperity, scholarly goods and court spending back into the simulation. Each hook is the identity without a simulation. Design record and phase notes: [upstream-economy-alignment.md](../plans/upstream-economy-alignment.md).

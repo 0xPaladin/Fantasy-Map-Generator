@@ -697,7 +697,7 @@ export interface CellYieldSource {
   yields: YieldDelta;
 }
 
-/** A `pack.goods` entry classified into OpenCiv's resource taxonomy. */
+/** An `options.map.goods` entry classified into OpenCiv's resource taxonomy. */
 export interface CellResourceInfo {
   goodId: number;
   goodName: string;

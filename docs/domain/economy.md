@@ -26,6 +26,7 @@ The FMG economy is **one frozen cycle: a typical day**, not a simulation over ti
 | State, province and world accounts                                             | `Accounts` ([accounts.ts](../../src/model/economy/accounts.ts))                                                                                                | nothing: summed on demand                                                                |
 | Stability                                                                      | `Stability` ([stability.ts](../../src/model/political/stability.ts))                                                                                           | nothing: worked out on demand                                                            |
 | Army upkeep and equipment                                                      | `Military` ([military-generator.ts](../../src/model/political/military-generator.ts))                                                                          | nothing: worked out on demand                                                            |
+| Living World bridge: seasonal flows, faction income, ruler traits              | `Living` ([living-generator.ts](../../src/model/physical/living-generator.ts)), `living-faction-economy.ts`, `living-rulers.ts`                                 | `pack.history.living`, `state.economy.treasury`, `state.economy.adjustments`              |
 | Trade animation and traffic                                                    | `TradeAnimation` ([trade-animation.ts](../../src/renderers/trade-animation.ts)), `TradeTraffic` ([trade-traffic.ts](../../src/model/economy/trade-traffic.ts)) | nothing: read-only views of the deals                                                    |
 | The run's debug log                                                            | `EconomyDebug` ([economy-debug.ts](../../src/model/economy/economy-debug.ts))                                                                                  | nothing: in memory, in debug mode only                                                   |
 
@@ -262,6 +263,32 @@ Rebel zones rise in a state and province by the square of their instability, as 
 
 **Story.** Zones and markers are generated after the economy and read its last run. Invasions favour prosperous borders, disease the busiest burgs and ports, and famine land of low rural prosperity. Among markers, brigands, inns and pirates favour busy markets, fairs burgs trading many goods, customs houses roads between states trading under tariffs, merchant houses the richest market centers, bridges the busiest burgs, and mines the most valuable deposits. A guild hall marks a burg famed for a made good (`indexGuilds`): world share × √makers × √state share at least 0.75, the good worth 15 a day and a quarter of what the burg makes.
 
+## The Living World bridge
+
+The seasonal [Living World](../wiki/Living-World.md) simulation reads the last run and feeds back into the next one. Off, every hook below is the identity, so a map without a simulation behaves exactly as above.
+
+**What the run sees.** `Output.getSimMultiplier` multiplies a cell's rural output: `0.25` on pillaged land, otherwise `1 + boost` where a Builder improvement tends the good — `farm` and `pasture` `+35%` (to `+50%` with `civil_service`/`fertilizer`), `mine` `+40%` (to `+60%` with `chemistry`/`dynamite`), and `quarry`, `plantation`, `camp`, `lumber_mill`, `fishing_boats` `+40%` — matched by good name against the catalogue and by the cell owner's `researchedTechs`. `Output.getSimEarningsMultiplier` adds `+20%` rural earnings on a `trading_post` cell. In `Production`, `buildingModifierFor` multiplies a burg's manufacturing: `workshop` ×1.15, `windmill` ×1.10, `factory` ×1.35, `forge` ×1.20 on arms, artillery, tools, bronze, gunpowder and coins, `armory_forge` ×1.25 on arms and artillery.
+
+**Seasonal flows.** `Living.stepEconomy` re-runs the economy at each spring or whenever `living.economyDirty` is raised (a development, market or border change, a charter line or an audit), and banks a season's flows onto persistent reserves: `SEASON_DAYS = 90` times a state's `collected − pocketed − spent`, and 90 times a burg's `product − pollTaxPaid`. The state's reserve is `state.economy.treasury`, the same field a run writes its day's net into, so a run resets it to that day and the season's flows are banked on top; `living.burgs[].treasury` is the burg's reserve, keeping upstream `burg.treasury` a day's figure. `living.states[].treasury` mirrors the state reserve, and a negative balance settles debt.
+
+**Sim yields off the run.** A burg's scholarly goods consumption (`Paper`, `Ink`, `Books`, `Glass`) adds up to `+5` seasonal Science; a fully served court (`StateOrders.getProvision(state, "court")`) adds up to `+3` Culture and `+3` Faith; upstream `Prosperity` sways Empire Happiness by `(prosperity − 0.5) × 10`. All three need a readable run (deals + markets + goods) and are zero otherwise.
+
+**Factions** ([living-faction-economy.ts](../../src/model/physical/living-faction-economy.ts)) earn a season of upstream money at each HQ and outpost:
+
+| Category          | Earns                                                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commercial        | `host burg product × 0.2` plus a market commission of `5%` + `3%` per commercial asset, capped at `15%`, on the market's turnover (`Deals.getGoodsValue` where the market or the burg matches) |
+| Underworld        | the province's share of `state.economy.pocketed` siphoned at `10% + 30% × influence/100` (capped `40%`), plus `50%` of the state's tariffs, `× 1.5` under an `embargo`                                                                                |
+| Martial           | `5%` of the host state's `spent.military` while `Friendly`/`Ally`; hostile raids plunder burg treasuries instead                                                                         |
+| Religious         | `5%` of `spent.court`, scaled by local prosperity, and up to 3 seasonal `influence`                                                                                                      |
+| Political         | the religious tithe plus `5%` of `spent.administration`                                                                                                                                  |
+
+A faction leader's traits scale that income (`1 + 0.25 × civic + 0.15 × cruel`). `chartered` and `state_arm` factions pay `15%` of it to their patron: `Living` sums those tithes per state into one budget line, `Chartered Faction Tithes` (the season's tithe ÷ 90, so it is a day's money as every adjustment is), replacing the line each season.
+
+**Rulers** ([living-rulers.ts](../../src/model/physical/living-rulers.ts)) lean the run by their traits, their culture's values, and half of their `magistrate` specialist's: official corruption `−5 × civic + 6 × cruel` points, court provision `1 + 0.25 × pious`, administration and infrastructure provision `1 + 0.2 × civic`, living battle upkeep `1 + 0.2 × martial` and siege progress `1 + 0.3 × martial`. `Corruption.effectiveBudget` applies the first wherever corruption is read (`getTendency`, `getStateTendency`, `curb` → taxes, orders, accounts, stability), `StateOrders.getProvision` the court and infrastructure ones, `Military.getLivingBattleUpkeep` the upkeep one, and `Living` the siege one. The ways to change a state without a run — `Living.auditCorruption` (budget corruption cut by 4 points, a day's `pocketed` graft recovered into the treasury) and `Living.sabotageDeposit` (`cells[cell].pillaged`, which `Output.getSimMultiplier` prices at `0.25`) — also raise `economyDirty`.
+
+Design record and per-phase completion notes: [upstream-economy-alignment.md](../plans/upstream-economy-alignment.md).
+
 ## KPIs
 
 What the economy should achieve, scored on ten maps with default options, averaged (seeds and templates in `scripts/economy-tuner/export-maps.mjs`). Re-measure after any change to the economy and update the table. The **tuner fee** is what each unit of miss costs in the tuner's objective (`objective.mjs`).
@@ -396,7 +423,7 @@ A constant at the edge of its range is a sign the range is too narrow.
 
 ## Gotchas
 
-- **No time.** A treasury is one day's net cash, reset each run; only the user's adjustments carry over. State spending is read as upkeep, not a stock built up over time.
+- **No time.** A treasury is one day's net cash, reset each run; only the user's adjustments carry over. State spending is read as upkeep, not a stock built up over time. Under the Living World, a season's flows are banked onto a persistent reserve instead (see [The Living World bridge](#the-living-world-bridge)).
 - **Order matters.** Later burgs see the prices earlier ones moved, so backward and small burgs get the trades left over.
 - **Local first.** A trickle of local stock blocks cheaper sources until it is gone.
 - **The surplus is real.** Markets buy every unit offered at a falling price, so much of what is made stays unsold. Spending, not supply, limits goods sold.
@@ -410,4 +437,5 @@ A constant at the edge of its range is a sign the range is too narrow.
 
 - [Goods spread functions](../wiki/Goods-spread-functions.md): the distribution expression language.
 - [economy-rework.md](../prd/economy-rework.md): the design record.
+- [upstream-economy-alignment.md](../plans/upstream-economy-alignment.md): how the Living World runs on this economy.
 - [generation-pipeline.md](../architecture/generation-pipeline.md): where the economy sits in map generation.

@@ -35,7 +35,7 @@ This plan introduces a sci-fi trade and resource model aligned with the *Suns of
 ## Non-Negotiables
 
 - **Zero `.map` save/load format changes.**
-  - `pack.goods` (slot 41) already serializes the active `Good[]` catalogue.
+  - `options.map.goods` (map record 1) holds the active `Good[]` catalogue; before v1.157.0 it was `pack.goods` in slot 41.
   - `pack.cells.good` (slot 40, `Uint16Array`) stores the primary resource ID at `burg.cell` and
     stays `0` on all non-burg cells.
   - Explicit World Type overrides are stored as `world:<type>` entries in `burg.tags` (already
@@ -131,13 +131,13 @@ FMG's market and treasury arithmetic.
 ### Phase 2 — System/Burg-Level Resource & Production Pipeline
 
 1. **`src/model/economy/goods-generator.ts`**:
-   - Add `isAstralCatalogue(): boolean` (detects if `pack.goods` is the Astral catalogue by checking for `Metawheat` / `astronautic` / `postech` tags).
+   - Add `isAstralCatalogue(): boolean` (detects if `options.map.goods` is the Astral catalogue by checking for `Metawheat` / `astronautic` / `postech` tags).
    - Update `GoodsModule.generate()`:
      - When `isAstralCatalogue()` is true, zero out `this.cells.good = new Uint16Array(this.cells.i.length)`.
      - Skip the cell terrain/biome placement loop.
      - Iterate over active burgs (`burg.i && !burg.removed`), obtain `tradeGoodsFor(burg)[0]` (or respect an existing valid good ID if manually placed), and set `this.cells.good[burg.cell] = goodId`.
 2. **`src/model/economy/production-generator.ts`**:
-   - In `getCellProduction(cellId)`:
+   - In the astral output path (`Output.getAstralModifiers`, formerly `getCellProduction`):
      - When `Goods.isAstralCatalogue()` is true, return `{}` for any cell without a burg (`!this.cells.burg[cellId]`).
      - For `burg.cell`, scale output of `this.cells.good[cellId]` by system population (reflecting the PDF's *1 ton per 5,000 inhabitants* capacity rule).
    - In `createBurgProductionState(burg, ...)`:
@@ -163,7 +163,7 @@ FMG's market and treasury arithmetic.
 1. **`src/controllers/economy/goods/goods-editor.ts`**:
    - Add a mode toggle button `#goodsAstralToggle` in `renderFooter()` (`#goodsBottom`):
      - Displays **Astral Goods** (`icon-rocket`) when Fantasy goods are active, or **Fantasy Goods** (`icon-globe`) when Astral goods are active.
-     - Clicking prompts for confirmation, replaces `pack.goods` with `structuredClone(ASTRAL_GOODS_DATA)` (or `GOODS_DATA`), prunes stale state tariffs, invokes `Goods.generate()` and `Production.regenerateEconomy()`, and refreshes the table and visible economy layers.
+     - Clicking prompts for confirmation, replaces `options.map.goods` with `structuredClone(ASTRAL_GOODS_DATA)` (or `GOODS_DATA`), prunes stale state tariffs, invokes `Goods.generate()` and `Production.regenerate()`, and refreshes the table and visible economy layers.
    - Update `enterResourceAssignMode()` / `changeResourceOnCellClick()`:
      - When `Goods.isAstralCatalogue()` is true, clicking on the map snaps to the star system (`pack.cells.burg[cellId]` or the nearest burg to the cursor) and sets `pack.cells.good[burg.cell]`, ensuring resources are never placed on empty space cells.
 2. **`src/controllers/astral-system-editor.ts` & `src/controllers/astral-systems.ts`**:
