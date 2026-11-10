@@ -140,9 +140,21 @@ function parseArguments(raw: string): ToolInput {
 const outputLimit = (baseUrl: string) =>
   /deepseek\.com|generativelanguage\.googleapis\.com|api\.z\.ai/.test(baseUrl) ? 8192 : 4096;
 
+type Reasoning = "none" | "low" | "medium" | "high";
+
+/** How each provider carries a reasoning level; GLM thinks by default, so "none" switches it off
+ * and the rest leave it on. DeepSeek's and Mistral's fields differ, so the value is sent best-effort */
+const reasoningPayload = (provider: string, reasoning: Reasoning): Record<string, unknown> => {
+  if (provider === "zai") return reasoning === "none" ? { thinking: { type: "disabled" } } : {};
+  if (provider === "qwen") return { enable_thinking: reasoning !== "none" };
+  if (reasoning === "none") return {}; // providers default to their own behavior
+  if (provider === "openrouter") return { reasoning: { effort: reasoning } };
+  return { reasoning_effort: reasoning }; // OpenAI and any OpenAI-compatible endpoint that knows the field
+};
+
 export async function completeOpenAI(
   baseUrl: string,
-  { provider, key, model, system, messages, tools, signal }: CompletionRequest
+  { provider, key, model, reasoning, system, messages, tools, signal }: CompletionRequest
 ): Promise<Completion> {
   const openAI = baseUrl === "https://api.openai.com/v1";
   const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -154,7 +166,8 @@ export async function completeOpenAI(
       messages: toChatMessages(system, messages, provider === "gemini"),
       tools: toChatTools(tools),
       ...(openAI ? { max_completion_tokens: 4096 } : { max_tokens: outputLimit(baseUrl) }),
-      ...(openAI && /^gpt-6-(sol|luna)$/.test(model) ? { reasoning_effort: "none" } : {})
+      ...(openAI && /^gpt-6-(sol|luna)$/.test(model) && reasoning === "none" ? { reasoning_effort: "none" } : {}),
+      ...reasoningPayload(provider, reasoning)
     })
   });
 

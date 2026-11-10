@@ -8,6 +8,7 @@ const request: CompletionRequest = {
   key: "gemini-key",
   model: "gemini-flash-latest",
   localUrl: "",
+  reasoning: "none",
   system: [{ type: "text", text: "Help with the map." }],
   messages: [{ role: "user", content: [{ type: "text", text: "Count the burgs and states." }] }],
   tools: [{ name: "run", description: "Read the map", input_schema: { type: "object", properties: {} } }]

@@ -28,7 +28,7 @@ const newChat = (): Chat => ({
 beforeEach(() => {
   localStorage.clear();
   completeMock.mockReset();
-  save({ provider: "openai", model: "custom-model", key: "key", localUrl: "" });
+  save({ provider: "openai", model: "custom-model", key: "key", localUrl: "", reasoning: "none" });
 });
 
 it("dispatches a map tool, reports its change, and preserves provider history", async () => {

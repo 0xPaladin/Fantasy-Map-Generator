@@ -21,6 +21,7 @@ const request: CompletionRequest = {
   model: "llama3.2",
   key: "",
   localUrl: "",
+  reasoning: "none",
   system: [],
   messages: [],
   tools: []

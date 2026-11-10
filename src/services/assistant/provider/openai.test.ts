@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SystemBlock } from "./context";
 import { completeOpenAI, fromChatResponse, toChatMessages, toChatTools } from "./openai";
 import type { Message, ToolDefinition } from "./providers";
@@ -137,6 +137,7 @@ describe("completeOpenAI", () => {
       provider: "openai" as const,
       localUrl: "",
       key: "test",
+      reasoning: "none" as const,
       model: "gpt-6-sol",
       system,
       messages: [],
@@ -243,11 +244,82 @@ describe("provider routing", () => {
       provider: "mistral",
       localUrl: "",
       model: "my-custom-model",
+      reasoning: "none",
       system,
       messages: [],
       tools: []
     });
     expect(fetchStub.mock.calls[0][0]).toBe("https://api.mistral.ai/v1/chat/completions");
     fetchStub.mockRestore();
+  });
+});
+
+describe("reasoning level", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const response = () => new Response(JSON.stringify({ choices: [] }));
+  const stub = () => vi.spyOn(globalThis, "fetch").mockImplementation(async () => response());
+
+  it("sends reasoning_effort for OpenAI and OpenAI-compatible endpoints", async () => {
+    const fetchStub = stub();
+    await completeOpenAI("https://api.openai.com/v1", {
+      provider: "openai", key: "k", model: "gpt-6-sol", reasoning: "high",
+      localUrl: "", system: [], messages: [], tools: []
+    });
+    expect(JSON.parse(fetchStub.mock.calls[0][1]?.body as string).reasoning_effort).toBe("high");
+
+    await completeOpenAI("https://api.deepseek.com/v1", {
+      provider: "deepseek", key: "k", model: "deepseek-chat", reasoning: "medium",
+      localUrl: "", system: [], messages: [], tools: []
+    });
+    expect(JSON.parse(fetchStub.mock.calls[1][1]?.body as string).reasoning_effort).toBe("medium");
+  });
+
+  it("sends reasoning.effort for OpenRouter", async () => {
+    const fetchStub = stub();
+    await completeOpenAI("https://openrouter.ai/api/v1", {
+      provider: "openrouter", key: "k", model: "anthropic/claude-sonnet-4.5", reasoning: "low",
+      localUrl: "", system: [], messages: [], tools: []
+    });
+    expect(JSON.parse(fetchStub.mock.calls[0][1]?.body as string).reasoning).toEqual({ effort: "low" });
+  });
+
+  it("maps none to thinking off for Z.ai and leaves it on otherwise", async () => {
+    const fetchStub = stub();
+    await completeOpenAI("https://api.z.ai/api/paas/v4", {
+      provider: "zai", key: "k", model: "glm-4.6", reasoning: "none",
+      localUrl: "", system: [], messages: [], tools: []
+    });
+    expect(JSON.parse(fetchStub.mock.calls[0][1]?.body as string).thinking).toEqual({ type: "disabled" });
+
+    await completeOpenAI("https://api.z.ai/api/paas/v4", {
+      provider: "zai", key: "k", model: "glm-4.6", reasoning: "high",
+      localUrl: "", system: [], messages: [], tools: []
+    });
+    const body = JSON.parse(fetchStub.mock.calls[1][1]?.body as string);
+    expect(body.thinking).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+  });
+
+  it("maps none to enable_thinking off for Qwen and on otherwise", async () => {
+    const fetchStub = stub();
+    const request = {
+      provider: "qwen" as const, key: "k", model: "qwen3.8-flash",
+      localUrl: "", system: [], messages: [], tools: []
+    };
+    await completeOpenAI("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", { ...request, reasoning: "none" });
+    expect(JSON.parse(fetchStub.mock.calls[0][1]?.body as string).enable_thinking).toBe(false);
+    await completeOpenAI("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", { ...request, reasoning: "high" });
+    expect(JSON.parse(fetchStub.mock.calls[1][1]?.body as string).enable_thinking).toBe(true);
+  });
+
+  it("sends nothing when the level is none, except where the model requires explicit none", async () => {
+    const fetchStub = stub();
+    await completeOpenAI("https://api.mistral.ai/v1", {
+      provider: "mistral", key: "k", model: "mistral-small-latest", reasoning: "none",
+      localUrl: "", system: [], messages: [], tools: []
+    });
+    const body = JSON.parse(fetchStub.mock.calls[0][1]?.body as string);
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.reasoning).toBeUndefined();
   });
 });

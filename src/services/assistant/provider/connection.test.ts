@@ -5,7 +5,7 @@ import { clear, get, isConnected, save } from "./connection";
 beforeEach(() => localStorage.clear());
 
 it("shares provider keys with the text generator and keeps model routing explicit", () => {
-  save({ provider: "openai", model: "same-id", key: "openai-key", localUrl: "" });
+  save({ provider: "openai", model: "same-id", key: "openai-key", localUrl: "", reasoning: "none" });
   expect(get().provider).toBe("openai");
   expect(get().model).toBe("same-id");
   expect(isConnected()).toBe(true);
@@ -17,15 +17,15 @@ it("shares provider keys with the text generator and keeps model routing explici
 
 it("connects a local model without a key", () => {
   localStorage.setItem("fmg-ai-kl-local", "old-key");
-  save({ provider: "local", model: "test", key: "", localUrl: "http://localhost:11434/v1" });
+  save({ provider: "local", model: "test", key: "", localUrl: "http://localhost:11434/v1", reasoning: "none" });
   expect(isConnected()).toBe(true);
   expect(get().model).toBe("test");
   expect(get().key).toBe("");
 });
 
 it("keeps the local model name apart from the remote model", () => {
-  save({ provider: "local", model: "llama3.2", key: "", localUrl: "" });
-  save({ provider: "openai", model: "gpt-6-sol", key: "openai-key", localUrl: "" });
+  save({ provider: "local", model: "llama3.2", key: "", localUrl: "", reasoning: "none" });
+  save({ provider: "openai", model: "gpt-6-sol", key: "openai-key", localUrl: "", reasoning: "none" });
   expect(get().model).toBe("gpt-6-sol");
   expect(get("local").model).toBe("llama3.2");
   expect(get("mistral")).toMatchObject({ model: "mistral-small-latest", key: "" });
@@ -38,4 +38,14 @@ it("adopts an existing key from the previous Assistant settings", () => {
   expect(isConnected()).toBe(true);
   clear();
   expect(isConnected()).toBe(false);
+});
+
+it("keeps the reasoning level apart per provider and defaults to none", () => {
+  expect(get().reasoning).toBe("none");
+  save({ provider: "openai", model: "gpt-6-sol", key: "openai-key", localUrl: "", reasoning: "high" });
+  save({ provider: "gemini", model: "gemini-flash-latest", key: "gemini-key", localUrl: "", reasoning: "low" });
+  expect(get().reasoning).toBe("low");
+  expect(get("openai").reasoning).toBe("high");
+  expect(get("mistral").reasoning).toBe("none");
+  expect(localStorage.getItem("fmg-ai-reasoning-openai")).toBe("high");
 });

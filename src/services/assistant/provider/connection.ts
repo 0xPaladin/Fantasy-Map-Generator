@@ -5,12 +5,14 @@ export interface Connection {
   model: string;
   key: string;
   localUrl: string;
+  reasoning: "none" | "low" | "medium" | "high";
 }
 
 const PROVIDER_STORAGE = "fmg-ai-chat-provider";
 const LOCAL_URL_STORAGE = "fmg-ai-local-url";
 const CONNECTED_STORAGE = "fmg-assistant-connected";
 const modelStorage = (providerId: ProviderSpec["id"]) => `fmg-ai-model-${providerId}`;
+const reasoningStorage = (providerId: ProviderSpec["id"]) => `fmg-ai-reasoning-${providerId}`;
 
 /** The saved connection, or what it would be with another provider: each provider keeps its own model */
 export function get(providerId?: ProviderSpec["id"]): Connection {
@@ -20,15 +22,17 @@ export function get(providerId?: ProviderSpec["id"]): Connection {
     provider: provider.id,
     model: localStorage.getItem(modelStorage(provider.id)) || provider.fallbackModel,
     key: local ? "" : localStorage.getItem(keyStorageForProvider(provider.id)) || "",
-    localUrl: localStorage.getItem(LOCAL_URL_STORAGE) || providerById("local")!.baseUrl!
+    localUrl: localStorage.getItem(LOCAL_URL_STORAGE) || providerById("local")!.baseUrl!,
+    reasoning: (localStorage.getItem(reasoningStorage(provider.id)) ?? "none") as Connection["reasoning"]
   };
 }
 
-export function save({ provider, model, key, localUrl }: Connection): void {
+export function save({ provider, model, key, localUrl, reasoning }: Connection): void {
   localStorage.setItem(PROVIDER_STORAGE, provider);
   localStorage.setItem(modelStorage(provider), model);
   if (provider !== "local") localStorage.setItem(keyStorageForProvider(provider), key);
   localStorage.setItem(LOCAL_URL_STORAGE, localUrl);
+  localStorage.setItem(reasoningStorage(provider), reasoning);
   localStorage.setItem(CONNECTED_STORAGE, "1");
 }
 

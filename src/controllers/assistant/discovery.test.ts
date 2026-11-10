@@ -128,3 +128,28 @@ it("does not start pending discovery after leaving the key sheet", async () => {
   await new Promise(resolve => setTimeout(resolve, 400));
   expect(discovery.list).not.toHaveBeenCalled();
 });
+
+it("hides the reasoning level for local servers and saves it for cloud providers", async () => {
+  await openSheet();
+  const reasoning = document.getElementById("assistantReasoning") as HTMLSelectElement;
+  const reasoningLabel = document.getElementById("assistantReasoningLabel") as HTMLLabelElement;
+  expect(reasoning.hidden).toBe(false);
+  expect(reasoningLabel.hidden).toBe(false);
+
+  enterKey("openai-key");
+  reasoning.value = "high";
+  click("Connect");
+  expect(localStorage.getItem("fmg-ai-reasoning-openai")).toBe("high");
+  expect(localStorage.getItem("fmg-ai-chat-provider")).toBe("openai");
+
+  // reopening the sheet restores the saved level
+  click("Cancel");
+  click("Key");
+  expect((document.getElementById("assistantReasoning") as HTMLSelectElement).value).toBe("high");
+
+  const provider = document.getElementById("assistantProvider") as HTMLSelectElement;
+  provider.value = "local";
+  provider.dispatchEvent(new Event("change"));
+  expect(reasoning.hidden).toBe(true);
+  expect(reasoningLabel.hidden).toBe(true);
+});

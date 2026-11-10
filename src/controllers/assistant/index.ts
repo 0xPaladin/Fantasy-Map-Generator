@@ -367,6 +367,13 @@ function renderDialog(): void {
         <select id="assistantProvider">${providers}</select>
         <label id="assistantModelLabel" for="assistantModel">${t("Model")}</label>
         <input id="assistantModel" list="assistantModels" autocomplete="off" spellcheck="false" />
+        <label id="assistantReasoningLabel" for="assistantReasoning">${t("Reasoning")}</label>
+        <select id="assistantReasoning">
+          <option value="none">${t("None")}</option>
+          <option value="low">${t("Low")}</option>
+          <option value="medium">${t("Medium")}</option>
+          <option value="high">${t("High")}</option>
+        </select>
         <label for="assistantApiKey" data-remote>${t("API key")}</label>
         <input id="assistantApiKey" type="password" autocomplete="off" data-remote />
         <a id="assistantKeyLink" target="_blank" rel="noopener noreferrer" data-remote>${t("Where to get one")}</a>
