@@ -29,7 +29,8 @@ import {
 import { askProvider } from "@/services/assistant/provider/answerer";
 import * as Connection from "@/services/assistant/provider/connection";
 import { listModels } from "@/services/assistant/provider/models";
-import { PROVIDERS, type ProviderSpec } from "@/services/assistant/provider/providers";
+import { PROVIDERS } from "@/services/assistant/provider/providers";
+import { openModelPicker as openPicker } from "./model-picker";
 import { markAssistantOpen } from "@/ui/assistant-bubble";
 import { Dialog } from "@/ui/dialog/dialog";
 import { t } from "@/utils/i18n";
@@ -305,9 +306,13 @@ const STYLES = /* html */ `
     #assistantStatus { white-space: nowrap; opacity: .8; }
     #assistantFooterKey { padding: .1em .2em; border: 0; border-radius: .3em; background: none; font-size: 1.05em; line-height: 1; }
     #assistantFooterKey:hover, #assistantFooterKey:focus-visible { background: rgb(0 0 0 / 8%); }
-    #assistantFooterModelField { display: inline-flex; align-items: center; gap: .3em; min-width: 0; }
-    #assistantFooterModel { width: 11.5em; min-width: 7em; padding: .12em .35em; border: 1px solid transparent; border-radius: .3em; background: transparent; font-size: .85em; color: inherit; }
-    #assistantFooterModel:hover, #assistantFooterModel:focus { border-color: rgb(0 0 0 / 18%); background: rgb(255 255 255 / 60%); outline: none; }
+    #assistantFooterModel { display: inline-flex; align-items: center; gap: .15em; max-width: 13.5em; min-width: 4em; padding: .12em .35em; border: 1px solid transparent; border-radius: .3em; background: transparent; color: inherit; font-size: .85em; text-align: left; }
+    #assistantFooterModel:hover, #assistantFooterModel:focus-visible { border-color: rgb(0 0 0 / 18%); background: rgb(255 255 255 / 60%); outline: none; }
+    #assistantFooterModelName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .assistantFooterChevron { flex: none; font-size: .8em; opacity: .7; }
+    #assistantModelPicker { display: grid; gap: .5em; padding: .2em; }
+    #assistantModelPicker .assistantModelPickerFilter { width: 100%; box-sizing: border-box; padding: .35em .5em; border: 1px solid rgb(0 0 0 / 20%); border-radius: .3em; font: inherit; }
+    #assistantModelPicker .assistantModelPickerSelect { width: 100%; box-sizing: border-box; }
     #assistantFooterReasoning { padding: .12em .2em; border: 1px solid transparent; border-radius: .3em; background: transparent; font-size: .85em; color: inherit; max-width: 7em; }
     #assistantFooterReasoning:hover, #assistantFooterReasoning:focus { border-color: rgb(0 0 0 / 18%); background: rgb(255 255 255 / 60%); outline: none; }
 
@@ -484,9 +489,8 @@ function renderDialog(): void {
       <span id="assistantAccount">
         <span id="assistantTier"></span>
         <button type="button" id="assistantFooterKey" class="assistantLink" data-action="key" title="${t("Connect your AI key")}" aria-label="${t("Connect your AI key")}" hidden>🔑</button>
-        <span id="assistantFooterModelField" hidden>
-          <input id="assistantFooterModel" list="assistantFooterModelList" autocomplete="off" spellcheck="false" aria-label="${t("Model")}" />
-          <datalist id="assistantFooterModelList"></datalist>
+        <button type="button" id="assistantFooterModel" class="assistantLink" data-action="pick-model" title="${t("Change the model")}" aria-label="${t("Change the model")}" hidden><span id="assistantFooterModelName"></span><span class="assistantFooterChevron">▾</span></button>
+        <span id="assistantFooterReasoningField" hidden>
           <select id="assistantFooterReasoning" aria-label="${t("Reasoning")}">
             <option value="none">${t("None")}</option>
             <option value="low">${t("Low")}</option>
@@ -523,7 +527,6 @@ function renderDialog(): void {
     connect();
   });
   el("assistantPromptButton").addEventListener("click", () => togglePromptMenu());
-  el("assistantFooterModel").addEventListener("change", saveFooterModel);
   el("assistantFooterReasoning").addEventListener("change", () => saveFooterReasoning());
   KeySheet.wire();
   Customize.wire();
@@ -551,6 +554,7 @@ function handleClick(event: MouseEvent): void {
   else if (action === "choose") void choose(Number(index), Number(target.dataset.choice));
   else if (action === "inset") revealInset(Number(index));
   else if (action === "detach") detach(Number(index));
+  else if (action === "pick-model") void openModelPicker();
   else if (action === "use-prompt" && id) usePrompt(id);
   else if (action === "customize") openCustomize();
   else if (action === "close-customize") showView("chat");
@@ -610,17 +614,21 @@ function deleteChat(id: string): void {
   renderChats();
 }
 
-/** The footer model box: an empty value is not allowed, so it reverts to the saved one */
-function saveFooterModel(): void {
-  const input = el<HTMLInputElement>("assistantFooterModel");
+/** The footer model name opens the model picker; a fresh discovery feeds it */
+async function openModelPicker(): Promise<void> {
+  if (busy) return;
   const connection = Connection.get();
-  const model = input.value.trim();
-  if (!model) {
-    input.value = connection.model;
-    return;
+  let found: string[] = [];
+  try {
+    found = await listModels(connection.provider, connection.key, connection.localUrl);
+  } catch {
+    // a failing discovery is shown in the key sheet; the picker still works with the current model
   }
-  Connection.save({ ...connection, model });
-  renderFooter();
+  const options = [...new Set([connection.model, ...found].filter(Boolean))];
+  openPicker(options, connection.model, model => {
+    Connection.save({ ...Connection.get(), model });
+    renderFooter();
+  });
 }
 
 /** The footer reasoning level applies from the next question */
@@ -797,16 +805,17 @@ function renderFooter(): void {
   el("assistantTier").hidden = now !== "guest" && now !== "member";
   el("assistantTier").textContent = now === "member" ? "Member" : "Guest";
   el("assistantFooterKey").hidden = now !== "key";
-  el("assistantFooterModelField").hidden = now !== "key";
+  el("assistantFooterModel").hidden = now !== "key";
+  el("assistantFooterReasoningField").hidden = now !== "key";
   if (now === "key") {
-    const model = el<HTMLInputElement>("assistantFooterModel");
-    if (document.activeElement !== model) model.value = connection.model;
-    model.disabled = busy || !initialized;
+    const name = el("assistantFooterModelName");
+    const model = connection.model;
+    if (name.textContent !== model) name.textContent = model;
+    el<HTMLButtonElement>("assistantFooterModel").disabled = busy || !initialized;
     const reasoning = el<HTMLSelectElement>("assistantFooterReasoning");
     reasoning.value = connection.reasoning;
     reasoning.disabled = busy || !initialized;
     reasoning.hidden = connection.provider === "local";
-    void discoverFooterModels(connection);
   }
   el("assistantStatus").textContent =
     now === "key"
@@ -819,30 +828,6 @@ function renderFooter(): void {
   el("assistantUseKey").textContent = "Use key";
   el("assistantUseKey").hidden = now === "key";
   for (const button of el("assistantAccount").querySelectorAll("button")) button.disabled = busy || !initialized;
-}
-
-/** The footer's model list, cached by connection; a failure just leaves typed ids working */
-let footerDiscovery: AbortController | null = null;
-let footerModelKey = "";
-
-async function discoverFooterModels(connection: {
-  provider: ProviderSpec["id"];
-  key: string;
-  localUrl: string;
-}): Promise<void> {
-  const signature = [connection.provider, connection.key, connection.localUrl].join("|");
-  if (signature === footerModelKey) return;
-  footerDiscovery?.abort();
-  footerDiscovery = new AbortController();
-  const { signal } = footerDiscovery;
-  try {
-    const found = await listModels(connection.provider, connection.key, connection.localUrl, signal);
-    if (signal.aborted) return;
-    footerModelKey = signature;
-    el("assistantFooterModelList").replaceChildren(...found.map(model => new Option(model)));
-  } catch {
-    if (!signal.aborted) el("assistantFooterModelList").replaceChildren();
-  }
 }
 
 function renderNotice(): void {

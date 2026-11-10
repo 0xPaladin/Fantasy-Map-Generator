@@ -154,31 +154,45 @@ it("hides the reasoning level for local servers and saves it for cloud providers
   expect(reasoningLabel.hidden).toBe(true);
 });
 
-it("shows the model and reasoning level in the footer once a key is connected", async () => {
+it("opens the model picker from the footer name and saves the chosen model", async () => {
   discovery.list.mockResolvedValue(["gpt-6-luna", "gpt-6-sol"]);
   await openSheet();
   enterKey("openai-key");
   click("Connect");
 
-  const model = document.getElementById("assistantFooterModel") as HTMLInputElement;
-  const reasoning = document.getElementById("assistantFooterReasoning") as HTMLSelectElement;
-  expect((document.getElementById("assistantFooterModelField") as HTMLElement).hidden).toBe(false);
-  expect((document.getElementById("assistantFooterKey") as HTMLElement).hidden).toBe(false);
+  const model = document.getElementById("assistantFooterModel") as HTMLButtonElement;
+  expect(model.hidden).toBe(false);
+  expect(model.textContent).toContain("gpt-6-luna");
   expect((document.getElementById("assistantUseKey") as HTMLElement).hidden).toBe(true);
   expect(document.getElementById("assistantStatus")?.textContent).toContain("tokens");
 
-  // the datalist is filled from discovery, so typing offers only known chat models
-  await vi.waitFor(() => expect(document.querySelectorAll("#assistantFooterModelList option").length).toBe(2));
-  expect(model.value).toBe("gpt-6-luna");
-
-  filterInput(model, "gpt-6-sol");
+  // the picker lists the discovered models and filters as you type
+  model.click();
+  await vi.waitFor(() => expect(document.getElementById("assistantModelFilter")).not.toBeNull());
+  const filter = document.getElementById("assistantModelFilter") as HTMLInputElement;
+  const select = document.getElementById("assistantModelSelect") as HTMLSelectElement;
+  expect(select.options.length).toBe(2);
+  filter.value = "sol";
+  filter.dispatchEvent(new Event("input"));
+  expect(select.options.length).toBe(1);
+  expect(select.value).toBe("gpt-6-sol");
+  clickDialogButton("Select");
   expect(localStorage.getItem("fmg-ai-model-openai")).toBe("gpt-6-sol");
+  expect(document.getElementById("assistantModelPicker")).toBeNull(); // dialog closes on Select
+  expect(model.textContent).toContain("gpt-6-sol");
 
-  // an empty model is reverted rather than saved
-  filterInput(model, "   ");
-  expect(localStorage.getItem("fmg-ai-model-openai")).toBe("gpt-6-sol");
-  expect(model.value).toBe("gpt-6-sol");
+  // a filter that matches nothing keeps the window open on Select
+  model.click();
+  await vi.waitFor(() => expect(document.getElementById("assistantModelFilter")).not.toBeNull());
+  const filter2 = document.getElementById("assistantModelFilter") as HTMLInputElement;
+  filter2.value = "zzz";
+  filter2.dispatchEvent(new Event("input"));
+  clickDialogButton("Select");
+  expect(localStorage.getItem("fmg-ai-model-openai")).toBe("gpt-6-sol"); // unchanged
+  expect(document.getElementById("assistantModelPicker")).not.toBeNull(); // still open
+  clickDialogButton("Cancel");
 
+  const reasoning = document.getElementById("assistantFooterReasoning") as HTMLSelectElement;
   reasoning.value = "low";
   reasoning.dispatchEvent(new Event("change"));
   expect(localStorage.getItem("fmg-ai-reasoning-openai")).toBe("low");
@@ -199,11 +213,13 @@ it("hides the reasoning level in the footer for a local server", async () => {
   click("Connect");
 
   const reasoning = document.getElementById("assistantFooterReasoning") as HTMLSelectElement;
-  expect((document.getElementById("assistantModel") as HTMLInputElement).value).toBe("llama3.2");
+  expect(document.getElementById("assistantFooterModel")?.textContent).toContain("llama3.2");
   expect(reasoning.hidden).toBe(true);
 });
 
-function filterInput(input: HTMLInputElement, value: string): void {
-  input.value = value;
-  input.dispatchEvent(new Event("change"));
+function clickDialogButton(label: string): void {
+  const frame = document.querySelector(".dialog-window .dialog-buttonset");
+  const control = [...frame!.querySelectorAll("button")].find(button => button.textContent === label);
+  expect(control).toBeDefined();
+  control!.click();
 }
