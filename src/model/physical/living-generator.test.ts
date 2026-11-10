@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_TECH_BY_ID, computePolityTechDevelopment } from "@/data/living-civ-techs";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
+import { Accounts } from "@/model/economy/accounts";
 import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
@@ -1261,7 +1262,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         area: new Array<number>(count).fill(1),
         c: neighbors,
         p: indices.map(index => [index * 10, index * 10]),
-        routes: new Uint16Array(count)
+        routes: new Uint16Array(count),
+        market: new Uint16Array(count)
       },
       features: [],
       cultures: [
@@ -1380,6 +1382,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         }
       ],
       provinces: [{ i: 0 }, { i: 1, state: 1, burg: 1, center: 5 }, { i: 2, state: 2, burg: 2, center: 11 }],
+      markets: [],
       history: {
         events: [],
         realms: [],
@@ -1975,6 +1978,82 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(development[9]).toBeGreaterThan(6); // its people's technology spreads
       expect(development[6]).toBe(20); // nobody lives there
       expect(living.economyDirty).toBe(true);
+    });
+  });
+
+  describe("Upstream economy bridge (economy alignment Phase 3)", () => {
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    it("initializes the persistent treasuries from the upstream balances", () => {
+      pack.states[1].economy.treasury = 77;
+      const burg = pack.burgs.find(entry => entry.i === 1)!;
+      burg.treasury = 12;
+
+      const living = Living.init();
+
+      expect(living.states[1].treasury).toBe(77);
+      expect(living.burgs[1].treasury).toBe(12);
+    });
+    it("banks a season of the state's upstream cash flows into its treasury", () => {
+      const living = Living.init();
+      const state = pack.states[1];
+      state.economy.treasury = 100;
+      state.economy.collected = 100;
+      state.economy.pocketed = 10;
+      state.economy.spent = { court: 10, administration: 10, infrastructure: 10, military: 0 };
+      pack.deals = [[1, 1, 1, 0, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+
+      Living.tick(1);
+
+      const simGold = living.states[1].yieldsPerTurn?.gold ?? 0;
+      const expected = 100 + simGold + (100 - 10 - 30) * 90;
+      expect(living.states[1].treasury).toBeCloseTo(expected, 0);
+      expect(state.economy.treasury).toBe(living.states[1].treasury);
+    });
+
+    it("accumulates each burg's product into its seasonal ledger", () => {
+      const burg = pack.burgs.find(entry => entry.i === 1)!;
+      burg.treasury = 5;
+      burg.product = 4;
+      burg.pollTaxPaid = 1;
+      pack.deals = [[1, 1, 1, 0, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+
+      const living = Living.init();
+      Living.tick(1);
+
+      expect(living.burgs[1].treasury).toBeCloseTo(5 + 3 * 90, 0);
+    });
+
+    it("re-runs the upstream economy once the dirty flag is raised", () => {
+      const living = Living.init();
+      pack.markets = [];
+      living.economyDirty = true;
+
+      Living.tick(1);
+
+      // nothing consumable on a stripped pack: the flag stays raised for the next real run
+      expect(living.economyDirty).toBe(true);
+
+      pack.markets = [{ i: 1, centerBurgId: 1, goods: {} } as never];
+      Living.tick(1);
+
+      expect(living.economyDirty).toBe(false);
+    });
+
+    it("sways the court with the people's upstream prosperity", () => {
+      const living = Living.init();
+      const sSim = living.states[1];
+      const before = sSim.happiness ?? 0;
+
+      pack.deals = [[1, 1, 1, 0, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+      vi.spyOn(Accounts, "ofState").mockReturnValue({ prosperity: 0.8 } as never);
+      Living.tick(1);
+
+      expect(sSim.happinessBreakdown?.prosperity).toBe(3); // (0.8 - 0.5) * 10
+      expect(sSim.happiness ?? 0).toBe(before + 3);
+      vi.restoreAllMocks();
     });
   });
 

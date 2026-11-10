@@ -13,6 +13,36 @@ export const DEPOSIT_RICHNESS = 2.2; // units a day per population point of its 
 const DEPOSIT_MAP_CELLS = 5000; // deposit counts are per map, so their yield grows with the map's cells
 const DEPOSIT_MAX_POPULATION = 10; // a deposit's yield stops growing past this population
 const PRODUCTIVITY_START = 30; // development past this makes more of every good
+const PILLAGED_OUTPUT = 0.25; // pillaged land loses most of its commercial output
+
+// Living World Builder improvements boost the goods their land grows (docs/plans/upstream-economy-alignment.md §3.1)
+const IMPROVEMENT_GOODS: Record<string, readonly string[]> = {
+  farm: ["Grain", "Wine", "Olives", "Dates", "Hemp", "Sugar", "Tea", "Tobacco"],
+  pasture: ["Cattle", "Wool", "Horses", "Camels", "Cheese", "Leather"],
+  mine: ["Iron", "Copper", "Tin", "Silver", "Gold", "Coal", "Salt", "Saltpeter", "Gemstones"],
+  quarry: ["Stone", "Marble", "Clay", "White sand"],
+  plantation: ["Silk", "Spices", "Dyes", "Incense", "Sugar", "Tea", "Tobacco", "Wine", "Olives"],
+  camp: ["Game", "Furs", "Ivory", "Honey", "Amber"],
+  lumber_mill: ["Wood", "Mahogany", "Tar"],
+  fishing_boats: ["Fish", "Pearls", "Blubber"]
+};
+const IMPROVEMENT_BOOST: Record<string, number> = {
+  farm: 0.35,
+  pasture: 0.35,
+  mine: 0.4,
+  quarry: 0.4,
+  plantation: 0.4,
+  camp: 0.4,
+  lumber_mill: 0.4,
+  fishing_boats: 0.4
+};
+const IMPROVEMENT_TECH_BOOST: Record<string, readonly string[]> = {
+  farm: ["civil_service", "fertilizer"],
+  pasture: ["fertilizer"],
+  mine: ["chemistry", "dynamite"]
+};
+const IMPROVEMENT_TECH_EXTRA: Record<string, number> = { farm: 0.15, pasture: 0.15, mine: 0.2 };
+export const TRADING_POST_EARNINGS = 1.2; // a trading post lifts rural earnings in its cell by a fifth
 
 /** What the land yields at the map's people and good rules: rural output, deposits and their multipliers */
 class OutputModule {
@@ -79,6 +109,37 @@ class OutputModule {
 
   /** Multipliers and development on the good at the cell; 0 beyond its technology */
   getModifiers(good: Good, cellId: number): number {
+    return this.getBaseModifiers(good, cellId) * this.getSimMultiplier(good, cellId);
+  }
+
+  /** Living World Builder improvements and pillage on the cell; 1 without a simulation */
+  getSimMultiplier(good: Good, cellId: number): number {
+    const sim = pack.history?.living;
+    if (!sim?.enabled) return 1;
+    const cell = sim.cells?.[cellId];
+    if (cell?.pillaged) return PILLAGED_OUTPUT;
+
+    const improvement = cell?.improvement;
+    if (!improvement) return 1;
+    const names = IMPROVEMENT_GOODS[improvement];
+    let boost = names?.includes(good.name) ? (IMPROVEMENT_BOOST[improvement] ?? 0) : 0;
+    if (boost > 0) {
+      const techs = sim.states?.[pack.cells.state[cellId]]?.researchedTechs ?? [];
+      if ((IMPROVEMENT_TECH_BOOST[improvement] ?? []).some(tech => techs.includes(tech))) {
+        boost += IMPROVEMENT_TECH_EXTRA[improvement] ?? 0;
+      }
+    }
+    return 1 + boost;
+  }
+
+  /** Rural earnings multiplier on a cell: a trading post sells the produce better */
+  getSimEarningsMultiplier(cellId: number): number {
+    const cell = pack.history?.living?.cells?.[cellId];
+    return cell?.improvement === "trading_post" && !cell.pillaged ? TRADING_POST_EARNINGS : 1;
+  }
+
+  /** Multipliers and development on the good at the cell; 0 beyond its technology */
+  private getBaseModifiers(good: Good, cellId: number): number {
     if (Goods.isAstralCatalogue()) return this.getAstralModifiers(good, cellId);
     const development = Development.ofCell(cellId);
     if (good.development && development < good.development) return 0; // beyond the cell's technology

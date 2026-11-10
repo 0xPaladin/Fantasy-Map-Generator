@@ -29,6 +29,22 @@ export const MAX_DEPOSIT_VALUE = 200; // most base value a burg's deposit yields
 export const DEPOSIT_OUTPUT = 2; // units a worker gets a day from the burg's own deposit, before multipliers
 const MAX_WORKERS = 300;
 export const WORKFORCE_SHARE = 0.32; // townspeople working in trades; the rest serve, build, farm or are too young or old
+
+// Living World city buildings multiply the burg's manufactures (docs/plans/upstream-economy-alignment.md §3.1)
+const MANUFACTURING_BUILDINGS: Record<string, number> = { workshop: 1.15, windmill: 1.1, factory: 1.35 };
+const FORGE_GOODS = new Set(["Arms", "Artillery", "Tools", "Bronze", "Gunpowder", "Coins"]);
+const ARMORY_GOODS = new Set(["Arms", "Artillery"]);
+const FORGE_BOOST = 1.2; // forge works metal and arms a fifth faster
+const ARMORY_BOOST = 1.25; // the armory forge arms and guns a quarter faster
+
+/** Multiplier a burg's Living World buildings give the named good's manufacture. */
+export function buildingModifierFor(buildings: readonly string[], goodName: string): number {
+  let modifier = 1;
+  for (const id of buildings) modifier *= MANUFACTURING_BUILDINGS[id] ?? 1;
+  if (buildings.includes("forge") && FORGE_GOODS.has(goodName)) modifier *= FORGE_BOOST;
+  if (buildings.includes("armory_forge") && ARMORY_GOODS.has(goodName)) modifier *= ARMORY_BOOST;
+  return modifier;
+}
 const WORKERS_PER_TURN = 5;
 const MAX_CLEARING_PASSES = 3; // outlets a burg tries for its leftovers on its last turn
 const LOT_DEPTH_SHARE = 0.5; // a step sells at most this share of a day's sales where it sells
@@ -847,8 +863,15 @@ export class ProductionModule {
 
   /** The good's modifiers at the burg, fixed for the run; a deposit gives more while it lasts */
   private getBurgModifiers(day: BurgDay, good: Good): number {
-    day.modifiers[good.i] ??= Output.getModifiers(good, day.burg.cell);
+    day.modifiers[good.i] ??= Output.getModifiers(good, day.burg.cell) * this.getBuildingModifier(day.burg, good);
     return day.modifiers[good.i] * (this.isWorkingDeposit(day, good) ? DEPOSIT_OUTPUT : 1);
+  }
+
+  /** Living World CIV_BUILDINGS on the burg speed its manufactures; 1 without a simulation */
+  private getBuildingModifier(burg: Burg, good: Good): number {
+    const buildings = pack.history?.living?.burgs[burg.i]?.civBuildings;
+    if (!buildings?.length) return 1;
+    return buildingModifierFor(buildings, good.name);
   }
 
   /** Working its deposit of the good while that lasts, otherwise the good's recipes */

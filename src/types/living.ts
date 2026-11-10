@@ -225,6 +225,8 @@ export interface BurgSimState {
   religionPressure?: Record<number, number>;
   pantheonId?: string | null;
   pillaged?: boolean;
+  /** accumulated seasonal reserves (Living ledger); upstream `burg.treasury` stays a day's net */
+  treasury?: number;
 }
 
 export interface ProvinceSimState {
@@ -268,6 +270,8 @@ export interface StatePolitySim {
   peaceTreatyTurns?: Record<number, number>;
   /** Diplomatic treaties (Phase D): other-state id → active treaty kinds. Symmetric. */
   treaties?: Record<number, TreatyKind[]>;
+  /** accumulated seasonal reserves (Living ledger); mirrored onto `state.economy.treasury` */
+  treasury?: number;
 }
 
 export type LivingNewsKind =
@@ -731,6 +735,8 @@ export interface HappinessBreakdown {
   luxuries: number;
   buildings: number;
   religion: number;
+  /** upstream Prosperity of the state's people, when the economy has run */
+  prosperity?: number;
   cityUnhappiness: number;
   citizenUnhappiness: number;
   unrestUnhappiness: number;

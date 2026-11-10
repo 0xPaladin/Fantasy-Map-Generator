@@ -40,7 +40,11 @@ import {
   stepBattleRound
 } from "@/model/battle/battle";
 import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
+import { Accounts } from "@/model/economy/accounts";
+import { Production } from "@/model/economy/production-generator";
+import { Prosperity as UpstreamProsperity } from "@/model/economy/prosperity";
 import { Routes } from "@/model/economy/routes-generator";
+import { StateOrders } from "@/model/economy/state-orders";
 import {
   armyHp,
   armyIsEmpty,
@@ -138,6 +142,10 @@ const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
 const SCHOLARLY_BUILDINGS = new Set(["library", "university", "public_school"]);
 const DEVELOPMENT_DECAY_SLACK = 3; // rural cells keep a little more than their land allows
+const SEASON_DAYS = 90; // upstream cash flows are a day's; a season banks ninety of them
+const SCHOLARLY_GOODS = ["Paper", "Ink", "Books", "Glass"] as const;
+const SCHOLAR_SCIENCE_CAP = 5; // books light a city's lamps but cannot replace schools
+const COURT_PROVISION_YIELD = 3; // culture and faith a fully served court provides per season
 
 const ERA_EPITHETS = ["Ash", "the Compact", "Drowned Kings", "Iron and Salt", "Quiet Stars", "Broken Crowns"] as const;
 const ERA_ORDINALS = [
@@ -1377,6 +1385,7 @@ class LivingModel {
       this.stepCities(living);
       this.stepEmpire(living);
       this.stepDevelopmentDiffusion(living);
+      this.stepEconomy(living);
       this.stepReligion(living);
       this.stepTactical(living);
       this.stepBurgUnrest(living);
@@ -1536,6 +1545,7 @@ class LivingModel {
           civBuildings: syncCivBuildingsFromFlags(burg, []),
           construction: null,
           unrest: 0,
+          treasury: Number(burg.treasury ?? 0),
           originalOwner: burg.state ?? 0,
           originalCulture: burg.culture,
           originalReligion: pack.cells.religion?.[burg.cell] ?? 0
@@ -1584,6 +1594,7 @@ class LivingModel {
           researchedTechs: [],
           researchedProgress: {},
           freeTechs: 0,
+          treasury: Number(pack.states[state.i]?.economy?.treasury ?? 0),
           yieldsPerTurn: emptyYields()
         };
       } else {
@@ -1593,6 +1604,7 @@ class LivingModel {
         existing.researchedTechs ??= [];
         existing.researchedProgress ??= {};
         existing.freeTechs ??= 0;
+        existing.treasury ??= Number(state.economy?.treasury ?? 0);
         existing.yieldsPerTurn ??= emptyYields();
         existing.warTurns ??= {};
         existing.peaceTreatyTurns ??= {};
@@ -1741,6 +1753,68 @@ class LivingModel {
     const biome = pack.biomes?.[pack.cells.biome[cell]]?.development ?? 0;
     const water = (pack.cells.r?.[cell] ? 1 : 0) + (pack.cells.harbor?.[cell] ? 1 : 0);
     return minmax(Math.round(polityTarget + biome + water), 1, 100);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upstream economy bridge (docs/plans/upstream-economy-alignment.md §3.2)
+  // ---------------------------------------------------------------------------
+
+  /** §3.2: refresh the upstream economy when stale, then bank the season's cash flows. */
+  private stepEconomy(living: LivingWorldState): void {
+    if (living.season === 0 || living.economyDirty) {
+      if (pack.markets?.length) {
+        living.economyDirty = false;
+        try {
+          Production.regenerate();
+        } catch {
+          // a stripped pack cannot run the economy; the abstract sim yields carry on
+        }
+      }
+    }
+    this.bankSeasonalGold(living);
+  }
+
+  /** §3.2: bank the season's upstream cash flows and keep the sim treasury mirror in step. */
+  private bankSeasonalGold(living: LivingWorldState): void {
+    const ran = Boolean(pack.deals?.length);
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+
+      const net = ran ? this.upstreamSeasonalNet(state) : 0;
+      if (net) state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) + net) * 100) / 100;
+      if (Number(state.economy.treasury) < 0) this.settleDebt(state, living);
+      sSim.treasury = Number(state.economy.treasury ?? 0); // the ledger mirrors the accumulated reserve
+    }
+    if (!ran) return;
+
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed) continue;
+      const bSim = living.burgs[burg.i];
+      if (!bSim) continue;
+      bSim.treasury ??= Number(burg.treasury ?? 0);
+      const net = ((burg.product ?? 0) - (burg.pollTaxPaid ?? 0)) * SEASON_DAYS;
+      if (net) bSim.treasury = Math.round((bSim.treasury + net) * 100) / 100;
+    }
+  }
+
+  /** A season of the state's last run: what was collected minus corruption and spending. */
+  private upstreamSeasonalNet(state: State): number {
+    const economy = state.economy;
+    if (!economy) return 0;
+    const spent = Object.values(economy.spent ?? {}).reduce((total, value) => total + Number(value ?? 0), 0);
+    return (Number(economy.collected ?? 0) - Number(economy.pocketed ?? 0) - spent) * SEASON_DAYS;
+  }
+
+  /** Upstream accounts are readable only after a full economy run on a whole map. */
+  private canReadUpstreamEconomy(): boolean {
+    return Boolean(pack.deals?.length && pack.cells.market && options.map.goods?.length);
+  }
+
+  private upstreamAccounts(stateId: number): ReturnType<typeof Accounts.ofState> {
+    return this.canReadUpstreamEconomy() ? Accounts.ofState(stateId) : null;
   }
 
   syncProvinces(living: LivingWorldState): void {
@@ -3914,7 +3988,7 @@ class LivingModel {
       }
 
       const grossGold = cityYields.gold;
-      const cityScience = this.citySciencePerTick(bSim);
+      const cityScience = this.citySciencePerTick(bSim) + this.scholarScienceBonus(burg.i);
       const netGold = Math.round((grossGold - maintenance) * 100) / 100;
       const roundedScience = Math.round(cityScience * 100) / 100;
       const citizens = bSim.citizens ?? citizensFromPopulation(burg.population ?? 0);
@@ -3966,6 +4040,13 @@ class LivingModel {
         if (key === "happiness") continue;
         totals[key] += def.yields[key] ?? 0;
       }
+    }
+
+    // §3.3: a court fully served with luxury goods feeds culture and faith
+    const court = StateOrders.getProvision(state, "court");
+    if (court > 0) {
+      totals.culture += COURT_PROVISION_YIELD * court;
+      totals.faith += COURT_PROVISION_YIELD * court;
     }
 
     const unitTypes = Military.getUnitTypes();
@@ -4035,6 +4116,17 @@ class LivingModel {
     return Math.round(science * 100) / 100;
   }
 
+  /** §3.3: consuming scholarly goods adds a capped science bonus to the city. */
+  private scholarScienceBonus(burgId: number): number {
+    if (!this.canReadUpstreamEconomy()) return 0;
+    const consumed = UpstreamProsperity.getConsumption(burgId);
+    const units = SCHOLARLY_GOODS.reduce((total, name) => {
+      const good = options.map.goods.find(entry => entry.name === name);
+      return total + (good ? (consumed[good.i] ?? 0) : 0);
+    }, 0);
+    return Math.min(SCHOLAR_SCIENCE_CAP, Math.round(units * 2) / 2);
+  }
+
   /** §7.2 Empire Happiness: base + luxuries + buildings/religion − cities − citizens − unrest. */
   private recomputeEmpireHappiness(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
     const breakdown: HappinessBreakdown = {
@@ -4072,12 +4164,17 @@ class LivingModel {
     breakdown.buildings += localHappiness;
     breakdown.religion = this.beliefHappiness(state, living);
 
+    // §3.3: upstream Prosperity of the people sways the court; 0.5 is neutral
+    const prosperity = this.upstreamAccounts(state.i)?.prosperity;
+    if (prosperity != null) breakdown.prosperity = Math.round((prosperity - 0.5) * 10);
+
     sSim.happinessBreakdown = breakdown;
     sSim.happiness =
       breakdown.base +
       breakdown.luxuries +
       breakdown.buildings +
-      breakdown.religion -
+      breakdown.religion +
+      (breakdown.prosperity ?? 0) -
       breakdown.cityUnhappiness -
       breakdown.citizenUnhappiness -
       breakdown.unrestUnhappiness;

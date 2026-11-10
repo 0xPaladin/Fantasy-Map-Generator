@@ -156,7 +156,8 @@ class ProsperityModule {
           comfortTop: RURAL_COMFORT_TOP,
           varietyTop: RURAL_VARIETY_TOP
         });
-        this.rural.set(cellId, { people, earned: market.rural.earned * share, bought, goods, living });
+        const earnings = market.rural.earned * share * Output.getSimEarningsMultiplier(cellId);
+        this.rural.set(cellId, { people, earned: earnings, bought, goods, living });
       }
     }
   }
