@@ -198,6 +198,9 @@ describe("FactionsEditor", () => {
     const dialog = document.querySelector("#factionOutpostsDialog")!;
     expect(dialog.innerHTML).toContain("🌾 4 · 🔨 3");
     expect(dialog.innerHTML).toContain("🌾 3 · 🔨 2");
+    expect(dialog.innerHTML).toContain("Trade");
+    expect(dialog.innerHTML).toContain("trade a season");
+    expect(dialog.innerHTML).toContain("🪙 100");
   });
 
   it("supports tab switching between HQ & Outposts, Assets, and Forces", () => {

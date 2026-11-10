@@ -5,10 +5,15 @@ vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
 vi.mock("@/controllers", () => ({
   Controllers: {
     BurgEditor: { open: vi.fn() },
-    BurgsOverview: { open: vi.fn() }
+    BurgEconomyOverview: { open: vi.fn() },
+    BurgsOverview: { open: vi.fn() },
+    EconomyOverview: { open: vi.fn() },
+    StabilityOverview: { open: vi.fn() },
+    StateBudgetEditor: { open: vi.fn() }
   }
 }));
 
+import { Controllers } from "@/controllers";
 import { Living } from "@/model/physical/living-generator";
 import type { State } from "@/model/political/states-generator";
 import { openStateCitiesDialog, STATE_CITIES_DIALOG_ID } from "./state-cities-dialog";
@@ -146,6 +151,29 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
 
     const recomputed = Living.recomputeStateYields(state);
     expect(recomputed).toEqual(breakdown.total);
+  });
+
+  it("shows the state's development and links each city's upstream economy", () => {
+    const cells = pack.cells as unknown as Record<string, unknown>;
+    cells.burg = Uint16Array.from([0, 1, 2, 3]);
+    cells.development = Uint8Array.from([0, 44, 44, 44]);
+    cells.pop = [0, 20, 10, 5];
+    options.map.eras = [
+      { level: 0, name: "Paleolithic" },
+      { level: 40, name: "Renaissance" }
+    ] as never;
+
+    openStateCitiesDialog(1);
+
+    const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`) as HTMLElement;
+    expect(dialog.innerHTML).toContain("Development");
+    expect(dialog.innerHTML).toContain("Renaissance");
+    expect(dialog.querySelector("#stateCitiesBudgetBtn")).not.toBeNull();
+    // no economy run in this pack: prosperity falls back to an em dash
+    expect(dialog.querySelector("#stateCitiesTable")?.innerHTML).toContain("—");
+
+    (dialog.querySelector(".cityEconomyBtn") as HTMLButtonElement).click();
+    expect(Controllers.BurgEconomyOverview.open).toHaveBeenCalledWith(1);
   });
 
   it("renders State Cities & Yields dialog with header, wide table, scroll styling, add city and add asset controls", () => {

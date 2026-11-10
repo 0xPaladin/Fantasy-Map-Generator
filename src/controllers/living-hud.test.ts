@@ -11,6 +11,7 @@ const { mocks, state } = vi.hoisted(() => {
       states: {},
       provinces: {},
       burgs: {},
+      cells: {} as Record<number, { improvement?: string }>,
       recentNews: [] as unknown[]
     }
   };
@@ -51,6 +52,7 @@ vi.mock("@/model/physical/living-generator", () => ({
   Living: mocks.living,
   figureLevel: (xp = 0) => 1 + Math.floor(xp / 60),
   activeCivThemeId: () => "fantasy",
+  getCellYields: () => ({ food: 2, production: 1, gold: 0, science: 0, culture: 0, faith: 0, happiness: 0 }),
   factionSuppressionProductionCost: (node: { tier?: number }) => 6 + (node?.tier ?? 2) * 4,
   pantheonFaithCost: (founded: number) => 10 + 5 * founded,
   prophetFaithCost: (earned: number) => 200 + 100 * earned,
@@ -92,6 +94,7 @@ import { LivingHud } from "./living-hud";
 
 describe("LivingHud", () => {
   beforeEach(() => {
+    LivingHud.close(); // the module keeps the last selection across reopen
     document.body.innerHTML = `<div id="dialogs"></div><svg id="viewbox"></svg><div id="livingOverlay"></div>`;
     vi.clearAllMocks();
 
@@ -116,8 +119,13 @@ describe("LivingHud", () => {
           [40, 40],
           [50, 50]
         ],
+        h: new Uint8Array([25, 25, 25, 25, 25, 25]),
         c: [[1], [0, 2], [1, 3], [2, 4], [3, 5], [4]]
       },
+      biomes: [
+        { i: 0, name: "Marine" },
+        { i: 1, name: "Grassland" }
+      ],
       burgs: [
         { i: 0 },
         { i: 1, name: "Aelor", cell: 5, x: 50, y: 50, state: 1, population: 10, capital: 1 },
@@ -310,6 +318,59 @@ describe("LivingHud", () => {
     expect(panel.querySelector('[data-god="ascend-faction"]')).toBeTruthy();
     state.living.provinces = {} as never;
     (pack.factions as unknown[]) = [{ i: 0 }];
+  });
+
+  it("renders a cell card with development, deposit and improvement", () => {
+    const cells = pack.cells as unknown as Record<string, unknown>;
+    cells.development = Uint8Array.from([0, 20, 20, 0, 44, 20]);
+    cells.prosperity = Uint8Array.from([0, 40, 50, 0, 61, 40]);
+    cells.good = Uint16Array.from([0, 0, 0, 0, 1, 0]);
+    cells.biome = Uint8Array.from([0, 1, 1, 1, 1, 1]);
+    cells.pop = new Array(6).fill(5) as never;
+    options.map.goods = [
+      { i: 0, name: "None" },
+      { i: 1, name: "Iron" }
+    ] as never;
+    options.map.eras = [
+      { level: 0, name: "Paleolithic" },
+      { level: 40, name: "Renaissance" }
+    ] as never;
+    state.living.cells = { 4: { improvement: "farm" } } as never;
+
+    openHud();
+    LivingHud.inspect("cell", 4);
+
+    const panel = document.getElementById("livingInspector")!;
+    expect(panel.textContent).toContain("Cell 4");
+    expect(panel.textContent).toContain("44 development");
+    expect(panel.textContent).toContain("Renaissance");
+    expect(panel.textContent).toContain("61% prosperity");
+    expect(panel.textContent).toContain("Deposit: Iron");
+    expect(panel.textContent).toContain("Farm");
+    expect(panel.querySelector('[data-zoom-cell="4"]')).toBeTruthy();
+    state.living.cells = {} as never;
+  });
+
+  it("surfaces the state's upstream economy and its dialog buttons", () => {
+    state.living.states = {
+      1: { stateId: 1, agenda: null, unravel: 0, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    const cells = pack.cells as unknown as Record<string, unknown>;
+    cells.development = Uint8Array.from([0, 45, 45, 0, 45, 45]);
+    cells.pop = new Array(6).fill(5) as never;
+    options.map.eras = [
+      { level: 0, name: "Paleolithic" },
+      { level: 40, name: "Renaissance" }
+    ] as never;
+
+    openHud();
+    LivingHud.inspect("state", 1);
+
+    const panel = document.getElementById("livingInspector")!;
+    expect(panel.textContent).toContain("Upstream economy");
+    expect(panel.textContent).toContain("Renaissance");
+    expect(panel.querySelector('[data-open="budget"]')).toBeTruthy();
+    state.living.states = {} as never;
   });
 
   it("closes and reopens the HUD cleanly", () => {

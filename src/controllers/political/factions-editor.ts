@@ -62,6 +62,11 @@ function formatYields(yields?: YieldValues): string {
   return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)}`;
 }
 
+/** Gold a node draws from the upstream economy this season, before upkeep */
+function formatTrade(gold: number | undefined): string {
+  return gold ? `🪙 ${Math.round(gold * 10) / 10}` : "—";
+}
+
 export function formatAssetBenefits(assetId?: string): string {
   if (!assetId) return "—";
   const def = getFactionAsset(assetId);
@@ -664,6 +669,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>`
     : "";
   const hqYields = formatYields(breakdown.hq?.yields ?? faction.hq.sim?.cityYields);
+  const hqTrade = formatTrade(breakdown.hq?.upstreamGold);
   const hqCitizens = breakdown.hq?.citizens ?? faction.hq.sim?.citizens ?? 0;
   const hqCells = breakdown.hq?.workedCells ?? faction.hq.sim?.workedCells?.length ?? 0;
 
@@ -678,6 +684,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       <div style="justify-content: center; text-align: center;">2</div>
       <div style="justify-content: center; text-align: center;">${Math.round(faction.hq.influence ?? 70)}%${hqStatusText}${hqSuppressionText}</div>
       <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hqYields}</div>
+      <div style="justify-content: center; text-align: center;">${hqTrade}</div>
       <div style="justify-content: center; text-align: center;">${hqCitizens}</div>
       <div style="justify-content: center; text-align: center;">${hqCells}</div>
       <div></div>
@@ -690,6 +697,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       const burgName = burg?.name ?? `Burg ${op.burgId}`;
       const nodeBreakdown = breakdown.outposts.find(b => b.node === op);
       const yields = formatYields(nodeBreakdown?.yields ?? op.sim?.cityYields);
+      const trade = formatTrade(nodeBreakdown?.upstreamGold);
       const citizens = nodeBreakdown?.citizens ?? op.sim?.citizens ?? 0;
       const cells = nodeBreakdown?.workedCells ?? op.sim?.workedCells?.length ?? 0;
       const hostSim = pack.history?.living?.burgs?.[op.burgId];
@@ -712,6 +720,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         <div style="justify-content: center; text-align: center;">${op.tier}</div>
         <div style="justify-content: center; text-align: center;">${op.influence}%${statusText}${suppressionText}</div>
         <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${yields}</div>
+        <div style="justify-content: center; text-align: center;">${trade}</div>
         <div style="justify-content: center; text-align: center;">${citizens}</div>
         <div style="justify-content: center; text-align: center;">${cells}</div>
         <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
@@ -977,7 +986,10 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 8px;">
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.category)}</span>
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.allegiance)}</span>
-        <span class="badge">${capitalize(faction.alignment)}</span>
+        <span class="badge" style="margin-right: 4px;">${capitalize(faction.alignment)}</span>
+        <span class="badge" style="margin-right: 4px;">🪙 ${Math.round(faction.treasury ?? 0)}</span>
+        <span class="badge" style="margin-right: 4px;">📈 ${Math.round(breakdown.upstreamGold * 10) / 10} trade a season</span>
+        ${breakdown.charterTithe ? `<span class="badge">🏛️ ${Math.round(breakdown.charterTithe * 10) / 10} tithes a season</span>` : ""}
       </div>
 
       <!-- Tab Buttons -->
@@ -995,12 +1007,13 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
 
       <!-- Tab 1: HQ & Outposts -->
       <div class="tabPanel" data-panel="outposts" style="display: ${activeTab === "outposts" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
-        <div id="outpostsTable" class="table" style="--table-columns: 10em 3.5em 6.5em minmax(28em, 3fr) 4.5em 4em 2em; width: 0; min-width: 100%;">
+        <div id="outpostsTable" class="table" style="--table-columns: 10em 3.5em 6.5em minmax(28em, 3fr) 5.5em 4.5em 4em 2em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Burg")}</div>
             <div style="justify-content: center; text-align: center;">${t("Tier")}</div>
             <div style="justify-content: center; text-align: center;">${t("Influence")}</div>
             <div>${t("Yields")}</div>
+            <div style="justify-content: center; text-align: center;" data-tip="${t("Gold the node draws from its host's economy a season")}">${t("Trade")}</div>
             <div style="justify-content: center; text-align: center;">${t("Citizens")}</div>
             <div style="justify-content: center; text-align: center;">${t("Cells")}</div>
             <div></div>

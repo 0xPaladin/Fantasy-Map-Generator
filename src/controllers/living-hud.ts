@@ -9,20 +9,29 @@ import { HERO_DISCIPLINES } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
+import { CIV_IMPROVEMENT_BY_ID } from "@/data/living-civ-improvements";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
+import { Accounts } from "@/model/economy/accounts";
+import { DEAL_KINDS, Deals } from "@/model/economy/deals";
+import { Output } from "@/model/economy/output";
+import { Prosperity } from "@/model/economy/prosperity";
 import { Pack } from "@/model/graph/pack-generator";
+import { canReadUpstreamEconomy } from "@/model/physical/living-faction-economy";
 import {
   activeCivThemeId,
   factionSuppressionProductionCost,
   figureLevel,
+  getCellYields,
   Living
 } from "@/model/physical/living-generator";
 import { ensureHeroSheet } from "@/model/physical/living-heroes";
 import { Factions } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
+import { Stability } from "@/model/political/stability";
+import { Development } from "@/model/society/development-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
 import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
@@ -149,6 +158,7 @@ type Selection =
   | { kind: "state"; id: number }
   | { kind: "burg"; id: number }
   | { kind: "province"; id: number }
+  | { kind: "cell"; id: number }
   | { kind: "figure"; id: number }
   | { kind: "marker"; id: number };
 
@@ -193,6 +203,7 @@ function close(): void {
   removeLivingOverlay();
   const inspector = findEl(INSPECTOR_ID);
   if (inspector) inspector.remove();
+  selected = null;
   playing = 0;
   stopTimer();
 }
@@ -398,6 +409,11 @@ function onMapClick(svg: SVGElement, event: MouseEvent): void {
     return;
   }
 
+  if (event.altKey) {
+    selectCell(cell);
+    return;
+  }
+
   const stateId = pack.cells.state?.[cell] ?? 0;
   if (stateId) {
     selectState(stateId);
@@ -407,7 +423,10 @@ function onMapClick(svg: SVGElement, event: MouseEvent): void {
   const marker = (pack.markers ?? []).find(entry => entry?.cell === cell);
   if (marker) {
     selectMarker(marker.i);
+    return;
   }
+
+  selectCell(cell); // unowned land and water: inspect the cell itself
 }
 
 function bindOverlayClicks(): void {
@@ -505,6 +524,11 @@ function selectProvince(provinceId: number): void {
   renderInspector();
 }
 
+function selectCell(cellId: number): void {
+  selected = { kind: "cell", id: cellId };
+  renderInspector();
+}
+
 function validateSelection(): void {
   if (!selected) return;
   const current = selected;
@@ -515,9 +539,11 @@ function validateSelection(): void {
         ? Boolean(pack.burgs[current.id] && !pack.burgs[current.id].removed)
         : current.kind === "province"
           ? Boolean(pack.provinces?.[current.id] && !pack.provinces[current.id].removed)
-          : current.kind === "marker"
-            ? (pack.markers ?? []).some(marker => marker?.i === current.id)
-            : Boolean(pack.history?.figures?.some(figure => figure.i === current.id));
+          : current.kind === "cell"
+            ? Boolean(pack.cells.i?.includes(current.id))
+            : current.kind === "marker"
+              ? (pack.markers ?? []).some(marker => marker?.i === current.id)
+              : Boolean(pack.history?.figures?.some(figure => figure.i === current.id));
   if (!alive) selected = null;
 }
 
@@ -539,9 +565,11 @@ function renderInspector(): void {
         ? renderBurgCard(selected.id)
         : selected.kind === "province"
           ? renderProvinceCard(selected.id)
-          : selected.kind === "marker"
-            ? renderMarkerCard(selected.id)
-            : renderFigureCard(selected.id);
+          : selected.kind === "cell"
+            ? renderCellCard(selected.id)
+            : selected.kind === "marker"
+              ? renderMarkerCard(selected.id)
+              : renderFigureCard(selected.id);
 
   panel.innerHTML = `<button type="button" class="livingInspectorClose" data-inspector="close" title="Close Inspector">✕</button>${content}`;
   bindInspectorButtons(panel);
@@ -725,6 +753,7 @@ function renderStateCard(stateId: number): string {
     <button type="button" class="livingInspectorTitle" data-open="states" data-id="${stateId}" title="States editor">${escapeHtml(state.fullName ?? state.name ?? "State")}</button>
     ${renderRuler(ruler, age)}
     ${renderCivState(sSim, stateId)}
+    ${renderUpstreamState(stateId)}
     ${renderStateProvinces(stateId)}
     ${renderEconomy(sSim, stateId)}
     ${renderAgenda(sSim, living)}
@@ -806,9 +835,9 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
   const happinessChip = `<span class="livingCivChip" title="Empire Happiness">${happinessIcon} ${Math.round(
     sSim.happiness ?? 0
   )}</span>`;
-  const treasuryChip = `<span class="livingCivChip" title="Treasury">🪙 ${Math.round(
+  const treasuryChip = `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net gold: open the state budget">🪙 ${Math.round(
     pack.states[stateId]?.economy?.treasury ?? 0
-  )}</span>`;
+  )} (${Math.round(yields?.gold ?? 0) >= 0 ? "+" : ""}${Math.round(yields?.gold ?? 0)})</button>`;
 
   const tech = sSim.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
   const techName = tech ? resolveCivTechName(activeCivThemeId(), tech) : "No research";
@@ -830,6 +859,136 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
     ${list}
     ${techProgress}
   </div>`;
+}
+
+const percent = (value: number | null | undefined): string => (value == null ? "—" : `${Math.round(value * 100)}%`);
+
+/** The era a development level falls in, as the upstream schema names it */
+function eraOf(level: number): string {
+  return options.map.eras?.length ? Development.getEra(level) : "";
+}
+
+/** §6.2: the upstream economy behind the state, its court's books and its forces' upkeep. */
+function renderUpstreamState(stateId: number): string {
+  const readable = canReadUpstreamEconomy();
+  const prosperity = readable ? Accounts.ofState(stateId)?.prosperity : undefined;
+  const stability = readable ? Stability.get(stateId)?.stability : undefined;
+  const development =
+    pack.cells.h && pack.cells.development ? Development.getAverages(pack.cells.state)[stateId] : undefined;
+  const upkeep = Military.getUpkeep(stateId);
+  const battle = Military.getLivingBattleUpkeep(stateId);
+  if (prosperity == null && stability == null && development == null && upkeep === 1) return "";
+  const era = development == null ? "" : eraOf(development);
+
+  const chips = [
+    prosperity == null
+      ? ""
+      : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,
+    stability == null
+      ? ""
+      : `<button type="button" class="livingCivChip" data-open="stability" data-id="${stateId}" title="Open the state's and its provinces' stability">⚖️ ${percent(stability)} stability</button>`,
+    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Open the state's budget, taxes and tariffs">💼 Budget</button>`,
+    development == null
+      ? ""
+      : `<span class="livingCivChip" title="The people's average technology, which unlocks goods and raises output">🧪 ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`,
+    `<span class="livingCivChip" title="Share of the military spending its forces need; below it they fight worse">⚔️ ${percent(upkeep)} upkeep · ×${battle.toFixed(2)}</span>`
+  ];
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Upstream economy</div>
+    <div class="livingPoolVitals">${chips.join("")}</div>
+  </div>`;
+}
+
+/** A burg's trade this run: what it sold less what it bought */
+function burgTradeBalance(burgId: number): number {
+  let balance = 0;
+  for (const deal of pack.deals ?? []) {
+    if (deal[0] !== burgId) continue;
+    const value = Deals.getGoodsValue(deal);
+    balance += deal[3] === DEAL_KINDS.sale ? value : -value;
+  }
+  return balance;
+}
+
+/** §6.2: a city's upstream prosperity and trade balance. */
+function renderUpstreamBurg(burgId: number): string {
+  if (!canReadUpstreamEconomy()) return "";
+  const prosperity = Prosperity.getBurg(burgId)?.prosperity;
+  const balance = burgTradeBalance(burgId);
+  if (prosperity == null && !balance) return "";
+
+  const trade = balance
+    ? `<span class="livingCivChip" title="What the burg sold less what it bought in the last run">${balance > 0 ? "▲" : "▼"} ${Math.abs(Math.round(balance))} trade</span>`
+    : "";
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Upstream economy</div>
+    <div class="livingPoolVitals">
+      <button type="button" class="livingCivChip" data-open="burg-economy" data-id="${burgId}" title="Open the burg's production, consumption and balance">🏙️ ${percent(prosperity)} prosperity</button>
+      ${trade}
+    </div>
+  </div>`;
+}
+
+/** §6.2: a cell's development, prosperity, improvement, deposit and rural output. */
+function renderCellCard(cellId: number): string {
+  const living = Living.getState();
+  const stateId = pack.cells.state?.[cellId] ?? 0;
+  const provinceId = pack.cells.province?.[cellId] ?? 0;
+  const burgId = pack.cells.burg?.[cellId] ?? 0;
+  const biome = pack.biomes?.[pack.cells.biome?.[cellId] ?? 0]?.name;
+  const level = pack.cells.h && pack.cells.development ? Development.ofCell(cellId) : undefined;
+  const prosperity = pack.cells.prosperity?.[cellId];
+  const depositId = Number(pack.cells.good?.[cellId] ?? 0);
+  const deposit = depositId ? options.map.goods?.find(good => good.i === depositId)?.name : undefined;
+  const cellSim = living.cells?.[cellId];
+  const improvement = cellSim?.improvement
+    ? (CIV_IMPROVEMENT_BY_ID[cellSim.improvement]?.name ?? cellSim.improvement)
+    : undefined;
+  const yields = getCellYields(cellId, stateId, living);
+
+  let output = "";
+  if (canReadUpstreamEconomy() && pack.cells.development) {
+    try {
+      const produced = Output.ofCell(cellId);
+      output = Object.entries(produced)
+        .sort((a, b) => Number(b[1]) - Number(a[1]))
+        .slice(0, 4)
+        .map(([goodId, units]) => {
+          const good = options.map.goods?.find(entry => entry.i === Number(goodId));
+          return `${escapeHtml(good?.name ?? goodId)} ${Math.round(Number(units) * 10) / 10}`;
+        })
+        .join(" · ");
+    } catch {
+      output = ""; // a stripped pack cannot price rural produce
+    }
+  }
+
+  const state = stateId ? pack.states?.[stateId] : undefined;
+  const province = provinceId ? pack.provinces?.[provinceId] : undefined;
+  const burg = burgId ? pack.burgs?.[burgId] : undefined;
+
+  return /* html */ `
+    <div class="livingInspectorTitle">Cell ${cellId}</div>
+    <div class="livingMuted">${escapeHtml(biome ?? "Unclaimed land")}${state?.i ? ` · ${escapeHtml(state.name ?? "")}` : " · wildlands"}</div>
+    <div class="livingSection">
+      <div class="livingPoolVitals">${yieldChips(yields)}</div>
+      <div class="livingMuted">
+        ${level == null ? "No development" : `${Math.round(level)} development${eraOf(level) ? ` · ${escapeHtml(eraOf(level))}` : ""}`}
+        ${prosperity == null ? "" : ` · ${prosperity}% prosperity`}
+      </div>
+      <div class="livingMuted">
+        ${deposit ? `Deposit: ${escapeHtml(deposit)}` : "No deposit"}${improvement ? ` · ${escapeHtml(improvement)}` : ""}${cellSim?.pillaged ? " · pillaged" : ""}
+      </div>
+      ${output ? `<div class="livingMuted">Output: ${output}</div>` : ""}
+    </div>
+    <div class="livingSection">
+      <div class="livingSectionTitle">Held by</div>
+      <div class="livingCapacityRow" title="Click to zoom to the cell">
+        <span>${escapeHtml(state?.name ?? "Wildlands")}${province?.i ? ` · ${escapeHtml(province.name ?? "Province")}` : ""}${burg?.i ? ` · ${escapeHtml(burg.name ?? "Burg")}` : ""}</span>
+        <button type="button" class="livingLinkBtn" data-zoom-cell="${cellId}">Zoom</button>
+      </div>
+    </div>`;
 }
 
 function renderStateProvinces(stateId: number): string {
@@ -1132,6 +1291,7 @@ function renderBurgCard(burgId: number): string {
       ${renderMeter("Unrest", bSim.unrest, true)}
     </div>
     ${renderCivCity(bSim, burgId)}
+    ${renderUpstreamBurg(burgId)}
     <div class="livingSection">
       <div class="livingSectionTitle">Asset</div>
       <div>${escapeHtml(building)}</div>
@@ -1317,6 +1477,18 @@ function bindInspectorButtons(panel: HTMLElement): void {
           void Controllers.ProvincesEditor.open();
           break;
         }
+        case "economy":
+          void Controllers.EconomyOverview.open("state", id);
+          break;
+        case "burg-economy":
+          void Controllers.BurgEconomyOverview.open(id);
+          break;
+        case "stability":
+          void Controllers.StabilityOverview.open(id);
+          break;
+        case "budget":
+          void Controllers.StateBudgetEditor.open(id);
+          break;
         case "burgs":
           void Controllers.BurgsOverview.open({ stateId: id });
           break;

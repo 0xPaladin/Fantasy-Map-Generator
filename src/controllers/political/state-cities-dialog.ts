@@ -3,6 +3,9 @@ import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
+import { Accounts } from "@/model/economy/accounts";
+import { Prosperity } from "@/model/economy/prosperity";
+import { canReadUpstreamEconomy } from "@/model/physical/living-faction-economy";
 import {
   activeCivThemeId,
   citizensFromPopulation,
@@ -12,6 +15,8 @@ import {
 } from "@/model/physical/living-generator";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Military, type Regiment } from "@/model/political/military-generator";
+import { Stability } from "@/model/political/stability";
+import { Development } from "@/model/society/development-generator";
 import type { YieldValues } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { zoomTo } from "@/ui/map/zoom";
@@ -28,6 +33,12 @@ function formatYieldValue(value: number | undefined): string {
 function formatYields(yields?: YieldValues): string {
   if (!yields) return "—";
   return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)}`;
+}
+
+/** A city's upstream prosperity, 0–100, or — before the economy has run */
+function formatProsperity(burgId: number): string {
+  const prosperity = canReadUpstreamEconomy() ? Prosperity.getBurg(burgId)?.prosperity : undefined;
+  return prosperity == null ? "—" : `${Math.round(prosperity * 100)}%`;
 }
 
 function formatBuildingBenefits(buildingId?: string): string {
@@ -88,6 +99,13 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   const techName = currentTech ? resolveCivTechName(activeCivThemeId(), currentTech) : undefined;
   const techProgress = currentTech ? Math.round(sSim?.researchedProgress?.[currentTech.id] ?? 0) : 0;
   const techCost = currentTech?.cost ?? 0;
+
+  // §6.2: the upstream figures the Living World runs on, alongside the seasonal yields
+  const readable = canReadUpstreamEconomy();
+  const prosperity = readable ? Accounts.ofState(stateId)?.prosperity : undefined;
+  const stability = readable ? Stability.get(stateId)?.stability : undefined;
+  const development = pack.cells.development ? Development.getAverages(pack.cells.state)[stateId] : undefined;
+  const era = development == null || !options.map.eras?.length ? undefined : Development.getEra(development);
 
   let currentTab = activeTab;
 
@@ -154,9 +172,11 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
               <div style="justify-content: center; text-align: center;">${popText}</div>
               <div style="justify-content: center; text-align: center;">${city.citizens}</div>
               <div style="justify-content: center; text-align: center;">${city.workedCells}</div>
+              <div style="justify-content: center; text-align: center;">${formatProsperity(city.burgId)}</div>
               <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formatYields(city.yields)}</div>
               <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
                 <button class="btn icon-search zoomCityBtn" data-burg-id="${city.burgId}" data-tip="${t("Zoom to city")}"></button>
+                <button class="btn icon-bank cityEconomyBtn" data-burg-id="${city.burgId}" data-tip="${t("Open the burg's economy")}"></button>
                 <button class="btn icon-pencil editCityBtn" data-burg-id="${city.burgId}" data-tip="${t("Edit burg")}"></button>
                 ${!isStateCapital ? `<button class="btn icon-trash removeCityBtn" data-burg-id="${city.burgId}" data-tip="${t("Remove city from major cities")}"></button>` : ""}
               </div>
@@ -401,7 +421,22 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
       <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
         <span class="badge">${t("Culture")}: ${escapeHtml(cultureName)}</span>
         <span class="badge">${t("Capital")}: ${escapeHtml(capitalName)}</span>
-        <span class="badge">${t("Treasury")}: 🪙 ${Math.round(state.economy?.treasury ?? 0)}</span>
+        <span class="badge pointer" id="stateCitiesBudgetBtn" data-tip="${t("Open the state budget")}">${t("Treasury")}: 🪙 ${Math.round(state.economy?.treasury ?? 0)}</span>
+        ${
+          prosperity == null
+            ? ""
+            : `<span class="badge pointer" id="stateCitiesEconomyBtn" data-tip="${t("Open the state's agriculture, crafts and trade")}">${t("Prosperity")}: ${Math.round(prosperity * 100)}%</span>`
+        }
+        ${
+          stability == null
+            ? ""
+            : `<span class="badge pointer" id="stateCitiesStabilityBtn" data-tip="${t("Open the state's stability")}">${t("Stability")}: ${Math.round(stability * 100)}%</span>`
+        }
+        ${
+          development == null
+            ? ""
+            : `<span class="badge">${t("Development")}: ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`
+        }
         ${techName ? `<span class="badge">🔬 ${escapeHtml(techName)} (${techProgress}/${techCost})</span>` : ""}
       </div>
 
@@ -420,12 +455,13 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
 
       <!-- Tab 1: Major Cities -->
       <div class="tabPanel" data-panel="cities" style="display: ${activeTab === "cities" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
-        <div id="stateCitiesTable" class="table" style="--table-columns: minmax(12em, 1.3fr) 5.5em 4.5em 4em minmax(29em, 3fr) 5.5em; width: 0; min-width: 100%;">
+        <div id="stateCitiesTable" class="table" style="--table-columns: minmax(12em, 1.3fr) 5.5em 4.5em 4em 5em minmax(29em, 3fr) 7.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("City")}</div>
             <div style="justify-content: center; text-align: center;">${t("Pop")}</div>
             <div style="justify-content: center; text-align: center;">${t("Citizens")}</div>
             <div style="justify-content: center; text-align: center;">${t("Cells")}</div>
+            <div style="justify-content: center; text-align: center;">${t("Prosperity")}</div>
             <div>${t("Yields")}</div>
             <div style="justify-content: flex-end; text-align: right;">${t("Actions")}</div>
           </div>
@@ -545,6 +581,25 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
         void Controllers.BurgEditor.open(burgId);
       });
     });
+
+  ensureEl(STATE_CITIES_DIALOG_ID)
+    ?.querySelectorAll(".cityEconomyBtn")
+    .forEach(btn => {
+      btn.addEventListener("click", e => {
+        const target = e.currentTarget as HTMLElement;
+        void Controllers.BurgEconomyOverview.open(Number(target.dataset.burgId));
+      });
+    });
+
+  ensureEl("stateCitiesEconomyBtn")?.addEventListener("click", () => {
+    void Controllers.EconomyOverview.open("state", stateId);
+  });
+  ensureEl("stateCitiesStabilityBtn")?.addEventListener("click", () => {
+    void Controllers.StabilityOverview.open(stateId);
+  });
+  ensureEl("stateCitiesBudgetBtn")?.addEventListener("click", () => {
+    void Controllers.StateBudgetEditor.open(stateId);
+  });
 
   // Remove city listener
   ensureEl(STATE_CITIES_DIALOG_ID)
