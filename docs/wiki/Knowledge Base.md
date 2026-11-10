@@ -636,6 +636,10 @@ Yes, with a connected AI key or local model. Ask in the same panel you use for G
 
 Guests and Members on the official site can ask documentation questions without a key. Connect a key to ask about your map, edit it and remove the daily limit. A local model needs no key. On a self-hosted copy or in the desktop app, connect a key or local model to use the Assistant.
 
+### Can I teach the Assistant my own conventions?
+
+Yes, with your own key or local model. Open the pencil button in the Azgaar Assistant title bar. **Instructions** is one standing document the Assistant follows in every chat: write your conventions there, or import an `AGENTS.md` file. **Skills** are documents it reads only when a task matches one, so a long workflow costs nothing until it is needed; import a markdown file or write one, and untick a skill to switch it off. **Prompts** are saved questions: the ✦ button beside the send box drops one into it. Everything is kept in this browser, never in the `.map` file, and can be exported as markdown to share. Only your own key uses them: the free Guest and Member tiers are answered by the Azgaar server, which cannot see them.
+
 ### Which AI providers and models can Azgaar Assistant use?
 
 Anthropic, OpenAI, OpenRouter, Z.ai, Gemini, Mistral, Qwen, DeepSeek, and an OpenAI-compatible local server such as Ollama. Choose a Provider in the key sheet. The Assistant discovers models available to the key and also accepts any typed model id. One default is offered while discovery is pending. OpenRouter serves many providers behind one key, including free models (marked ":free"), and its model list only offers models that can call tools. Z.ai serves the GLM models, with glm-4.5-flash free of charge.

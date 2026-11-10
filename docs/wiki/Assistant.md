@@ -10,4 +10,6 @@ With a key, the Assistant can read the open map, answer exact questions about it
 
 **Chats** lists every chat kept in this browser. Each belongs to the map that was open when it began. A chat from another map or answerer opens read-only; choose **New chat** to continue. Generating or loading a different map also starts a new chat. A long Key chat shows a prompt to start fresh because every question resends its history.
 
+**Customize** teaches the Assistant your own conventions, when your own key answers. *Instructions* is a standing document it follows in every chat, the AGENTS.md idea: write it there, or import an `AGENTS.md` file. *Skills* are documents it reads only when a task matches one, so a long workflow costs nothing until it is needed; describe each in a line and write the body, or import a markdown file and tick which skills are on. *Prompts* are saved questions: the ✦ button beside the send box drops one into it. Everything here is kept in this browser, never in the `.map` file, and can be exported as markdown to share or keep.
+
 The Assistant runs model-written JavaScript in this page to read the map. Use it only on maps from sources you trust. Your key stays in this browser and is sent directly to your provider. See the [Policy](Policy) for details.
