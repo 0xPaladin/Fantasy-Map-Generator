@@ -4,6 +4,7 @@
 import { errorText } from "@/utils/string-utils";
 import type { SystemBlock } from "./context";
 import {
+  attributionHeaders,
   bearerHeaders,
   type Completion,
   type CompletionRequest,
@@ -137,7 +138,7 @@ function parseArguments(raw: string): ToolInput {
 
 // Reasoning counts against the limit, leaving less room for tool calls
 const outputLimit = (baseUrl: string) =>
-  /deepseek\.com|generativelanguage\.googleapis\.com/.test(baseUrl) ? 8192 : 4096;
+  /deepseek\.com|generativelanguage\.googleapis\.com|api\.z\.ai/.test(baseUrl) ? 8192 : 4096;
 
 export async function completeOpenAI(
   baseUrl: string,
@@ -147,7 +148,7 @@ export async function completeOpenAI(
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     signal,
-    headers: { "Content-Type": "application/json", ...bearerHeaders(key) },
+    headers: { "Content-Type": "application/json", ...bearerHeaders(key), ...attributionHeaders(provider) },
     body: JSON.stringify({
       model,
       messages: toChatMessages(system, messages, provider === "gemini"),

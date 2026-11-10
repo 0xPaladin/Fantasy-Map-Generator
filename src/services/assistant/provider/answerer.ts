@@ -1,7 +1,8 @@
 import { errorText } from "@/utils/string-utils";
 import type { Chat, TranscriptItem } from "../chats";
+import { enabledSkills, getInstructions, load as loadCustomization, readSkill } from "../customization";
 import { get } from "./connection";
-import { SYSTEM_PROMPT } from "./context";
+import { systemBlocks } from "./context";
 import { readDocs } from "./docs";
 import { searchHelp } from "./knowledge";
 import {
@@ -28,6 +29,27 @@ export interface Tool {
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+/** Reads one of the user's skills; present only while at least one skill is enabled */
+const skillTool = (): Tool => ({
+  status: "Reading skill",
+  definition: {
+    name: "read_skill",
+    description:
+      "Read one of the user's skills by name: a workflow or convention they want followed. The Skills list in the system prompt names them.",
+    input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] }
+  },
+  handle: async input => {
+    const name = String(input.name ?? "").trim();
+    const body = readSkill(name);
+    if (body !== undefined) return { content: body };
+    const names = enabledSkills().map(skill => skill.name);
+    return {
+      content: `No skill named "${name}". Available: ${names.join(", ")}.`,
+      isError: true
+    };
+  }
+});
 
 const KNOWLEDGE: Tool[] = [
   {
@@ -94,7 +116,8 @@ export async function askProvider(
   signal: AbortSignal,
   { tools: mapTools, context, onStatus, images = [] }: ProviderOptions
 ): Promise<void> {
-  const tools = [...KNOWLEDGE, ...mapTools];
+  await loadCustomization(); // in-memory state is ready even when storage is unavailable
+  const tools = [...KNOWLEDGE, ...(enabledSkills().length ? [skillTool()] : []), ...mapTools];
   const definitions = tools.map(tool => tool.definition);
   const byName = new Map(tools.map(tool => [tool.definition.name, tool]));
 
@@ -128,7 +151,13 @@ export async function askProvider(
       else if (mapContext !== sentContext) chat.messages.at(-1)!.content.push({ type: "text", text: mapContext });
       sentContext = mapContext;
       trimToBudget(chat.messages.slice(start));
-      const request = { ...get(), system: SYSTEM_PROMPT, messages: chat.messages, tools: definitions, signal };
+      const request = {
+        ...get(),
+        system: systemBlocks({ instructions: getInstructions(), skills: enabledSkills() }),
+        messages: chat.messages,
+        tools: definitions,
+        signal
+      };
       // A model without vision rejects images: tell it they are unavailable and ask once more
       const completion = await complete(request).catch(error => {
         const dropped = !signal.aborted && IMAGE_REJECTED.test(errorText(error)) && dropImages(chat.messages);

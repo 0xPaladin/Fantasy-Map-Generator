@@ -34,6 +34,13 @@ describe("filterChatModels", () => {
   it("keeps everything for local servers", () => {
     expect(filterChatModels("local", ["llama3.2", "qwen2.5-coder:7b"])).toEqual(["llama3.2", "qwen2.5-coder:7b"]);
   });
+
+  it("keeps only GLM models for Z.ai", () => {
+    expect(filterChatModels("zai", ["glm-4.6", "glm-4.5-air", "embedding-3", "chargebee"])).toEqual([
+      "glm-4.6",
+      "glm-4.5-air"
+    ]);
+  });
 });
 
 describe("listModels", () => {
@@ -127,5 +134,80 @@ describe("listModels", () => {
     expect(url).toContain("/api/v1/models?providers=qwen&features=function-calling");
     expect(fetchStub.mock.calls[1][0]).toContain("page_no=2");
     expect((options.headers as Record<string, string>).Authorization).toBe("Bearer sk-q");
+  });
+
+  it("filters OpenRouter's catalog to tool-calling text models", async () => {
+    const catalog = {
+      data: [
+        {
+          id: "anthropic/claude-sonnet-4.5",
+          architecture: { output_modalities: ["text"] },
+          supported_parameters: ["tools", "temperature"]
+        },
+        {
+          id: "z-ai/glm-4.6",
+          architecture: { output_modalities: ["text"] },
+          supported_parameters: ["tools"]
+        },
+        {
+          id: "openai/gpt-5",
+          architecture: { output_modalities: ["text", "image"] },
+          supported_parameters: ["tools"]
+        },
+        { id: "vendor/embeddings", architecture: { output_modalities: ["text"] }, supported_parameters: [] },
+        {
+          id: "vendor/image-gen",
+          architecture: { output_modalities: ["image"] },
+          supported_parameters: ["tools"]
+        },
+        {
+          id: "anthropic/claude-sonnet-4.5:batch",
+          architecture: { output_modalities: ["text"] },
+          supported_parameters: ["tools"]
+        },
+        {
+          id: "vendor/web-search:online",
+          architecture: { output_modalities: ["text"] },
+          supported_parameters: ["tools"]
+        },
+        {
+          id: "deepseek/deepseek-chat:free",
+          architecture: { output_modalities: ["text"] },
+          supported_parameters: ["tools"]
+        }
+      ]
+    };
+    const fetchStub = vi.fn(async () => new Response(JSON.stringify(catalog), { status: 200 }));
+    globals.fetch = fetchStub;
+
+    globals.fetch = fetchStub;
+    const globals2 = globalThis as Record<string, unknown>;
+    globals2.location = { origin: "https://example.com" };
+
+    try {
+      expect(await listModels("openrouter", "sk-o")).toEqual([
+        "anthropic/claude-sonnet-4.5",
+        "z-ai/glm-4.6",
+        "openai/gpt-5",
+        "deepseek/deepseek-chat:free"
+      ]);
+      const [url, options] = fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe("https://openrouter.ai/api/v1/models");
+      const headers = options.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer sk-o");
+      expect(headers["HTTP-Referer"]).toBe("https://example.com");
+    } finally {
+      delete globals2.location;
+    }
+  });
+
+  it("uses Z.ai's OpenAI-compatible models endpoint with the bearer key", async () => {
+    const fetchStub = stubFetch(["glm-4.6", "glm-4.5-air", "embedding-3"]);
+    const models = await listModels("zai", "sk-z");
+
+    const [url, options] = fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.z.ai/api/paas/v4/models");
+    expect((options.headers as Record<string, string>).Authorization).toBe("Bearer sk-z");
+    expect(models).toEqual(["glm-4.6", "glm-4.5-air"]);
   });
 });
