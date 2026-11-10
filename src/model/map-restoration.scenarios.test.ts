@@ -192,7 +192,7 @@ describe("Risk heightmap edit", () => {
     expect(() => riskEdit(circle(0.5, 0.5, 80, 8, "land"), true)).toThrow("injected");
 
     expect(pack).toBe(previous);
-    expect(grid.cells.h).toEqual(heights);
+    expect([...grid.cells.h]).toEqual([...heights]); // a jsdom clone's arrays have another realm's prototype
     expect(fingerprint()).toEqual(before);
   });
 });

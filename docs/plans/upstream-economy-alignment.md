@@ -129,6 +129,8 @@ We align the `.map` record layout in [`src/services/io/save.ts`](file:///home/pa
 - **Astral readings**: upstream's new marker types (`guild-halls`, `merchant-houses`, `customs-houses`) added to `MARKER_READINGS` / `ANOMALY_FAMILIES`; `draw-goods` astral gating (no cell polygons, burg-anchored icons) restored in the new viewport architecture.
 - **Assistant context**: `context.generated.ts` regenerated; prompt budget test raised to 16 500 chars.
 
+**Post-merge integration fixes (with `origin/master` merged back in before the PR):** `isSafeHtml` gained a DOM-free scan, as the node/scenario runners stub `document` without a parser and history generation writes notes through it; `Military.split` places regiments with `REGIMENT_SIZE` again instead of reading `styles` (upstream #2010, lost in conflict resolution); the upstream `regiment troops` and `army figures` scenario expectations were rewritten for the fork's people-based headcounts (§1.3); and the map-restoration rollback test compares cell heights by content, as jsdom's `structuredClone` returns another realm's arrays. All 40 real-map scenario tests and 3591 unit tests pass.
+
 ---
 
 ### Phase 2: Technology Advancement Drives Upstream Development

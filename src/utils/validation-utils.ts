@@ -61,31 +61,91 @@ export function requireCode(code: unknown): string {
 
 /** Whether html keeps to the notes editor's subset: no event handlers, JavaScript URLs, scripts or iframes */
 export function isSafeHtml(html: string): boolean {
-  const TAGS = new Set(
-    "p div br hr span strong b em i u s strike a img ol ul li blockquote code h1 h2 h3 h4 h5 h6 sub sup table tbody tr td".split(
-      " "
-    )
-  );
-  const ATTRIBUTES = new Set(["href", "src", "alt", "title", "style", "colspan", "rowspan"]);
+  return canUseDom() ? isSafeHtmlByDom(html) : isSafeHtmlByScan(html);
+}
 
+const NOTE_TAGS = new Set(
+  "p div br hr span strong b em i u s strike a img ol ul li blockquote code h1 h2 h3 h4 h5 h6 sub sup table tbody tr td".split(
+    " "
+  )
+);
+const NOTE_ATTRIBUTES = new Set(["href", "src", "alt", "title", "style", "colspan", "rowspan"]);
+const UNSAFE_STYLE = /url\s*\(|expression\s*\(|@import/i;
+
+function canUseDom(): boolean {
+  return typeof document !== "undefined" && typeof document.createElement === "function";
+}
+
+/** A link attribute's value: relative, or an allowed absolute scheme */
+function isSafeUrl(name: string, value: string): boolean {
+  const compact = [...value].filter(character => character.charCodeAt(0) > 32).join("");
+  if (!/^[a-z][a-z\d+.-]*:/i.test(compact)) return true;
+  return name === "src"
+    ? /^(?:https?:|data:image\/(?:png|jpeg|gif|webp);base64,)/i.test(compact)
+    : /^(?:https?|mailto):/i.test(compact);
+}
+
+/** Whether one attribute of an allowed tag is allowed */
+function isSafeAttribute(rawName: string, value: string): boolean {
+  const name = rawName.toLowerCase();
+  if (!NOTE_ATTRIBUTES.has(name)) return false;
+  if (name === "style") return !UNSAFE_STYLE.test(value);
+  if (name !== "href" && name !== "src") return true;
+  return isSafeUrl(name, value.trim());
+}
+
+/** The check with a real DOM: the browser and jsdom path */
+function isSafeHtmlByDom(html: string): boolean {
   const template = document.createElement("template");
   template.innerHTML = html;
   return [...template.content.querySelectorAll("*")].every(
     element =>
-      TAGS.has(element.localName) &&
-      [...element.attributes].every(attribute => {
-        const name = attribute.name.toLowerCase();
-        const value = attribute.value.trim();
-        if (!ATTRIBUTES.has(name)) return false;
-        if (name === "style") return !/url\s*\(|expression\s*\(|@import/i.test(value);
-        if (name !== "href" && name !== "src") return true;
-        const compact = [...value].filter(character => character.charCodeAt(0) > 32).join("");
-        return (
-          !/^[a-z][a-z\d+.-]*:/i.test(compact) ||
-          (name === "src"
-            ? /^(?:https?:|data:image\/(?:png|jpeg|gif|webp);base64,)/i.test(compact)
-            : /^(?:https?|mailto):/i.test(compact))
-        );
-      })
+      NOTE_TAGS.has(element.localName) &&
+      [...element.attributes].every(attribute => isSafeAttribute(attribute.name, attribute.value))
   );
+}
+
+/**
+ * The same check without a DOM, for the node test runners and scripts that stub `document`
+ * without a parser: anything the scan cannot read as an allowed tag is refused.
+ */
+function isSafeHtmlByScan(html: string): boolean {
+  const TAG = /<\s*(\/?)\s*([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^"'>])*)>/g;
+  let unread = ""; // text and anything the tag pattern could not read
+  let index = 0;
+
+  for (let match = TAG.exec(html); match; match = TAG.exec(html)) {
+    unread += html.slice(index, match.index);
+    index = TAG.lastIndex;
+    const [, closing, rawName, rawAttributes = ""] = match;
+    if (!NOTE_TAGS.has(rawName.toLowerCase())) return false;
+    // a closing tag takes no attributes: `<br/>` is an opening one
+    if (closing && rawAttributes.replaceAll(/\s/g, "") !== "") return false;
+    if (!closing && !attributesAreSafe(rawAttributes)) return false;
+  }
+
+  unread += html.slice(index);
+  return !unread.includes("<"); // a comment, an unclosed tag or any other markup the scan skipped
+}
+
+function attributesAreSafe(raw: string): boolean {
+  const cleaned = raw.replace(/\/\s*$/, ""); // a self-closing slash
+  const ATTR = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+  let index = 0;
+  const skipSpaces = () => {
+    while (index < cleaned.length && /\s/.test(cleaned[index])) index++;
+  };
+
+  skipSpaces();
+  for (let match = ATTR.exec(cleaned); match; match = ATTR.exec(cleaned)) {
+    if (match.index !== index) return false; // something unreadable between attributes
+    const value = match[2] ?? match[3] ?? match[4] ?? "";
+    if (!isSafeAttribute(match[1], value)) return false;
+    index = ATTR.lastIndex;
+    skipSpaces();
+    ATTR.lastIndex = index;
+  }
+
+  skipSpaces();
+  return index === cleaned.length;
 }

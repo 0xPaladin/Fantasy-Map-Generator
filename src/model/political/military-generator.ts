@@ -18,6 +18,7 @@ import { levies, type State } from "./states-generator";
 export const UPKEEP_COST = 20; // military spending a day that keeps troops of power 1, a population point's worth
 const MIN_UPKEEP = 0.05; // unpaid troops still fight, if barely
 const EQUIPMENT = 0.365; // population points of troops equipped by a unit a day a state consumes of their goods
+const REGIMENT_SIZE = 3; // regiment box height at the default style, map units; layout ignores the style
 
 export interface Regiment {
   i: number;
@@ -1171,7 +1172,7 @@ class MilitaryModule {
     regiment.u = Object.fromEntries(Object.entries(regiment.u).map(([unit, count]) => [unit, Math.ceil(count / 2)]));
     reconcileRegimentBlocks(regiment, this.getUnitTypes());
 
-    const shift = styles.military.options.boxSize * 2;
+    const shift = REGIMENT_SIZE * 2;
     let y = regiment.y + shift;
     while (military.some(other => other.x === regiment.x && other.y === y)) y += shift;
     const i = Math.max(...military.map(other => other.i)) + 1;

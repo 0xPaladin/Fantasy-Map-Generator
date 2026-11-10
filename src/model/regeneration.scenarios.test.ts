@@ -7,7 +7,6 @@ import { Pack } from "@/model/graph/pack-generator";
 import { Rivers } from "@/model/physical/river-generator";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Military } from "@/model/political/military-generator";
-import { Stability } from "@/model/political/stability";
 import { States } from "@/model/political/states-generator";
 import { Zones } from "@/model/political/zones-generator";
 import { Cultures } from "@/model/society/cultures-generator";
@@ -105,28 +104,31 @@ describe("the economy's summaries", () => {
 });
 
 describe("regiment troops", () => {
-  it("are population points shown at the rate, rounded up", async () => {
+  it("are people, shown rounded up to whole troops", async () => {
     await generateMap({ seed: "army-troops" });
+    // the fork stores headcounts, not population points: the rate does not rescale them (§1.3 of the plan)
     options.map.units.population.scale = 10;
     expect(Military.getTroops(0)).toBe(0);
     expect(Military.getTroops(0.001)).toBe(1);
-    expect(Military.getTroops(0.25)).toBe(3);
+    expect(Military.getTroops(0.25)).toBe(1);
     options.map.units.population.scale = 1000;
-    expect(Military.getTroops(0.007)).toBe(7); // no float noise rounds it up
-    expect(Military.getTroops(0.25)).toBe(250);
+    expect(Military.getTroops(0.007)).toBe(1);
+    expect(Military.getTroops(250)).toBe(250);
   });
 
-  it("keep their sum and exact points through edits, splits and a change of rate", async () => {
+  it("keep their headcount through edits and a rate change, and their sum through a split", async () => {
     await generateMap({ seed: "army-edits" });
     const state = living(pack.states).find(s => s.military?.some(r => r.a > 0.1))!;
     const regiment = state.military!.find(r => r.a > 0.1)!;
     const [unit] = Object.keys(regiment.u);
-    const points = regiment.u[unit];
-    const shown = Object.fromEntries(Object.entries(regiment.u).map(([n, v]) => [n, Military.getTroops(v)]));
-    Military.setUnits(state.i, regiment.i, shown);
-    expect(regiment.u[unit]).toBe(points);
-    Military.setUnits(state.i, regiment.i, { ...shown, [unit]: 25 });
-    expect(Military.getTroops(regiment.u[unit])).toBe(25);
+    Military.setUnits(state.i, regiment.i, { ...regiment.u, [unit]: 25 });
+    expect(regiment.u[unit]).toBe(25);
+
+    const before = { ...regiment.u };
+    options.map.units.population.scale *= 100;
+    Pack.markChanged();
+    expect(regiment.u).toEqual(before); // headcounts are people: a rate change rewrites none
+
     const total = regiment.a;
     const added = Military.split(state.i, regiment.i);
     const half = state.military!.find(r => r.i === added)!;
@@ -135,22 +137,13 @@ describe("regiment troops", () => {
 });
 
 describe("army figures", () => {
-  it("do not depend on the population rate, on a change of it or when raised", async () => {
+  it("keep their headcounts when the population rate changes", async () => {
     await generateMap({ seed: "army-scale" });
-    const state = living(pack.states).find(s => s.military?.length)!;
-    const need = Military.getUpkeepNeed(state.i);
-    const army = Stability.get(state.i)!.parts.army;
-    const rate = options.map.units.population.scale;
-    options.map.units.population.scale = rate * 100;
-    Pack.markChanged();
-    expect(Military.getUpkeepNeed(state.i)).toBe(need);
-    expect(Stability.get(state.i)!.parts.army).toBeCloseTo(army);
     const troops = () => living(pack.states).map(s => (s.military ?? []).map(r => r.a));
-    Military.regenerate();
-    const atHighRate = troops();
-    options.map.units.population.scale = rate;
-    Military.regenerate();
-    expect(atHighRate).toEqual(troops());
+    const before = troops();
+    options.map.units.population.scale *= 100;
+    Pack.markChanged();
+    expect(troops()).toEqual(before);
   });
 });
 
