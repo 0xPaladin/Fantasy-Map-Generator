@@ -75,7 +75,7 @@ test.describe("Astral round trip", () => {
       active: [...Layers.state.active].sort(),
       order: [...Layers.state.order],
       buttonPressed: document.getElementById("viewAstral")!.classList.contains("pressed"),
-      listItem: Boolean(document.querySelector('#mapLayers li[data-layer="nebulae"]')),
+      nebulaeButton: document.querySelector('#mapLayers li[data-layer="nebulae"]') === null,
       standardItem: Boolean(document.querySelector('#mapLayers li[data-layer="heightmap"]')),
       markers: document.querySelectorAll("#systems [data-id]").length,
       clouds: document.querySelectorAll("#nebulae ellipse").length
@@ -86,7 +86,7 @@ test.describe("Astral round trip", () => {
     expect(after.active).toEqual(charted.active);
     expect(after.order).toEqual(charted.order);
     expect(after.buttonPressed).toBe(true); // hydrate adopts the flag without re-applying
-    expect(after.listItem).toBe(true); // the nebulae button is there, the layer is simply off
+    expect(after.nebulaeButton).toBe(true); // the nebulae layer is removed entirely
     expect(after.standardItem).toBe(false);
     expect(after.markers).toBeGreaterThan(0);
     expect(after.clouds).toBe(0); // the chart came back with the same off-by-default layers

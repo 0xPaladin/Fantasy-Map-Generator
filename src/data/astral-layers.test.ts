@@ -19,8 +19,13 @@ describe("the Astral layer profiles", () => {
     expect(new Set(shortcuts).size).toBe(shortcuts.length);
   });
 
-  it("puts Core–Rim in the Survey scan profile", () => {
-    expect(ASTRAL_PRESETS.survey.layers).toContain("coreRim");
+  it("keeps removed layers out of every profile", () => {
+    for (const preset of Object.values(ASTRAL_PRESETS))
+      expect(preset.layers).not.toContain("coreRim");
+    for (const preset of Object.values(ASTRAL_PRESETS))
+      expect(preset.layers).not.toContain("composition");
+    for (const preset of Object.values(ASTRAL_PRESETS))
+      expect(preset.layers).not.toContain("nebulae");
   });
 
   it("shows only empires, hyperlanes, systems, labels and the scale bar by default", () => {

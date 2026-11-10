@@ -1,8 +1,5 @@
 // Global layers registry: owns layers list, order, and svg skeleton
-import { drawComposition } from "@/renderers/astral/draw-composition";
-import { drawCoreRim } from "@/renderers/astral/draw-core-rim";
 import { drawDustDensity } from "@/renderers/astral/draw-dust-density";
-import { drawNebulae } from "@/renderers/astral/draw-nebulae";
 import { drawStarDensity } from "@/renderers/astral/draw-star-density";
 import { drawSystems } from "@/renderers/astral/draw-systems";
 import { drawBiomes } from "@/renderers/draw-biomes";
@@ -318,27 +315,7 @@ const mapLayers = [
     erase: removeOcean
   }),
   new Layer({ id: "landmass", parent: "viewbox", permanent: true, keepContent: true, draw: drawLandmass }),
-  new Layer({
-    id: "coreRim",
-    parent: "viewbox",
-    attrs: { "pointer-events": "none" }, // decorative wash
-    draw: drawCoreRim
-  }),
   new Layer({ id: "texture", element: "texture", parent: "viewbox", draw: drawTexture }),
-  new Layer({
-    id: "composition",
-    parent: "viewbox",
-    attrs: { "pointer-events": "none" }, // decorative tint
-    children: ["irradiated", "arable", "biomass", "volatiles"].map(id => ({ id, tag: "g" })),
-    draw: drawComposition
-  }),
-  new Layer({
-    id: "nebulae",
-    parent: "viewbox",
-    attrs: { "pointer-events": "none" }, // decorative
-    children: ["ion", "dust", "neutral"].map(id => ({ id, tag: "g" })),
-    draw: drawNebulae
-  }),
   new Layer({
     id: "starDensity",
     parent: "viewbox",
