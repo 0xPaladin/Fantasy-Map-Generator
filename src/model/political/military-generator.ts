@@ -944,6 +944,7 @@ class MilitaryModule {
   getUpkeep(stateId: number): number {
     const state = pack.states[stateId];
     if (!state || !levies(state) || !pack.deals?.length) return 1;
+    if (!options.map.units?.population || !options.map.military?.units) return 1; // a stripped table cannot measure upkeep
     const need = this.getUpkeepNeed(stateId);
     return need ? Math.min(1, state.economy.spent.military / need) : 1;
   }
@@ -956,6 +957,34 @@ class MilitaryModule {
   /** How strongly a state's forces fight for their upkeep: it multiplies their power in battle */
   getBattleUpkeep(stateId: number): number {
     return Math.max(MIN_UPKEEP, this.getUpkeep(stateId));
+  }
+
+  /**
+   * Battle upkeep through Living World seasons: a funded treasury holds the
+   * line (0.5 at worst), but a bankrupt state's underfunded forces melt toward
+   * `MIN_UPKEEP`.
+   */
+  getLivingBattleUpkeep(stateId: number): number {
+    const upkeep = this.getUpkeep(stateId);
+    const funded = Number(pack.states[stateId]?.economy?.treasury ?? 0) > 0;
+    return funded ? minmax(upkeep, 0.5, 1.15) : Math.max(MIN_UPKEEP, upkeep);
+  }
+
+  /**
+   * Spare equipment kits of a trade good (§4.3): a day's consumption scaled by
+   * `EQUIPMENT` and military coverage, minus every fielded block whose type
+   * needs the good. `Infinity` before the run or where the good is not traded.
+   */
+  getEquipmentSpare(stateId: number, goodName: string, requires: (typeId: string) => boolean): number {
+    if (!pack.deals?.length) return Infinity;
+    const good = options.map.goods?.find(entry => entry.name === goodName);
+    if (!good) return Infinity; // the good is not traded on this map: no gate
+    const consumed = Accounts.getConsumption(stateId)[good.i] || 0;
+    const kits = consumed * EQUIPMENT * (good.demandCoverage?.military || 1);
+    const fielded = sum(pack.states[stateId]?.military ?? [], regiment =>
+      sum(regiment.units ?? [], block => (block.hp > 0 && requires(block.type) ? 1 : 0))
+    );
+    return kits - fielded;
   }
 
   /** The state's forces' battle power: troops × unit power × battle upkeep */

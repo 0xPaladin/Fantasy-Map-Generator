@@ -1,6 +1,6 @@
 # Plan — Upstream Economy Alignment & Unified Simulation Architecture
 
-**Status:** In progress — Phases 1–3 complete (upstream merge resolved; tech ↔ development bridge; Living World improvements/buildings wired into the upstream economy with seasonal treasury banking; build, lint and tests green)  
+**Status:** In progress — Phases 1–4 complete (upstream merge resolved; tech ↔ development bridge; Living World economy on upstream Output/Production with seasonal treasuries; military goods gating, levy fallback and battle upkeep; build, lint and tests green)  
 **Branch:** `civ` (at commit `209c9dfb`), fastforwarded and fully aligned with `origin/master` (`2f64dc30`)  
 **Target Upstream Commit:** `upstream/master` (`4b34afc5`, v1.157.0 Economy Rework PR #2020 + follow-ups)  
 **Companions:** [living-openciv.md](living-openciv.md), [living-openciv-armies.md](living-openciv-armies.md), [factions-civ-engine.md](factions-civ-engine.md), [faction-suppression.md](faction-suppression.md), [remove-living-guild.md](remove-living-guild.md), [characters.md](characters.md), [conquest-retirement.md](conquest-retirement.md)
@@ -288,6 +288,17 @@ We unify both in `src/model/political/military-generator.ts` and `src/model/phys
    - Multiply each state regiment's effective combat strength in battle and odds estimation by `Military.getBattleUpkeep(stateId)` (clamped to `[0.5, 1.15]` during active seasonal ticks when funded by treasury reserves, or dropping toward `MIN_UPKEEP = 0.05` if the state both underfunds `budget.military` and has `treasury <= 0`).
    - If a state's persistent `treasury` falls below `0` and `Military.getUpkeep(stateId) < 0.5`, `settleDebt()` demotes an unequipped elite block to `levies` or disbands the newest block.
 
+#### 4.5 Phase 4 Completion Record (done)
+
+**Shipped:** `src/model/physical/living-armies.ts`, `src/model/physical/living-generator.ts`, `src/model/political/military-generator.ts`; `npm run build` green, Biome clean, Vitest 3511 passing (0 failures).
+
+- **Category→goods mapping (§4.1)**: `getUnitRequiredGoods(unit, roster)` in `living-armies.ts` derives each roster unit's required upstream goods from its category and upkeep rank among same-category peers: levy tier (rank 0 melee/ranged) `[]`; melee/ranged `Arms` (heavy rank ≥ 3 melee adds `Iron`); cavalry `Horses` + `Harnesses` (heavy lancers add `Arms`); artillery `Wood`/`Ropes`/`Iron`, or `Artillery`/`Gunpowder` once `requiredTechFor` names a gunpowder tech; monsters `Gemstones`; spellcasters `Incense` + `Books`. `levyUnitFor(roster)` names the fallback levy (cheapest melee, else ranged, else any).
+- **Equipment capacity (§4.3)**: `Military.getEquipmentSpare(stateId, goodName, requires)` implements the plan formula — a day's consumption (`Accounts.getConsumption`) × `EQUIPMENT` (0.365) × the good's `demandCoverage.military`, minus every fielded block whose type needs the good; `Infinity` before the economy has run or where the good is not traded, so stripped saves and abstract-yield worlds gate nothing.
+- **Muster gate (§4.3)**: `Living.resolveEquipment()` runs both `spawnArmyBlock` (city-queue completions) and `muster()` through the spare-kits check; a short block spawns as the roster's levy with a news entry (`…ran short of Arms…`), or at `hp 0.5` when the roster has no levy to fall back to. The pre-existing `requiresGood` (region yields) and `requiredTechFor` gates are unchanged and compose with this.
+- **Living battle upkeep (§4.4)**: `Military.getLivingBattleUpkeep(stateId)` — funded (`treasury > 0`) forces clamp `getUpkeep` to `[0.5, 1.15]`; bankrupt underfunded forces fall to `max(MIN_UPKEEP, upkeep)`. `Living.stateCombatMult(stateId)` multiplies `happinessCombatMultiplier` × living battle upkeep and replaces the happiness-only multiplier on every state side of the battle modifiers (faction strongholds, state vs faction, faction vs state, state vs state, `siegeModifiers`, `assaultModifiers`) — so both `initBattleSession` and `estimateOdds` scale with upkeep. Before the economy runs upkeep is 1 and behaviour is byte-identical to Phase 3.
+- **Unpaid levies (§4.4)**: `settleDebt()` — when `getUpkeep < 0.5`, the newest equipped (non-levy-tier) block is demoted to the roster's levy (experience halved, news logged) instead of being disbanded; otherwise the former disband behaviour stands.
+- **Tests**: `getUnitRequiredGoods`/`levyUnitFor` ranks and categories in `living-armies.test.ts`; the `Military goods gating & upkeep` block in `living-generator.test.ts` (muster demotion with a starved arsenal, unmeasured goods mustering cleanly, fielded-block kit accounting, funded/bankrupt upkeep clamps, unpaid-elite demotion).
+
 ---
 
 ### Phase 5: Factions & Characters Integration on the Upstream Foundation
@@ -357,5 +368,5 @@ Factions retain their HQ and Outpost `BurgSimState` city-nodes, `CIV_BUILDINGS` 
 1. **Milestone 1 (Phase 1)**: Merge `upstream/master` into `civ`, resolve all 45 file conflicts, shift `.map` records `54..58+` with backward-compatible auto-detection, and get `npm run build` compiling cleanly.
 2. **Milestone 2 (Phase 2)**: Implement the `CIV_TECHS` $\longleftrightarrow$ `pack.cells.development` bridge (initial tech seeding from `development` + tech completion advancing `pack.cells.development`). **Done** — see §2.4.
 3. **Milestone 3 (Phase 3)**: Wire Builder improvements and `CIV_BUILDINGS` into `Output` / `Production`, implement `stepEconomy()` with persistent treasuries, and switch `getStateYieldBreakdown()` / `stepCities()` / `stepEmpire()` to upstream-backed yields and `Prosperity`/`Stability`. **Done** — see §3.4 (yields blended additively rather than replaced; city tile yields still drive queues, upstream flows drive treasuries).
-4. **Milestone 4 (Phase 4)**: Unify `Military.generate()`, `Military.getEquipped()`, `levies`, and `Military.getBattleUpkeep()` with `ArmyBlock[]` rosters, city unit production queues, and `battle.ts`.
+4. **Milestone 4 (Phase 4)**: Unify `Military.generate()`, `Military.getEquipped()`, `levies`, and `Military.getBattleUpkeep()` with `ArmyBlock[]` rosters, city unit production queues, and `battle.ts`. **Done** — see §4.5 (initial generation and `getEquipped` levies arrived with the Phase 1 merge; this phase added the category→goods map, the muster/equipment gate, and living battle upkeep).
 5. **Milestone 5 (Phase 5 & 6)**: Connect Factions (trade margins, corruption siphoning, smuggling, charter tithes) and Characters (ruler/council traits) to upstream's economy, wire the UI dialogs/HUD, and pass all Vitest suites.

@@ -15,6 +15,8 @@ import {
   chooseOrder,
   fromBattleUnits,
   fromBattleUnitsMen,
+  getUnitRequiredGoods,
+  levyUnitFor,
   matchRosterUnitByCategory,
   migrateArmyBlocks,
   nextRosterUnitInCategory,
@@ -58,6 +60,71 @@ const roster: ResolvedRoster = {
 };
 
 const block = (over: Partial<ArmyBlock>): ArmyBlock => ({ type: "levy", hp: 1, exp: 0, ...over });
+
+describe("getUnitRequiredGoods (economy alignment Phase 4)", () => {
+  it("spares the levy tier of every category", () => {
+    expect(getUnitRequiredGoods(roster.units.levy!, roster)).toEqual([]);
+  });
+
+  it("asks Arms of melee and ranged units, and metal of the armored", () => {
+    expect(getUnitRequiredGoods(roster.units.sword!, roster)).toEqual(["Arms"]);
+
+    // archer is the second ranged peer; the levy tier (first rank) asks nothing
+    const rangedPeers: ResolvedRoster = {
+      ...roster,
+      units: {
+        ...roster.units,
+        slinger: unit({ id: "slinger", name: "Slingers", category: "ranged", upkeep: 0.1 })
+      }
+    };
+    expect(getUnitRequiredGoods(rangedPeers.units.archer!, rangedPeers)).toEqual(["Arms"]);
+    expect(getUnitRequiredGoods(rangedPeers.units.slinger!, rangedPeers)).toEqual([]);
+
+    // levy, militia, spear, then halberd: the armored fourth rank asks metal too
+    const armored: ResolvedRoster = {
+      ...roster,
+      units: {
+        ...roster.units,
+        militia: unit({ id: "militia", name: "Militia", upkeep: 0.07 }),
+        spear2: unit({ id: "spear2", name: "Spearmen", upkeep: 0.2 }),
+        halberd: unit({ id: "halberd", name: "Halberds", upkeep: 0.3 })
+      }
+    };
+    expect(getUnitRequiredGoods(armored.units.sword!, armored)).toEqual(["Arms"]); // still the second rank
+    expect(getUnitRequiredGoods(armored.units.halberd!, armored)).toEqual(["Arms", "Iron"]);
+  });
+
+  it("asks mounts of cavalry and Arms of its heavy lancers", () => {
+    expect(getUnitRequiredGoods(roster.units.knight!, roster)).toEqual(["Horses", "Harnesses"]); // its category's only peer
+    const mounted: ResolvedRoster = {
+      ...roster,
+      units: {
+        ...roster.units,
+        outrider: unit({ id: "outrider", name: "Outriders", category: "cavalry", upkeep: 0.2 }),
+        rider: unit({ id: "rider", name: "Riders", category: "cavalry", upkeep: 0.35 }),
+        lancer: unit({ id: "lancer", name: "Lancers", category: "cavalry", upkeep: 0.45 })
+      }
+    };
+    expect(getUnitRequiredGoods(mounted.units.lancer!, mounted)).toEqual(["Horses", "Harnesses", "Arms"]);
+  });
+
+  it("asks powder of gunpowder artillery and timber of the older engines", () => {
+    const cannon = unit({ id: "cannon", category: "artillery", requiredTech: "gunpowder", upkeep: 0.5 });
+    const catapult = unit({ id: "catapult", category: "artillery", requiredTech: "engineering", upkeep: 0.2 });
+    expect(getUnitRequiredGoods(cannon, roster)).toEqual(["Artillery", "Gunpowder"]);
+    expect(getUnitRequiredGoods(catapult, roster)).toEqual(["Wood", "Ropes", "Iron"]);
+  });
+
+  it("asks reagents of monsters and liturgy of spellcasters", () => {
+    const dragon = unit({ id: "dragon", category: "monster", quantity: 1, men: 1 });
+    expect(getUnitRequiredGoods(dragon, roster)).toEqual(["Gemstones"]);
+    expect(getUnitRequiredGoods(roster.units.slann!, roster)).toEqual(["Incense", "Books"]);
+  });
+
+  it("names each roster's plain levy for the fallback", () => {
+    expect(levyUnitFor(roster)?.id).toBe("levy");
+  });
+});
 const regimentOf = (units: ArmyBlock[]) => ({ units, u: {}, a: 0, n: 0 }) as never as Parameters<typeof armySlots>[0];
 
 describe("hp ↔ count bridge", () => {

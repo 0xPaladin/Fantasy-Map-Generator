@@ -55,7 +55,9 @@ import {
   chooseOrder,
   fromBattleUnits,
   fromBattleUnitsMen,
+  getUnitRequiredGoods,
   isCivilianUnit,
+  levyUnitFor,
   matchRosterUnitByCategory,
   migrateArmyBlocks,
   nextRosterUnitInCategory,
@@ -2854,8 +2856,8 @@ class LivingModel {
           Number(pack.cells.r?.[targetCell] ?? 0) > 0,
         defenderTerrain: terrainDefenseMultiplier(targetCell) > 1,
         labels: [fortified ? `${burg?.name ?? "stronghold"} (fortified)` : (burg?.name ?? "stronghold")],
-        ...(happinessCombatMultiplier(sSim.happiness) !== 1
-          ? { attackerLordMult: happinessCombatMultiplier(sSim.happiness) }
+        ...(this.stateCombatMult(sSim.stateId, living) !== 1
+          ? { attackerLordMult: this.stateCombatMult(sSim.stateId, living) }
           : {}),
         ...(happinessCombatMultiplier(faction.happiness ?? 0) !== 1
           ? { defenderLordMult: happinessCombatMultiplier(faction.happiness ?? 0) }
@@ -4302,6 +4304,28 @@ class LivingModel {
     if (!newest) return;
 
     const blocks = newest.units ?? [];
+    const last = blocks[blocks.length - 1];
+
+    // §4.4: an underfunded state cannot keep its elite blocks paid; they take service as levies
+    if (last && Military.getUpkeep(state.i) < 0.5) {
+      const roster = Military.getRoster(state);
+      const unitTypes = Military.getUnitTypes();
+      const levy = roster ? levyUnitFor(roster) : undefined;
+      const unit = last.type ? unitTypes[last.type] : undefined;
+      if (levy && unit && getUnitRequiredGoods(unit, roster!).length > 0) {
+        last.type = levy.id;
+        last.exp = Math.floor((last.exp ?? 0) / 2);
+        syncRegimentTotals(newest, unitTypes);
+        this.pushNews(living, {
+          kind: "muster",
+          text: `Unpaid, ${state.name}'s ${unit.name} took service as ${levy.name}.`,
+          cell: newest.cell,
+          stateId: state.i
+        });
+        return;
+      }
+    }
+
     if (blocks.length > 0) {
       blocks.pop();
       newest.units = blocks;
@@ -5842,7 +5866,7 @@ class LivingModel {
 
     const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
     const burg = burgId ? pack.burgs[burgId] : undefined;
-    const attackerLordMult = happinessCombatMultiplier(living.states[attackerState.i]?.happiness);
+    const attackerLordMult = this.stateCombatMult(attackerState.i, living);
     const defenderLordMult = happinessCombatMultiplier(defenderFaction.happiness ?? 0);
     const session = initBattleSession({
       config,
@@ -6155,7 +6179,10 @@ class LivingModel {
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
       Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
     const attackerLordMult = happinessCombatMultiplier(attackerFaction.happiness ?? 0);
-    const defenderLordMult = happinessCombatMultiplier(defenderHappiness);
+    const defenderLordMult =
+      defenderKind === "state"
+        ? this.stateCombatMult(defenderId, living)
+        : happinessCombatMultiplier(defenderHappiness);
     return {
       walls,
       defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
@@ -6268,7 +6295,7 @@ class LivingModel {
     const living = this.getState();
     const defenderId = burg.state ?? 0;
     const attackerLordMult = happinessCombatMultiplier(faction.happiness ?? 0);
-    const defenderLordMult = happinessCombatMultiplier(living.states[defenderId]?.happiness);
+    const defenderLordMult = this.stateCombatMult(defenderId, living);
     return {
       walls: Number(burg.walls ?? 0),
       defenderEncamped: true,
@@ -6339,8 +6366,8 @@ class LivingModel {
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
       Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
 
-    const attackerLordMult = happinessCombatMultiplier(living.states[attackerState.i]?.happiness);
-    const defenderLordMult = happinessCombatMultiplier(living.states[defenderState.i]?.happiness);
+    const attackerLordMult = this.stateCombatMult(attackerState.i, living);
+    const defenderLordMult = this.stateCombatMult(defenderState.i, living);
 
     return {
       walls,
@@ -7188,13 +7215,17 @@ class LivingModel {
     return "occupy";
   }
 
+  /** §4.4: a state's forces fight at happiness × battle-upkeep strength. */
+  private stateCombatMult(stateId: number, living: LivingWorldState): number {
+    return happinessCombatMultiplier(living.states[stateId]?.happiness) * Military.getLivingBattleUpkeep(stateId);
+  }
+
   /** Modifiers for a city assault: walls, bracing garrison, terrain and lord multipliers. */
   private siegeModifiers(state: State, burg: Burg): BattleModifiers {
     const living = this.getState();
     const defenderId = burg.state ?? 0;
-    const lord = (stateId: number) => happinessCombatMultiplier(living.states[stateId]?.happiness);
-    const attackerLordMult = lord(state.i);
-    const defenderLordMult = lord(defenderId);
+    const attackerLordMult = this.stateCombatMult(state.i, living);
+    const defenderLordMult = this.stateCombatMult(defenderId, living);
     return {
       walls: Number(burg.walls ?? 0),
       defenderEncamped: true,
@@ -7364,6 +7395,13 @@ class LivingModel {
     const maxSlots = currentContent().config.military.maxUnitsPerArmy;
     const exp = Math.min(9, Math.floor(this.trainingXp(burg) / 15));
 
+    // §4.3: a unit its state cannot equip takes the field as levies, or at half strength
+    const roster = Military.getRoster(state);
+    const resolved = this.resolveEquipment(state, roster, unitTypes, typeId, label);
+    const shortage = resolved.shortage;
+    typeId = resolved.typeId;
+    label = resolved.label;
+
     let regiment = (state.military ?? []).find(entry => {
       if (entry.cell !== burg.cell) return false;
       const key = this.unitKey(state.i, entry.i);
@@ -7378,7 +7416,7 @@ class LivingModel {
 
     const key = this.unitKey(state.i, regiment.i);
     regiment.units ??= [];
-    regiment.units.push({ type: typeId, hp: 1, exp });
+    regiment.units.push({ type: typeId, hp: shortage && resolved.typeId === typeId ? 0.5 : 1, exp });
     normalizeArmy(regiment, maxSlots, unitTypes);
     syncRegimentTotals(regiment, unitTypes);
 
@@ -7393,7 +7431,43 @@ class LivingModel {
       stateId: state.i,
       burgId: burg.i
     });
+    if (shortage) {
+      this.pushNews(living, {
+        kind: "muster",
+        text: `${state.name}'s forges ran short of ${shortage}; the block took the field underequipped.`,
+        cell: regiment.cell,
+        stateId: state.i,
+        burgId: burg.i
+      });
+    }
     return regiment;
+  }
+
+  /** §4.3: resolve a mustering block against the state's spare equipment kits. */
+  private resolveEquipment(
+    state: State,
+    roster: ResolvedRoster | undefined,
+    unitTypes: Record<string, UnitType>,
+    typeId: string,
+    label: string
+  ): { typeId: string; label: string; shortage?: string } {
+    const unit = unitTypes[typeId];
+    if (!unit || !roster) return { typeId, label };
+
+    const required = getUnitRequiredGoods(unit, roster);
+    const missing = required.filter(
+      good =>
+        Military.getEquipmentSpare(state.i, good, id => {
+          const peer = unitTypes[id];
+          return Boolean(peer && getUnitRequiredGoods(peer, roster).includes(good));
+        }) < 1
+    );
+    if (missing.length === 0) return { typeId, label };
+
+    const levy = levyUnitFor(roster);
+    if (levy && unitTypes[levy.id] && levy.id !== typeId)
+      return { typeId: levy.id, label: levy.name, shortage: missing.join(", ") };
+    return { typeId, label, shortage: missing.join(", ") };
   }
 
   /** Barracks and similar training buildings grant +15 XP each on recruitment. */
@@ -8230,10 +8304,17 @@ class LivingModel {
     const choice = this.pickMusterUnit(state);
     if (!choice) return false;
 
-    const regiment = choice.regiment ?? this.createRegiment(state);
     const unitTypes = Military.getUnitTypes();
+    // §4.3: muster through the equipment gate; short goods demote the unit to a levy
+    const roster = Military.getRoster(state);
+    const resolved = this.resolveEquipment(state, roster, unitTypes, choice.unit.id, choice.unit.name);
+    const unit =
+      resolved.shortage && resolved.typeId === choice.unit.id
+        ? choice.unit
+        : (unitTypes[resolved.typeId] ?? choice.unit);
+    const regiment = choice.regiment ?? this.createRegiment(state);
     regiment.units ??= [];
-    regiment.units.push({ type: choice.unit.id, hp: 1, exp: 0 });
+    regiment.units.push({ type: unit.id, hp: resolved.shortage && resolved.typeId === unit.id ? 0.5 : 1, exp: 0 });
     normalizeArmy(regiment, currentContent().config.military.maxUnitsPerArmy, unitTypes);
     syncRegimentTotals(regiment, unitTypes);
     const key = this.unitKey(state.i, regiment.i);
@@ -8241,17 +8322,26 @@ class LivingModel {
     const livingState = this.getState();
     livingState.armies ??= {};
     livingState.armies[key] ??= { movement: speed, maxMovement: speed, stance: "fortify", hasFought: false };
-    if (choice.unit.troubleRole) this.commanderFor(state, regiment, choice.unit.troubleRole);
+    if (unit.troubleRole) this.commanderFor(state, regiment, unit.troubleRole);
 
     const living = this.getState();
     const burg = pack.burgs[pack.cells.burg?.[regiment.cell] ?? 0];
     this.pushNews(living, {
       kind: "muster",
-      text: `${state.name} mustered ${choice.unit.name} in ${burg?.name ?? "the field"}.`,
+      text: `${state.name} mustered ${resolved.label} in ${burg?.name ?? "the field"}.`,
       cell: regiment.cell,
       stateId,
       burgId: burg?.i
     });
+    if (resolved.shortage) {
+      this.pushNews(living, {
+        kind: "muster",
+        text: `${state.name}'s forges ran short of ${resolved.shortage}; the block took the field underequipped.`,
+        cell: regiment.cell,
+        stateId,
+        burgId: burg?.i
+      });
+    }
     return true;
   }
 
@@ -8586,8 +8676,8 @@ class LivingModel {
 
   private assaultModifiers(burg: Burg, attackerStateId?: number): BattleModifiers {
     const living = pack.history?.living;
-    const attackerMult = attackerStateId ? happinessCombatMultiplier(living?.states?.[attackerStateId]?.happiness) : 1;
-    const defenderMult = happinessCombatMultiplier(living?.states?.[burg.state ?? 0]?.happiness);
+    const attackerMult = attackerStateId ? this.stateCombatMult(attackerStateId, living ?? this.getState()) : 1;
+    const defenderMult = this.stateCombatMult(burg.state ?? 0, living ?? this.getState());
 
     return {
       walls: Number(burg.walls ?? 0),

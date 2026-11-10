@@ -2057,6 +2057,143 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     });
   });
 
+  describe("Military goods gating & upkeep (economy alignment Phase 4)", () => {
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    /** The default roster's units table plus the map options mustering and upkeep read */
+    function armOptions(): void {
+      const map = options.map as { military?: unknown; units?: unknown };
+      map.military = { units: [{ name: "sword", power: 1 }] };
+      map.units = { population: { scale: 1 } };
+    }
+
+    it("musters through the equipment gate when the economy has run", () => {
+      armOptions();
+      const arms = makeGood(9, "Arms", ["military"], { military: 1 });
+      options.map.goods = [makeGood(0, "None", [], {}), arms];
+      pack.deals = [[1, 1, arms.i, 2, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals; // a demand deal, no kept stock
+
+      expect(Living.muster(1)).toBe(true);
+
+      const block = pack.states[1].military?.[0]?.units?.[0];
+      expect(block?.type).toBe("levy_spear"); // the state consumes no Arms: the sword demoted
+      expect(Living.getState().recentNews.some(entry => entry.text.includes("short of Arms"))).toBe(true);
+    });
+
+    it("musters the requested block when the goods cannot be measured", () => {
+      armOptions();
+      pack.deals = undefined as unknown as typeof pack.deals;
+
+      expect(Living.muster(1)).toBe(true);
+
+      expect(pack.states[1].military?.[0]?.units?.[0]?.type).toBe("sword");
+    });
+
+    it("spares kits for blocks already in the field", () => {
+      armOptions();
+      const arms = makeGood(9, "Arms", ["military"], { military: 1 });
+      options.map.goods = [makeGood(0, "None", [], {}), arms];
+      pack.states[1].military = [
+        {
+          i: 0,
+          name: "Regiment",
+          a: 100,
+          cell: 5,
+          x: 0,
+          y: 0,
+          bx: 0,
+          by: 0,
+          n: 0,
+          u: { sword: 100 },
+          units: [{ type: "sword", hp: 1, exp: 0 }],
+          state: 1
+        } as never
+      ];
+      pack.deals = [[1, 1, arms.i, 3, 20, 1, 0, 0, 0]] as unknown as typeof pack.deals; // 20 units kept
+
+      const spare = Military.getEquipmentSpare(1, "Arms", id => id === "sword");
+      expect(spare).toBeCloseTo(20 * 0.365 - 1); // consumption × EQUIPMENT − the fielded sword
+    });
+
+    it("clamps a funded state's battle upkeep and lets a bankrupt one collapse", () => {
+      armOptions();
+      const state = pack.states[1];
+      state.military = [
+        {
+          i: 0,
+          name: "Regiment",
+          a: 100,
+          cell: 5,
+          x: 0,
+          y: 0,
+          bx: 0,
+          by: 0,
+          n: 0,
+          u: { sword: 100 },
+          units: [{ type: "sword", hp: 1, exp: 0 }],
+          state: 1
+        } as never
+      ];
+      pack.deals = [[1, 1, 1, 3, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+      state.economy.spent.military = 100; // need is 100 × 20: upkeep 0.05
+
+      state.economy.treasury = 500;
+      expect(Military.getLivingBattleUpkeep(1)).toBe(0.5); // funded: the floor holds
+
+      state.economy.treasury = -10;
+      expect(Military.getLivingBattleUpkeep(1)).toBeCloseTo(0.05); // bankrupt: toward MIN_UPKEEP
+
+      state.economy.spent.military = 2000; // fully kept
+      expect(Military.getLivingBattleUpkeep(1)).toBe(1);
+
+      pack.deals = undefined as unknown as typeof pack.deals;
+      expect(Military.getLivingBattleUpkeep(1)).toBe(1); // no run: no modifier
+    });
+
+    it("demotes an unpaid elite block to levies instead of disbanding it", () => {
+      armOptions();
+      const state = pack.states[1];
+      state.military = [
+        {
+          i: 0,
+          name: "Regiment",
+          a: 100,
+          cell: 5,
+          x: 0,
+          y: 0,
+          bx: 0,
+          by: 0,
+          n: 0,
+          u: { sword: 100 },
+          units: [{ type: "sword", hp: 1, exp: 4 }],
+          state: 1
+        } as never
+      ];
+      pack.deals = [[1, 1, 1, 3, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+      state.economy.spent.military = 100; // underfunded: upkeep 0.05 < 0.5
+
+      const living = Living.init();
+      living.states[1].yieldsPerTurn = {
+        food: 0,
+        production: 0,
+        gold: -10,
+        science: 0,
+        culture: 0,
+        faith: 0,
+        happiness: 0
+      };
+
+      Living.tick(1);
+
+      const block = state.military?.[0]?.units?.[0];
+      expect(state.economy.treasury).toBe(0);
+      expect(block?.type).toBe("levy_spear"); // the sword took service as a levy
+      expect(living.recentNews.some(entry => entry.text.includes("took service as"))).toBe(true);
+    });
+  });
+
   describe("OpenCiv slice 5: 1UPT tactical units", () => {
     const makeRegiment = (i: number, cell: number, state = 1) => ({
       i,

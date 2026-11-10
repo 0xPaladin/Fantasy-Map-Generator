@@ -192,6 +192,63 @@ export function nextRosterUnitInCategory(roster: ResolvedRoster, id: string): Un
   return rank >= 0 ? peers[rank + 1] : undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Equipment goods (docs/plans/upstream-economy-alignment.md §4.1) — the trade
+// goods a unit's block needs equipped; shortfalls demote the block to levies.
+// ---------------------------------------------------------------------------
+
+const GUNPOWDER_TECHS = new Set([
+  "gunpowder",
+  "rifling",
+  "ballistics",
+  "rocketry",
+  "combustion",
+  "replaceable_parts",
+  "mobile_tactics",
+  "stealth"
+]);
+const HEAVY_RANK = 3; // from here up a category's units are armored: metal as well as arms
+
+/** A unit's rank among its roster's same-category units, cheapest first. */
+export function categoryRank(unit: UnitType, roster: ResolvedRoster): number {
+  const peers = Object.values(roster.units)
+    .filter(u => u.category === unit.category)
+    .sort((a, b) => a.upkeep - b.upkeep || a.id.localeCompare(b.id));
+  return peers.findIndex(u => u.id === unit.id);
+}
+
+/** Upstream trade goods a roster unit's block needs equipped; `[]` is a levy-tier unit. */
+export function getUnitRequiredGoods(unit: UnitType, roster: ResolvedRoster): string[] {
+  const rank = categoryRank(unit, roster);
+  switch (unit.category) {
+    case "melee":
+      return rank === 0 ? [] : rank >= HEAVY_RANK ? ["Arms", "Iron"] : ["Arms"];
+    case "ranged":
+      return rank === 0 ? [] : ["Arms"];
+    case "cavalry":
+      return rank >= HEAVY_RANK ? ["Horses", "Harnesses", "Arms"] : ["Horses", "Harnesses"];
+    case "artillery":
+      return GUNPOWDER_TECHS.has(requiredTechFor(unit, roster))
+        ? ["Artillery", "Gunpowder"]
+        : ["Wood", "Ropes", "Iron"];
+    case "monster":
+      return ["Gemstones"];
+    case "spellcaster":
+      return ["Incense", "Books"];
+  }
+}
+
+/** The plain levy a realm's unequipped block falls back to: its cheapest melee, else ranged, else any unit. */
+export function levyUnitFor(roster: ResolvedRoster): UnitType | undefined {
+  const byRank = (category: UnitCategory) =>
+    Object.values(roster.units)
+      .filter(u => u.category === category)
+      .sort((a, b) => a.upkeep - b.upkeep || a.id.localeCompare(b.id));
+  return (
+    byRank("melee")[0] ?? byRank("ranged")[0] ?? Object.values(roster.units).sort((a, b) => a.upkeep - b.upkeep)[0]
+  );
+}
+
 /** First recruitable unit of `category` whose gate `techs` satisfies. */
 export function pickRosterUnit(roster: ResolvedRoster, category: UnitCategory, techs: string[]): UnitType | undefined {
   return Object.values(roster.units)
