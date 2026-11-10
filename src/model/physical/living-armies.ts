@@ -9,9 +9,9 @@
  * quantisation can never make a small-`quantity` block immortal (§5.3).
  */
 import type { ResolvedRoster, UnitCategory, UnitType } from "@/data/roster-content";
-import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import { type BattleTacticalOrder, categoryShares } from "@/model/battle/battle";
 import type { Regiment } from "@/model/political/military-generator";
+import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type { ArmyStance } from "@/types/living";
 
 // ---------------------------------------------------------------------------

@@ -192,9 +192,11 @@ class SolarSystemModule {
     const terranMoon = this.bodies.find(body => body.kind === "moon" && body.archetype === "terran");
     if (terranMoon) return terranMoon.id;
     return (
-      this.bodies.find(body => body.kind === "planet" && body.colonizable) ??
-      this.bodies.find(body => body.colonizable)
-    )?.id ?? null;
+      (
+        this.bodies.find(body => body.kind === "planet" && body.colonizable) ??
+        this.bodies.find(body => body.colonizable)
+      )?.id ?? null
+    );
   }
 
   /** Kepler's third law around the primary, mirroring generateSystem */

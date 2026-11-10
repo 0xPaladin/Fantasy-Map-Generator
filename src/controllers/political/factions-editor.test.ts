@@ -198,7 +198,8 @@ describe("FactionsEditor", () => {
     const dialog = document.querySelector("#factionOutpostsDialog")!;
     expect(dialog.innerHTML).toContain("🌾 4 · 🔨 3");
     expect(dialog.innerHTML).toContain("🌾 3 · 🔨 2");
-  });
+  });
+
   it("supports tab switching between HQ & Outposts, Assets, and Forces", () => {
     const faction = Factions.add({
       name: "Guild of Traders",

@@ -12,6 +12,36 @@ Check out [Dev board](https://github.com/users/Azgaar/projects/3/views/1?sumFiel
 
 Current version of the Fantasy Map Generator is the latest `master` branch. You can download it here: https://github.com/Azgaar/Fantasy-Map-Generator/archive/refs/heads/master.zip. Also see [the wiki](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Q&A#can-i-use-the-generator-offline).
 
+**[1.157.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.157.0) - 2026-11-09**:
+
+- Development: technology level of every cell
+- Zones and markers driven by the economy
+- Economy: prices follow demand and supply
+- Economy: most developed burgs trade first
+- Economy: prosperity of burgs, provinces and states
+- Economy: state budgets, corruption and stability
+- Economy: state and province overview
+- Economy: army strength depends on upkeep
+- Goods: your goods carry over to new maps
+- Trade: traffic sublayer
+- Military: regiments moved to frontlines
+- Rivers: tributaries bend gently into the downstream flow
+- River style groups: regular, frozen, dry, lava and custom
+- Emblems: Armoria pictures in older maps become COAs where possible
+- The tour button on the map is removed: start the tour from the update window or the About tab
+- Update window: the latest releases info; F1 opens it again
+- Image Converter: fit, zoom and move the image before converting it
+- Measurers, regiment controls and editing handles keep their size on zoom
+- Heightmap: contours are spaced in round height units
+- Heightmap: elevation labels
+- Trade animation follows edited and custom routes
+- Hovering a cut value shows its text in the tooltip
+- Editors: cut too long column names
+- Options: the interface size slider no longer jumps while dragged
+- Military units: the limit picker stays on screen with long lists
+
+# Releases
+
 **[1.156.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.156.0) - 2026-10-25**:
 
 - Migration: folders are reworked
@@ -26,8 +56,6 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Factions: states can now suppress hostile factions in the Living World — production-funded `suppress_faction` agenda against urban nodes (influence damage, guard stalls, pillage, HQ relocation/dissolution), military storm of wilderness strongholds on state-owned cells, plus Inspector "Suppress faction" command and pillaged badges
 - Factions: unified OpenCiv engine — HQs/outposts are city-nodes competing for worked cells, gathering seven yields, producing from unified queues, researching with host spillover, and fighting with shared Builders/Settlers/armies/sieges
 - Factions Editor: new Yields, Citizens, Worked Cells and Production columns; Outposts dialog and Burg inspector show per-node yields, citizens, worked cells and production queue
-
-# Releases
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 

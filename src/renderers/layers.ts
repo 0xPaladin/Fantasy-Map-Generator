@@ -358,13 +358,12 @@ const mapLayers = [
     children: ["oceanHeights", "landHeights"].map(id => ({ id, tag: "g" })),
     draw: () => {
       drawHeightmap();
-      LegendBoxes.refreshAltitude(); // the legend shows the heightmap colours
+      LegendBoxes.refreshAltitude();
     }
   }),
   new Layer({
     id: "lakes",
     parent: "viewbox",
-    children: ["freshwater", "salt", "sinkhole", "frozen", "lava", "dry"].map(id => ({ id, tag: "g" })),
     keepContent: true,
     draw: drawLakes
   }),
@@ -416,7 +415,6 @@ const mapLayers = [
   new Layer({
     id: "routes",
     parent: "viewbox",
-    children: ["trails", "roads", "searoutes"].map(id => ({ id, tag: "g" })),
     draw: drawRoutes,
     erase: removeRoutes
   }),
@@ -433,7 +431,7 @@ const mapLayers = [
   new Layer({
     id: "goods",
     parent: "viewbox",
-    children: ["goodsCells", "goodsIcons", "goodsBurgs"].map(id => ({ id, tag: "g" })),
+    children: ["goodsCells", "goodsTraffic", "goodsBurgs", "goodsIcons"].map(id => ({ id, tag: "g" })),
     draw: drawGoods,
     erase: removeGoods
   }),

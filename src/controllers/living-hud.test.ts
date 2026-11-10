@@ -10,7 +10,8 @@ const { mocks, state } = vi.hoisted(() => {
       seed: "seed-x",
       states: {},
       provinces: {},
-      burgs: {}
+      burgs: {},
+      recentNews: [] as unknown[]
     }
   };
 
@@ -21,7 +22,7 @@ const { mocks, state } = vi.hoisted(() => {
       getEschaton: vi.fn(() => 7),
       tick: vi.fn(() => state.living),
       syncWorld: vi.fn(),
-      eligibleFactionSuppressionTargets: vi.fn(() => []),
+      eligibleFactionSuppressionTargets: vi.fn((): unknown[] => []),
       startFactionSuppression: vi.fn(() => true),
       getHeroState: vi.fn((): unknown => undefined),
       setHeroDoctrine: vi.fn(() => true),
@@ -107,7 +108,14 @@ describe("LivingHud", () => {
         state: new Uint16Array([0, 1, 1, 2, 1, 1]),
         province: new Uint16Array([0, 1, 1, 2, 1, 1]),
         burg: new Uint16Array([0, 0, 1, 0, 2, 0]),
-        p: [[0, 0], [10, 10], [20, 20], [30, 30], [40, 40], [50, 50]],
+        p: [
+          [0, 0],
+          [10, 10],
+          [20, 20],
+          [30, 30],
+          [40, 40],
+          [50, 50]
+        ],
         c: [[1], [0, 2], [1, 3], [2, 4], [3, 5], [4]]
       },
       burgs: [

@@ -231,7 +231,8 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     cityRows = document.querySelectorAll("#stateCitiesTable > .states");
     expect(cityRows?.length).toBe(2);
     expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).not.toContain("Riverbend");
-  });
+  });
+
   it("supports tab switching between Major Cities, Assets, and Forces", () => {
     openStateCitiesDialog(1);
 

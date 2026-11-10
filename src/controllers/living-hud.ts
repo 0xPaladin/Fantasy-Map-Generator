@@ -5,7 +5,7 @@ import { ACTION_DEFS, DIE_SIDES } from "@/data/character-actions";
 import { ALIGNMENT_COLORS } from "@/data/culture-traits";
 import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel } from "@/data/hero-archetypes";
 import { activeAspects } from "@/data/hero-aspects";
-import { HERO_DISCIPLINES, matchingDisciplines } from "@/data/hero-disciplines";
+import { HERO_DISCIPLINES } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
@@ -727,7 +727,7 @@ function renderStateCard(stateId: number): string {
     ${renderCivState(sSim, stateId)}
     ${renderStateProvinces(stateId)}
     ${renderEconomy(sSim, stateId)}
-    ${renderAgenda(sSim, stateId, living)}
+    ${renderAgenda(sSim, living)}
     ${renderSuppressionTargets(stateId, sSim)}
     <div class="livingSection">
       <div class="livingSectionTitle">Stability</div>
@@ -807,7 +807,7 @@ function renderCivState(sSim: StatePolitySim, stateId: number): string {
     sSim.happiness ?? 0
   )}</span>`;
   const treasuryChip = `<span class="livingCivChip" title="Treasury">🪙 ${Math.round(
-    pack.states[stateId]?.treasury ?? 0
+    pack.states[stateId]?.economy?.treasury ?? 0
   )}</span>`;
 
   const tech = sSim.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
@@ -858,7 +858,7 @@ function renderEconomy(sSim: StatePolitySim, stateId: number): string {
   if (!yields) return "";
 
   const list = [
-    ["Gold", `${Math.round(pack.states[stateId]?.treasury ?? 0)}g`],
+    ["Gold", `${Math.round(pack.states[stateId]?.economy?.treasury ?? 0)}g`],
     ["Science", `${Math.round(yields.science ?? 0)}`],
     ["Faith", `${Math.round(sSim.faith ?? 0)}`]
   ]
@@ -880,11 +880,7 @@ function renderEconomy(sSim: StatePolitySim, stateId: number): string {
   return `<div class="livingSection"><div class="livingSectionTitle">Economy</div>${list}${buttons}</div>`;
 }
 
-function renderAgenda(
-  sSim: StatePolitySim,
-  stateId?: number,
-  living?: ReturnType<typeof Living.getState>
-): string {
+function renderAgenda(sSim: StatePolitySim, living?: ReturnType<typeof Living.getState>): string {
   const agenda = sSim.agenda;
   if (!agenda)
     return `<div class="livingSection"><div class="livingSectionTitle">Agenda</div><span class="livingMuted">No active agenda</span></div>`;
@@ -895,9 +891,9 @@ function renderAgenda(
     const burg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
     const node =
       faction && burg
-        ? (faction.hq?.burgId === burg.i && !faction.hq.pillaged
-            ? faction.hq
-            : (faction.outposts ?? []).find(outpost => outpost.burgId === burg.i && !outpost.pillaged))
+        ? faction.hq?.burgId === burg.i && !faction.hq.pillaged
+          ? faction.hq
+          : (faction.outposts ?? []).find(outpost => outpost.burgId === burg.i && !outpost.pillaged)
         : faction?.hq && !faction.hq.pillaged && !faction.hq.burgId
           ? faction.hq
           : undefined;
@@ -1450,7 +1446,9 @@ function runIntervention(button: HTMLElement): void {
       break;
     case "delve-faction":
       ok = Living.sendAdventurersToFaction(stateId, provId);
-      message = ok ? "The adventuring party vanquished the faction!" : "The adventuring party failed to destroy the faction.";
+      message = ok
+        ? "The adventuring party vanquished the faction!"
+        : "The adventuring party failed to destroy the faction.";
       break;
     case "ascend-faction": {
       const threat = hostileFactionInProvince(provId);
@@ -1553,7 +1551,9 @@ function setStatus(message: string): void {
 }
 
 function clearToasts(): void {
-  document.querySelectorAll(".livingToast").forEach(toast => toast.remove());
+  document.querySelectorAll(".livingToast").forEach(toast => {
+    toast.remove();
+  });
 }
 
 /** Open the HUD and select an entity (used by the native editors and map commands). */
@@ -1569,4 +1569,3 @@ function inspect(kind: Selection["kind"], id: number): void {
 }
 
 export const LivingHud = { open, close, toggle, refresh, inspect, selectMarker };
-

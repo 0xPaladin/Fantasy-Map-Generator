@@ -1,5 +1,5 @@
 import { Controllers } from "@/controllers";
-import { CIV_BUILDINGS, CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
 import { resolveCivTechName } from "@/data/living-civ-themes";
@@ -46,7 +46,7 @@ function formatBuildingBenefits(buildingId?: string): string {
   if (civ.effects?.trainedUnitExperience?.amount) parts.push(`+${civ.effects.trainedUnitExperience.amount} XP`);
   if (civ.effects?.foodKeptPercent) parts.push(`+${civ.effects.foodKeptPercent}% food kept`);
 
-  return parts.length ? parts.join(", ") : (civ.effects ? t("Special effect") : "—");
+  return parts.length ? parts.join(", ") : civ.effects ? t("Special effect") : "—";
 }
 
 function formatRegimentComposition(reg: Regiment): string {
@@ -92,15 +92,16 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   let currentTab = activeTab;
 
   // Burg candidate options for "+ City"
-  const stateBurgs = (pack.burgs ?? []).filter(
-    (b): b is Burg => Boolean(b?.i && !b.removed && b.state === stateId)
-  );
+  const stateBurgs = (pack.burgs ?? []).filter((b): b is Burg => Boolean(b?.i && !b.removed && b.state === stateId));
   const currentCityBurgIds = new Set(breakdown.cities.map(c => c.burgId));
   const availableBurgs = stateBurgs.filter(b => !currentCityBurgIds.has(b.i));
   const addCityOptions = availableBurgs.length
     ? availableBurgs
         .sort((a, b) => (b.population ?? 0) - (a.population ?? 0))
-        .map(b => `<option value="${b.i}">${escapeHtml(b.name ?? `Burg ${b.i}`)} (Pop: ${(b.population ?? 0).toLocaleString()})</option>`)
+        .map(
+          b =>
+            `<option value="${b.i}">${escapeHtml(b.name ?? `Burg ${b.i}`)} (Pop: ${(b.population ?? 0).toLocaleString()})</option>`
+        )
         .join("")
     : `<option disabled>${t("All state burgs are major cities")}</option>`;
 
@@ -110,14 +111,20 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
           const burg = pack.burgs?.[city.burgId];
           const bSim = living.burgs[city.burgId];
           const isStateCapital = Boolean(city.isCapital || state.capital === city.burgId);
-          const isProvCapital = !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === city.burgId));
-          const starPrefix = isStateCapital ? "⭐ " : isProvCapital ? '<span style="font-size: 0.85em; opacity: 0.85; margin-right: 2px;">★</span>' : "";
+          const isProvCapital =
+            !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === city.burgId));
+          const starPrefix = isStateCapital
+            ? "⭐ "
+            : isProvCapital
+              ? '<span style="font-size: 0.85em; opacity: 0.85; margin-right: 2px;">★</span>'
+              : "";
 
           const prodItem = bSim?.productionQueue?.[0];
           let queueText = "";
           if (prodItem) {
             if (prodItem.kind === "operation" && prodItem.id === "faction-suppression") {
-              const targetFaction = prodItem.targetFactionId !== undefined ? pack.factions?.[prodItem.targetFactionId] : undefined;
+              const targetFaction =
+                prodItem.targetFactionId !== undefined ? pack.factions?.[prodItem.targetFactionId] : undefined;
               const targetNode =
                 prodItem.targetNodeKey === "hq"
                   ? targetFaction?.hq
@@ -176,8 +183,13 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   for (const city of breakdown.cities) {
     const bSim = living.burgs[city.burgId];
     const isStateCapital = Boolean(city.isCapital || state.capital === city.burgId);
-    const isProvCapital = !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === city.burgId));
-    const starPrefix = isStateCapital ? "⭐ " : isProvCapital ? '<span style="font-size: 0.85em; opacity: 0.85; margin-right: 2px;">★</span>' : "";
+    const isProvCapital =
+      !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === city.burgId));
+    const starPrefix = isStateCapital
+      ? "⭐ "
+      : isProvCapital
+        ? '<span style="font-size: 0.85em; opacity: 0.85; margin-right: 2px;">★</span>'
+        : "";
 
     // Completed buildings
     for (const bId of city.buildings) {
@@ -198,7 +210,9 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
     for (const item of bSim?.productionQueue ?? []) {
       if (item.kind === "building" && !city.buildings.includes(item.id)) {
         const def = CIV_BUILDING_BY_ID[item.id];
-        const prog = Math.round(bSim?.productionProgress?.[itemToProgressKey(item)] ?? bSim?.productionProgress?.[item.id] ?? 0);
+        const prog = Math.round(
+          bSim?.productionProgress?.[itemToProgressKey(item)] ?? bSim?.productionProgress?.[item.id] ?? 0
+        );
         const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 100);
         const pct = Math.min(99, Math.round((prog / Math.max(1, cost)) * 100));
         assetEntries.push({
@@ -241,7 +255,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
     ? breakdown.cities
         .map(c => {
           const isStateCapital = Boolean(c.isCapital || state.capital === c.burgId);
-          const isProvCapital = !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.burgId));
+          const isProvCapital =
+            !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.burgId));
           const prefix = isStateCapital ? "⭐ " : isProvCapital ? "★ " : "";
           return `<option value="${c.burgId}">${prefix}${escapeHtml(c.name)}</option>`;
         })
@@ -295,7 +310,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
     ? breakdown.cities
         .map(c => {
           const isStateCapital = Boolean(c.isCapital || state.capital === c.burgId);
-          const isProvCapital = !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.burgId));
+          const isProvCapital =
+            !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.burgId));
           const prefix = isStateCapital ? "⭐ " : isProvCapital ? "★ " : "";
           return `<option value="${c.burgId}">${prefix}${escapeHtml(c.name)}</option>`;
         })
@@ -385,7 +401,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
       <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
         <span class="badge">${t("Culture")}: ${escapeHtml(cultureName)}</span>
         <span class="badge">${t("Capital")}: ${escapeHtml(capitalName)}</span>
-        <span class="badge">${t("Treasury")}: 🪙 ${Math.round(state.treasury ?? 0)}</span>
+        <span class="badge">${t("Treasury")}: 🪙 ${Math.round(state.economy?.treasury ?? 0)}</span>
         ${techName ? `<span class="badge">🔬 ${escapeHtml(techName)} (${techProgress}/${techCost})</span>` : ""}
       </div>
 
@@ -489,16 +505,22 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl(STATE_CITIES_DIALOG_ID)
     ?.querySelectorAll(".tabBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", e => {
         const target = e.currentTarget as HTMLElement;
         const tab = target.dataset.tab as "cities" | "assets" | "forces";
         if (!tab) return;
         currentTab = tab;
-        ensureEl(STATE_CITIES_DIALOG_ID)?.querySelectorAll(".tabBtn").forEach(b => b.classList.remove("active"));
+        ensureEl(STATE_CITIES_DIALOG_ID)
+          ?.querySelectorAll(".tabBtn")
+          .forEach(b => {
+            b.classList.remove("active");
+          });
         target.classList.add("active");
-        ensureEl(STATE_CITIES_DIALOG_ID)?.querySelectorAll(".tabPanel").forEach(p => {
-          (p as HTMLElement).style.display = (p as HTMLElement).dataset.panel === tab ? "block" : "none";
-        });
+        ensureEl(STATE_CITIES_DIALOG_ID)
+          ?.querySelectorAll(".tabPanel")
+          .forEach(p => {
+            (p as HTMLElement).style.display = (p as HTMLElement).dataset.panel === tab ? "block" : "none";
+          });
       });
     });
 
@@ -506,8 +528,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl(STATE_CITIES_DIALOG_ID)
     ?.querySelectorAll(".zoomCityBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const target = (e.currentTarget as HTMLElement);
+      btn.addEventListener("click", e => {
+        const target = e.currentTarget as HTMLElement;
         const burgId = Number(target.dataset.burgId);
         const b = pack.burgs?.[burgId];
         if (b) zoomTo(b.x, b.y, 8, 1600);
@@ -517,8 +539,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl(STATE_CITIES_DIALOG_ID)
     ?.querySelectorAll(".editCityBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const target = (e.currentTarget as HTMLElement);
+      btn.addEventListener("click", e => {
+        const target = e.currentTarget as HTMLElement;
         const burgId = Number(target.dataset.burgId);
         void Controllers.BurgEditor.open(burgId);
       });
@@ -528,8 +550,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl(STATE_CITIES_DIALOG_ID)
     ?.querySelectorAll(".removeCityBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const target = (e.currentTarget as HTMLElement);
+      btn.addEventListener("click", e => {
+        const target = e.currentTarget as HTMLElement;
         const burgId = Number(target.dataset.burgId);
         if (!burgId) return;
 
@@ -584,8 +606,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl(STATE_CITIES_DIALOG_ID)
     ?.querySelectorAll(".removeAssetBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const target = (e.currentTarget as HTMLElement);
+      btn.addEventListener("click", e => {
+        const target = e.currentTarget as HTMLElement;
         const burgId = Number(target.dataset.burgId);
         const buildingId = target.dataset.buildingId;
         if (!burgId || !buildingId) return;
@@ -647,11 +669,11 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl(STATE_CITIES_DIALOG_ID)
     ?.querySelectorAll(".zoomForceBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const target = (e.currentTarget as HTMLElement);
+      btn.addEventListener("click", e => {
+        const target = e.currentTarget as HTMLElement;
         const x = Number(target.dataset.x);
         const y = Number(target.dataset.y);
-        if (!isNaN(x) && !isNaN(y)) zoomTo(x, y, 8, 1600);
+        if (!Number.isNaN(x) && !Number.isNaN(y)) zoomTo(x, y, 8, 1600);
       });
     });
 
@@ -659,8 +681,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl(STATE_CITIES_DIALOG_ID)
     ?.querySelectorAll(".removeForceBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const target = (e.currentTarget as HTMLElement);
+      btn.addEventListener("click", e => {
+        const target = e.currentTarget as HTMLElement;
         const regId = Number(target.dataset.regId);
         if (!regId) return;
         state.military = (state.military ?? []).filter(r => r.i !== regId);
@@ -678,7 +700,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
     const cell = burg?.cell ?? state.center ?? 0;
     const [x, y] = pack.cells?.p?.[cell] ?? [burg?.x ?? 0, burg?.y ?? 0];
     const troops = Math.max(10, Number(troopsInput?.value) || 100);
-    const name = nameInput?.value.trim() || `${state.name} Regiment ${((state.military?.length ?? 0) + 1)}`;
+    const name = nameInput?.value.trim() || `${state.name} Regiment ${(state.military?.length ?? 0) + 1}`;
 
     state.military ??= [];
     const maxI = state.military.length ? Math.max(...state.military.map(r => r.i ?? 0)) : 0;

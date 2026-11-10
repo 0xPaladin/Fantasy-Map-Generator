@@ -1,6 +1,6 @@
 // Living World seasonal simulation engine. See docs/plans/living-world.md
 
-import { rollAlignment, rollFigureTraits, traitsRng, type Alignment } from "@/data/culture-traits";
+import { type Alignment, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import {
   CIV_BELIEF_BY_ID,
   CIV_ENHANCER_BELIEFS,
@@ -35,7 +35,6 @@ import {
   stepBattleRound
 } from "@/model/battle/battle";
 import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
-import type { Good } from "@/model/economy/goods-generator";
 import { Routes } from "@/model/economy/routes-generator";
 import {
   armyHp,
@@ -67,11 +66,11 @@ import {
   syncRegimentTotals
 } from "@/model/political/military-generator";
 import type { Province } from "@/model/political/provinces-generator";
-import { type State, States } from "@/model/political/states-generator";
+import { noFinance, type State, States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import { isAstralView } from "@/renderers/view-mode";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
-import type { HistRef, HistoricalFigure, HistoryEventType, Realm } from "@/types/history";
+import type { Good } from "@/types/economy";
 import type {
   Faction,
   FactionHq,
@@ -80,6 +79,7 @@ import type {
   FactionOutpost,
   FactionYieldBreakdown
 } from "@/types/factions";
+import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
 import {
   type ArmyBattleRecord,
   type ArmySimState,
@@ -104,7 +104,6 @@ import {
   type LivingWorldState,
   type MissionTag,
   type ProductionItem,
-  type ProvinceSimState,
   type ProvinceTrouble,
   type ReligionBeliefState,
   SEASON_NAMES,
@@ -124,6 +123,7 @@ import { minmax } from "@/utils";
 import { SEA_LEVEL } from "@/utils/height-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
+import type { FigureCheck, HeroMissionFit } from "./living-heroes";
 import { LivingHeroes } from "./living-heroes";
 import { LivingThreats } from "./living-threats";
 
@@ -131,14 +131,7 @@ const MAX_RECENT_NEWS = 50;
 const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
 
-const ERA_EPITHETS = [
-  "Ash",
-  "the Compact",
-  "Drowned Kings",
-  "Iron and Salt",
-  "Quiet Stars",
-  "Broken Crowns"
-] as const;
+const ERA_EPITHETS = ["Ash", "the Compact", "Drowned Kings", "Iron and Salt", "Quiet Stars", "Broken Crowns"] as const;
 const ERA_ORDINALS = [
   "First",
   "Second",
@@ -563,7 +556,7 @@ export function getCellResource(
   const goodId = Number(pack.cells.good?.[cell] ?? 0);
   if (!goodId) return null;
 
-  const good = pack.goods?.[goodId];
+  const good = options.map.goods?.[goodId];
   const resourceClass = classifyGood(good);
   if (!good || !resourceClass) return null;
 
@@ -730,8 +723,8 @@ export function getCellYieldSources(
   const improvementActive = Boolean(improvementId && !cellSim?.pillaged);
   const connected = improvementActive || Boolean(minorBurg && !minorPillaged);
 
-  if (resource && pack.goods?.[resource.goodId]) {
-    const yields = resourceYieldDelta(resource, pack.goods[resource.goodId], connected);
+  if (resource && options.map.goods?.[resource.goodId]) {
+    const yields = resourceYieldDelta(resource, options.map.goods[resource.goodId], connected);
     if (hasYield(yields)) {
       sources.push({
         kind: "resource",
@@ -1829,7 +1822,12 @@ class LivingModel {
   /** Every Major Burg of a state that has a live simulation record. */
   private majorBurgsOfState(stateId: number, living: LivingWorldState): Burg[] {
     return pack.burgs.filter(
-      burg => burg?.i && !burg.removed && burg.state === stateId && (isMajorBurg(burg) || Boolean(living.burgs[burg.i]?.isMajor)) && Boolean(living.burgs[burg.i])
+      burg =>
+        burg?.i &&
+        !burg.removed &&
+        burg.state === stateId &&
+        (isMajorBurg(burg) || Boolean(living.burgs[burg.i]?.isMajor)) &&
+        Boolean(living.burgs[burg.i])
     );
   }
 
@@ -2246,7 +2244,7 @@ class LivingModel {
     if (item.kind === "operation") {
       if (item.id !== FACTION_SUPPRESSION_OPERATION_ID) return 1;
       const target = this.resolveFactionSuppressionTarget(state, item);
-      const tier = target ? (target.isHq ? 2 : target.node.tier) : 2;
+      const tier = target ? (target.isHq ? 2 : "tier" in target.node ? target.node.tier : 2) : 2;
       return factionSuppressionProductionCost({ tier });
     }
     const cost =
@@ -2335,7 +2333,7 @@ class LivingModel {
     }
 
     if (item.kind === "operation") {
-      this.completeSuppressionOperation(state, burg, bSim, item, living);
+      this.completeSuppressionOperation(state, bSim, item, living);
       return;
     }
 
@@ -2387,7 +2385,6 @@ class LivingModel {
   /** Administrative suppression pressure after a host-city operation finishes. */
   private completeSuppressionOperation(
     state: State,
-    burg: Burg,
     _bSim: BurgSimState,
     item: ProductionItem,
     living: LivingWorldState
@@ -2412,9 +2409,7 @@ class LivingModel {
   private factionNodeHasGuard(faction: Faction, node: FactionHq | FactionOutpost): boolean {
     return (faction.military ?? []).some(
       regiment =>
-        regiment.cell === node.cell &&
-        !armyIsEmpty(regiment) &&
-        !isCivilianUnit((regiment.type ?? "").toLowerCase())
+        regiment.cell === node.cell && !armyIsEmpty(regiment) && !isCivilianUnit((regiment.type ?? "").toLowerCase())
     );
   }
 
@@ -2438,14 +2433,14 @@ class LivingModel {
     if (isHq) {
       node.influence = Math.max(0, (node.influence ?? 70) - influenceDamage);
     } else {
-      node.influence = Math.max(0, node.influence - influenceDamage);
+      node.influence = Math.max(0, (node.influence ?? 70) - influenceDamage);
     }
 
     if (pSim) pSim.order = Math.min(100, pSim.order + 2);
     const bSim = living.burgs[burg.i];
     if (bSim) bSim.unrest = Math.min(100, (bSim.unrest ?? 0) + 1);
 
-    const remaining = isHq ? (node.influence ?? 0) : node.influence;
+    const remaining = node.influence ?? 0;
     if (remaining <= 0) this.pillageFactionNode(state, target, living);
   }
 
@@ -2555,32 +2550,30 @@ class LivingModel {
   }
 
   /** Temporary militia garrison for a faction stronghold, from citizens, tier and fortifications. */
-  factionGarrisonBlocks(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    isHq: boolean
-  ): ArmyBlock[] {
+  factionGarrisonBlocks(faction: Faction, node: FactionHq | FactionOutpost, isHq: boolean): ArmyBlock[] {
     const types = Military.getUnitTypes();
     const roster = faction.rosterId ? Military.getRoster(faction) : undefined;
     const techs = new Set(faction.researchedTechs ?? []);
     const melee =
       (roster ? pickRosterUnit(roster, "melee", [...techs]) : undefined) ??
-      (Object.values(types).find(type => type.category === "melee") ?? Object.values(types)[0]);
+      Object.values(types).find(type => type.category === "melee") ??
+      Object.values(types)[0];
     if (!melee) return [];
 
-    const citizens = Math.max(1, Math.floor(node.sim?.citizens ?? (isHq ? 2 : node.tier)));
-    const tier = isHq ? 2 : node.tier;
-    const fortified = isHq && node.fortified ? 1 : 0;
+    const nodeTier = "tier" in node ? node.tier : 2;
+    const citizens = Math.max(1, Math.floor(node.sim?.citizens ?? (isHq ? 2 : nodeTier)));
+    const tier = isHq ? 2 : nodeTier;
+    const fortified = isHq && "fortified" in node && node.fortified ? 1 : 0;
     const count = Math.min(FACTION_GARRISON_BLOCK_CAP, Math.max(2, citizens + tier + fortified * 2));
     return Array.from({ length: count }, () => ({ type: melee.id, hp: 1, exp: 0 }));
   }
 
   /** Whether an unguarded node can be stormed directly (low influence or fortified). */
   private factionNodeAssaultable(node: FactionHq | FactionOutpost, isHq: boolean): boolean {
-    const influence = isHq ? (node.influence ?? 70) : node.influence;
+    const influence = node.influence ?? 70;
     if (influence <= FACTION_SUPPRESSION_ASSAULT_THRESHOLD) return true;
-    if (isHq && node.fortified) return true;
-    if (!isHq && node.tier >= 3) return true;
+    if (isHq && "fortified" in node && node.fortified) return true;
+    if (!isHq && "tier" in node && node.tier >= 3) return true;
     return false;
   }
 
@@ -2598,8 +2591,7 @@ class LivingModel {
 
     const target =
       this.eligibleFactionSuppressionTargets(stateId).find(
-        entry =>
-          entry.faction.i === factionId && (nodeKey === undefined || entry.nodeKey === nodeKey)
+        entry => entry.faction.i === factionId && (nodeKey === undefined || entry.nodeKey === nodeKey)
       ) ?? null;
     if (!target) return false;
     const { faction, node, isHq, burg } = target;
@@ -2621,7 +2613,7 @@ class LivingModel {
     const maxSlots = config.military.maxUnitsPerArmy;
     const attackerKey = this.unitKey(state.i, army.i);
     const attackerArmy = living.armies?.[attackerKey];
-    const fortified = (isHq && node.fortified) || (!isHq && node.tier >= 3);
+    const fortified = (isHq && "fortified" in node && node.fortified) || (!isHq && "tier" in node && node.tier >= 3);
 
     const session = initBattleSession({
       config,
@@ -2667,19 +2659,12 @@ class LivingModel {
     normalizeArmy(army, maxSlots, types);
     if (attackerArmy) {
       attackerArmy.hasFought = true;
-      attackerArmy.lastBattle = this.battleRecord(
-        army,
-        "attacker",
-        outcome.winner,
-        session.round,
-        living.tick,
-        {
-          before: attackerHpBefore,
-          after: armyStrength(army),
-          beforeBlocks: attackerUnits.length,
-          afterBlocks: army.units?.length ?? 0
-        }
-      );
+      attackerArmy.lastBattle = this.battleRecord(army, "attacker", outcome.winner, session.round, living.tick, {
+        before: attackerHpBefore,
+        after: armyStrength(army),
+        beforeBlocks: attackerUnits.length,
+        afterBlocks: army.units?.length ?? 0
+      });
     }
     syncRegimentTotals(army, types);
 
@@ -2723,10 +2708,7 @@ class LivingModel {
   }
 
   /** Queue one suppression operation for the target's host city, if not already queued. */
-  private enqueueFactionSuppression(
-    target: FactionSuppressionTarget,
-    living: LivingWorldState
-  ): boolean {
+  private enqueueFactionSuppression(target: FactionSuppressionTarget, living: LivingWorldState): boolean {
     if (!target.burg?.i) return false; // Wilderness strongholds have no host city queue.
     const bSim = living.burgs[target.burg.i!];
     if (!bSim?.isMajor) return false;
@@ -2816,9 +2798,9 @@ class LivingModel {
     if (remaining <= 0) return false;
 
     const price = hurryGoldCost(remaining, false, (bSim.civBuildings ?? []).includes("big_ben"));
-    if (Number(state.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
+    if (Number(state.economy.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
 
-    state.treasury = Math.round((Number(state.treasury ?? 0) - price) * 100) / 100;
+    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) - price) * 100) / 100;
     if (bSim.productionProgress) delete bSim.productionProgress[key];
     bSim.productionQueue.shift();
     this.completeProductionItem(state, burg, bSim, item, living);
@@ -2842,7 +2824,7 @@ class LivingModel {
 
       const owner = pack.states[burg.state ?? 0];
       if (invested > 0 && owner?.i && !owner.removed) {
-        owner.treasury = Number(owner.treasury ?? 0) + invested;
+        owner.economy.treasury = Number(owner.economy.treasury ?? 0) + invested;
       }
     }
   }
@@ -2972,8 +2954,7 @@ class LivingModel {
         return yields.food + yields.gold * 1.6 + yields.production * 1.2 + yields.science + yields.culture;
       case "martial":
         return yields.food * 1.2 + yields.production * 1.6 + yields.gold + yields.culture;
-      case "academic":
-      case "secret":
+      case "adventuring":
         return yields.food + yields.science * 1.6 + yields.gold * 1.3 + yields.culture * 1.2;
       case "religious":
         return yields.food + yields.faith * 1.6 + yields.culture * 1.4 + yields.gold;
@@ -3042,7 +3023,7 @@ class LivingModel {
     const nodeStates: NodeDraftState[] = residentNodes.map(entry => {
       const citizens = Math.max(1, Math.floor(entry.sim.citizens ?? (entry.isHq ? 2 : 1)));
       entry.sim.citizens = citizens;
-      const influence = "influence" in entry.node ? entry.node.influence : 70;
+      const influence = entry.node.influence ?? 70;
       const centerYields: YieldValues = {
         food: 2,
         production: 1,
@@ -4066,13 +4047,13 @@ class LivingModel {
   /** §7.1 Bank net Gold into the treasury; a negative balance disbands a regiment. */
   private applyTreasury(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
     const goldPerTurn = sSim.yieldsPerTurn?.gold ?? 0;
-    state.treasury = Math.round((Number(state.treasury ?? 0) + goldPerTurn) * 100) / 100;
-    if (state.treasury < 0) this.settleDebt(state, living);
+    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) + goldPerTurn) * 100) / 100;
+    if (state.economy.treasury < 0) this.settleDebt(state, living);
   }
 
   /** §7.1 Bankruptcy: reset the treasury and disband the newest block, not the whole regiment. */
   private settleDebt(state: State, living: LivingWorldState): void {
-    state.treasury = 0;
+    state.economy.treasury = 0;
     const military = state.military ?? [];
     const newest = military[military.length - 1];
     if (!newest) return;
@@ -4568,7 +4549,7 @@ class LivingModel {
         const score =
           (burg?.capital ? 1000 : 0) +
           ((yields?.gold ?? 0) + (yields?.production ?? 0) + (yields?.culture ?? 0)) * 10 +
-          ((node.sim?.citizens ?? 1) + ("influence" in node ? node.influence : node.secrecy)) -
+          ((node.sim?.citizens ?? 1) + (node.influence ?? node.secrecy)) -
           distance * 0.1;
 
         targets.push({
@@ -4609,9 +4590,9 @@ class LivingModel {
     if (remaining <= 0) return false;
 
     const price = hurryGoldCost(remaining, item.kind === "unit", (bSim.civBuildings ?? []).includes("big_ben"));
-    if (Number(state.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
+    if (Number(state.economy.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
 
-    state.treasury = Math.round((Number(state.treasury ?? 0) - price) * 100) / 100;
+    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) - price) * 100) / 100;
     if (bSim.productionProgress) delete bSim.productionProgress[key];
     bSim.productionQueue.shift();
     this.completeProductionItem(state, burg, bSim, item, living);
@@ -4623,7 +4604,7 @@ class LivingModel {
   // city sieges and Gold upgrades.
   // -------------------------------------------------------------------------
 
-  private unitKey(stateId: number, regimentId: number): string {
+  unitKey(stateId: number, regimentId: number): string {
     return `${stateId}-${regimentId}`;
   }
 
@@ -5676,20 +5657,34 @@ class LivingModel {
       defenderBlocks: defenderRegiment.units?.length ?? 0
     };
     if (attackerArmy) {
-      attackerArmy.lastBattle = this.battleRecord(attackerRegiment, "attacker", outcome.winner, session.round, living.tick, {
-        before: before.attackerHp,
-        after: after.attackerHp,
-        beforeBlocks: before.attackerBlocks,
-        afterBlocks: after.attackerBlocks
-      });
+      attackerArmy.lastBattle = this.battleRecord(
+        attackerRegiment,
+        "attacker",
+        outcome.winner,
+        session.round,
+        living.tick,
+        {
+          before: before.attackerHp,
+          after: after.attackerHp,
+          beforeBlocks: before.attackerBlocks,
+          afterBlocks: after.attackerBlocks
+        }
+      );
     }
     if (defenderArmy) {
-      defenderArmy.lastBattle = this.battleRecord(defenderRegiment, "defender", outcome.winner, session.round, living.tick, {
-        before: before.defenderHp,
-        after: after.defenderHp,
-        beforeBlocks: before.defenderBlocks,
-        afterBlocks: after.defenderBlocks
-      });
+      defenderArmy.lastBattle = this.battleRecord(
+        defenderRegiment,
+        "defender",
+        outcome.winner,
+        session.round,
+        living.tick,
+        {
+          before: before.defenderHp,
+          after: after.defenderHp,
+          beforeBlocks: before.defenderBlocks,
+          afterBlocks: after.defenderBlocks
+        }
+      );
     }
 
     const attackerWiped = armyIsEmpty(attackerRegiment);
@@ -7012,7 +7007,7 @@ class LivingModel {
         bSim.civBuildings = [];
         syncCivFlagsFromBuildings(burg, []);
         bSim.unrest = 5;
-        state.treasury = (state.treasury ?? 0) + baseBooty * 3;
+        state.economy.treasury = (state.economy.treasury ?? 0) + baseBooty * 3;
         break;
       case "sack":
         bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
@@ -7023,7 +7018,7 @@ class LivingModel {
         if (bSim.civBuildings.length > 0) bSim.civBuildings.pop();
         syncCivFlagsFromBuildings(burg, bSim.civBuildings);
         bSim.unrest = 15;
-        state.treasury = (state.treasury ?? 0) + baseBooty * 4;
+        state.economy.treasury = (state.economy.treasury ?? 0) + baseBooty * 4;
         break;
       case "loot":
         bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
@@ -7032,7 +7027,7 @@ class LivingModel {
         });
         syncCivFlagsFromBuildings(burg, bSim.civBuildings);
         bSim.unrest = 20;
-        state.treasury = (state.treasury ?? 0) + baseBooty * 2;
+        state.economy.treasury = (state.economy.treasury ?? 0) + baseBooty * 2;
         break;
       default: // occupy
         bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
@@ -7250,9 +7245,9 @@ class LivingModel {
       if (gate && !techs.includes(gate)) continue;
 
       const cost = Math.max(5, Math.round((10 * target.upkeep) / BASELINE_UPKEEP));
-      if (Number(state.treasury ?? 0) < cost) break;
+      if (Number(state.economy.treasury ?? 0) < cost) break;
 
-      state.treasury = Math.round((Number(state.treasury ?? 0) - cost) * 100) / 100;
+      state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) - cost) * 100) / 100;
       block.type = target.id;
       renames.push(`${current.name} → ${target.name}`);
       upgraded += 1;
@@ -7272,7 +7267,7 @@ class LivingModel {
 
   /** Wealthy states refit one block per season. */
   private autoUpgrade(state: State, living: LivingWorldState): void {
-    if (Number(state.treasury ?? 0) < 50) return;
+    if (Number(state.economy.treasury ?? 0) < 50) return;
     for (const regiment of state.military ?? []) {
       if (isCivilianUnit((regiment.type ?? "").toLowerCase())) continue;
       if (!living.armies?.[this.unitKey(state.i, regiment.i)]) continue;
@@ -7875,7 +7870,10 @@ class LivingModel {
       if (bSim.buildings.some(id => id.startsWith("temple"))) decay += 1;
       if (pacifying) decay += 2;
 
-      const floor = Math.max(trouble ? trouble.level : 0, hostile ? Math.min(10, 4 + Math.floor((hostile.seasonsActive ?? 0) / 3)) : 0);
+      const floor = Math.max(
+        trouble ? trouble.level : 0,
+        hostile ? Math.min(10, 4 + Math.floor((hostile.seasonsActive ?? 0) / 3)) : 0
+      );
       bSim.unrest = Math.max(floor, bSim.unrest - decay);
       if (pacifying && bSim.unrest === 0) this.assimilateBurg(ownerState, burg, bSim);
     }
@@ -8427,7 +8425,6 @@ class LivingModel {
     if (bSim) bSim.originalOwner ??= burg.state ?? 0;
 
     const previousState = burg.state ?? 0;
-    const wasCapital = burg.capital === 1;
     const loserProvinces = previousState > 0 ? this.ownedProvinces(previousState).length : 0;
     const cells = this.burgHinterland(burg);
     this.transferCells(stateId, cells);
@@ -8677,9 +8674,12 @@ class LivingModel {
       rosterId: assignStateRoster({ culture, type: "Generic" }, pack.cultures),
       military: [],
       coa: oldOwner.coa ?? ({} as State["coa"]),
-      salesTax: oldOwner.salesTax ?? 0,
-      pollTax: oldOwner.pollTax ?? 0,
-      treasury: 0
+      economy: {
+        ...noFinance(),
+        salesTax: oldOwner.economy?.salesTax ?? 0,
+        pollTax: oldOwner.economy?.pollTax ?? 0,
+        treasury: 0
+      }
     });
     burg.capital = 1;
     return i;
@@ -9237,9 +9237,7 @@ class LivingModel {
       const pSim = provId ? living?.provinces?.[provId] : null;
       if (pSim?.trouble?.theme === "resource") continue;
       const resourceFaction = provId
-        ? Factions.active().find(
-            f => RESOURCE_FACTION_IDS.includes(f.type) && this.factionProvinceId(f) === provId
-          )
+        ? Factions.active().find(f => RESOURCE_FACTION_IDS.includes(f.type) && this.factionProvinceId(f) === provId)
         : undefined;
       if (resourceFaction) continue;
       const good = pack.cells.good[cell];
@@ -9553,7 +9551,9 @@ class LivingModel {
         });
         return { province: p, faction };
       })
-      .filter((entry): entry is { province: Province; faction: import("@/types/factions").Faction } => Boolean(entry.faction))
+      .filter((entry): entry is { province: Province; faction: import("@/types/factions").Faction } =>
+        Boolean(entry.faction)
+      )
       .sort((a, b) => (b.faction.military?.[0]?.a ?? 0) - (a.faction.military?.[0]?.a ?? 0))[0];
 
     if (factionProvince) {
@@ -9569,7 +9569,7 @@ class LivingModel {
           required: 1
         };
       }
-      if ((state.treasury ?? 0) >= 40) {
+      if ((state.economy.treasury ?? 0) >= 40) {
         return {
           kind: "hire_adventurers",
           label: `Hiring adventurers against ${factionProvince.faction.name} in ${factionProvince.province.name}`,
@@ -9758,7 +9758,7 @@ class LivingModel {
         // Plunder: Gold to the treasury, unrest to the burg.
         const bSim = living.burgs[burg.i];
         const booty = Math.round((bSim?.citizens ?? 1) * 2 + 10);
-        state.treasury = (state.treasury ?? 0) + booty;
+        state.economy.treasury = (state.economy.treasury ?? 0) + booty;
         if (bSim) bSim.unrest = (bSim.unrest ?? 0) + 8;
         this.declareWar(state.i, burg.state);
         const raidState = pack.states[burg.state];
@@ -9838,7 +9838,10 @@ class LivingModel {
 
         // Unguarded low-influence / fortified nodes can be stormed directly; the
         // production operation keeps running and resumes if the assault fails.
-        if (!this.factionNodeHasGuard(target.faction, target.node) && this.factionNodeAssaultable(target.node, target.isHq)) {
+        if (
+          !this.factionNodeHasGuard(target.faction, target.node) &&
+          this.factionNodeAssaultable(target.node, target.isHq)
+        ) {
           this.assaultFactionNode(state.i, target.faction.i, target.nodeKey);
         }
         return;
@@ -10044,7 +10047,10 @@ class LivingModel {
 
   /** Faction node (HQ or outpost) sitting in a province, with its sim. */
   private factionNodeInProvince(faction: import("@/types/factions").Faction, provinceId: number) {
-    const entries: { node: import("@/types/factions").FactionHq | import("@/types/factions").FactionOutpost; isHq: boolean }[] = [
+    const entries: {
+      node: import("@/types/factions").FactionHq | import("@/types/factions").FactionOutpost;
+      isHq: boolean;
+    }[] = [
       { node: faction.hq, isHq: true },
       ...(faction.outposts ?? []).map(outpost => ({ node: outpost, isHq: false }))
     ];
@@ -10097,7 +10103,9 @@ class LivingModel {
         if (hostStateId) this.improveFactionRelation(faction, hostStateId);
         faction.influence = Math.min(100, (faction.influence ?? 0) + 10);
         const standing =
-          before && before !== faction.stateRelations[hostStateId] ? `, improving relations with ${pack.states[hostStateId]?.name ?? "the state"}` : "";
+          before && before !== faction.stateRelations[hostStateId]
+            ? `, improving relations with ${pack.states[hostStateId]?.name ?? "the state"}`
+            : "";
         this.pushNews(living, {
           kind: "trouble",
           text: `${faction.name} cleared the ${troubleName} afflicting ${province?.name ?? "the province"}${standing}.`,
@@ -10438,7 +10446,9 @@ class LivingModel {
             const provSim = regProvId ? living.provinces?.[regProvId] : null;
             const hosted = regProvId
               ? Factions.active().some(
-                  f => (f.allegiance === "hostile" || f.allegiance === "clandestine") && this.factionProvinceId(f) === regProvId
+                  f =>
+                    (f.allegiance === "hostile" || f.allegiance === "clandestine") &&
+                    this.factionProvinceId(f) === regProvId
                 )
               : false;
             if (!provSim?.trouble && !hosted) {

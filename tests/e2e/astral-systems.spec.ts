@@ -50,7 +50,7 @@ async function starPoint(page: Page): Promise<{ x: number; y: number }> {
 // FMG's version-update changelog opens a dialog over the map centre and eats the wheel: dismiss it
 async function dismissChangelog(page: Page): Promise<void> {
   if (await page.locator("#alert").isVisible().catch(() => false))
-    await page.evaluate(() => window.closeDialogs?.());
+    await page.evaluate(() => (window as any).FMG?.Dialog?.closeAll?.());
 }
 
 const viewScale = (page: Page) =>
@@ -196,6 +196,7 @@ test.describe("Astral systems", () => {
       const burg = pack.burgs.find(
         b => b.i && !b.removed && !b.capital && b.state && pack.states[b.state] && !pack.states[b.state].removed
       );
+      if (!burg) throw new Error("no non-capital state burg");
       Controllers.AstralSystemEditor.open(burg.i);
       return burg.i;
     });
@@ -212,6 +213,7 @@ test.describe("Astral systems", () => {
       const burg = pack.burgs.find(
         b => b.i && !b.removed && !b.capital && !pack.markets?.some(m => m.centerBurgId === b.i)
       );
+      if (!burg) throw new Error("no non-capital, non-market burg");
       Controllers.AstralSystemEditor.open(burg.i);
       return burg.i;
     });
@@ -226,7 +228,7 @@ test.describe("Astral systems", () => {
   test("search reveals the burg on the systems layer and outlines the marker", async ({ page }) => {
     await withSystems(page);
     await page.evaluate(() => Layers.hide("systems"));
-    const name = await page.evaluate(() => pack.burgs[1].name);
+    const name = await page.evaluate(() => pack.burgs[1]!.name ?? "");
 
     await page.keyboard.press("Space"); // the plain-Space omnibar hotkey
     if (!(await page.locator("#omnibar-input").count()))

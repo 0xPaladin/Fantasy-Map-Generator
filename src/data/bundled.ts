@@ -18,8 +18,8 @@
  */
 import { type ContentPack, type RawContentDocs, validateAndResolve } from "@/data/roster-content";
 import eventSample from "./docs/events/sample.json" with { type: "json" };
-import gameDoc from "./game.json" with { type: "json" };
 import victoryStandard from "./docs/victory/standard.json" with { type: "json" };
+import gameDoc from "./game.json" with { type: "json" };
 import rosterArachnid from "./rosters/arachnid.json" with { type: "json" };
 import rosterBeastfolk from "./rosters/beastfolk.json" with { type: "json" };
 import rosterCelestial from "./rosters/celestial.json" with { type: "json" };
@@ -52,7 +52,6 @@ import rosterTombKings from "./rosters/tomb_kings.json" with { type: "json" };
 import rosterTribal from "./rosters/tribal.json" with { type: "json" };
 import rosterVampire from "./rosters/vampire.json" with { type: "json" };
 import rosterWoodElf from "./rosters/wood_elf.json" with { type: "json" };
-
 
 /** The shipped ruleset, as raw docs — the input to `validateAndResolve`. */
 export const BUNDLED_DOCS: RawContentDocs = {

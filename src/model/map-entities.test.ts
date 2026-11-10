@@ -26,7 +26,6 @@ beforeEach(() => {
     addedLabels: [],
     religions: [],
     biomes: [],
-    goods: [],
     cells: {
       p: [
         [0, 0],
@@ -35,6 +34,7 @@ beforeEach(() => {
     },
     history: { events: [], realms: [], eras: [], figures: [] }
   } as unknown as typeof pack;
+  options.map.goods = [];
 });
 
 describe("resolveElementId", () => {
@@ -199,7 +199,7 @@ describe("shared entity geometry and context", () => {
       { i: 1, name: "Flowing", type: "River", cells: [0] },
       { i: 2, name: "Dry", type: "River", cells: [] }
     ] as unknown as typeof pack.rivers;
-    pack.goods = [{ i: 1, name: "Salt" }] as typeof pack.goods;
+    options.map.goods = [{ i: 1, name: "Salt" }] as never;
     const ids = (type: Parameters<typeof MapEntities.collect>[0]) =>
       MapEntities.collect(type, { located: true }).map(({ ref }) => ref.id);
     expect(ids("state")).toEqual([1]);
@@ -306,7 +306,7 @@ describe("entities at a cell", () => {
       routes: [{ i: 7, name: "King's Road" }],
       zones: [0, { i: 1, name: "Plague", cells: [1, 2] }],
       biomes: [{ i: 0, name: "Marine" }],
-      burgs: [0, { i: 1, name: "Vaeltown", production: [{ goodId: 5, units: 2, recipe: [] }, { dealId: 0 }] }],
+      burgs: [0, { i: 1, name: "Vaeltown", production: [[5, 2]] }],
       states: [
         { i: 0, name: "Neutrals" },
         { i: 1, name: "Ardenia", military: [{ i: 0, name: "1st Cavalry", x: 1, y: 1 }] }
@@ -325,13 +325,13 @@ describe("entities at a cell", () => {
           ]
         }
       ],
-      markets: [{ i: 2, centerBurgId: 1 }],
-      goods: [
-        { i: 3, name: "Salt" },
-        { i: 5, name: "Wine" },
-        { i: 6, name: "Silk" }
-      ]
+      markets: [{ i: 2, centerBurgId: 1 }]
     });
+    options.map.goods = [
+      { i: 3, name: "Salt" },
+      { i: 5, name: "Wine" },
+      { i: 6, name: "Silk" }
+    ] as never;
   });
 
   it("lists what the cell holds and the territories it belongs to, in type order", () => {
@@ -415,12 +415,12 @@ describe("records", () => {
           ]
         }
       ],
-      goods: [{ i: 0, name: "Salt" }],
-      deals: [{ i: 0, seller: 1, sellerType: "burg", buyer: 1, buyerType: "burg", good: 0, units: 1, price: 1 }]
+      markets: [{ i: 2, centerBurgId: 1 }],
+      deals: [[1, 2, 0, 0, 1, 1, 0, 0, 0]]
     });
     globalThis.pack.burgs[1] = { ...globalThis.pack.burgs[1], x: 7, y: 8 } as (typeof pack.burgs)[number];
     globalThis.options = {
-      map: { transports: [{ i: 2, name: "Galley", speed: 8, domain: "water" }] }
+      map: { transports: [{ i: 2, name: "Galley", speed: 8, domain: "water" }], goods: [{ i: 0, name: "Salt" }] }
     } as typeof options;
     Object.assign(Names, { nameBases: [{ i: 0, name: "German" }] });
   });

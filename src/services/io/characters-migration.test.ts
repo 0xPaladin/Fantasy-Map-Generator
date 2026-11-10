@@ -115,8 +115,8 @@ describe("character migration", () => {
 
 describe("character save round-trip", () => {
   it("keeps the history record layout and a new hero sheet", () => {
-    expect(HISTORY_RECORD).toBe(55);
-    expect(FIRST_SNAPSHOT_RECORD).toBe(56);
+    expect(HISTORY_RECORD).toBe(57);
+    expect(FIRST_SNAPSHOT_RECORD).toBe(58);
 
     const history: History = {
       ...emptyHistory(),
@@ -157,7 +157,7 @@ describe("character save round-trip", () => {
 
     const { json, snapshotRecords } = serializeHistory(history, 0);
     const loaded = parseHistory(json, snapshotRecords, 0);
-    expect(loaded.figures[0]?.removed).toBe(true);
-    expect(loaded.figures[0]?.death).toBe(850);
+    expect(loaded.figures![0]?.removed).toBe(true);
+    expect(loaded.figures![0]?.death).toBe(850);
   });
 });

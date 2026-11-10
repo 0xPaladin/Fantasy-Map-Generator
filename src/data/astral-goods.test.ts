@@ -67,6 +67,7 @@ describe("astral goods and world types data", () => {
           name: "Wood",
           tags: ["construction"],
           value: 1,
+          carriage: 1,
           unit: "pile",
           icon: "goods-wood",
           color: "#000"

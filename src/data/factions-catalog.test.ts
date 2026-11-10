@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FACTION_ASSETS_CATALOG } from "@/data/faction-assets";
 import { CIV_TECHS } from "@/data/living-civ-techs";
 import { LAIR_CATALOG } from "@/data/living-lairs";
-import { TROUBLE_CATALOG, ORGANIZATIONAL_TROUBLE_IDS, getTroubleFactionType } from "@/data/living-troubles";
+import { getTroubleFactionType, ORGANIZATIONAL_TROUBLE_IDS, TROUBLE_CATALOG } from "@/data/living-troubles";
 import { getAllFactionArchetypes, getArchetypesByCategory, getFactionArchetype } from "./factions-catalog";
 
 describe("FACTIONS_CATALOG", () => {

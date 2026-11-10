@@ -88,7 +88,7 @@ export function formatAssetBenefits(assetId?: string): string {
     }
   }
 
-  return parts.length ? parts.join(", ") : (def.description || "—");
+  return parts.length ? parts.join(", ") : def.description || "—";
 }
 
 function factionNodes(faction: Faction) {
@@ -184,7 +184,7 @@ const columns: EditorColumn<Faction>[] = [
   { key: "remove", width: "1.2em", permanent: true }
 ];
 
-const factionsTable = initEditorTable<Faction>({ getData: getFactionsData, onUpdate: renderFactionsPage });
+const factionsTable = initEditorTable<Faction>({ dialogId, getData: getFactionsData, onUpdate: renderFactionsPage });
 
 function open(focusId?: number): void {
   Dialog.closeAll("#factionsEditor, .stable");
@@ -420,7 +420,9 @@ function renderFactionsPage(view: TableView<Faction>): void {
       const hqName = f.hq.burgId
         ? (pack.burgs?.[f.hq.burgId]?.name ?? `Burg ${f.hq.burgId}`)
         : f.hq.markerId !== undefined
-          ? ((pack.markers?.[f.hq.markerId] as { legend?: string; name?: string } | undefined)?.legend ?? pack.markers?.[f.hq.markerId]?.name ?? `Marker ${f.hq.markerId}`)
+          ? ((pack.markers?.[f.hq.markerId] as { legend?: string; name?: string } | undefined)?.legend ??
+            pack.markers?.[f.hq.markerId]?.name ??
+            `Marker ${f.hq.markerId}`)
           : `Cell ${f.hq.cell}`;
 
       const catOptions = categories
@@ -658,7 +660,9 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
   const hqSuppressionText = hqSuppressionItem
     ? `<span style="opacity: 0.8; font-size: 0.85em; margin-left: 4px;">(Suppressing ${Math.round(hqHostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: 2 })})</span>`
     : "";
-  const hqStatusText = faction.hq.pillaged ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>` : "";
+  const hqStatusText = faction.hq.pillaged
+    ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>`
+    : "";
   const hqYields = formatYields(breakdown.hq?.yields ?? faction.hq.sim?.cityYields);
   const hqCitizens = breakdown.hq?.citizens ?? faction.hq.sim?.citizens ?? 0;
   const hqCells = breakdown.hq?.workedCells ?? faction.hq.sim?.workedCells?.length ?? 0;
@@ -699,7 +703,9 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       const suppressionText = suppressionItem
         ? `<span style="opacity: 0.8; font-size: 0.85em; margin-left: 4px;">(Suppressing ${Math.round(hostSim?.productionProgress?.["operation:faction-suppression"] ?? 0)}/${factionSuppressionProductionCost({ tier: op.tier })})</span>`
         : "";
-      const statusText = op.pillaged ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>` : "";
+      const statusText = op.pillaged
+        ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>`
+        : "";
       return /* html */ `
       <div class="states">
         <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><b>${escapeHtml(burgName)}</b></div>
@@ -750,7 +756,11 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
   (faction.hq.sim?.productionQueue ?? []).forEach(item => {
     if (item.kind === "building" && !faction.hq.assets?.includes(item.id)) {
       const def = getFactionAsset(item.id);
-      const prog = Math.round(faction.hq.sim?.productionProgress?.[item.id] ?? faction.hq.sim?.productionProgress?.[item.kind + ":" + item.id] ?? 0);
+      const prog = Math.round(
+        faction.hq.sim?.productionProgress?.[item.id] ??
+          faction.hq.sim?.productionProgress?.[`${item.kind}:${item.id}`] ??
+          0
+      );
       const cost = CIV_BUILDING_BY_ID[item.id]?.cost ?? def?.cost ?? 100;
       const pct = Math.min(99, Math.round((prog / Math.max(1, cost)) * 100));
       assetEntries.push({
@@ -788,7 +798,9 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     (op.sim?.productionQueue ?? []).forEach(item => {
       if (item.kind === "building" && !op.assets?.includes(item.id)) {
         const def = getFactionAsset(item.id);
-        const prog = Math.round(op.sim?.productionProgress?.[item.id] ?? op.sim?.productionProgress?.[item.kind + ":" + item.id] ?? 0);
+        const prog = Math.round(
+          op.sim?.productionProgress?.[item.id] ?? op.sim?.productionProgress?.[`${item.kind}:${item.id}`] ?? 0
+        );
         const cost = CIV_BUILDING_BY_ID[item.id]?.cost ?? def?.cost ?? 100;
         const pct = Math.min(99, Math.round((prog / Math.max(1, cost)) * 100));
         assetEntries.push({
@@ -1057,16 +1069,22 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
   ensureEl(dialogDomId)
     ?.querySelectorAll(".tabBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", e => {
         const target = e.currentTarget as HTMLElement;
         const tab = target.dataset.tab as "outposts" | "assets" | "forces";
         if (!tab) return;
         currentTab = tab;
-        ensureEl(dialogDomId)?.querySelectorAll(".tabBtn").forEach(b => b.classList.remove("active"));
+        ensureEl(dialogDomId)
+          ?.querySelectorAll(".tabBtn")
+          .forEach(b => {
+            b.classList.remove("active");
+          });
         target.classList.add("active");
-        ensureEl(dialogDomId)?.querySelectorAll(".tabPanel").forEach(p => {
-          (p as HTMLElement).style.display = (p as HTMLElement).dataset.panel === tab ? "block" : "none";
-        });
+        ensureEl(dialogDomId)
+          ?.querySelectorAll(".tabPanel")
+          .forEach(p => {
+            (p as HTMLElement).style.display = (p as HTMLElement).dataset.panel === tab ? "block" : "none";
+          });
       });
     });
 
@@ -1106,7 +1124,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
   ensureEl(dialogDomId)
     ?.querySelectorAll(".removeAssetBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", e => {
         const target = e.currentTarget as HTMLElement;
         const nodeType = target.dataset.node;
         const assetIdx = Number(target.dataset.index);
@@ -1164,7 +1182,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
   ensureEl(dialogDomId)
     ?.querySelectorAll(".removeOutpostBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", e => {
         const target = e.currentTarget as HTMLElement;
         const idx = Number(target.dataset.index);
         faction.outposts.splice(idx, 1);
@@ -1179,18 +1197,18 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
   ensureEl(dialogDomId)
     ?.querySelectorAll(".zoomForceBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", e => {
         const target = e.currentTarget as HTMLElement;
         const x = Number(target.dataset.x);
         const y = Number(target.dataset.y);
-        if (!isNaN(x) && !isNaN(y)) zoomTo(x, y, 8, 1600);
+        if (!Number.isNaN(x) && !Number.isNaN(y)) zoomTo(x, y, 8, 1600);
       });
     });
 
   ensureEl(dialogDomId)
     ?.querySelectorAll(".removeForceBtn")
     .forEach(btn => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", e => {
         const target = e.currentTarget as HTMLElement;
         const regId = Number(target.dataset.regId);
         if (!regId) return;
@@ -1214,7 +1232,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     }
     const [x, y] = pack.cells?.p?.[cell] ?? [0, 0];
     const troops = Math.max(10, Number(troopsInput?.value) || 100);
-    const name = nameInput?.value.trim() || `${faction.name} Company ${((faction.military?.length ?? 0) + 1)}`;
+    const name = nameInput?.value.trim() || `${faction.name} Company ${(faction.military?.length ?? 0) + 1}`;
 
     faction.military ??= [];
     const maxI = faction.military.length ? Math.max(...faction.military.map(r => r.i ?? 0)) : 0;

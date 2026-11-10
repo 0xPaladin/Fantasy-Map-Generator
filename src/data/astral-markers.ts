@@ -45,7 +45,10 @@ export const MARKER_READINGS: Record<string, MarkerReading> = {
   "disturbed-burials": { reading: "grave fields", icon: "⚰️" },
   necropolises: { reading: "necropolises", icon: "🪦" },
   encounters: { reading: "encounters", icon: "🛸" },
-  party: { reading: "party", icon: "🚩" }
+  party: { reading: "party", icon: "🚩" },
+  "guild-halls": { reading: "guild arcologies", icon: "🏛️" },
+  "merchant-houses": { reading: "trade enclaves", icon: "🏦" },
+  "customs-houses": { reading: "toll relays", icon: "🧾" }
 };
 
 /** The anomaly a marker type reads as; a user-typed kind reads as itself */
@@ -65,6 +68,9 @@ export const ANOMALY_FAMILIES: Record<string, string> = {
   bridges: "lanes",
   lighthouses: "lanes",
   inns: "stations",
+  "guild-halls": "stations",
+  "merchant-houses": "stations",
+  "customs-houses": "stations",
   circuses: "stations",
   jousts: "stations",
   fairs: "stations",

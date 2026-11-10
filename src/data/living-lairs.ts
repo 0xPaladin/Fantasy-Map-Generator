@@ -1,7 +1,7 @@
-import { currentContent } from "@/data/roster-store";
-import { MEN_PER_BLOCK, type UnitType } from "@/data/roster-content";
-import type { ArmyUnit } from "@/types/battle";
 import type { Alignment } from "@/data/culture-traits";
+import { MEN_PER_BLOCK, type UnitType } from "@/data/roster-content";
+import { currentContent } from "@/data/roster-store";
+import type { ArmyUnit } from "@/types/battle";
 import type { TroubleTheme } from "@/types/living";
 
 export interface LairUnitTemplate {

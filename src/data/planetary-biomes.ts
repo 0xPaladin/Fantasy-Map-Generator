@@ -8,7 +8,11 @@ import type { Biome } from "@/model/physical/biomes-generator";
 /** first planetary biome index; 0..12 are the built-in terrestrial biomes */
 export const PLANETARY_BIOMES_START = 13;
 
-type PlanetaryBiomeData = Omit<Biome, "iconsDensity" | "icons"> & { iconsDensity?: number; icons?: Biome["icons"] };
+type PlanetaryBiomeData = Omit<Biome, "iconsDensity" | "icons" | "development"> & {
+  iconsDensity?: number;
+  icons?: Biome["icons"];
+  development?: number;
+};
 
 const weight = (pool: Record<string, number>): Biome["icons"] =>
   Object.fromEntries(Object.entries(pool).map(([entry, value]) => [entry, { weight: value }]));
@@ -73,8 +77,9 @@ const data: PlanetaryBiomeData[] = [
 ];
 
 /** biome table entries 13..27, kept immutable; the generator stores shallow copies in pack.biomes */
-export const PLANETARY_BIOMES: Biome[] = data.map(({ iconsDensity, icons, ...biome }) => ({
+export const PLANETARY_BIOMES: Biome[] = data.map(({ iconsDensity, icons, development, ...biome }) => ({
   ...biome,
+  development: development ?? 0,
   iconsDensity: iconsDensity ?? 0,
   icons: icons ?? {}
 }));

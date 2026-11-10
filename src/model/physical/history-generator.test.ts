@@ -297,7 +297,8 @@ describe("Chronicle.generate", () => {
       realm: [],
       burg: [],
       figure: pack.history.figures ?? [],
-      polity: []
+      polity: [],
+      faction: pack.factions ?? []
     };
     for (const event of pack.history.events) {
       expect(event.actors.length).toBeGreaterThan(0);

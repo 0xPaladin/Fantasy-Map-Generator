@@ -54,8 +54,6 @@ describe("draw-factions", () => {
       name: "Iron Guild",
       category: "commercial",
       type: "merchant_consortium",
-      scale: "province",
-      tier: 2,
       color: "#f59e0b",
       icon: "⚖️",
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
@@ -101,8 +99,6 @@ describe("draw-factions", () => {
       name: "Silent Daggers",
       category: "underworld",
       type: "thieves_guild",
-      scale: "burg",
-      tier: 1,
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 50, assets: [] }
     });
 
@@ -120,8 +116,6 @@ describe("draw-factions", () => {
       name: "Vanguard",
       category: "martial",
       type: "mercenary_company",
-      scale: "burg",
-      tier: 1,
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
     });
 

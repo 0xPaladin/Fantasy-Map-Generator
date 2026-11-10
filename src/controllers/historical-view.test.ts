@@ -106,11 +106,20 @@ afterEach(() => {
 
 const mapEntry = (
   registeredAt: number
-): { seed: string; width: number; height: number; template: string; created: number; registeredAt: number } => ({
+): {
+  seed: string;
+  width: number;
+  height: number;
+  template: string;
+  templatePinned: boolean;
+  created: number;
+  registeredAt: number;
+} => ({
   seed: "s1",
   width: 0,
   height: 0,
   template: "",
+  templatePinned: false,
   created: 0,
   registeredAt
 });

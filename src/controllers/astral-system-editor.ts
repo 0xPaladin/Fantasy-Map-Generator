@@ -6,9 +6,16 @@ import { select } from "d3";
 import { Controllers } from "@/controllers";
 import { ASTRAL_WORLD_TYPE_KEYS, type AstralWorldType } from "@/data/astral-goods";
 import { Goods } from "@/model/economy/goods-generator";
-import { type Market, Markets } from "@/model/economy/markets-generator";
+import { Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
-import { isCoreOrCapital, peopleOf, setWorldTypeFor, starClassFor, tradeGoodsFor, worldTypeFor } from "@/model/physical/astral-naming";
+import {
+  isCoreOrCapital,
+  peopleOf,
+  setWorldTypeFor,
+  starClassFor,
+  tradeGoodsFor,
+  worldTypeFor
+} from "@/model/physical/astral-naming";
 import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-system";
 import { starTypeData } from "@/model/physical/astral-system/astrophysics";
 import { Burgs } from "@/model/political/burgs-generator";
@@ -18,6 +25,7 @@ import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/syst
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { Layers } from "@/renderers/layers";
 import { enterAstralPlanetView, enterAstralSystemView, isAstralView } from "@/renderers/view-mode";
+import type { Market } from "@/types/economy";
 import type { StylesData } from "@/types/styles";
 import { Dialog } from "@/ui/dialog/dialog";
 import { noteButton } from "@/ui/dialog/dialog-helpers";
@@ -354,7 +362,8 @@ function renderSystemDetails(details: SystemDetails): void {
       </tr>`;
 
       const moonRows = (planet.moonRows ?? [])
-        .map(moon => `
+        .map(
+          moon => `
       <tr style="background: rgba(255, 255, 255, 0.035)">
         <td style="${CELL_STYLE}; padding-left: 1.6em">
           <span style="opacity: 0.6; margin-right: 0.3em">↳</span>${escapeHtml(moon.name)}
@@ -378,7 +387,8 @@ function renderSystemDetails(details: SystemDetails): void {
         <td style="${CELL_STYLE}; text-align: right">${rn(moon.water)}%</td>
         <td style="${CELL_STYLE}" data-tip="HI ${moon.hi}">${escapeHtml(moon.habitability)}</td>
         <td style="${CELL_STYLE}; text-align: right">—</td>
-      </tr>`)
+      </tr>`
+        )
         .join("");
 
       return planetRow + moonRows;
@@ -423,7 +433,7 @@ function changeWorldType(this: HTMLSelectElement): void {
   if (Goods.isAstralCatalogue()) {
     const [primaryGoodId] = tradeGoodsFor(burg);
     pack.cells.good[burg.cell] = primaryGoodId;
-    Production.regenerateEconomy();
+    Production.regenerate();
     Layers.draw("goods", "markets");
   }
   updateSystemValues();
@@ -562,7 +572,11 @@ function ensureSolarSystem(): void {
     SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name });
   } else {
     const { class: spectral } = starClassFor(burg);
-    SolarSystem.initFromSeed(seed, { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false, systemName: burg.name });
+    SolarSystem.initFromSeed(seed, {
+      primaryType: starTypeData[spectral] ? spectral : "G",
+      forceHabitable: false,
+      systemName: burg.name
+    });
   }
 }
 
@@ -578,7 +592,8 @@ async function openSystemOrrery(): Promise<void> {
 async function viewPlanetInFmg(event: Event): Promise<void> {
   const button = (event.target as HTMLElement).closest<HTMLElement>(".systemPlanetView");
   if (!button) return;
-  const bodyId = button.dataset?.body ?? (button.dataset?.planet !== undefined ? `planet-${button.dataset.planet}` : undefined);
+  const bodyId =
+    button.dataset?.body ?? (button.dataset?.planet !== undefined ? `planet-${button.dataset.planet}` : undefined);
   if (!bodyId) return;
 
   ensureSolarSystem();
@@ -632,7 +647,7 @@ function editNotes(): void {
 }
 
 function showProductionOverview(): void {
-  Controllers.ProductionOverview.open(getSelectedId());
+  Controllers.BurgEconomyOverview.open(getSelectedId());
 }
 
 function removeSelectedSystem(): void {

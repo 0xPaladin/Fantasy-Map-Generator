@@ -43,7 +43,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "ignorance",
     requiredRole: "sage",
-    description: "A lingering sorcerous blight poisons luck, crops, and labor across the area.",
+    description: "A lingering sorcerous blight poisons luck, crops, and labor across the area."
   },
   leyline_blight: {
     id: "leyline_blight",
@@ -51,7 +51,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "ignorance",
     requiredRole: "sage",
-    description: "Crossed geomantic currents bring inexplicable misfortune, strange rot, and sudden fever.",
+    description: "Crossed geomantic currents bring inexplicable misfortune, strange rot, and sudden fever."
   },
   barren_surroundings: {
     id: "barren_surroundings",
@@ -59,7 +59,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Rocky, arid, infertile soil forces locals into a desperate struggle for bare survival.",
+    description: "Rocky, arid, infertile soil forces locals into a desperate struggle for bare survival."
   },
   contaminated_land: {
     id: "contaminated_land",
@@ -67,7 +67,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Poisoned soil, saline runoffs, or toxic springs leave the population sick and crops sparse.",
+    description: "Poisoned soil, saline runoffs, or toxic springs leave the population sick and crops sparse."
   },
   crushed_spirits: {
     id: "crushed_spirits",
@@ -75,7 +75,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "s",
     save: "despair",
     requiredRole: "prophet",
-    description: "Endless privation and oppression have stamped out all hope, initiative, and morale.",
+    description: "Endless privation and oppression have stamped out all hope, initiative, and morale."
   },
   destructive_customs: {
     id: "destructive_customs",
@@ -83,7 +83,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "ignorance",
     requiredRole: "sage",
-    description: "Entrenched ruinous traditions and superstitious taboos waste labor and cripple commerce.",
+    description: "Entrenched ruinous traditions and superstitious taboos waste labor and cripple commerce."
   },
   exceptional_poverty: {
     id: "exceptional_poverty",
@@ -91,7 +91,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Crippling destitution and worn-out tools leave the region unable to provide for its basic needs.",
+    description: "Crippling destitution and worn-out tools leave the region unable to provide for its basic needs."
   },
   failed_settlement: {
     id: "failed_settlement",
@@ -99,7 +99,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "An abandoned ghost town needs seed capital, basic tools, and resettlement logistics.",
+    description: "An abandoned ghost town needs seed capital, basic tools, and resettlement logistics."
   },
   flooding: {
     id: "flooding",
@@ -107,7 +107,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Uncontrolled river surges and torrents repeatedly destroy earthworks and drown arable fields.",
+    description: "Uncontrolled river surges and torrents repeatedly destroy earthworks and drown arable fields."
   },
   harsh_conditions: {
     id: "harsh_conditions",
@@ -115,7 +115,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Ferocious weather, mountain slides, or toxic marsh fogs render daily labor punishingly grim.",
+    description: "Ferocious weather, mountain slides, or toxic marsh fogs render daily labor punishingly grim."
   },
   hazardous_resource: {
     id: "hazardous_resource",
@@ -124,7 +124,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description:
-      "Unstable deep tunnels, noxious vapors, or volatile minerals kill harvesters without specialized engineering.",
+      "Unstable deep tunnels, noxious vapors, or volatile minerals kill harvesters without specialized engineering."
   },
   inaccessible: {
     id: "inaccessible",
@@ -132,7 +132,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Treacherous cliffs, trackless mires, or lack of graded routes cut the region off from outside trade.",
+    description: "Treacherous cliffs, trackless mires, or lack of graded routes cut the region off from outside trade."
   },
   no_workers: {
     id: "no_workers",
@@ -140,7 +140,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Rich timber, ores, or fields sit idle for total lack of a willing or able workforce.",
+    description: "Rich timber, ores, or fields sit idle for total lack of a willing or able workforce."
   },
   pervasive_hunger: {
     id: "pervasive_hunger",
@@ -148,7 +148,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "Chronic malnutrition and barren harvests leave the populace emaciated and weary.",
+    description: "Chronic malnutrition and barren harvests leave the populace emaciated and weary."
   },
   recurrent_sickness: {
     id: "recurrent_sickness",
@@ -157,7 +157,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "ignorance",
     requiredRole: "sage",
     description:
-      "Plague vapors, bad water, or foul miasmas periodically afflict the populace with fever and pestilence.",
+      "Plague vapors, bad water, or foul miasmas periodically afflict the populace with fever and pestilence."
   },
   severe_damage: {
     id: "severe_damage",
@@ -166,7 +166,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     save: "poverty",
     requiredRole: "merchant",
     description:
-      "Tumbled arches, burnt foundations, and flooded delvings block all access until cleared by heavy engineering.",
+      "Tumbled arches, burnt foundations, and flooded delvings block all access until cleared by heavy engineering."
   },
   taboo_land: {
     id: "taboo_land",
@@ -174,7 +174,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "ignorance",
     requiredRole: "sage",
-    description: "Dread prophecies and religious bans terrify laborers, who refuse to set foot on the accursed ground.",
+    description: "Dread prophecies and religious bans terrify laborers, who refuse to set foot on the accursed ground."
   },
   toxic_process: {
     id: "toxic_process",
@@ -182,7 +182,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "ignorance",
     requiredRole: "sage",
-    description: "Smelting fumes or caustic alchemy poison the workers and foul the downstream waters.",
+    description: "Smelting fumes or caustic alchemy poison the workers and foul the downstream waters."
   },
   undeveloped: {
     id: "undeveloped",
@@ -190,7 +190,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "poverty",
     requiredRole: "merchant",
-    description: "A remote site lacks mills, carts, docks, and basic infrastructure to harvest its natural bounty.",
+    description: "A remote site lacks mills, carts, docks, and basic infrastructure to harvest its natural bounty."
   },
   wasted_production: {
     id: "wasted_production",
@@ -198,7 +198,7 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
     pool: "w",
     save: "ignorance",
     requiredRole: "sage",
-    description: "Pests, improper storage, or superstitious destruction waste the vast majority of extracted goods.",
+    description: "Pests, improper storage, or superstitious destruction waste the vast majority of extracted goods."
   },
   bad_reputation: {
     id: "bad_reputation",
@@ -267,7 +267,26 @@ export const TROUBLE_CATALOG: Record<string, TroubleDef> = {
 };
 
 /** Retired organizational trouble IDs and the dangerous-faction archetype each becomes. */
-export const ORGANIZATIONAL_TROUBLE_IDS: readonly string[] = ["angry_dead","conquering_heirs","corrupt_leadership","dark_wizards","demagogue","exiled_lord","brigand_raiders","monsters","murderous_heirs","recalcitrant_locals","relic_golems","riotous_thugs","secret_society","outland_raiders","sinister_cult","things_from_below","doomsday_cult","blight_spawn"];
+export const ORGANIZATIONAL_TROUBLE_IDS: readonly string[] = [
+  "angry_dead",
+  "conquering_heirs",
+  "corrupt_leadership",
+  "dark_wizards",
+  "demagogue",
+  "exiled_lord",
+  "brigand_raiders",
+  "monsters",
+  "murderous_heirs",
+  "recalcitrant_locals",
+  "relic_golems",
+  "riotous_thugs",
+  "secret_society",
+  "outland_raiders",
+  "sinister_cult",
+  "things_from_below",
+  "doomsday_cult",
+  "blight_spawn"
+];
 
 /** Trouble ID -> faction archetype (identity except two aliases). */
 export const TROUBLE_TO_FACTION: Record<string, string> = {

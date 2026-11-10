@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MEN_PER_BLOCK, type ResolvedRoster, type UnitType } from "@/data/roster-content";
-import type { ArmyBlock } from "@/types/battle";
-import { type BattleModifiers, computeBattleSetup } from "@/model/battle/battle";
 import { resolveConfig } from "@/data/battle-config";
+import { MEN_PER_BLOCK, type ResolvedRoster, type UnitType } from "@/data/roster-content";
+import { type BattleModifiers, computeBattleSetup } from "@/model/battle/battle";
+import type { ArmyBlock } from "@/types/battle";
 import {
   armyHp,
   armyLead,

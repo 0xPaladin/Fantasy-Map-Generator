@@ -1,6 +1,6 @@
 # Plan — Upstream Economy Alignment & Unified Simulation Architecture
 
-**Status:** Proposed  
+**Status:** In progress — Phase 1 complete (merge of `upstream/master` `4b34afc5` resolved, build and tests green)  
 **Branch:** `civ` (at commit `209c9dfb`), fastforwarded and fully aligned with `origin/master` (`2f64dc30`)  
 **Target Upstream Commit:** `upstream/master` (`4b34afc5`, v1.157.0 Economy Rework PR #2020 + follow-ups)  
 **Companions:** [living-openciv.md](living-openciv.md), [living-openciv-armies.md](living-openciv-armies.md), [factions-civ-engine.md](factions-civ-engine.md), [faction-suppression.md](faction-suppression.md), [remove-living-guild.md](remove-living-guild.md), [characters.md](characters.md), [conquest-retirement.md](conquest-retirement.md)
@@ -113,7 +113,23 @@ We align the `.map` record layout in [`src/services/io/save.ts`](file:///home/pa
 
 ---
 
-### Phase 2: Technology Advancement $\longleftrightarrow$ Upstream Development (`pack.cells.development`)
+#### 1.3 Phase 1 Completion Record (done)
+
+**Merged:** `upstream/master` `4b34afc5` (v1.157.0) into `civ`; all conflicts resolved; `npm run build` (tsc + vite + pwa-precache) compiles; Vitest 3471 passing with only the 4 failures that already failed on the pre-merge fork baseline (`factions-editor.test.ts` ×2, `state-cities-dialog.test.ts` ×2 — pre-existing fork bugs, untouched).
+
+**Record layout as planned** (`epochs-format.ts`, `load.ts`, `save.ts`): `53` legends, `54` prosperity, `55` development, `56` factions, `HISTORY_RECORD = 57`, `FIRST_SNAPSHOT_RECORD = 58`. Legacy migration detects `data[53]`/`data[54]` starting with `{` (old history positions) or `data[54]` starting with `[` (old factions) and splices accordingly; `auto-update` backfills prosperity/development.
+
+**Conflict resolutions:**
+- **Economy**: upstream taken wholesale; `pack.goods` gone (goods live in `options.map.goods`). Astral hooks re-attached: `Goods.isAstralCatalogue` / astral catalogue switch on `options.map.goods`, astral modifier hook exposed as `Output.getAstralModifiers`. `Production.regenerateEconomy`/`getCellProduction` are gone — callers use `Production.regenerate()`.
+- **Cultures**: fork file base (RPG Fantasy + Astral sets preserved) with upstream's development APIs grafted; culture `development` fields kept.
+- **Military**: fork file base — `ArmyBlock[]` blocks, `state.rosterId`, cultural rosters — with upstream's upkeep/power/levy logic grafted. Headcounts stay in people: `a`/`u` are people, `getTroopsPower` divides by `population.scale` only for power, `Military.getTroops` is near-identity. Upstream's v1.157.0 people→points save conversion is skipped (fork saves keep people), and `battle-screen.ts` keeps the fork's Lanchester simulator (upstream's legacy battle model discarded).
+- **Factions**: fork engine kept; faction `tier`/`scale` fields dropped in favour of the upstream-style node model (`FactionHq`/`FactionOutpost` unions use `"tier" in node` / `"fortified" in node` guards); stale `academic`/`secret` categories map to `adventuring`.
+- **Build & i18n**: upstream Vite/i18n adopted; fork locale keys merged; `package.json` scripts unioned (`tune-economy`, `prepare`, `postinstall`).
+- **Styles**: fork's `astral.json` / `astralSchematic.json` presets regenerated through `Styles.parse` onto the v1.157.0 schema (adds `goods.groups`, contour spacing enum, line-join enums; fork values preserved).
+- **Astral readings**: upstream's new marker types (`guild-halls`, `merchant-houses`, `customs-houses`) added to `MARKER_READINGS` / `ANOMALY_FAMILIES`; `draw-goods` astral gating (no cell polygons, burg-anchored icons) restored in the new viewport architecture.
+- **Assistant context**: `context.generated.ts` regenerated; prompt budget test raised to 16 500 chars.
+
+---
 
 **Goal:** Make technology advancement in the simulation directly determine upstream tech/development levels (`pack.cells.development`), and seed initial simulation tech states from upstream's generated development field.
 

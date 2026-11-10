@@ -29,8 +29,8 @@ export const LAYER_PRESETS: Record<string, string> = {
   heightmap: t("Heightmap"),
   physical: t("Physical map"),
   poi: t("Places of interest"),
-  goods: t("Goods map"),
-  trade: t("Trade animation"),
+  goods: t("Goods and production"),
+  trade: t("Trade map"),
   military: t("Military map"),
   emblems: t("Emblems"),
   landmass: t("Pure landmass")
@@ -120,7 +120,6 @@ ensureEl("viewMode").addEventListener("click", event => {
 
 window.addEventListener("astralnav:change", refreshAstralNavButtons);
 refreshAstralNavButtons();
-
 
 function renderPresetOptions(): void {
   const select = ensureEl<HTMLSelectElement>("layersPreset");
