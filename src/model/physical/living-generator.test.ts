@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
+import { CIV_TECH_BY_ID, computePolityTechDevelopment } from "@/data/living-civ-techs";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
@@ -1914,6 +1914,67 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(sSim.researchedProgress).toEqual({});
       expect(sSim.freeTechs).toBe(0);
       expect(sSim.yieldsPerTurn).toBeDefined();
+    });
+  });
+
+  describe("Upstream development bridge (economy alignment Phase 2)", () => {
+    beforeEach(() => {
+      setupCityWorld();
+    });
+
+    /** People and land of the test world at given development levels */
+    function seedMap(levels: Record<number, number>, people: Record<number, number> = {}): Uint8Array {
+      const development = new Uint8Array(GRID * GRID);
+      for (const [cell, level] of Object.entries(levels)) development[Number(cell)] = level;
+      for (const [cell, count] of Object.entries(people)) pack.cells.pop[Number(cell)] = count;
+      pack.cells.development = development;
+      return development;
+    }
+
+    it("seeds a state's technologies from the upstream development field", () => {
+      seedMap({ 1: 20, 4: 20, 5: 20, 6: 20, 9: 20, 10: 20 }, { 1: 100, 6: 50, 9: 20 });
+
+      const living = Living.init();
+      const sSim = living.states[1];
+      const known = new Set(sSim.researchedTechs ?? []);
+
+      expect(known.has("pottery")).toBe(true);
+      expect((sSim.researchedTechs ?? []).every(id => CIV_TECH_BY_ID[id]!.row <= 2)).toBe(true);
+      for (const id of sSim.researchedTechs ?? []) {
+        for (const prerequisite of CIV_TECH_BY_ID[id]!.prerequisites) expect(known.has(prerequisite)).toBe(true);
+      }
+      expect(computePolityTechDevelopment(sSim.researchedTechs ?? [])).toBeGreaterThanOrEqual(18);
+    });
+
+    it("leaves a map without development untouched", () => {
+      const living = Living.init();
+
+      expect(living.states[1].researchedTechs).toEqual([]);
+      expect(living.economyDirty).toBeFalsy();
+    });
+
+    it("raises a state's cities when a technology completes", () => {
+      const development = seedMap({ 1: 12, 4: 12, 5: 12, 6: 12, 9: 12, 10: 12 }, { 1: 100 });
+      const living = Living.init();
+      expect(living.states[1]!.researchedTechs?.length).toBeGreaterThan(0);
+
+      expect(Living.grantTech(1, "mathematics")).toBe(true);
+
+      expect(development[5]).toBeGreaterThan(12); // the capital
+      expect(development[4]).toBeGreaterThan(12); // Millbrook
+      expect(development[1]).toBe(12); // the countryside waits for the seasonal diffusion
+      expect(living.economyDirty).toBe(true);
+    });
+
+    it("diffuses technology from the polity level into its peopled land", () => {
+      const development = seedMap({ 1: 20, 4: 20, 5: 20, 6: 20, 9: 6, 10: 20 }, { 1: 100, 9: 1 });
+      const living = Living.init();
+
+      Living.tick(1);
+
+      expect(development[9]).toBeGreaterThan(6); // its people's technology spreads
+      expect(development[6]).toBe(20); // nobody lives there
+      expect(living.economyDirty).toBe(true);
     });
   });
 

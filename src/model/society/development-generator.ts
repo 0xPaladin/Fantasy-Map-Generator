@@ -64,7 +64,7 @@ class DevelopmentGenerator {
   getAverages(ids: ArrayLike<number>): (number | undefined)[] {
     const { cells, burgs } = pack;
     const development = cells.development;
-    const rate = options.map.units.population.urbanization.rate;
+    const rate = options.map.units?.population?.urbanization?.rate ?? 0;
     const people: number[] = [];
     const total: number[] = [];
     for (let cell = 0; cell < development.length; cell++) {

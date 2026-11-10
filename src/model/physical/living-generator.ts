@@ -12,7 +12,12 @@ import {
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
 import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
-import { CIV_TECH_BY_ID, CIV_TECHS } from "@/data/living-civ-techs";
+import {
+  CIV_TECH_BY_ID,
+  CIV_TECHS,
+  computePolityTechDevelopment,
+  seedTechsFromDevelopment
+} from "@/data/living-civ-techs";
 import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
 import { RESOURCE_FACTION_IDS } from "@/data/living-troubles";
 import {
@@ -67,6 +72,7 @@ import {
 } from "@/model/political/military-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import { noFinance, type State, States } from "@/model/political/states-generator";
+import { Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { isAstralView } from "@/renderers/view-mode";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
@@ -130,6 +136,8 @@ import { LivingThreats } from "./living-threats";
 const MAX_RECENT_NEWS = 50;
 const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
+const SCHOLARLY_BUILDINGS = new Set(["library", "university", "public_school"]);
+const DEVELOPMENT_DECAY_SLACK = 3; // rural cells keep a little more than their land allows
 
 const ERA_EPITHETS = ["Ash", "the Compact", "Drowned Kings", "Iron and Salt", "Quiet Stars", "Broken Crowns"] as const;
 const ERA_ORDINALS = [
@@ -1368,6 +1376,7 @@ class LivingModel {
       this.syncWorld();
       this.stepCities(living);
       this.stepEmpire(living);
+      this.stepDevelopmentDiffusion(living);
       this.stepReligion(living);
       this.stepTactical(living);
       this.stepBurgUnrest(living);
@@ -1547,6 +1556,7 @@ class LivingModel {
   syncStates(living: LivingWorldState): void {
     const { content } = currentContent();
     const availableRosters = new Set(Object.keys(content.rosters));
+    const development = this.developmentAverages();
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) {
@@ -1589,13 +1599,148 @@ class LivingModel {
         existing.faith ??= 0;
         existing.prophetsEarned ??= 0;
       }
+
+      const sSim = living.states[state.i];
+      this.seedPolityTechs(sSim.researchedTechs ?? [], sSim.researchedProgress ?? {}, development.get(state.i) ?? 0);
     }
   }
 
   syncFactions(_living: LivingWorldState): void {
     for (const faction of Factions.active()) {
       syncFactionState(faction);
+      faction.researchedTechs ??= [];
+      faction.researchedProgress ??= {};
+      this.seedPolityTechs(faction.researchedTechs, faction.researchedProgress, this.factionDevelopment(faction));
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upstream development bridge (docs/plans/upstream-economy-alignment.md §2)
+  // ---------------------------------------------------------------------------
+
+  /** Population-weighted mean development per state id from upstream's field; empty when the map has none. */
+  private developmentAverages(): Map<number, number> {
+    const averages = new Map<number, number>();
+    if (!pack.cells.development) return averages;
+    Development.getAverages(pack.cells.state).forEach((value, id) => {
+      if (id > 0 && value !== undefined) averages.set(id, value);
+    });
+    return averages;
+  }
+
+  /** Mean development at a faction's HQ and outposts. */
+  private factionDevelopment(faction: Faction): number {
+    const development = pack.cells.development;
+    if (!development) return 0;
+
+    let total = 0;
+    let count = 0;
+    for (const cell of this.factionSettlementCells(faction)) {
+      const level = development[cell] ?? 0;
+      if (!level) continue;
+      total += level;
+      count += 1;
+    }
+    return count > 0 ? total / count : 0;
+  }
+
+  /** §2.2: a polity that starts past the foragers' era already knows its earlier rows' technologies. */
+  private seedPolityTechs(techs: string[], progress: Record<string, number>, development: number): void {
+    if (techs.length > 0 || Object.keys(progress).length > 0) return;
+    const seeded = seedTechsFromDevelopment(development);
+    techs.push(...seeded.researched);
+    Object.assign(progress, seeded.progress);
+  }
+
+  /** §2.3: a discovery raises the polity's cities and marks the upstream economy to re-run. */
+  private raiseTechDevelopment(
+    living: LivingWorldState,
+    researchedTechs: readonly string[],
+    cells: readonly number[]
+  ): void {
+    const development = pack.cells.development;
+    if (!development) return;
+
+    const target = computePolityTechDevelopment(researchedTechs);
+    if (target <= 0) return;
+
+    let changed = false;
+    for (const cell of cells) {
+      if (!development[cell]) continue; // wild land stays wild
+      const goal = Math.min(100, target + this.schoolBonus(living, cell));
+      if (development[cell] >= goal) continue;
+      development[cell] = goal;
+      changed = true;
+    }
+    if (changed) living.economyDirty = true;
+  }
+
+  /** +2 development in a city with a seat of learning. */
+  private schoolBonus(living: LivingWorldState, cell: number): number {
+    const burgId = pack.cells.burg?.[cell] ?? 0;
+    const buildings = burgId ? (living.burgs[burgId]?.civBuildings ?? []) : [];
+    return buildings.some(id => SCHOLARLY_BUILDINGS.has(id)) ? 2 : 0;
+  }
+
+  /** The capital and every burg a state owns: where a discovery lands first. */
+  private settlementCells(stateId: number): number[] {
+    const cells = new Set<number>();
+    const capital = pack.burgs[pack.states[stateId]?.capital ?? 0];
+    if (capital?.i && !capital.removed) cells.add(capital.cell);
+    for (const burg of pack.burgs) {
+      if (burg?.i && !burg.removed && burg.state === stateId) cells.add(burg.cell);
+    }
+    return [...cells];
+  }
+
+  /** A faction's live HQ and outpost cells. */
+  private factionSettlementCells(faction: Faction): number[] {
+    const cells: number[] = [];
+    const nodes: (FactionHq | FactionOutpost)[] = [faction.hq, ...(faction.outposts ?? [])];
+    for (const node of nodes) {
+      if (!node || node.pillaged) continue;
+      const burg = node.burgId ? pack.burgs[node.burgId] : undefined;
+      cells.push(burg?.i && !burg.removed ? burg.cell : node.cell);
+    }
+    return cells;
+  }
+
+  /** §2.3: peopled land steps toward its polity's technology level, eased by the land itself. */
+  private stepDevelopmentDiffusion(living: LivingWorldState): void {
+    const { cells } = pack;
+    const development = cells.development;
+    if (!development || !cells.state) return;
+    const targets = new Map<number, number>();
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const target = computePolityTechDevelopment(living.states[state.i]?.researchedTechs ?? []);
+      if (target > 0) targets.set(state.i, target);
+    }
+    if (targets.size === 0) return;
+
+    let changed = false;
+    for (let cell = 0; cell < development.length; cell++) {
+      const target = targets.get(cells.state[cell]);
+      if (!target || !development[cell]) continue; // no polity or no people, no development
+      if (cells.h[cell] < 20 || (!cells.pop[cell] && !cells.burg?.[cell])) continue;
+
+      const local = this.localDevelopmentTarget(cell, target);
+      if (development[cell] < local) {
+        development[cell] += 1;
+        changed = true;
+      } else if (!cells.burg?.[cell] && development[cell] > local + DEVELOPMENT_DECAY_SLACK) {
+        development[cell] -= 1; // the land cannot hold what its polity cannot work
+        changed = true;
+      }
+    }
+    if (changed) living.economyDirty = true;
+  }
+
+  /** A cell's own ceiling: the polity's level eased by biome, rivers and harbors. */
+  private localDevelopmentTarget(cell: number, polityTarget: number): number {
+    const biome = pack.biomes?.[pack.cells.biome[cell]]?.development ?? 0;
+    const water = (pack.cells.r?.[cell] ? 1 : 0) + (pack.cells.harbor?.[cell] ? 1 : 0);
+    return minmax(Math.round(polityTarget + biome + water), 1, 100);
   }
 
   syncProvinces(living: LivingWorldState): void {
@@ -4041,6 +4186,8 @@ class LivingModel {
       cell: state.center,
       stateId: state.i
     });
+
+    this.raiseTechDevelopment(living, sSim.researchedTechs ?? [], this.settlementCells(state.i));
   }
 
   /** §7.1 Bank net Gold into the treasury; a negative balance disbands a regiment. */
@@ -4316,6 +4463,8 @@ class LivingModel {
       cell: faction.hq?.cell,
       ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
     });
+
+    this.raiseTechDevelopment(living, faction.researchedTechs, this.factionSettlementCells(faction));
   }
 
   /** Research with +25% spillover when the host state already knows the tech. */

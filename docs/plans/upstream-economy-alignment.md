@@ -1,6 +1,6 @@
 # Plan — Upstream Economy Alignment & Unified Simulation Architecture
 
-**Status:** In progress — Phase 1 complete (merge of `upstream/master` `4b34afc5` resolved, build and tests green)  
+**Status:** In progress — Phases 1–2 complete (upstream merge resolved; `CIV_TECHS` ↔ `pack.cells.development` bridge live; build, lint and tests green)  
 **Branch:** `civ` (at commit `209c9dfb`), fastforwarded and fully aligned with `origin/master` (`2f64dc30`)  
 **Target Upstream Commit:** `upstream/master` (`4b34afc5`, v1.157.0 Economy Rework PR #2020 + follow-ups)  
 **Companions:** [living-openciv.md](living-openciv.md), [living-openciv-armies.md](living-openciv-armies.md), [factions-civ-engine.md](factions-civ-engine.md), [faction-suppression.md](faction-suppression.md), [remove-living-guild.md](remove-living-guild.md), [characters.md](characters.md), [conquest-retirement.md](conquest-retirement.md)
@@ -131,6 +131,8 @@ We align the `.map` record layout in [`src/services/io/save.ts`](file:///home/pa
 
 ---
 
+### Phase 2: Technology Advancement Drives Upstream Development
+
 **Goal:** Make technology advancement in the simulation directly determine upstream tech/development levels (`pack.cells.development`), and seed initial simulation tech states from upstream's generated development field.
 
 #### 2.1 Mapping `CIV_TECHS` Rows to Upstream `Development` (`1..100`)
@@ -168,6 +170,18 @@ We establish a deterministic mapping in [`src/data/living-civ-techs.ts`](file://
   2. **Immediate Burg Uplift**: Raise `pack.cells.development[burg.cell]` in the state's capital and major burgs (and faction HQ/Outposts) toward `targetDev` (with `+2` bonus in cities holding a `library`/`university`/`public_school`).
   3. **Seasonal Rural Diffusion (`stepDevelopmentDiffusion`)**: On each seasonal tick, peopled cells owned by the state gradually step their `pack.cells.development[c]` toward their province/state `targetDev` (adjusted by upstream's local biome offset `biome.development` and river/coast bonuses so natural geographic variation is preserved).
   4. Mark the economy dirty so the next `Production.produce()` and `Output.ofCell()` run uses the updated `pack.cells.development`, unlocking newly reachable `good.development` tiers and scaling productivity!
+
+#### 2.4 Phase 2 Completion Record (done)
+
+**Shipped:** `src/data/living-civ-techs.ts`, `src/model/physical/living-generator.ts`, `src/types/living.ts`; `npm run build` green, Biome clean, Vitest 3486 passing (0 failures, including the 4 pre-existing fork failures).
+
+- **Mapping table** (`CIV_TECH_ROW_DEVELOPMENT`): 17 contiguous bands covering `6..100` (row `0` `6..11` … row `16` `97..100`) matching the table in §2.1. Bands are contiguous by construction and asserted in `living-civ-techs.test.ts`.
+- **Pure helpers** (`src/data/living-civ-techs.ts`): `developmentToTechRow(dev) → row|-1`, `techTargetDevelopment(tech) → band top`, `computePolityTechDevelopment(techs) → band start + share of the top row known` (0 without techs), `seedTechsFromDevelopment(dev) → { researched, progress }`.
+- **Seeding (§2.2)** in `Living.syncStates()` / `Living.syncFactions()`: only while `researchedTechs` and `researchedProgress` are both empty, so old saves and live simulations are never rewritten. State mean is `Development.getAverages(pack.cells.state)` (population-weighted, upstream's own helper; now tolerates missing `options.map.units`); faction mean is the average `pack.cells.development` at its HQ/outpost burgs. Rows below the current one are seeded whole; the current row is seeded in slot order while prerequisites hold, with the leftover share banked as `researchedProgress` on the next reachable tech (so research never stalls on an unreachable tech). Maps with no development field seed nothing.
+- **Uplift (§2.3.2)** in `completeTech()` / `completeFactionTech()`: `pack.cells.development` of the capital, every state burg and every faction HQ/outpost cell is raised to `computePolityTechDevelopment(researched)` (`+2` with `library`/`university`/`public_school`), never lowered, and unpeopled (`development === 0`) cells are skipped.
+- **Diffusion (§2.3.3)**: `stepDevelopmentDiffusion()` runs after `stepEmpire()` each season; peopled owned cells step `±1` toward `polityTarget + biome.development + river + harbor` (clamped `1..100`). Rural cells may slip up to `DEVELOPMENT_DECAY_SLACK` (`3`) points above that ceiling before decaying; burg cells never decay, so city uplift sticks.
+- **Economy invalidation**: `LivingWorldState.economyDirty` (new, optional) is set by both the uplift and the diffusion step; Phase 3 consumes it to re-run `Production.produce()`.
+- **Tests**: `src/data/living-civ-techs.test.ts` (bands, row lookup, targets, polity development, seeding + prerequisite closure) and the new `Upstream development bridge (economy alignment Phase 2)` block in `living-generator.test.ts` (seeding from `pack.cells.development`, no-development maps untouched, city uplift on `grantTech`, seasonal diffusion).
 
 ---
 
@@ -331,7 +345,7 @@ Factions retain their HQ and Outpost `BurgSimState` city-nodes, `CIV_BUILDINGS` 
 ## 4. Execution Order & Milestones
 
 1. **Milestone 1 (Phase 1)**: Merge `upstream/master` into `civ`, resolve all 45 file conflicts, shift `.map` records `54..58+` with backward-compatible auto-detection, and get `npm run build` compiling cleanly.
-2. **Milestone 2 (Phase 2)**: Implement the `CIV_TECHS` $\longleftrightarrow$ `pack.cells.development` bridge (initial tech seeding from `development` + tech completion advancing `pack.cells.development`).
+2. **Milestone 2 (Phase 2)**: Implement the `CIV_TECHS` $\longleftrightarrow$ `pack.cells.development` bridge (initial tech seeding from `development` + tech completion advancing `pack.cells.development`). **Done** — see §2.4.
 3. **Milestone 3 (Phase 3)**: Wire Builder improvements and `CIV_BUILDINGS` into `Output` / `Production`, implement `stepEconomy()` with persistent treasuries, and switch `getStateYieldBreakdown()` / `stepCities()` / `stepEmpire()` to upstream-backed yields and `Prosperity`/`Stability`.
 4. **Milestone 4 (Phase 4)**: Unify `Military.generate()`, `Military.getEquipped()`, `levies`, and `Military.getBattleUpkeep()` with `ArmyBlock[]` rosters, city unit production queues, and `battle.ts`.
 5. **Milestone 5 (Phase 5 & 6)**: Connect Factions (trade margins, corruption siphoning, smuggling, charter tithes) and Characters (ruler/council traits) to upstream's economy, wire the UI dialogs/HUD, and pass all Vitest suites.

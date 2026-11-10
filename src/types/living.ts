@@ -332,6 +332,8 @@ export interface LivingWorldState {
   /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
   religions?: Record<number, ReligionBeliefState>;
   activeTroubles?: Record<string, ProvinceTrouble>;
+  /** upstream economy is stale after a development, market or border change; re-run `Production.produce()` */
+  economyDirty?: boolean;
 }
 
 // ---------------------------------------------------------------------------
