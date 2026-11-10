@@ -74,7 +74,7 @@ export interface Completion {
 }
 
 export interface ProviderSpec {
-  id: "anthropic" | "openai" | "gemini" | "mistral" | "qwen" | "deepseek" | "local";
+  id: "anthropic" | "openai" | "openrouter" | "zai" | "gemini" | "mistral" | "qwen" | "deepseek" | "local";
   label: string;
   fallbackModel: string;
   keyLink: string;
@@ -101,6 +101,20 @@ export const PROVIDERS: ProviderSpec[] = [
     fallbackModel: "gemini-flash-latest",
     keyLink: "https://aistudio.google.com/apikey",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    fallbackModel: "anthropic/claude-sonnet-4.5",
+    keyLink: "https://openrouter.ai/settings/keys",
+    baseUrl: "https://openrouter.ai/api/v1"
+  },
+  {
+    id: "zai",
+    label: "Z.ai",
+    fallbackModel: "glm-4.6",
+    keyLink: "https://z.ai/manage-apikey/apikey-list",
+    baseUrl: "https://api.z.ai/api/paas/v4"
   },
   {
     id: "deepseek",
@@ -145,6 +159,13 @@ export const endpoint = (providerId: ProviderSpec["id"], localUrl = ""): string 
 
 /** Local servers commonly run without auth, so the header is only sent when there is a key */
 export const bearerHeaders = (key: string): Record<string, string> => (key ? { Authorization: `Bearer ${key}` } : {});
+
+/** OpenRouter asks for these to attribute requests to the app on its rankings */
+export const attributionHeaders = (providerId: ProviderSpec["id"]): Record<string, string> => {
+  if (providerId !== "openrouter") return {};
+  const origin = (globalThis as { location?: { origin: string } }).location?.origin ?? "";
+  return { "HTTP-Referer": origin, "X-Title": "Fantasy Map Generator" };
+};
 
 export const anthropicHeaders = (key: string): Record<string, string> => ({
   "x-api-key": key,

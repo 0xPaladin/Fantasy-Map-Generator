@@ -1,5 +1,12 @@
 // Discover the chat models a key can use
-import { anthropicHeaders, bearerHeaders, endpoint, type ProviderSpec, readError } from "./providers";
+import {
+  anthropicHeaders,
+  attributionHeaders,
+  bearerHeaders,
+  endpoint,
+  type ProviderSpec,
+  readError
+} from "./providers";
 
 const FILTERS: Partial<Record<ProviderSpec["id"], { include?: RegExp; exclude?: RegExp }>> = {
   anthropic: { include: /^claude/ },
@@ -10,7 +17,8 @@ const FILTERS: Partial<Record<ProviderSpec["id"], { include?: RegExp; exclude?: 
   },
   mistral: { exclude: /embed|moderation|ocr|voxtral|transcribe/ },
   qwen: { include: /^qwen/, exclude: /embed|ocr|audio|tts|asr|image|video|omni|vl|mt/ },
-  deepseek: { include: /^deepseek/ }
+  deepseek: { include: /^deepseek/ },
+  zai: { include: /^glm/ }
 };
 
 export function filterChatModels(providerId: ProviderSpec["id"], ids: string[]): string[] {
@@ -36,10 +44,37 @@ async function fetchModelIds(
   signal?: AbortSignal
 ): Promise<string[]> {
   if (providerId === "qwen") return fetchQwenModelIds(key, signal);
+  if (providerId === "openrouter") return fetchOpenRouterModelIds(key, signal);
   const response = await fetch(modelsUrl(providerId, localUrl), { headers: authHeaders(providerId, key), signal });
   if (!response.ok) throw new Error(await readError(response));
   const json = await response.json();
   return (json.data ?? []).map((model: { id: string }) => model.id);
+}
+
+interface OpenRouterModel {
+  id: string;
+  architecture?: { output_modalities?: string[] };
+  supported_parameters?: string[];
+}
+
+// OpenRouter's catalog is public and rich: keep only models that can call tools and answer in text,
+// dropping the asynchronous (:batch) and billed web search (:online) variants. No key is needed
+async function fetchOpenRouterModelIds(key: string, signal?: AbortSignal): Promise<string[]> {
+  const response = await fetch(`${endpoint("openrouter")}/models`, {
+    headers: { ...bearerHeaders(key), ...attributionHeaders("openrouter") },
+    signal
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const json = await response.json();
+  const models: OpenRouterModel[] = json.data ?? [];
+  return models
+    .filter(
+      model =>
+        model.supported_parameters?.includes("tools") &&
+        (model.architecture?.output_modalities ?? ["text"]).includes("text") &&
+        !/:batch$|:online$/.test(model.id)
+    )
+    .map(model => model.id);
 }
 
 async function fetchQwenModelIds(key: string, signal?: AbortSignal): Promise<string[]> {
