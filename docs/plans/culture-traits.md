@@ -332,7 +332,7 @@ Zero format work:
 - `culture.alignment` / `culture.values` ride the existing `pack.cultures` record (13) —
   `save.ts` stringifies cultures wholesale; `load.ts` restores them as-is beyond
   `normalizeCultureBases`, which only touches `base`.
-- figure traits ride the existing history record (53): `serializeHistory`/`parseHistory`
+- figure traits ride the existing history record (57 since the v1.157.0 merge; 53 when written): `serializeHistory`/`parseHistory`
   (`services/io/epochs-format.ts`) pass the chronicle through untouched and only rebuild
   `snapshots`, so figures keep their fields.
 - Old maps: fields absent → editors show "—", figures roll-once-and-persist on first

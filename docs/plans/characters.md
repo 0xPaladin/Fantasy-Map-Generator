@@ -2,6 +2,7 @@
 
 **Updated:** 2026-11-05  
 **Status:** Complete — Phases 1-8 implemented; deprecated guild shims await faction cleanup  
+**Save layout note:** after the v1.157.0 merge, history is `.map` record **57** (legends 53, prosperity 54, development 55, factions 56, snapshots 58+). Record numbers below are from before that merge; see [upstream-economy-alignment.md](upstream-economy-alignment.md) §1.1.  
 **Companions:** [factions.md](factions.md), [unified-figures.md](unified-figures.md), [culture-traits.md](culture-traits.md), [hero-diversity.md](hero-diversity.md), [living-world.md](living-world.md)  
 **Supersedes:** the character-stat portions of [unified-figures.md](unified-figures.md) and [hero-diversity.md](hero-diversity.md); `GuildState` as the home of hero stats.
 

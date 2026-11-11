@@ -19,10 +19,13 @@
  *  3. **The slot only carries what differs.** A map with no edits writes no
  *     settings at all, keeping a stock save byte-identical.
  */
-import { type ContentPack, type RawContentDocs, validateAndResolve } from "@/data/roster-content";
+
 import { type CampaignConfig, resolveConfig } from "@/data/battle-config";
 import { type LibraryDocs, loadConfigLibrary } from "@/data/config-store";
+import { type ContentPack, type RawContentDocs, validateAndResolve } from "@/data/roster-content";
+
 const twWarn = (...args: unknown[]): void => console.warn(...args);
+
 import { BUNDLED_DOCS } from "./bundled";
 import gameConfigDoc from "./game.json" with { type: "json" };
 

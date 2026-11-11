@@ -542,6 +542,11 @@ includes `"adventurer"`. Old `.map` files without `living` load unchanged and in
 2. **State & Burg Inspector Panel**:
    - Clicking a state or burg while the HUD is open shows a compact diorama card (with quick buttons
      to open FMG's full `StatesEditor`, `BurgsEditor`, or `RegimentsOverview`):
+     - **Upstream Economy**: the state's prosperity, stability and development (with its era), the
+       court's budget and the forces' upkeep; a burg's prosperity and trade balance. See
+       [upstream-economy-alignment.md](upstream-economy-alignment.md) §6.4.
+     - **Cell Inspector**: alt-click any cell (or click unowned land with no burg or marker) for its
+       biome, owner, development and era, prosperity, deposit, Builder improvement and rural output.
      - **Ruler & Traits**: Name, age, dynasty, Virtues/Vices badges.
      - **Capacity Bar**: Live `M` / `W` / `S` / `C` pools (`gen / load`).
      - **Active Agenda & Unravel Clock**: Progress bar for current goal (`Reclaiming Eastmarch: 3/4`)

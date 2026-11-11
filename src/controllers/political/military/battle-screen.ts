@@ -1,12 +1,12 @@
 import { select, sum } from "d3";
-import { currentContent } from "@/data/roster-store";
 import type { UnitType } from "@/data/roster-content";
+import { currentContent } from "@/data/roster-store";
 import {
   type BattleModifiers,
   type BattleOutcome,
   type BattleSession,
-  type BattleTacticalOrder,
   type BattleSide,
+  type BattleTacticalOrder,
   estimateOdds,
   finalizeBattle,
   initBattleSession,

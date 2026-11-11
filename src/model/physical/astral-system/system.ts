@@ -170,12 +170,7 @@ export function generateSystemPlanets(seed: string, star: StarSummary): Planetar
  * - If a gas giant naturally sits closest to the habitable zone, give it an earthlike moon.
  * - Otherwise, configure the closest rocky planet as an earthlike world.
  */
-function ensureHabitableWorld(
-  seed: string,
-  star: StarSummary,
-  planets: Planet[],
-  HI: (number | number[])[][]
-): void {
+function ensureHabitableWorld(seed: string, star: StarSummary, planets: Planet[], HI: (number | number[])[][]): void {
   if (HI[0].length > 0) return; // already has an earthlike planet or moon
 
   const rng = createRng(`${seed}/earthlike`);

@@ -38,4 +38,3 @@ describe("FACTION_ASSETS_CATALOG", () => {
     expect(commercialAssets.map(a => a.id)).toContain("grand_exchange");
   });
 });
-

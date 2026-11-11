@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { waitForMap } from "./wait-for-map";
 
+// the app's console surface, see src/app/fmg.ts
+declare const FMG: any;
+
 // The Astral view is a presentation mode: entering swaps the Layers tab for the Astral list, applies
 // the star chart style and layers, and takes the preset save/remove buttons with it. Leaving restores
 // exactly what was there before — list, preset value, layer state and style.
@@ -9,7 +12,6 @@ declare const options: { map: { astral: boolean; style: { preset: string } } };
 declare const styles: {
   texture: { options: { href: string } };
   borders: { groups: { stateBorders: { attrs: { opacity: number } } } };
-  coreRim: { options: { flip: boolean; intensity: number } };
 };
 declare const Layers: {
   isOn(id: string): boolean;
@@ -20,7 +22,7 @@ declare const pack: import("@/types/packed-graph").PackedGraph;
 declare const grid: import("@/types/grid-graph").GridGraph;
 declare const Services: { ExportMap: { getMapURL(type: string): Promise<string> } };
 
-const layerItem = (id: string) => `#mapLayers > li[data-layer="${id}"]`;
+const layerItem = (id: string) => `#mapLayers > button[data-layer="${id}"]`;
 
 async function openLayersTab(page: Page): Promise<void> {
   if (await page.locator("#layersContent").isVisible().catch(() => false)) return;
@@ -35,20 +37,6 @@ async function enterAstral(page: Page): Promise<void> {
   await page.click("#viewAstral");
   await expect(page.locator("#viewAstral")).toHaveClass(/pressed/);
   await expect.poll(() => page.evaluate(() => styles.texture.options.href)).toContain("starfield");
-}
-
-/** the mount-family icons, the drawn remnants, and how the drawn ones fall across the classes */
-async function remnantStats(page: Page): Promise<{ family: number; total: number; perClass: number }> {
-  return page.evaluate(() => {
-    const family = pack.relief.filter(
-      icon => "type" in icon && ["mount", "mountSnow", "vulcan"].includes(icon.type)
-    ).length;
-    const total = document.querySelectorAll("#remnants [data-id]").length;
-    const perClass = ["blackHole", "pulsar", "neutron"]
-      .map(cls => document.querySelectorAll(`#remnants [data-group="${cls}"] [data-id]`).length)
-      .reduce((a, b) => a + b, 0);
-    return { family, total, perClass };
-  });
 }
 
 test.describe("Astral view mode", () => {
@@ -74,7 +62,7 @@ test.describe("Astral view mode", () => {
     await expect(page.locator(layerItem("nebulae"))).toHaveCount(0);
 
     // a layer set that no preset names offers the save button; entering must take it away
-    await page.locator("#mapLayers > li.buttonoff").first().click();
+    await page.locator("#mapLayers > button.buttonoff").first().click();
     await expect(page.locator("#savePresetButton")).toBeVisible();
     await page.locator("#layersPreset").selectOption("political");
     await expect(page.locator("#savePresetButton")).toBeHidden();
@@ -84,7 +72,7 @@ test.describe("Astral view mode", () => {
     await expect(page.locator("#viewStandard")).not.toHaveClass(/pressed/);
 
     // the Astral list replaces the standard one
-    for (const id of ["coreRim", "texture", "composition", "nebulae", "starDensity", "dustDensity", "systems", "states", "markers"])
+    for (const id of ["starDensity", "dustDensity", "systems", "states", "markers"])
       await expect(page.locator(layerItem(id))).toBeVisible();
     for (const id of ["heightmap", "rivers", "religions", "temperature"])
       await expect(page.locator(layerItem(id))).toHaveCount(0);
@@ -99,7 +87,7 @@ test.describe("Astral view mode", () => {
         .map(option => option.value)
         .sort()
     );
-    expect(visiblePresets).toEqual(["astral", "composition", "dustDensity", "empires", "survey", "systems"]);
+    expect(visiblePresets).toEqual(["astral", "dustDensity", "empires", "survey", "systems"]);
 
     // the mode flag and the chart style are on
     expect(await page.evaluate(() => options.map.astral)).toBe(true);
@@ -108,16 +96,12 @@ test.describe("Astral view mode", () => {
 
     // the default chart draws systems, empires and hyperlanes; dust, composition, nebulae and
     // density stay off by button — each is one click away in the same Astral list
-    expect(await page.evaluate(() => Layers.isOn("systems"))).toBe(true);
-    expect(await page.evaluate(() => Layers.isOn("states"))).toBe(true);
-    expect(await page.evaluate(() => Layers.isOn("routes"))).toBe(true);
-    expect(await page.evaluate(() => Layers.isOn("coreRim"))).toBe(false);
-    expect(await page.evaluate(() => Layers.isOn("composition"))).toBe(false);
-    expect(await page.evaluate(() => Layers.isOn("nebulae"))).toBe(false);
-    expect(await page.evaluate(() => Layers.isOn("starDensity"))).toBe(false);
-    expect(await page.evaluate(() => Layers.isOn("dustDensity"))).toBe(false);
-    for (const id of ["texture", "nebulae", "starDensity"])
-      await expect(page.locator(layerItem(id))).toBeVisible();
+    expect(await page.evaluate(() => FMG.Layers.isOn("systems"))).toBe(true);
+    expect(await page.evaluate(() => FMG.Layers.isOn("states"))).toBe(true);
+    expect(await page.evaluate(() => FMG.Layers.isOn("routes"))).toBe(true);
+    expect(await page.evaluate(() => FMG.Layers.isOn("starDensity"))).toBe(false);
+    expect(await page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(false);
+    await expect(page.locator(layerItem("starDensity"))).toBeVisible();
 
     // a marker per burg, and the hyperlanes really are drawn
     const markers = await page.locator("#systems [data-id]").count();
@@ -134,14 +118,14 @@ test.describe("Astral view mode", () => {
 
     // off by default, and the shared border path the Standard view draws is faded out in Astral so it
     // cannot compete with the blue hyperlanes
-    expect(await page.evaluate(() => Layers.isOn("borders"))).toBe(false);
+    expect(await page.evaluate(() => FMG.Layers.isOn("borders"))).toBe(false);
     expect(await page.evaluate(() => document.getElementById("statesHalo")!.style.display)).toBe("none");
     expect(await page.evaluate(() => styles.borders.groups.stateBorders.attrs.opacity)).toBe(0);
     expect(await page.evaluate(() => getComputedStyle(document.getElementById("stateBorders")!).opacity)).toBe("0");
 
     // the button brings them on: one path per empire, clipped to itself so only its inner half shows
     await page.locator(layerItem("borders")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("borders"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("borders"))).toBe(true);
     await expect.poll(() => page.evaluate(() => document.getElementById("statesHalo")!.style.display)).not.toBe(
       "none"
     );
@@ -161,7 +145,7 @@ test.describe("Astral view mode", () => {
 
     // pressing it again takes them away
     await page.locator(layerItem("borders")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("borders"))).toBe(false);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("borders"))).toBe(false);
     expect(await page.evaluate(() => document.getElementById("statesHalo")!.style.display)).toBe("none");
   });
 
@@ -169,90 +153,16 @@ test.describe("Astral view mode", () => {
     await enterAstral(page);
     const bands = page.locator("#dustDensity [data-group] path");
 
-    expect(await page.evaluate(() => Layers.isOn("dustDensity"))).toBe(false);
+    expect(await page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(false);
     expect(await bands.count()).toBe(0);
 
     await page.locator(layerItem("dustDensity")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("dustDensity"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(true);
     await expect(bands.first()).toBeAttached();
 
     await page.locator(layerItem("dustDensity")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("dustDensity"))).toBe(false);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("dustDensity"))).toBe(false);
     await expect(bands).toHaveCount(0);
-  });
-
-  test("Composition tints the biomes and starts off", async ({ page }) => {
-    await enterAstral(page);
-    const fills = page.locator("#composition [data-group] path");
-
-    expect(await page.evaluate(() => Layers.isOn("composition"))).toBe(false);
-    expect(await fills.count()).toBe(0);
-
-    await page.locator(layerItem("composition")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("composition"))).toBe(true);
-    await expect(fills.first()).toBeAttached();
-
-    await page.locator(layerItem("composition")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("composition"))).toBe(false);
-    await expect(fills).toHaveCount(0);
-  });
-
-  test("Core–Rim washes from the warm edge, flips, and sits under the dust", async ({ page }) => {
-    await enterAstral(page);
-    const rect = page.locator("#coreRim rect");
-
-    expect(await page.evaluate(() => Layers.isOn("coreRim"))).toBe(false);
-    expect(await rect.count()).toBe(0);
-
-    await page.locator(layerItem("coreRim")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("coreRim"))).toBe(true);
-    await expect(rect).toBeAttached();
-
-    // the hot stop lands on the warm side of the map, finite coordinates throughout
-    const axis = await page.evaluate(() => {
-      const gradient = document.querySelector<SVGLinearGradientElement>("#coreRim linearGradient")!;
-      const attrs = ["x1", "y1", "x2", "y2"].map(name => gradient.getAttribute(name)!);
-      let warmest = 0;
-      for (let i = 1; i < grid.cells.temp.length; i++)
-        if (grid.cells.temp[i] > grid.cells.temp[warmest]) warmest = i;
-      const [wx, wy] = grid.points[warmest];
-      const [x1, y1, x2, y2] = attrs.map(Number);
-      return {
-        attrs,
-        hotDistance: Math.hypot(x1 - wx, y1 - wy),
-        coldDistance: Math.hypot(x2 - wx, y2 - wy),
-        stops: document.querySelectorAll("#coreRim stop").length
-      };
-    });
-    expect(axis.attrs.join()).not.toContain("NaN");
-    expect(axis.stops).toBe(3);
-    expect(axis.hotDistance).toBeLessThan(axis.coldDistance);
-
-    // flip inverts the axis: the endpoints swap
-    await page.evaluate(() => {
-      styles.coreRim.options.flip = true;
-      Layers.draw("coreRim");
-    });
-    const flipped = await page.evaluate(() => {
-      const gradient = document.querySelector<SVGLinearGradientElement>("#coreRim linearGradient")!;
-      return ["x1", "y1", "x2", "y2"].map(name => gradient.getAttribute(name));
-    });
-    expect(flipped.slice(0, 2)).toEqual(axis.attrs.slice(2));
-    expect(flipped.slice(2)).toEqual(axis.attrs.slice(0, 2));
-    await page.evaluate(() => {
-      styles.coreRim.options.flip = false;
-      Layers.draw("coreRim");
-    });
-
-    // the wash sits under the dust sheet: coreRim precedes dustDensity in the chart
-    await page.locator(layerItem("dustDensity")).click();
-    await expect.poll(() => page.evaluate(() => Layers.isOn("dustDensity"))).toBe(true);
-    const washUnderDust = await page.evaluate(
-      () =>
-        (document.querySelector("#coreRim")!.compareDocumentPosition(document.querySelector("#dustDensity")!) &
-          Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-    );
-    expect(washUnderDust).toBe(true);
   });
 
   test("leaving restores the previous list, preset, layers and style", async ({ page }) => {
@@ -261,7 +171,7 @@ test.describe("Astral view mode", () => {
       preset: options.map.style.preset,
       href: styles.texture.options.href,
       layersPreset: (document.getElementById("layersPreset") as HTMLSelectElement).value,
-      active: [...Layers.state.active].sort()
+      active: [...FMG.Layers.state.active].sort()
     }));
 
     await enterAstral(page);
@@ -277,10 +187,10 @@ test.describe("Astral view mode", () => {
       preset: options.map.style.preset,
       href: styles.texture.options.href,
       astral: options.map.astral,
-      active: [...Layers.state.active].sort(),
-      systemsOn: Layers.isOn("systems"),
-      nebulaeOn: Layers.isOn("nebulae"),
-      nebulaeHidden: document.getElementById("nebulae")?.style.display === "none"
+      active: [...FMG.Layers.state.active].sort(),
+      systemsOn: FMG.Layers.isOn("systems"),
+      nebulaeOn: FMG.Layers.isOn("nebulae"),
+      nebulaeHidden: document.getElementById("nebulae") === null
     }));
     expect(after.preset).toBe(before.preset);
     expect(after.href).toBe(before.href);
@@ -321,17 +231,13 @@ test.describe("Astral view mode", () => {
 
   test("export smoke: the exported SVG carries the chart", async ({ page }) => {
     await enterAstral(page);
-    // Sector Dust is off in the default chart; switch it on so the texture-inlining assertion has
-    // something to see — the starfield PNG travels inlined as a base64 image
-    await page.locator(layerItem("texture")).click();
     const svg = await page.evaluate(async () => {
-      const url = await Services.ExportMap.getMapURL("svg");
+      const url = await FMG.Services.ExportMap.getMapURL("svg");
       return await (await fetch(url)).text();
     });
-    // the default chart carries systems and hyperlanes; empty optional layers are not emitted
+    // the default chart carries systems and hyperlanes
     expect(svg).toContain('id="systems"');
     expect(svg).toMatch(/data-group="[GFKABM]"/);
     expect(svg).toContain('id="routes"');
-    expect(svg).toMatch(/<image[^>]+href="data:image\/png;base64/);
   });
 });

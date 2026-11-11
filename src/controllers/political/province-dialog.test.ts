@@ -12,11 +12,7 @@ vi.mock("@/controllers", () => ({
 
 import { Provinces } from "@/model/political/provinces-generator";
 import { DIALOGS_MARKUP } from "@/ui/dialog/dialog-testing";
-import {
-  computeProvinceCapacity,
-  openProvinceDetailsDialog,
-  PROVINCE_DIALOG_ID
-} from "./province-dialog";
+import { computeProvinceCapacity, openProvinceDetailsDialog, PROVINCE_DIALOG_ID } from "./province-dialog";
 
 describe("openProvinceDetailsDialog", () => {
   beforeEach(() => {
@@ -256,11 +252,11 @@ describe("openProvinceDetailsDialog", () => {
     openProvinceDetailsDialog(1, onUpdate);
 
     const dialog = document.getElementById(PROVINCE_DIALOG_ID);
-    const shortInput = dialog?.querySelector<HTMLInputElement>("#provDialogShort")!;
-    const formSelect = dialog?.querySelector<HTMLSelectElement>("#provDialogSelectForm")!;
-    const orderInput = dialog?.querySelector<HTMLInputElement>("#provDialogOrder")!;
-    const stabInput = dialog?.querySelector<HTMLInputElement>("#provDialogStability")!;
-    const devInput = dialog?.querySelector<HTMLInputElement>("#provDialogDev")!;
+    const shortInput = dialog!.querySelector<HTMLInputElement>("#provDialogShort")!;
+    const formSelect = dialog!.querySelector<HTMLSelectElement>("#provDialogSelectForm")!;
+    const orderInput = dialog!.querySelector<HTMLInputElement>("#provDialogOrder")!;
+    const stabInput = dialog!.querySelector<HTMLInputElement>("#provDialogStability")!;
+    const devInput = dialog!.querySelector<HTMLInputElement>("#provDialogDev")!;
 
     shortInput.value = "Southmarch";
     formSelect.value = "Duchy";

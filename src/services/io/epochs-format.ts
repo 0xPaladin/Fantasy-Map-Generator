@@ -1,16 +1,17 @@
-// The `.map` epochs slots: the chronicle JSON stays in record 53, and each epoch's borders get
-// their own record from 54 on, comma-joined exactly like `cells.state` (record 25). See
-// docs/plans/history-epochs.md. The snapshots are runtime-only on `pack.history`, so they never
+// The `.map` epochs slots: the chronicle JSON sits in record 57, and each epoch's borders get
+// their own record from 58 on, comma-joined exactly like `cells.state` (record 25). See
+// docs/plans/history-epochs.md. Records 54 and 55 belong to upstream's prosperity/development,
+// and 56 carries pack.factions. The snapshots are runtime-only on `pack.history`, so they never
 // reach the JSON part; the epochs are kept only when every one of them carries a full-length
 // snapshot — the same "never lose the world over a broken extra" rule the mod slot uses.
 import { emptyHistory, type History, type HistoryEpoch } from "@/types/history";
 
-export const HISTORY_RECORD = 55;
-export const FIRST_SNAPSHOT_RECORD = 56;
+export const HISTORY_RECORD = 57;
+export const FIRST_SNAPSHOT_RECORD = 58;
 
 interface SerializedHistory {
-  json: string; // record 55
-  snapshotRecords: string[]; // records 56+, one per epoch, in epoch order
+  json: string; // record 57
+  snapshotRecords: string[]; // records 58+, one per epoch, in epoch order
 }
 
 /** the epochs survive a save or a load only as a complete set of full-length snapshots */
@@ -22,7 +23,7 @@ function hasCompleteBorders(
   return Boolean(epochs?.length) && Boolean(borders) && epochs!.every((_, i) => borders![i]?.length === cellCount);
 }
 
-/** the chronicle JSON for record 53: the runtime snapshots stripped, the epochs only when complete */
+/** the chronicle JSON for record 57: the runtime snapshots stripped, the epochs only when complete */
 function chronicleOf(history: History, keepEpochs: boolean): History {
   const { snapshots, ...chronicle } = history;
   return keepEpochs ? chronicle : { ...chronicle, epochs: undefined }; // undefined keys are dropped by JSON

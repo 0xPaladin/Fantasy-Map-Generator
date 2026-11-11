@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { State } from "@/model/political/states-generator";
 import type { HistoricalFigure } from "@/types/history";
 import type { LivingWorldState } from "@/types/living";
-import type { State } from "@/types/subdivided-pack";
 import {
   ensureCommanders,
   ensureHeroGuildState,
@@ -73,7 +73,7 @@ describe("living-heroes", () => {
 
   it("initializes and retrieves hero vital state", () => {
     const fig = makeFigure(1);
-    pack.history.figures.push(fig);
+    pack.history.figures!.push(fig);
 
     const state = ensureHeroGuildState(fig);
     expect(state).toBeDefined();
@@ -90,7 +90,7 @@ describe("living-heroes", () => {
 
   it("stores vitals on the hero sheet", () => {
     const fig = makeFigure(4);
-    pack.history.figures.push(fig);
+    pack.history.figures!.push(fig);
 
     const state = ensureHeroGuildState(fig);
     expect(ensureHeroSheet(fig).condition?.resolve).toBe(state.resolve);
@@ -101,7 +101,7 @@ describe("living-heroes", () => {
 
   it("spawns a protege carrying one skill point forward", () => {
     const veteran = makeFigure(2);
-    pack.history.figures.push(veteran);
+    pack.history.figures!.push(veteran);
 
     const protege = spawnProtege(mockLiving, veteran);
     expect(protege).toBeDefined();
@@ -113,7 +113,7 @@ describe("living-heroes", () => {
     ensureCommanders();
     const regiment = pack.states[1].military![0];
     expect(regiment.crew?.length).toBeGreaterThan(0);
-    const commander = pack.history.figures.find(f => f.i === regiment.crew![0]);
+    const commander = pack.history.figures!.find(f => f.i === regiment.crew![0]);
     expect(commander).toBeDefined();
     expect(commander?.roles.some(r => r.type === "specialist" && r.specialty === "sage")).toBe(true);
   });

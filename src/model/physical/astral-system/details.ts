@@ -102,7 +102,12 @@ function toLetter(index: number): string {
 }
 
 /** Generate and map one system, a pure function of its inputs. */
-export function generateSystemDetails({ seed, systemName, spectral, forceHabitable }: SystemDetailsInput): SystemDetails {
+export function generateSystemDetails({
+  seed,
+  systemName,
+  spectral,
+  forceHabitable
+}: SystemDetailsInput): SystemDetails {
   const options: GenerateSystemOptions = {};
   if (forceHabitable) options.forceHabitable = true;
   if (spectral) options.primaryType = starTypeData[spectral] ? spectral : "G";
@@ -142,7 +147,7 @@ export function generateSystemDetails({ seed, systemName, spectral, forceHabitab
       .filter(({ moon }) => moon.HI === 1)
       .map(({ moon, moonIndex }) => {
         const moonName = `${planetName} ${toLetter(moonIndex)}`;
-        const massSolar = (planet.density / 5.51) * (planet.radius / 6.371) ** 3 / 332946;
+        const massSolar = ((planet.density / 5.51) * (planet.radius / 6.371) ** 3) / 332946;
         const orbitAU = Math.max((moon.orbit * planet.radius) / 149598, 1e-8);
         const periodDays = +Math.max(365.25 * Math.sqrt(orbitAU ** 3 / Math.max(massSolar, 1e-12)), 0.01).toFixed(1);
         return {

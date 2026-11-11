@@ -1,5 +1,5 @@
-import { assignStateRoster } from "@/data/roster-content";
 import { Controllers } from "@/controllers";
+import { assignStateRoster } from "@/data/roster-content";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
 import { Routes } from "@/model/economy/routes-generator";
@@ -275,11 +275,12 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
   let isLogGroupOpen = false;
 
   try {
-    const { migrateLegacySettings, resolveVersionConflicts } = await import("./auto-update"); // TODO: don't load if not required
+    const isOutdated = compareVersions(mapVersion, VERSION).isOlder;
+    const autoUpdate = isOutdated ? await import("./auto-update") : null; // every migration is gated on an older version
 
-    Dialog.closeAll();
+    Dialog.closeAll(undefined, { minimized: true });
 
-    migrateLegacySettings(mapVersion!, data);
+    autoUpdate?.migrateLegacySettings(mapVersion!, data);
     const settings = data[1] ? safeParseJSON(data[1]) : null;
     if (!settings) throw new Error("Map settings are missing or malformed");
     Options.applyLoaded(settings);
@@ -347,13 +348,13 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
     pack.zones = data[38] ? JSON.parse(data[38]) : [];
     pack.cells.biome = Uint8Array.from(data[16].split(","), Number);
     pack.cells.burg = Uint16Array.from(data[17].split(","), Number);
-    pack.cells.conf = Uint8Array.from(data[18].split(","), Number);
+    pack.cells.conf = Uint16Array.from(data[18].split(","), Number);
     pack.cells.culture = Uint16Array.from(data[19].split(","), Number);
     pack.cells.fl = Uint16Array.from(data[20].split(","), Number);
     pack.cells.pop = Float32Array.from(data[21].split(","), Number);
     pack.cells.r = Uint16Array.from(data[22].split(","), Number);
     // data[23] had deprecated cells.road
-    pack.cells.s = Uint16Array.from(data[24].split(","), Number);
+    pack.cells.s = Int16Array.from(data[24].split(","), Number); // old files hold wrapped negatives, which wrap back
     pack.cells.state = Uint16Array.from(data[25].split(","), Number);
     pack.cells.religion = data[26]
       ? Uint16Array.from(data[26].split(","), Number)
@@ -366,19 +367,25 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
     pack.cells.routes = data[36] ? JSON.parse(data[36]) : {};
     pack.ice = data[39] ? JSON.parse(data[39]) : [];
     pack.cells.good = data[40] ? Uint16Array.from(data[40].split(","), Number) : new Uint16Array(pack.cells.i.length);
-    pack.goods = data[41] ? JSON.parse(data[41]) : [];
+    if (data[41]) options.map.goods = JSON.parse(data[41]); // older maps keep goods outside the settings
     pack.markets = data[42] ? JSON.parse(data[42]) : [];
     pack.deals = data[43] ? JSON.parse(data[43]) : [];
     pack.cells.market = data[44] ? Uint16Array.from(data[44].split(","), Number) : new Uint16Array(pack.cells.i.length);
+    // legacy fork saves carried the epochs chronicle or factions in records 53/54; shift them past
+    // upstream's prosperity/development records so every historical layout lands on the unified one
+    if (data[53]?.trim().startsWith("{"))
+      data.splice(53, 0, "", "", "", ""); // history@53, snapshots@54+, no legends/factions yet
+    else if (data[54]?.trim().startsWith("{"))
+      data.splice(54, 0, "", "", ""); // history@54, snapshots@55+, no factions yet
+    else if (data[54]?.trim().startsWith("[")) data.splice(54, 0, "", ""); // factions@54, history@55, snapshots@56+
+    if (data[54]) pack.cells.prosperity = Uint8Array.from(data[54].split(","), Number); // auto-update adds it to older maps
+    if (data[55]) pack.cells.development = Uint8Array.from(data[55].split(","), Number); // auto-update adds it to older maps
     pack.measurers = data[46] ? JSON.parse(data[46]) : [];
     pack.addedLabels = data[47] ? JSON.parse(data[47]) : [];
     pack.relief = data[49] ? JSON.parse(data[49]) : [];
     pack.journeys = data[52] ? JSON.parse(data[52]) : [];
     pack.legends = data[53] ? JSON.parse(data[53]) : [];
-    if (data[54] && !data[54].startsWith("[")) {
-      data.splice(54, 0, JSON.stringify([{ i: 0 }]));
-    }
-    pack.factions = data[54] ? JSON.parse(data[54]) : ([{ i: 0 }] as unknown as typeof pack.factions);
+    pack.factions = data[56] ? JSON.parse(data[56]) : ([{ i: 0 }] as unknown as typeof pack.factions);
     pack.history = parseHistory(
       data[HISTORY_RECORD],
       data.slice(FIRST_SNAPSHOT_RECORD),
@@ -396,12 +403,9 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
     // cultures stored a base position before ids; map it through the loaded list
     normalizeCultureBases(pack.cultures, Names.nameBases);
 
-    await resolveVersionConflicts(mapVersion!, data);
+    await autoUpdate?.resolveVersionConflicts(mapVersion!, data);
 
-    // hidden layers save no paths, so colored hatchings are restored from data
-    const { biomes, cultures, states, religions, provinces, zones, markets } = pack;
-    const entities = [biomes, cultures, states, religions, provinces, zones, markets].flat();
-    Hatches.ensureAll(entities.map(entity => entity?.color));
+    Hatches.sync();
 
     const styleRecord = data[48] ? safeParseJSON(data[48]) : undefined; // data[48] should be already migrated by auto-update
     Styles.set(Styles.parse(styleRecord));

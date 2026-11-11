@@ -55,8 +55,6 @@ describe("FactionsEditor", () => {
       name: "Golden Merchants",
       category: "commercial",
       type: "merchant_consortium",
-      scale: "burg",
-      tier: 1,
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
       treasury: 200,
       influence: 50
@@ -77,8 +75,6 @@ describe("FactionsEditor", () => {
       name: "Golden Merchants",
       category: "commercial",
       type: "merchant_consortium",
-      scale: "burg",
-      tier: 1,
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
     });
 
@@ -86,8 +82,6 @@ describe("FactionsEditor", () => {
       name: "Night Syndicate",
       category: "underworld",
       type: "thieves_guild",
-      scale: "province",
-      tier: 2,
       hq: { cell: 2, burgId: 2, fortified: false, secrecy: 50, assets: [] }
     });
 
@@ -120,8 +114,6 @@ describe("FactionsEditor", () => {
       name: "Wayfarers",
       category: "adventuring",
       type: "adventurer_guild",
-      scale: "burg",
-      tier: 1,
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["chapter_lodge"] }
     });
 
@@ -130,7 +122,7 @@ describe("FactionsEditor", () => {
     const dialog = document.querySelector("#factionOutpostsDialog");
     expect(dialog).not.toBeNull();
     expect(dialog?.innerHTML).toContain("Wayfarers");
-    expect(dialog?.innerHTML).toContain("HQ Assets");
+    expect(dialog?.innerHTML).toContain("HQ & Outposts");
 
     // Add outpost in burg 2
     const burgSelect = document.querySelector<HTMLSelectElement>("#newOutpostBurgSelect")!;
@@ -141,9 +133,10 @@ describe("FactionsEditor", () => {
     expect(faction.outposts.some(o => o.burgId === 2)).toBe(true);
 
     // Verify dialog was re-rendered with new outpost in the table
-    const tableBody = document.querySelector("#outpostsList tbody")!;
-    expect(tableBody.innerHTML).toContain("Oakhaven");
-    expect(tableBody.innerHTML).toContain("🌾");
+    const outpostRows = document.querySelectorAll("#outpostsTable > .states");
+    expect(outpostRows.length).toBe(2);
+    expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("Oakhaven");
+    expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("🌾");
   });
 
   it("computes faction yield breakdown and populates outpost table data", () => {
@@ -151,8 +144,6 @@ describe("FactionsEditor", () => {
       name: "Iron Bank",
       category: "commercial",
       type: "merchant_consortium",
-      scale: "burg",
-      tier: 1,
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
       treasury: 100
     });
@@ -205,7 +196,125 @@ describe("FactionsEditor", () => {
 
     openOutpostsDialog(faction.i);
     const dialog = document.querySelector("#factionOutpostsDialog")!;
-    expect(dialog.innerHTML).toContain("🌾 7 · 🔨 5");
+    expect(dialog.innerHTML).toContain("🌾 4 · 🔨 3");
     expect(dialog.innerHTML).toContain("🌾 3 · 🔨 2");
+    expect(dialog.innerHTML).toContain("Trade");
+    expect(dialog.innerHTML).toContain("trade a season");
+    expect(dialog.innerHTML).toContain("🪙 100");
+  });
+
+  it("supports tab switching between HQ & Outposts, Assets, and Forces", () => {
+    const faction = Factions.add({
+      name: "Guild of Traders",
+      category: "commercial",
+      type: "merchant_consortium",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
+    });
+
+    openOutpostsDialog(faction.i);
+
+    const dialog = document.querySelector("#factionOutpostsDialog") as HTMLElement;
+    expect(dialog).not.toBeNull();
+
+    const outpostsTabBtn = dialog.querySelector<HTMLButtonElement>('.tabBtn[data-tab="outposts"]')!;
+    const assetsTabBtn = dialog.querySelector<HTMLButtonElement>('.tabBtn[data-tab="assets"]')!;
+    const forcesTabBtn = dialog.querySelector<HTMLButtonElement>('.tabBtn[data-tab="forces"]')!;
+
+    const outpostsPanel = dialog.querySelector<HTMLElement>('.tabPanel[data-panel="outposts"]')!;
+    const assetsPanel = dialog.querySelector<HTMLElement>('.tabPanel[data-panel="assets"]')!;
+    const forcesPanel = dialog.querySelector<HTMLElement>('.tabPanel[data-panel="forces"]')!;
+
+    expect(outpostsTabBtn.classList.contains("active")).toBe(true);
+    expect(assetsTabBtn.classList.contains("active")).toBe(false);
+    expect(outpostsPanel.style.display).toBe("block");
+    expect(assetsPanel.style.display).toBe("none");
+    expect(forcesPanel.style.display).toBe("none");
+
+    // Click assets tab
+    assetsTabBtn.click();
+    expect(outpostsTabBtn.classList.contains("active")).toBe(false);
+    expect(assetsTabBtn.classList.contains("active")).toBe(true);
+    expect(outpostsPanel.style.display).toBe("none");
+    expect(assetsPanel.style.display).toBe("block");
+    expect(forcesPanel.style.display).toBe("none");
+
+    // Click forces tab
+    forcesTabBtn.click();
+    expect(forcesTabBtn.classList.contains("active")).toBe(true);
+    expect(assetsTabBtn.classList.contains("active")).toBe(false);
+    expect(forcesPanel.style.display).toBe("block");
+    expect(assetsPanel.style.display).toBe("none");
+  });
+
+  it("supports adding and dismantling assets in the Assets tab", () => {
+    const faction = Factions.add({
+      name: "Silver Vault",
+      category: "commercial",
+      type: "merchant_consortium",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+    });
+
+    openOutpostsDialog(faction.i, "assets");
+
+    const locSelect = document.querySelector<HTMLSelectElement>("#newAssetLocationSelect")!;
+    const assetSelect = document.querySelector<HTMLSelectElement>("#newAssetSelect")!;
+    const addAssetBtn = document.querySelector<HTMLButtonElement>("#addAssetBtn")!;
+
+    locSelect.value = "hq";
+    assetSelect.value = "trade_depot";
+    addAssetBtn.click();
+
+    expect(faction.hq.assets).toContain("trade_depot");
+    const assetRows = document.querySelectorAll("#assetsTable > .states");
+    expect(assetRows.length).toBe(1);
+    expect(document.querySelector("#assetsTable")?.innerHTML).toContain("Trade Depot");
+
+    // Dismantle asset
+    const removeBtn = document.querySelector<HTMLButtonElement>('.removeAssetBtn[data-node="hq"][data-index="0"]')!;
+    expect(removeBtn).not.toBeNull();
+    removeBtn.click();
+
+    expect(faction.hq.assets?.includes("trade_depot")).toBe(false);
+    expect(document.querySelector("#assetsTable")?.innerHTML).toContain("No assets constructed yet");
+  });
+
+  it("supports mustering and disbanding forces in the Forces tab", () => {
+    const faction = Factions.add({
+      name: "Crimson Legion",
+      category: "martial",
+      type: "mercenary_band",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+    });
+
+    openOutpostsDialog(faction.i, "forces");
+
+    expect(document.querySelector("#forcesTable")?.innerHTML).toContain("No military forces mustered yet");
+
+    const locSelect = document.querySelector<HTMLSelectElement>("#newFactionForceLocationSelect")!;
+    const nameInput = document.querySelector<HTMLInputElement>("#newFactionForceNameInput")!;
+    const troopsInput = document.querySelector<HTMLInputElement>("#newFactionForceTroopsInput")!;
+    const addBtn = document.querySelector<HTMLButtonElement>("#addFactionForceBtn")!;
+
+    locSelect.value = "hq";
+    nameInput.value = "Crimson Vanguard";
+    troopsInput.value = "150";
+    addBtn.click();
+
+    expect(faction.military?.length).toBe(1);
+    expect(faction.military![0].name).toBe("Crimson Vanguard");
+    expect(faction.military![0].a).toBe(150);
+
+    const forceRows = document.querySelectorAll("#forcesTable > .states");
+    expect(forceRows.length).toBe(1);
+    expect(document.querySelector("#forcesTable")?.innerHTML).toContain("Crimson Vanguard");
+    expect(document.querySelector("#forcesTable")?.innerHTML).toContain("150");
+
+    // Disband force (the muster handler ids regiments from 1)
+    const removeBtn = document.querySelector<HTMLButtonElement>('.removeForceBtn[data-reg-id="1"]')!;
+    expect(removeBtn).not.toBeNull();
+    removeBtn.click();
+
+    expect(faction.military?.length).toBe(0);
+    expect(document.querySelector("#forcesTable")?.innerHTML).toContain("No military forces mustered yet");
   });
 });

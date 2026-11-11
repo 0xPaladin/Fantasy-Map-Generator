@@ -18,6 +18,7 @@
  */
 
 import type { RawContentDocs } from "@/data/roster-content";
+
 const twWarn = (...args: unknown[]): void => console.warn(...args);
 
 /** The library subset of the content docs — what the Config dialog authors. */

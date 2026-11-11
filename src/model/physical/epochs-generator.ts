@@ -9,7 +9,7 @@ import {
   GOLDEN_AGE_TEMPLATES
 } from "@/data/history-events";
 import type { Burg } from "@/model/political/burgs-generator";
-import { STATE_FORMS, type State, States } from "@/model/political/states-generator";
+import { noFinance, STATE_FORMS, type State, States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import type { EpochPolity, HistoryEpoch, HistoryEvent, HistRef } from "@/types/history";
 import type { TypedArray } from "@/types/packed-graph";
@@ -141,9 +141,7 @@ class EpochsModel {
       center: 0,
       culture: 0,
       coa: {} as State["coa"],
-      salesTax: 0,
-      pollTax: 0,
-      treasury: 0
+      economy: noFinance()
     };
 
     const byState = new Map<number, Lineage>();
@@ -159,9 +157,7 @@ class EpochsModel {
         center: lineage.center,
         culture: lineage.culture,
         coa: {} as State["coa"],
-        salesTax: 0,
-        pollTax: 0,
-        treasury: 0
+        economy: noFinance()
       };
     });
 

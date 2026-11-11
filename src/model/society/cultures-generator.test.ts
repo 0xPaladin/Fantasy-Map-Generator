@@ -267,3 +267,14 @@ describe("re-rolling culture traits", () => {
     expect({ alignment: pack.cultures[2].alignment, values: pack.cultures[2].values }).toEqual(removed);
   });
 });
+
+it("finds a predefined culture's development by its name, for maps made before cultures had one", () => {
+  options = Options.getDefaultOptions();
+  const cells = { i: [0], s: [1], h: [], t: [] };
+  vi.stubGlobal("pack", { cells });
+  vi.stubGlobal("grid", { cells: { temp: [] } });
+  expect(Cultures.getDefaultDevelopment("Khazadur")).toBe(53);
+  expect(Cultures.getDefaultDevelopment("Uruk")).toBe(18);
+  expect(Cultures.getDefaultDevelopment("Germanic")).toBe(16);
+  expect(Cultures.getDefaultDevelopment("Custom Name")).toBeUndefined();
+});

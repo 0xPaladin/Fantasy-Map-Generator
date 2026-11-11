@@ -1,21 +1,21 @@
 import { hcl } from "d3";
-import { assignStateRoster } from "@/data/roster-content";
 import { rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
 import { FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
+import { assignStateRoster } from "@/data/roster-content";
 import {
   Military,
   type Regiment,
   reconcileRegimentBlocks,
   syncRegimentTotals
 } from "@/model/political/military-generator";
-import {
-  type Faction,
-  type FactionAllegiance,
-  type FactionCategory,
-  type FactionHq,
-  type FactionOutpost,
-  type FactionRelation
+import type {
+  Faction,
+  FactionAllegiance,
+  FactionCategory,
+  FactionHq,
+  FactionOutpost,
+  FactionRelation
 } from "@/types/factions";
 import type { BurgSimState, YieldValues } from "@/types/living";
 import { createRng, type Rng } from "@/utils/rng";

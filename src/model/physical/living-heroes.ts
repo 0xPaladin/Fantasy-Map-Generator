@@ -8,8 +8,6 @@ import {
   legacyActionsFromSkills
 } from "@/data/character-actions";
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
-import { aspectBonus } from "@/data/hero-aspects";
-import { disciplineBonus, matchingDisciplines } from "@/data/hero-disciplines";
 import {
   defaultPathForDoctrine,
   figureArchetype,
@@ -18,9 +16,14 @@ import {
   inferHeroArchetype,
   pendingPathLevel
 } from "@/data/hero-archetypes";
+import { aspectBonus } from "@/data/hero-aspects";
+import { disciplineBonus, matchingDisciplines } from "@/data/hero-disciplines";
 import { heroMaxVitals, heroTemperamentFor, recoverInjuries } from "@/data/hero-vitals";
 import { UNIT_ROLE_POOLS } from "@/data/living-troubles";
+import { valueModifier } from "@/data/saves-helpers";
+import type { Regiment } from "@/model/political/military-generator";
 import { Military } from "@/model/political/military-generator";
+import type { State } from "@/model/political/states-generator";
 import { Characters } from "@/model/society/characters";
 import { Names } from "@/model/society/names-generator";
 import type { HeroSheet } from "@/types/character";
@@ -34,8 +37,6 @@ import type {
   MissionTag,
   TroubleUnitRole
 } from "@/types/living";
-import type { Regiment, State } from "@/types/subdivided-pack";
-import { valueModifier } from "@/data/saves-helpers";
 import { createRng, type Rng } from "@/utils/rng";
 
 const HERO_STATES = new WeakMap<HistoricalFigure, HeroGuildState>();

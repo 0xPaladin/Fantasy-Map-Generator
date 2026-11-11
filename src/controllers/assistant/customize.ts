@@ -160,7 +160,10 @@ class CustomizeSheet {
   }
 
   private editSkill(skill?: Skill): void {
-    editing = { kind: "skill", skill: skill ?? { id: "", name: "", description: "", body: "", enabled: true, updated: 0 } };
+    editing = {
+      kind: "skill",
+      skill: skill ?? { id: "", name: "", description: "", body: "", enabled: true, updated: 0 }
+    };
     this.render();
   }
 

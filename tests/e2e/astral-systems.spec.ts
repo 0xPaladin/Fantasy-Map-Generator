@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { waitForMap } from "./wait-for-map";
 
+// the app's console surface, see src/app/fmg.ts
+declare const FMG: any;
+
 // The star markers are a second visual representation of a burg: the tooltip reads them as systems,
 // a click opens the System Editor, search reveals them on the systems layer, and zoom culls them to
 // the viewport. This spec is the hit-testing parity guard the plan calls for, and the editor
@@ -20,7 +23,7 @@ declare const Controllers: {
 
 /** Enter through the controller and wait until the markers are reconciled into the dom */
 async function withSystems(page: Page): Promise<void> {
-  await page.evaluate(() => Controllers.AstralMode.enter());
+  await page.evaluate(() => FMG.Controllers.AstralMode.enter());
   await expect.poll(() => page.evaluate(() => styles.texture.options.href)).toContain("starfield");
   await expect(page.locator("#systems [data-id]").first()).toBeAttached();
 }
@@ -50,7 +53,7 @@ async function starPoint(page: Page): Promise<{ x: number; y: number }> {
 // FMG's version-update changelog opens a dialog over the map centre and eats the wheel: dismiss it
 async function dismissChangelog(page: Page): Promise<void> {
   if (await page.locator("#alert").isVisible().catch(() => false))
-    await page.evaluate(() => window.closeDialogs?.());
+    await page.evaluate(() => (window as any).FMG?.Dialog?.closeAll?.());
 }
 
 const viewScale = (page: Page) =>
@@ -76,7 +79,7 @@ test.describe("Astral systems", () => {
 
   test("the tooltip reads a marker as a system", async ({ page }) => {
     await withSystems(page);
-    await page.evaluate(() => Layers.hide("labels")); // state labels can shadow a marker's centre
+    await page.evaluate(() => FMG.Layers.hide("labels")); // state labels can shadow a marker's centre
     const point = await starPoint(page);
     await page.mouse.move(point.x, point.y);
     await page.mouse.move(point.x + 1, point.y); // the handler is debounced: nudge it awake
@@ -103,7 +106,7 @@ test.describe("Astral systems", () => {
 
   test("renaming a system updates its label", async ({ page }) => {
     await withSystems(page);
-    await page.evaluate(() => Controllers.AstralSystemEditor.open(1));
+    await page.evaluate(() => FMG.Controllers.AstralSystemEditor.open(1));
 
     await page.fill("#systemName", "Kessel");
     await expect(page.locator("#labels text[data-label-type='burg'][data-id='1']").first()).toContainText("Kessel");
@@ -111,7 +114,7 @@ test.describe("Astral systems", () => {
 
   test("a population change rolls a star onto the readout, preview and chart", async ({ page }) => {
     await withSystems(page);
-    await page.evaluate(() => Controllers.AstralSystemEditor.open(1));
+    await page.evaluate(() => FMG.Controllers.AstralSystemEditor.open(1));
 
     await page.fill("#systemPopulation", "500");
     await page.dispatchEvent("#systemPopulation", "change");
@@ -132,7 +135,7 @@ test.describe("Astral systems", () => {
 
   test("opening a system shows the generated star and planet readout", async ({ page }) => {
     await withSystems(page);
-    await page.evaluate(() => Controllers.AstralSystemEditor.open(1));
+    await page.evaluate(() => FMG.Controllers.AstralSystemEditor.open(1));
 
     await expect(page.locator("#systemStarsBody tr").first()).toContainText("Primary");
     await expect(page.locator("#systemReadoutTotals")).toContainText("Total mass");
@@ -149,7 +152,7 @@ test.describe("Astral systems", () => {
 
   test("the class line and the star table agree", async ({ page }) => {
     await withSystems(page);
-    await page.evaluate(() => Controllers.AstralSystemEditor.open(1));
+    await page.evaluate(() => FMG.Controllers.AstralSystemEditor.open(1));
 
     const classLine = (await page.locator("#systemClass").textContent()) ?? "";
     const spectral = classLine.split("-class")[0].trim();
@@ -168,12 +171,12 @@ test.describe("Astral systems", () => {
         planets: document.getElementById("systemPlanetsBody")!.innerHTML
       }));
 
-    await page.evaluate(() => Controllers.AstralSystemEditor.open(1));
+    await page.evaluate(() => FMG.Controllers.AstralSystemEditor.open(1));
     const first = await readout();
 
     await page.locator(".ui-dialog:has(#astralSystemEditor) .ui-dialog-titlebar-close").click();
     await expect(page.locator("#astralSystemEditor")).toHaveCount(0);
-    await page.evaluate(() => Controllers.AstralSystemEditor.open(1));
+    await page.evaluate(() => FMG.Controllers.AstralSystemEditor.open(1));
 
     expect(await readout()).toEqual(first);
   });
@@ -182,7 +185,7 @@ test.describe("Astral systems", () => {
     await withSystems(page);
     const keys = await page.evaluate(() => Object.keys(pack.burgs[1]).join(","));
 
-    await page.evaluate(() => Controllers.AstralSystemEditor.open(1));
+    await page.evaluate(() => FMG.Controllers.AstralSystemEditor.open(1));
     await expect(page.locator("#systemPlanetsBody tr").first()).toBeAttached();
     await page.locator(".ui-dialog:has(#astralSystemEditor) .ui-dialog-titlebar-close").click();
     await expect(page.locator("#astralSystemEditor")).toHaveCount(0);
@@ -196,7 +199,8 @@ test.describe("Astral systems", () => {
       const burg = pack.burgs.find(
         b => b.i && !b.removed && !b.capital && b.state && pack.states[b.state] && !pack.states[b.state].removed
       );
-      Controllers.AstralSystemEditor.open(burg.i);
+      if (!burg) throw new Error("no non-capital state burg");
+      FMG.Controllers.AstralSystemEditor.open(burg.i);
       return burg.i;
     });
 
@@ -212,7 +216,8 @@ test.describe("Astral systems", () => {
       const burg = pack.burgs.find(
         b => b.i && !b.removed && !b.capital && !pack.markets?.some(m => m.centerBurgId === b.i)
       );
-      Controllers.AstralSystemEditor.open(burg.i);
+      if (!burg) throw new Error("no non-capital, non-market burg");
+      FMG.Controllers.AstralSystemEditor.open(burg.i);
       return burg.i;
     });
 
@@ -225,19 +230,19 @@ test.describe("Astral systems", () => {
 
   test("search reveals the burg on the systems layer and outlines the marker", async ({ page }) => {
     await withSystems(page);
-    await page.evaluate(() => Layers.hide("systems"));
-    const name = await page.evaluate(() => pack.burgs[1].name);
+    await page.evaluate(() => FMG.Layers.hide("systems"));
+    const name = await page.evaluate(() => pack.burgs[1]!.name ?? "");
 
     await page.keyboard.press("Space"); // the plain-Space omnibar hotkey
     if (!(await page.locator("#omnibar-input").count()))
-      await page.evaluate(() => Controllers.Omnibar.open()); // focus guards may eat the hotkey
+      await page.evaluate(() => FMG.Controllers.Omnibar.open()); // focus guards may eat the hotkey
     await expect(page.locator("#omnibar-input")).toBeFocused();
     await page.fill("#omnibar-input", name);
     await expect(page.locator("#omnibar-list [role='option']").first()).toBeVisible();
     await page.keyboard.press("Enter");
 
     // the mode-aware reveal shows the systems layer, not burgIcons
-    await expect.poll(() => page.evaluate(() => Layers.isOn("systems"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => FMG.Layers.isOn("systems"))).toBe(true);
     await expect.poll(() => viewScale(page)).toBeGreaterThan(1);
     await expect(page.locator("#debug .highlighted")).toHaveCount(1, { timeout: 5000 });
   });
