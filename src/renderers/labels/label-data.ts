@@ -3,6 +3,7 @@ import type { Label, LabelType } from "@/model/annotations/labels-generator";
 import type { Route } from "@/model/economy/routes-generator";
 import type { River } from "@/model/physical/river-generator";
 import { Rivers } from "@/model/physical/river-generator";
+import { isSurfaceBurg } from "@/model/political/burgs-generator";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import type { State } from "@/model/political/states-generator";
@@ -83,7 +84,12 @@ function buildStateLabel(state: State, geometry: boolean): LabelData | undefined
 
   // the one reason a state has no label, shared by the index and the full build: no cells to fit it into
   const fits = !customPath && !isPlainText(state.label);
-  if (fits && !state.cells) return undefined;
+  if (fits && !state.cells) {
+    // realm states hold no cells: they label at their capital while its burg group is visible
+    const capital = state.capital ? pack.burgs[state.capital] : undefined;
+    const burgGroup = capital && options.map.burgs.groups.find(option => option.name === capital.group);
+    if (!capital || isSurfaceBurg(capital) || !burgGroup?.active) return undefined;
+  }
   const fitted = fits && geometry ? fitStateLabel(state, group) : null;
 
   const text = state.label?.text ?? fitted?.text ?? getStateName(state, group);

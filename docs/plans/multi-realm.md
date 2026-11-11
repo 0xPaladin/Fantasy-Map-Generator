@@ -8,7 +8,8 @@ Updated: 2026-11-10. Inputs:
 Progress:
 - Phase 1 — Data Model, Options & Realm Helpers: ✅ done
 - Phase 2 — Multi-Realm Burg Generation: ✅ done
-- Phase 3 – Phase 8: pending
+- Phase 3 — Zero-Surface-Territory States, Provinces & Labels: ✅ done
+- Phase 4 – Phase 8: pending
 
 Implementation notes:
 - Realm rolls run on their own seeded stream (`Math.random = Alea(seed + ":realms")`, restored after), so the
@@ -19,6 +20,16 @@ Implementation notes:
   replaces the interim skip in `createStates` with real realm states
 - `applyHeights` only pins land under surface burgs, so underwater and skyburgs do not raise seafloors
 - `map-integrity` `burg-cells`/`cell-burgs` rules are realm-aware (only surface burgs own cell slots)
+- Phase 3 additionally: sequential state ids in `createStates`/`recreate` (realm burgs may outrank ground
+  towns in id space); surface-only flood-fill seeds and a realm-isolated nearest-capital assignment in
+  `expandStates`; realm burgs skipped by `Provinces.generate` and `LivingGenerator.applyBorderGrowth`;
+  zero-cell realm state labels render at the capital's pole while its burg group is visible; realm states are
+  carried into `recreate()` and `map-restoration` keeps them on the map with their realm capital, skips the
+  surface succession loop when the lost capital was realm, and skips the clawback/state-assignment for
+  non-surface burgs; `Burgs.regenerate` drops realm states whose locked capital did not survive; off-map
+  markers are never placed (`addMarker` rejects out-of-bounds) — they were dropped on restore before, silently
+  changing marker counts; `real-map.testing.ts` seeds the ambient stream like the app boots, making the
+  scenario suite order-independent
 
 ---
 
@@ -74,7 +85,7 @@ Because `pack.cells.burg` (Uint16Array) and `pack.cells.state` (Uint16Array) are
 | Fantasy/Underdark/Aquatic cultures in culture sets | ✅ present | `src/data/culture-sets.ts` |
 | `BurgRealm` helpers (`flying`, `underdark`, `underwater`, `skyPort`, `underdarkGate`, `altitude`) | ✅ present | `src/model/political/burgs-generator.ts` |
 | Multi-realm burg generation & cell-slot protection | ✅ present | `src/model/political/burgs-generator.ts` |
-| Zero-surface-territory states (`sky`, `underdark`, `underwater`) | ❌ missing | `src/model/political/states-generator.ts` |
+| Zero-surface-territory states (`sky`, `underdark`, `underwater`) | ✅ present | `src/model/political/states-generator.ts` |
 | Multi-realm route networks (`airroutes`, `underdarkroutes`, `undersearoutes`) | ❌ missing | `src/model/economy/routes-generator.ts` |
 | Multi-realm production & cross-realm market linking | ❌ missing | `src/model/economy/production-generator.ts`, `markets-generator.ts` |
 | Style schema, default styles & zoom threshold toggles | ❌ missing | `src/model/styles/default-styles.json`, `draw-burg-icons.ts`, `draw-burg-labels.ts` |

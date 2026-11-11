@@ -71,7 +71,7 @@ import {
 } from "@/model/physical/living-armies";
 import { canReadUpstreamEconomy, factionUpstreamIncome, SEASON_DAYS } from "@/model/physical/living-faction-economy";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
-import { type Burg, Burgs } from "@/model/political/burgs-generator";
+import { type Burg, Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
   Military,
@@ -2248,6 +2248,8 @@ class LivingModel {
     living: LivingWorldState,
     cityYields: YieldValues
   ): boolean {
+    // realm states hold no surface territory: only surface burgs grow borders
+    if (!isSurfaceBurg(burg) || state.cells === 0) return false;
     const tiles = bSim.tilesAcquired ?? 0;
     const held = new Set(bSim.civBuildings ?? []);
     const costFactor = held.has("angkor_wat") ? 0.75 : 1;

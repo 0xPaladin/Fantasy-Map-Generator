@@ -753,6 +753,7 @@ class MapRestorationModule {
       if (!state.i || state.removed) continue;
       const capital = burgs[state.capital];
       if (!capital?.i || capital.removed || strayed.has(capital.i) || cells.state[capital.cell] === state.i) continue;
+      if (!isSurfaceBurg(capital)) continue; // realm states hold no surface territory
       // a shifted border does not take a capital from its state: the cell returns to it and to the capital's province
       const province = parent.cells.province[parent.burgs[state.capital].cell];
       const ownProvince = parent.provinces[province];
@@ -766,6 +767,10 @@ class MapRestorationModule {
     pack.states = parent.states.map(state => {
       if (!state.i || state.removed) return state;
       if (present.has(state.i))
+        return this.projectLabel({ ...state, culture: this.keptCulture(state.culture) }, projection);
+      // a realm state claims no surface land: it survives with its realm capital
+      const capital = burgs[state.capital];
+      if (capital && !capital.removed && !isSurfaceBurg(capital))
         return this.projectLabel({ ...state, culture: this.keptCulture(state.culture) }, projection);
       removed.push(state.i);
       return { ...state, removed: true, lock: false };
@@ -788,14 +793,21 @@ class MapRestorationModule {
     for (const state of pack.states) {
       if (!state.i || state.removed) continue;
       const capital = burgs[state.capital];
-      if (!capital?.i || capital.removed || !capital.capital) {
+      const isRealmState = Boolean(capital && !isSurfaceBurg(capital));
+      if (isRealmState) {
+        // a realm state goes with its realm capital; it never takes a surface successor
+        if (!capital.i || capital.removed || !capital.capital) state.removed = true;
+        else state.center = capital.cell;
+      } else if (!capital?.i || capital.removed || !capital.capital) {
         // the capital is lost: the most populous burg on the state's land takes over, else one is founded at its center
         state.capital = 0;
         const successor = this.findMostPopulous(burg => burg.state === state.i)?.i;
         const center = () => this.keepCenter(parent, projection, state.center, cells.state, state.i, state.pole);
         Burgs.setCapital(successor ?? Burgs.add(...cells.p[center()]));
+        state.center = burgs[state.capital].cell;
+      } else {
+        state.center = capital.cell;
       }
-      state.center = burgs[state.capital].cell;
 
       const restoreRegiment = (regiment: Regiment): Regiment => {
         const [x, y] = projection(regiment.x, regiment.y);

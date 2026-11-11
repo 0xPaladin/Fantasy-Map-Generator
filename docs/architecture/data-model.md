@@ -202,7 +202,7 @@ States (countries) data is stored as an array of objects with strict element ord
 - `fullName`: `string` - full state name. Combination of the proper name and state `formName`
 - `color`: `string` - state color in hex (e.g. `#45ff12`) or link to hatching pattern (e.g. `url(#hatch7)`, or `url(#hatch7-c0392b)` for one drawn in a color)
 - `center`: `number` - cell id of state center (initial cell)
-- `pole`: `number[]` - state pole of inaccessibility (visual center) coordinates, see [the concept description](https://blog.mapbox.com/a-new-algorithm-for-finding-a-visual-center-of-a-polygon-7c77e6492fbc?gi=6bd4fcb9ecc1)
+- `pole`: `number[]` - state pole of inaccessibility (visual center) coordinates, see [the concept description](https://blog.mapbox.com/a-new-algorithm-for-finding-a-visual-center-of-a-polygon-7c77e6492fbc?gi=6bd4fcb9ecc1). Realm states (sky, underdark, underwater) hold no land cells: their `pole` is the realm capital's own position and `cells`/`area`/`rural` are `0`, while `burgs` and `urban` count only realm burgs
 - `culture`: `number` - state culture id (equals to initial cell culture)
 - `type`: `string` - state type, see [culture types](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Culture types)
 - `expansionism`: `number` - state growth multiplier. Used mainly during state generation to spread states not uniformly

@@ -882,6 +882,8 @@ class MarkersModule {
     if (cell === undefined) return;
     const i = last(pack.markers)?.i + 1 || 0;
     const [x, y] = this.getMarkerCoordinates(cell);
+    // a marker off the map is invisible and gets dropped on restore: never place one
+    if (x < 0 || y < 0 || x > options.map.graph.width || y > options.map.graph.height) return undefined;
     const type = draft.type ?? base.type;
     const marker: Marker = {
       ...base,

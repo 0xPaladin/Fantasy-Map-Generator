@@ -22,7 +22,7 @@ import { getPolesOfInaccessibility } from "@/utils/path-utils";
 import { each, gauss, generateSeed, P, ra, rand, rw } from "@/utils/probability-utils";
 import { escapeHtml } from "@/utils/string-utils";
 import { requireAdjustments, requireName, requireOneOf } from "@/utils/validation-utils";
-import { Burgs, isSurfaceBurg } from "./burgs-generator";
+import { type BurgRealm, Burgs, getBurgRealm, isSurfaceBurg } from "./burgs-generator";
 import type { Regiment } from "./military-generator";
 import type { Province } from "./provinces-generator";
 import { Provinces } from "./provinces-generator";
@@ -285,8 +285,10 @@ class StatesModule {
         ? `Not enough burgs to generate ${statesCount} states. Will generate only ${validBurgs.length} states`
         : undefined;
     const validStates = pack.states.filter(state => state.i && !state.removed);
-    const lockedStates = validStates.filter(state => state.lock);
-    if (validStates.length && lockedStates.length === validStates.length) {
+    // only surface states lock regeneration; a locked realm state is untouched by it anyway
+    const surfaceStates = validStates.filter(state => isSurfaceBurg(pack.burgs[state.capital]));
+    const lockedStates = surfaceStates.filter(state => state.lock);
+    if (surfaceStates.length && lockedStates.length === surfaceStates.length) {
       return { error: "Unable to regenerate as all states are locked" };
     }
 
@@ -308,7 +310,7 @@ class StatesModule {
 
     const freeBurgs = new Set(this.getFreeBurgs().map(burg => burg.i));
     const sortedBurgs = validBurgs
-      .filter(burg => !lockedStateIds.includes(burg.state ?? 0) && !freeBurgs.has(burg.i))
+      .filter(burg => isSurfaceBurg(burg) && !lockedStateIds.includes(burg.state ?? 0) && !freeBurgs.has(burg.i)) // realm burgs stay in their realm: new states are founded from surface burgs
       .map((burg): [typeof burg, number] => [burg, (burg.population ?? 0) * Math.random()])
       .sort((a, b) => b[1] - a[1])
       .map(([burg]) => burg);
@@ -337,6 +339,17 @@ class StatesModule {
         const states = rule.states.map(id => lockedStateIds.indexOf(id) + 1).filter(Boolean);
         return states.length ? [{ ...rule, states }] : [];
       });
+    }
+
+    // realm states hold no land to redistribute: they carry over untouched, after the surface ones.
+    // locked realm states are already accounted for above, so skip them here
+    const realmStates = pack.states.filter(
+      state => state?.i && !state.removed && state.capital && !state.lock && !isSurfaceBurg(pack.burgs[state.capital])
+    );
+    for (const state of realmStates) {
+      const newId = newStates.length;
+      state.i = newId;
+      newStates.push(state);
     }
 
     for (const cellId of pack.cells.i) {
@@ -396,8 +409,11 @@ class StatesModule {
     const sizeVariety = options.generation.states.sizeVariety;
 
     pack.burgs.forEach(burg => {
-      // realm capitals found zero-surface-territory realm states, never surface ones
-      if (!burg.i || !burg.capital || !isSurfaceBurg(burg)) return;
+      // every capital founds a state; realm capitals found zero-surface-territory realm states
+      if (!burg.i || !burg.capital) return;
+
+      const stateId = states.length;
+      burg.state = stateId;
 
       const expansionism = rn(Math.random() * sizeVariety + 1, 1);
       const basename = burg.name!.length < 9 && each5th(burg.cell) ? burg.name! : Names.getCultureShort(burg.culture!);
@@ -407,7 +423,7 @@ class StatesModule {
       coa.shield = Emblems.getShield(burg.culture!);
       const rosterId = assignStateRoster({ culture: burg.culture!, type }, pack.cultures);
       states.push({
-        i: burg.i,
+        i: stateId,
         name,
         expansionism,
         capital: burg.i,
@@ -505,9 +521,10 @@ class StatesModule {
 
     for (const state of states) {
       if (!state.i || state.removed) continue;
+      const capital = burgs[state.capital];
+      if (!capital || !isSurfaceBurg(capital)) continue; // realm states hold no surface territory
 
-      const capitalCell = burgs[state.capital].cell;
-      cells.state[capitalCell] = state.i;
+      cells.state[capital.cell] = state.i;
       const cultureCenter = cultures[state.culture].center!;
       const b = cells.biome[cultureCenter]; // state native biome
       queue.push({ e: state.center, p: 0, s: state.i, b }, 0);
@@ -570,6 +587,37 @@ class StatesModule {
         if (!isSurfaceBurg(b)) return;
         b.state = cells.state[b.cell]; // assign state to burgs
       });
+
+    // realm burgs join the realm state whose capital is nearest, else the nearest surface state
+    const realmStatesByRealm = new Map<BurgRealm, State[]>();
+    const surfaceStates: State[] = [];
+    for (const state of states) {
+      if (!state.i || state.removed || !burgs[state.capital]) continue;
+      const capital = burgs[state.capital];
+      if (isSurfaceBurg(capital)) surfaceStates.push(state);
+      else {
+        const realm = getBurgRealm(capital);
+        const list = realmStatesByRealm.get(realm);
+        if (list) list.push(state);
+        else realmStatesByRealm.set(realm, [state]);
+      }
+    }
+
+    for (const burg of burgs) {
+      if (!burg.i || burg.removed || burg.capital || isSurfaceBurg(burg)) continue;
+      const candidates = realmStatesByRealm.get(getBurgRealm(burg)) ?? surfaceStates;
+      let nearest = candidates[0];
+      let minDist = Infinity;
+      for (const state of candidates) {
+        const capital = burgs[state.capital];
+        const dist = (capital.x - burg.x) ** 2 + (capital.y - burg.y) ** 2;
+        if (dist < minDist) {
+          minDist = dist;
+          nearest = state;
+        }
+      }
+      if (nearest) burg.state = nearest.i;
+    }
     log.timeEnd("expandStates");
   }
 
@@ -594,12 +642,16 @@ class StatesModule {
 
   // calculate pole of inaccessibility for each state
   getPoles() {
+    const { burgs } = pack;
     const getType = (cellId: number) => pack.cells.state[cellId];
     const poles = getPolesOfInaccessibility(pack, getType);
 
     pack.states.forEach(s => {
       if (!s.i || s.removed) return;
-      s.pole = poles[s.i] || [0, 0];
+      const capital = s.capital ? burgs[s.capital] : undefined;
+      // realm states hold no cells: their pole is the capital's own position
+      if (capital && !isSurfaceBurg(capital)) s.pole = [capital.x, capital.y];
+      else s.pole = poles[s.i] || [0, 0];
     });
   }
 
@@ -656,7 +708,7 @@ class StatesModule {
 
   // calculate states data like area, population etc.
   collectStatistics() {
-    const { cells, states } = pack;
+    const { cells, states, burgs } = pack;
 
     states.forEach(s => {
       if (s.removed) return;
@@ -675,6 +727,14 @@ class StatesModule {
         states[s].urban! += pack.burgs[cells.burg[i]].population!;
         states[s].burgs!++;
       }
+    }
+    // realm states hold no cells: their burgs and urban population are counted from their realm burgs
+    for (const burg of burgs) {
+      if (!burg.i || burg.removed || isSurfaceBurg(burg)) continue;
+      const s = burg.state ? states[burg.state] : undefined;
+      if (!s || s.removed) continue;
+      s.burgs! += 1;
+      s.urban! += burg.population ?? 0;
     }
     Pack.markChanged();
   }
@@ -1723,7 +1783,9 @@ class StatesModule {
       if (cells.state[cell] === stateId) continue;
       affectedProvinces.add(cells.province[cell]);
       cells.state[cell] = stateId;
-      if (cells.burg[cell]) burgs[cells.burg[cell]].state = stateId;
+      const burgId = cells.burg[cell];
+      // the slot only ever refers to a surface burg; realm burgs keep their realm state
+      if (burgId && isSurfaceBurg(burgs[burgId])) burgs[burgId].state = stateId;
     }
     if (!affectedProvinces.size) return;
     this.getPoles();

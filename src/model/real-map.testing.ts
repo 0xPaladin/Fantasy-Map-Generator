@@ -1,4 +1,5 @@
 // Generates real maps in the Node test environment, with the generators the app runs
+import Alea from "alea";
 import type { IntegrityRule, IntegrityViolation } from "./map-integrity";
 
 Object.assign(globalThis, { grid: undefined, pack: {} });
@@ -18,11 +19,13 @@ export async function generateMap({ seed, template = "continents", points = 3000
   options.map.seed = seed;
   options.generation.template = template;
   options.map.graph = { ...options.map.graph, width: 960, height: 540, points };
+  Math.random = Alea(seed); // the app seeds the ambient stream at boot; the harness must too
   await GenerationPipeline.run({});
 }
 
 /** the Risk heightmap edit, with the edit applied to a copy of the current heights */
 export function riskEdit(edit: (heights: Uint8Array) => void, erosion: boolean): void {
+  Math.random = Alea(`${options.map.seed}:risk`); // keep the edit deterministic across runs
   const heights = grid.cells.h.slice();
   edit(heights);
   MapRestoration.applyHeights(heights, { erosion });
