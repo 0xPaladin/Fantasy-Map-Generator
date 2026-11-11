@@ -1,35 +1,91 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  activeInstructionsId,
+  deleteInstructionsProfile,
   deletePrompt,
   deleteSkill,
   getInstructions,
   INSTRUCTIONS_LIMIT,
-  importFile,
-  instructionsToMarkdown,
+  importInstructionsProfileFile,
+  importSkillFile,
+  instructionsProfileToMarkdown,
+  listInstructionsProfiles,
   listPrompts,
   listSkills,
   readSkill,
-  saveInstructions,
+  saveInstructionsProfile,
   savePrompt,
   saveSkill,
+  setActiveInstructionsProfile,
   skillToMarkdown
 } from "./customization";
 
 const reset = (): void => {
-  saveInstructions("");
+  for (const profile of listInstructionsProfiles()) deleteInstructionsProfile(profile.id);
   for (const skill of listSkills()) deleteSkill(skill.id);
   for (const prompt of listPrompts()) deletePrompt(prompt.id);
 };
 
 beforeEach(reset);
 
-describe("instructions", () => {
-  it("save, read back and cap at the limit", () => {
+describe("instructions profiles", () => {
+  it("create, select and delete selectable profiles", () => {
+    const editor = saveInstructionsProfile({ name: "Map Editor", text: "Name places like an atlas." });
+    const gm = saveInstructionsProfile({ name: "GM", text: "Run the world as the GM." });
+    expect(getInstructions()).toBe("Name places like an atlas."); // the first profile becomes active
+    expect(activeInstructionsId()).toBe(editor.id);
+
+    setActiveInstructionsProfile(gm.id);
+    expect(getInstructions()).toBe("Run the world as the GM.");
+
+    saveInstructionsProfile({ id: gm.id, text: "Run the world as the GM, harshly." });
+    expect(getInstructions()).toBe("Run the world as the GM, harshly."); // the active profile follows the edit
+
+    deleteInstructionsProfile(gm.id);
+    expect(getInstructions()).toBe("Name places like an atlas."); // falls back to the first profile
+
+    deleteInstructionsProfile(editor.id);
     expect(getInstructions()).toBe("");
-    saveInstructions("Always name rivers after local saints.");
-    expect(getInstructions()).toBe("Always name rivers after local saints.");
-    saveInstructions("x".repeat(INSTRUCTIONS_LIMIT + 500));
-    expect(getInstructions()).toHaveLength(INSTRUCTIONS_LIMIT);
+    expect(activeInstructionsId()).toBeNull();
+  });
+
+  it("reject empty names, duplicates and updates of a deleted profile", () => {
+    saveInstructionsProfile({ name: "GM", text: "b" });
+    expect(() => saveInstructionsProfile({ name: "  ", text: "b" })).toThrow(/name/i);
+    expect(() => saveInstructionsProfile({ name: "gm", text: "b" })).toThrow(/already exists/i);
+    expect(() => saveInstructionsProfile({ id: "missing", name: "Ghost", text: "b" })).toThrow(/deleted/);
+    expect(() => setActiveInstructionsProfile("missing")).toThrow(/deleted/);
+  });
+
+  it("cap the name, text and profile count", () => {
+    const profile = saveInstructionsProfile({ name: "n".repeat(60), text: "t".repeat(INSTRUCTIONS_LIMIT + 500) });
+    expect(profile.name).toHaveLength(40);
+    expect(profile.text).toHaveLength(INSTRUCTIONS_LIMIT);
+    for (let i = 1; i < 20; i++) saveInstructionsProfile({ name: `P${i}`, text: "x" });
+    expect(() => saveInstructionsProfile({ name: "21st", text: "x" })).toThrow(/at most/i);
+  });
+
+  it("round-trip a profile through export and import", () => {
+    const profile = saveInstructionsProfile({ name: "Storyteller", text: "Write like a bard." });
+    const file = instructionsProfileToMarkdown(profile);
+    expect(file).toContain("name: Storyteller");
+    deleteInstructionsProfile(profile.id);
+
+    const imported = importInstructionsProfileFile("storyteller.md", file);
+    expect(imported.name).toBe("Storyteller");
+    expect(imported.text).toBe("Write like a bard.");
+    expect(activeInstructionsId()).toBe(imported.id); // the first profile becomes active
+
+    const imported2 = importInstructionsProfileFile("storyteller.md", file);
+    expect(imported2.name).toBe("Storyteller 2"); // the taken name is suffixed
+  });
+
+  it("import an AGENTS.md file as a separate profile", () => {
+    saveInstructionsProfile({ name: "Map Editor", text: "Keep the atlas consistent." });
+    const imported = importInstructionsProfileFile("AGENTS.md", "Conventions for this world.");
+    expect(imported.name).toBe("AGENTS");
+    expect(listInstructionsProfiles()).toHaveLength(2);
+    expect(getInstructions()).toBe("Keep the atlas consistent."); // stays on the previously active profile
   });
 });
 
@@ -92,48 +148,30 @@ describe("markdown files", () => {
     expect(file).toContain("name: Heraldry");
     expect(file).toContain("description: Coat-of-arms conventions");
 
-    const imported = importFile("heraldry.md", file);
-    expect(imported.kind).toBe("skill");
-    if (imported.kind !== "skill") return;
-    expect(imported.skill.name).toBe("Heraldry 2"); // the user's own skill keeps its name
-    expect(imported.skill.description).toBe("Coat-of-arms conventions");
-    expect(imported.skill.body).toBe(skill.body);
+    const imported = importSkillFile("heraldry.md", file);
+    expect(imported.name).toBe("Heraldry 2"); // the user's own skill keeps its name
+    expect(imported.description).toBe("Coat-of-arms conventions");
+    expect(imported.body).toBe(skill.body);
     expect(listSkills()).toHaveLength(2); // a file imports as a new entry
   });
 
   it("derive name and description from the file when front matter is missing", () => {
-    const imported = importFile("trade-routes.md", "# Trade routes\n\nFollow the rivers.");
-    expect(imported.kind).toBe("skill");
-    if (imported.kind !== "skill") return;
-    expect(imported.skill.name).toBe("trade-routes");
-    expect(imported.skill.description).toBe("Trade routes");
-    expect(imported.skill.body).toContain("Follow the rivers.");
-    expect(imported.skill.enabled).toBe(true);
+    const imported = importSkillFile("trade-routes.md", "# Trade routes\n\nFollow the rivers.");
+    expect(imported.name).toBe("trade-routes");
+    expect(imported.description).toBe("Trade routes");
+    expect(imported.body).toContain("Follow the rivers.");
+    expect(imported.enabled).toBe(true);
   });
 
   it("respect an enabled: false front-matter field", () => {
     const file = "---\nname: Draft\ndescription: Not ready\nenabled: false\n---\n\nBody.";
-    const imported = importFile("draft.md", file);
-    expect(imported.kind).toBe("skill");
-    if (imported.kind !== "skill") return;
-    expect(imported.skill.enabled).toBe(false);
+    const imported = importSkillFile("draft.md", file);
+    expect(imported.enabled).toBe(false);
     expect(readSkill("Draft")).toBeUndefined();
   });
 
-  it("import AGENTS.md as the instructions and export them back", () => {
-    const imported = importFile("AGENTS.md", "---\nname: x\n---\n\nStandards for this world.");
-    expect(imported.kind).toBe("instructions");
-    expect(getInstructions()).toBe("Standards for this world.");
-    expect(instructionsToMarkdown()).toBe("Standards for this world.");
-
-    importFile("agents", "Plain file, no extension.");
-    expect(getInstructions()).toBe("Plain file, no extension.");
-  });
-
   it("strip front matter from an imported skill body", () => {
-    const imported = importFile("a.md", "---\nname: A\n---\n\nJust the body.");
-    expect(imported.kind).toBe("skill");
-    if (imported.kind !== "skill") return;
-    expect(imported.skill.body).toBe("Just the body.");
+    const imported = importSkillFile("a.md", "---\nname: A\n---\n\nJust the body.");
+    expect(imported.body).toBe("Just the body.");
   });
 });

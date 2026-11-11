@@ -69,21 +69,44 @@ const submit = (form: HTMLElement): void => {
   form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 };
 
-it("saves instructions and exports them as AGENTS.md", async () => {
+it("creates, selects and exports AGENTS.md profiles", async () => {
+  const customization = await import("@/services/assistant/customization");
   await openCustomize();
-  const box = el<HTMLTextAreaElement>("assistantInstructions");
-  box.value = "Name rivers after local saints.";
-  box.dispatchEvent(new Event("input"));
-  expect(el("assistantInstructionsCount").textContent).toBe(`31 / 16000`);
+  expect(el("assistantInstructionsProfileList").textContent).toContain("No profiles yet.");
 
-  clickText("Save");
-  expect(el("assistantCustomizeError").textContent).toBe("Instructions saved.");
-  expect((await import("@/services/assistant/customization")).getInstructions()).toBe(
-    "Name rivers after local saints."
-  );
+  // the empty state is replaced by the first profile, which becomes active
+  clickText("+ New profile");
+  expect(el("assistantCustomizeEditor").hidden).toBe(false);
+  expect(el("assistantEditorTitle").textContent).toBe("Instructions profile");
+  expect(el("assistantEditorBodyLabel").textContent).toBe("Instructions");
+  expect(el("assistantEditorDescriptionField").hidden).toBe(true);
+  expect(el("assistantEditorEnabledField").hidden).toBe(true);
+  el<HTMLInputElement>("assistantEditorName").value = "Map Editor";
+  el<HTMLTextAreaElement>("assistantEditorBody").value = "Name rivers after local saints.";
+  submit(el("assistantCustomizeEditor"));
 
-  click('[data-action="export-instructions"]');
-  expect(download).toHaveBeenCalledWith("Name rivers after local saints.", "AGENTS.md", "text/markdown");
+  const profiles = customization.listInstructionsProfiles();
+  expect(profiles).toHaveLength(1);
+  expect(customization.getInstructions()).toBe("Name rivers after local saints.");
+  expect(el("assistantInstructionsProfileList").textContent).toContain("Map Editor");
+
+  // a second profile is created and selected with the radio button
+  clickText("+ New profile");
+  el<HTMLInputElement>("assistantEditorName").value = "GM";
+  el<HTMLTextAreaElement>("assistantEditorBody").value = "Run the world as the GM.";
+  submit(el("assistantCustomizeEditor"));
+  expect(customization.getInstructions()).toBe("Name rivers after local saints."); // the first stays active
+
+  const gm = customization.listInstructionsProfiles().find(profile => profile.name === "GM")!;
+  click(`[data-action="set-active-instructions"][data-id="${gm.id}"]`);
+  expect(customization.getInstructions()).toBe("Run the world as the GM.");
+
+  click(`[data-action="export-instructions"][data-id="${gm.id}"]`);
+  expect(download).toHaveBeenCalledWith(expect.stringContaining("name: GM"), "GM.md", "text/markdown");
+
+  click(`[data-action="delete-instructions"][data-id="${gm.id}"]`);
+  expect(customization.listInstructionsProfiles().map(profile => profile.name)).toEqual(["Map Editor"]);
+  expect(customization.getInstructions()).toBe("Name rivers after local saints.");
 });
 
 it("creates, edits, disables and deletes a skill", async () => {
@@ -131,16 +154,26 @@ it("imports AGENTS.md as the instructions and another file as a skill", async ()
   await openCustomize();
 
   const agents = new File(["Standards for this world."], "AGENTS.md", { type: "text/markdown" });
-  const skills = new File(["---\nname: Trade\ndescription: Routes\n---\n\nFollow the rivers."], "trade.md", {
+  const agents2 = new File(["Map conventions."], "map-editor.md", { type: "text/markdown" });
+  const trade = new File(["---\nname: Trade\ndescription: Routes\n---\n\nFollow the rivers."], "trade.md", {
     type: "text/markdown"
   });
-  const input = el<HTMLInputElement>("assistantSkillFile");
-  Object.defineProperty(input, "files", { value: [agents, skills], configurable: true });
-  input.dispatchEvent(new Event("change"));
 
-  await vi.waitFor(() => expect(customization.getInstructions()).toBe("Standards for this world."));
+  const profileInput = el<HTMLInputElement>("assistantInstructionsFile");
+  Object.defineProperty(profileInput, "files", { value: [agents, agents2], configurable: true });
+  profileInput.dispatchEvent(new Event("change"));
+
+  await vi.waitFor(() => expect(customization.listInstructionsProfiles()).toHaveLength(2));
+  expect(customization.listInstructionsProfiles().map(profile => profile.name).sort()).toEqual([
+    "AGENTS",
+    "map-editor"
+  ]);
+  expect(customization.getInstructions()).toBe("Standards for this world."); // the first imported profile is active
+
+  const skillInput = el<HTMLInputElement>("assistantSkillFile");
+  Object.defineProperty(skillInput, "files", { value: [trade], configurable: true });
+  skillInput.dispatchEvent(new Event("change"));
   await vi.waitFor(() => expect(customization.listSkills().map(skill => skill.name)).toEqual(["Trade"]));
-  expect(el<HTMLTextAreaElement>("assistantInstructions").value).toBe("Standards for this world.");
 });
 
 it("drops a saved prompt into the composer, replacing nothing it should keep", async () => {

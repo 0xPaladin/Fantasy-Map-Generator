@@ -8,7 +8,7 @@ vi.mock("./providers", async importOriginal => ({
 }));
 
 import type { Chat, TranscriptItem } from "../chats";
-import { deleteSkill, saveInstructions, saveSkill } from "../customization";
+import { deleteInstructionsProfile, deleteSkill, saveInstructionsProfile, saveSkill } from "../customization";
 import { askProvider } from "./answerer";
 import { save } from "./connection";
 import { fromChatResponse } from "./openai";
@@ -28,7 +28,7 @@ const newChat = (): Chat => ({
 beforeEach(() => {
   localStorage.clear();
   completeMock.mockReset();
-  save({ provider: "openai", model: "custom-model", key: "key", localUrl: "" });
+  save({ provider: "openai", model: "custom-model", key: "key", localUrl: "", reasoning: "none" });
 });
 
 it("dispatches a map tool, reports its change, and preserves provider history", async () => {
@@ -485,7 +485,7 @@ it("lets the model correct null arguments and keeps the answer history", async (
 });
 
 it("serves an enabled skill through read_skill and carries custom content in the system prompt", async () => {
-  saveInstructions("Name rivers after local saints.");
+  const profile = saveInstructionsProfile({ name: "Map Editor", text: "Name rivers after local saints." });
   const skill = saveSkill({ name: "Naming", description: "How to name things", body: "Use the old tongue." });
   try {
     const calls = vi.fn();
@@ -513,7 +513,7 @@ it("serves an enabled skill through read_skill and carries custom content in the
     expect(chat.messages.at(-1)!.content[0]).toMatchObject({ text: "Named." });
   } finally {
     deleteSkill(skill.id);
-    saveInstructions("");
+    deleteInstructionsProfile(profile.id);
   }
 });
 

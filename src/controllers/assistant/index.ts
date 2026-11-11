@@ -28,7 +28,9 @@ import {
 import { listPrompts } from "@/services/assistant/customization";
 import { askProvider } from "@/services/assistant/provider/answerer";
 import * as Connection from "@/services/assistant/provider/connection";
+import { listModels } from "@/services/assistant/provider/models";
 import { PROVIDERS } from "@/services/assistant/provider/providers";
+import { openModelPicker as openPicker } from "./model-picker";
 import { markAssistantOpen } from "@/ui/assistant-bubble";
 import { Dialog } from "@/ui/dialog/dialog";
 import { t } from "@/utils/i18n";
@@ -301,6 +303,18 @@ const STYLES = /* html */ `
     #assistant .assistantFooter > span { display: flex; flex-wrap: wrap; align-items: center; gap: .2em .7em; }
     #assistant .assistantFooter a { color: inherit; }
     #assistantTier { padding: 0 .5em; border-radius: 1em; background: var(--header); color: #fff; }
+    #assistantStatus { white-space: nowrap; opacity: .8; }
+    #assistantFooterKey { padding: .1em .2em; border: 0; border-radius: .3em; background: none; font-size: 1.05em; line-height: 1; }
+    #assistantFooterKey:hover, #assistantFooterKey:focus-visible { background: rgb(0 0 0 / 8%); }
+    #assistantFooterModel { display: inline-flex; align-items: center; gap: .15em; max-width: 13.5em; min-width: 4em; padding: .12em .35em; border: 1px solid transparent; border-radius: .3em; background: transparent; color: inherit; font-size: .85em; text-align: left; }
+    #assistantFooterModel:hover, #assistantFooterModel:focus-visible { border-color: rgb(0 0 0 / 18%); background: rgb(255 255 255 / 60%); outline: none; }
+    #assistantFooterModelName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .assistantFooterChevron { flex: none; font-size: .8em; opacity: .7; }
+    #assistantModelPicker { display: grid; gap: .5em; padding: .2em; }
+    #assistantModelPicker .assistantModelPickerFilter { width: 100%; box-sizing: border-box; padding: .35em .5em; border: 1px solid rgb(0 0 0 / 20%); border-radius: .3em; font: inherit; }
+    #assistantModelPicker .assistantModelPickerSelect { width: 100%; box-sizing: border-box; }
+    #assistantFooterReasoning { padding: .12em .2em; border: 1px solid transparent; border-radius: .3em; background: transparent; font-size: .85em; color: inherit; max-width: 7em; }
+    #assistantFooterReasoning:hover, #assistantFooterReasoning:focus { border-color: rgb(0 0 0 / 18%); background: rgb(255 255 255 / 60%); outline: none; }
 
     #assistant .assistantViewHeader { display: flex; justify-content: space-between; align-items: center; padding-bottom: .45em; border-bottom: 1px solid rgb(0 0 0 / 15%); }
     #assistant .assistantChatRow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .1em .6em; padding: .45em .3em; border-bottom: 1px solid rgb(0 0 0 / 8%); }
@@ -335,6 +349,8 @@ const STYLES = /* html */ `
     #assistantCustomRow { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0 .35em; padding: .3em 0; border-bottom: 1px solid rgb(0 0 0 / 8%); }
     #assistantCustomRow small { grid-column: 1 / -1; opacity: .75; overflow-wrap: anywhere; }
     #assistantCustomRow.off .assistantCustomName { opacity: .5; text-decoration: line-through; }
+    #assistantCustomRow.active .assistantCustomName { font-weight: 600; }
+    #assistantCustomRow.active { background: rgb(0 0 0 / 3%); border-radius: .3em; }
     #assistantCustomToggle { display: flex; align-items: center; gap: .4em; margin: 0; font-size: 1em; min-width: 0; }
     #assistantCustomName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #assistantCustomizeEditor { margin-top: .8em; padding: .6em; border: 1px solid rgb(0 0 0 / 15%); border-radius: .5em; background: rgb(0 0 0 / 3%); }
@@ -367,6 +383,13 @@ function renderDialog(): void {
         <select id="assistantProvider">${providers}</select>
         <label id="assistantModelLabel" for="assistantModel">${t("Model")}</label>
         <input id="assistantModel" list="assistantModels" autocomplete="off" spellcheck="false" />
+        <label id="assistantReasoningLabel" for="assistantReasoning">${t("Reasoning")}</label>
+        <select id="assistantReasoning">
+          <option value="none">${t("None")}</option>
+          <option value="low">${t("Low")}</option>
+          <option value="medium">${t("Medium")}</option>
+          <option value="high">${t("High")}</option>
+        </select>
         <label for="assistantApiKey" data-remote>${t("API key")}</label>
         <input id="assistantApiKey" type="password" autocomplete="off" data-remote />
         <a id="assistantKeyLink" target="_blank" rel="noopener noreferrer" data-remote>${t("Where to get one")}</a>
@@ -387,14 +410,13 @@ function renderDialog(): void {
       <p>${t("Custom content is used when your own key answers.")}</p>
       <div id="assistantCustomizeError" role="status"></div>
 
-      <h3>${t("Instructions")}<span id="assistantInstructionsCount"></span></h3>
-      <p>${t("Standing instructions the Assistant follows in every chat, like an AGENTS.md file. Import one, or write it here.")}</p>
-      <textarea id="assistantInstructions" rows="6" spellcheck="false" aria-label="${t("Instructions")}"></textarea>
+      <h3>${t("Instructions")}</h3>
+      <p>${t("Standing instructions the Assistant follows in every chat, like an AGENTS.md file. Pick the profile to use; the buttons in the rows edit it.")}</p>
+      <div id="assistantInstructionsProfileList"></div>
       <div class="assistantSheetActions">
-        <button type="button" class="assistantButton" data-action="export-instructions">${t("Export")}</button>
         <label class="assistantButton" for="assistantInstructionsFile">${t("Import")}</label>
-        <input id="assistantInstructionsFile" type="file" accept=".md,text/markdown" hidden />
-        <button type="button" class="assistantButton assistantPrimary" data-action="save-instructions">${t("Save")}</button>
+        <input id="assistantInstructionsFile" type="file" accept=".md,text/markdown" multiple hidden />
+        <button type="button" class="assistantButton" data-action="new-instructions">+ ${t("New profile")}</button>
       </div>
 
       <h3>${t("Skills")}</h3>
@@ -467,6 +489,16 @@ function renderDialog(): void {
       </span>
       <span id="assistantAccount">
         <span id="assistantTier"></span>
+        <button type="button" id="assistantFooterKey" class="assistantLink" data-action="key" title="${t("Connect your AI key")}" aria-label="${t("Connect your AI key")}" hidden>🔑</button>
+        <button type="button" id="assistantFooterModel" class="assistantLink" data-action="pick-model" title="${t("Change the model")}" aria-label="${t("Change the model")}" hidden><span id="assistantFooterModelName"></span><span class="assistantFooterChevron">▾</span></button>
+        <span id="assistantFooterReasoningField" hidden>
+          <select id="assistantFooterReasoning" aria-label="${t("Reasoning")}">
+            <option value="none">${t("None")}</option>
+            <option value="low">${t("Low")}</option>
+            <option value="medium">${t("Medium")}</option>
+            <option value="high">${t("High")}</option>
+          </select>
+        </span>
         <span id="assistantStatus"></span>
         <button type="button" id="assistantSignIn" class="assistantLink" data-action="sign-in">${t("Sign in")}</button>
         <button type="button" id="assistantSignOut" class="assistantLink" data-action="sign-out">${t("Sign out")}</button>
@@ -496,6 +528,7 @@ function renderDialog(): void {
     connect();
   });
   el("assistantPromptButton").addEventListener("click", () => togglePromptMenu());
+  el("assistantFooterReasoning").addEventListener("change", () => saveFooterReasoning());
   KeySheet.wire();
   Customize.wire();
 }
@@ -522,6 +555,7 @@ function handleClick(event: MouseEvent): void {
   else if (action === "choose") void choose(Number(index), Number(target.dataset.choice));
   else if (action === "inset") revealInset(Number(index));
   else if (action === "detach") detach(Number(index));
+  else if (action === "pick-model") void openModelPicker();
   else if (action === "use-prompt" && id) usePrompt(id);
   else if (action === "customize") openCustomize();
   else if (action === "close-customize") showView("chat");
@@ -579,6 +613,29 @@ function deleteChat(id: string): void {
     AssistantWidgets.clearMarks();
   }
   renderChats();
+}
+
+/** The footer model name opens the model picker; a fresh discovery feeds it */
+async function openModelPicker(): Promise<void> {
+  if (busy) return;
+  const connection = Connection.get();
+  let found: string[] = [];
+  try {
+    found = await listModels(connection.provider, connection.key, connection.localUrl);
+  } catch {
+    // a failing discovery is shown in the key sheet; the picker still works with the current model
+  }
+  const options = [...new Set([connection.model, ...found].filter(Boolean))];
+  openPicker(options, connection.model, model => {
+    Connection.save({ ...Connection.get(), model });
+    renderFooter();
+  });
+}
+
+/** The footer reasoning level applies from the next question */
+function saveFooterReasoning(): void {
+  const reasoning = el<HTMLSelectElement>("assistantFooterReasoning").value as "none" | "low" | "medium" | "high";
+  Connection.save({ ...Connection.get(), reasoning });
 }
 
 function showView(next: View): void {
@@ -751,15 +808,29 @@ function renderFooter(): void {
   const connection = Connection.get();
   el("assistantTier").hidden = now !== "guest" && now !== "member";
   el("assistantTier").textContent = now === "member" ? "Member" : "Guest";
+  el("assistantFooterKey").hidden = now !== "key";
+  el("assistantFooterModel").hidden = now !== "key";
+  el("assistantFooterReasoningField").hidden = now !== "key";
+  if (now === "key") {
+    const name = el("assistantFooterModelName");
+    const model = connection.model;
+    if (name.textContent !== model) name.textContent = model;
+    el<HTMLButtonElement>("assistantFooterModel").disabled = busy || !initialized;
+    const reasoning = el<HTMLSelectElement>("assistantFooterReasoning");
+    reasoning.value = connection.reasoning;
+    reasoning.disabled = busy || !initialized;
+    reasoning.hidden = connection.provider === "local";
+  }
   el("assistantStatus").textContent =
     now === "key"
-      ? `${connection.provider === "local" ? "Local" : "🔑"} ${connection.model} · ${si(tokens(chat))} tokens`
+      ? `${si(tokens(chat))} tokens`
       : now && limits
         ? limitsLabel(limits)
         : "";
   el("assistantSignIn").hidden = now !== "guest";
   el("assistantSignOut").hidden = now !== "member";
-  el("assistantUseKey").textContent = now === "key" ? "Key" : "Use key";
+  el("assistantUseKey").textContent = "Use key";
+  el("assistantUseKey").hidden = now === "key";
   for (const button of el("assistantAccount").querySelectorAll("button")) button.disabled = busy || !initialized;
 }
 

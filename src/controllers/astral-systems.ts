@@ -115,6 +115,7 @@ const columns: EditorColumn<StarSystem>[] = [
 ];
 
 const systemsTable = initEditorTable<StarSystem>({
+  dialogId,
   getData: () => sortDataByColumns(dialogId, getFilteredSystems(), columns),
   onUpdate: renderSystemRows
 });

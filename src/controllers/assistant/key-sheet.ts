@@ -48,7 +48,8 @@ class KeySheetForm {
       provider,
       model,
       key: local ? "" : key,
-      localUrl: this.input("assistantLocalUrl").value.trim() || Connection.get().localUrl
+      localUrl: this.input("assistantLocalUrl").value.trim() || Connection.get().localUrl,
+      reasoning: this.input("assistantReasoning").value as "none" | "low" | "medium" | "high"
     });
     return true;
   }
@@ -71,10 +72,13 @@ class KeySheetForm {
     const draft = Connection.get(provider.id);
     this.input("assistantModel").value = draft.model;
     this.input("assistantApiKey").value = draft.key;
+    this.input("assistantReasoning").value = draft.reasoning;
     el("assistantModelLabel").textContent = local ? "Model name" : "Model";
     el<HTMLAnchorElement>("assistantKeyLink").href = provider.keyLink;
     for (const node of el("assistantKey").querySelectorAll<HTMLElement>("[data-remote]")) node.hidden = local;
     for (const node of el("assistantKey").querySelectorAll<HTMLElement>("[data-local]")) node.hidden = !local;
+    el("assistantReasoningLabel").hidden = local;
+    el("assistantReasoning").hidden = local;
     this.setModels(provider.fallbackModel ? [provider.fallbackModel] : []);
     void this.discover();
   }

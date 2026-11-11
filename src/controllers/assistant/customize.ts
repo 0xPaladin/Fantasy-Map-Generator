@@ -2,18 +2,23 @@
 // directly; the Assistant reads them when it answers (Key tier only).
 
 import {
+  activeInstructionsId,
+  deleteInstructionsProfile,
   deletePrompt,
   deleteSkill,
-  getInstructions,
-  INSTRUCTIONS_LIMIT,
-  importFile,
+  importInstructionsProfileFile,
+  importSkillFile,
+  instructionsProfileToMarkdown,
+  type InstructionsProfile,
+  listInstructionsProfiles,
   listPrompts,
   listSkills,
   type Prompt,
-  type Skill,
-  saveInstructions,
+  saveInstructionsProfile,
   savePrompt,
   saveSkill,
+  setActiveInstructionsProfile,
+  type Skill,
   skillToMarkdown
 } from "@/services/assistant/customization";
 import { downloadFile } from "@/utils/file-utils";
@@ -22,13 +27,18 @@ import { ensureEl as el } from "@/utils/node-utils";
 import { errorText, escapeHtml } from "@/utils/string-utils";
 
 let error = "";
-let editing: { kind: "skill"; skill: Skill } | { kind: "prompt"; prompt: Prompt } | null = null;
+let editing:
+  | { kind: "skill"; skill: Skill }
+  | { kind: "prompt"; prompt: Prompt }
+  | { kind: "profile"; profile: InstructionsProfile }
+  | null = null;
 
 /** Customize view: render a section, then handle its clicks and submits through one delegate */
 class CustomizeSheet {
   /** Rebuild the view; `message` reports what just happened (an Import, a Delete) */
   render(message = ""): void {
     el("assistantCustomizeError").textContent = error || message;
+    this.renderProfiles();
     this.renderSkills();
     this.renderPrompts();
     this.renderEditor();
@@ -37,22 +47,23 @@ class CustomizeSheet {
   wire(): void {
     el("assistantCustomize").addEventListener("click", event => this.handleClick(event));
     el("assistantCustomize").addEventListener("submit", event => this.handleSubmit(event));
-    el("assistantInstructions").addEventListener("input", () => {
-      const text = el<HTMLTextAreaElement>("assistantInstructions").value;
-      el("assistantInstructionsCount").textContent = `${text.length} / ${INSTRUCTIONS_LIMIT}`;
-    });
-    el("assistantInstructionsFile").addEventListener("change", event => void this.importFiles(event));
-    el("assistantSkillFile").addEventListener("change", event => void this.importFiles(event));
+    el("assistantInstructionsFile").addEventListener("change", event => void this.importFiles(event, "profile"));
+    el("assistantSkillFile").addEventListener("change", event => void this.importFiles(event, "skill"));
   }
 
   /** Fill every section from the store; called when the view opens */
   fill(): void {
     error = "";
     editing = null;
-    const instructions = el<HTMLTextAreaElement>("assistantInstructions");
-    instructions.value = getInstructions();
-    el("assistantInstructionsCount").textContent = `${instructions.value.length} / ${INSTRUCTIONS_LIMIT}`;
     this.render();
+  }
+
+  private renderProfiles(): void {
+    const profiles = listInstructionsProfiles();
+    const active = activeInstructionsId();
+    el("assistantInstructionsProfileList").innerHTML = profiles.length
+      ? profiles.map(profile => profileRowHtml(profile, profile.id === active)).join("")
+      : `<div class="assistantEmpty">${t("No profiles yet. Import an AGENTS.md or add one.")}</div>`;
   }
 
   private renderSkills(): void {
@@ -76,15 +87,17 @@ class CustomizeSheet {
     const target = editing;
     if (!target) return;
     const skill = target.kind === "skill";
-    el("assistantEditorTitle").textContent = skill ? t("Skill") : t("Prompt");
+    const profile = target.kind === "profile";
+    el("assistantEditorTitle").textContent = skill ? t("Skill") : profile ? t("Instructions profile") : t("Prompt");
     el("assistantEditorDescriptionField").hidden = !skill;
     el("assistantEditorEnabledField").hidden = !skill;
     el<HTMLInputElement>("assistantEditorName").value =
-      target.kind === "skill" ? target.skill.name : target.prompt.name;
-    el<HTMLInputElement>("assistantEditorDescription").value = target.kind === "skill" ? target.skill.description : "";
+      target.kind === "skill" ? target.skill.name : profile ? target.profile.name : target.prompt.name;
+    el<HTMLInputElement>("assistantEditorDescription").value =
+      target.kind === "skill" ? target.skill.description : "";
     el<HTMLTextAreaElement>("assistantEditorBody").value =
-      target.kind === "skill" ? target.skill.body : target.prompt.text;
-    el("assistantEditorBodyLabel").textContent = skill ? t("Body") : t("Text");
+      target.kind === "skill" ? target.skill.body : profile ? target.profile.text : target.prompt.text;
+    el("assistantEditorBodyLabel").textContent = skill ? t("Body") : profile ? t("Instructions") : t("Text");
     el<HTMLInputElement>("assistantEditorEnabled").checked = target.kind === "skill" ? target.skill.enabled : false;
   }
 
@@ -93,8 +106,12 @@ class CustomizeSheet {
     if (!target || (target as HTMLButtonElement).disabled) return;
     const { action, id } = target.dataset;
     error = "";
-    if (action === "save-instructions") this.saveInstructions();
-    else if (action === "export-instructions") this.exportInstructions();
+    if (action === "new-instructions") this.editProfile();
+    else if (action === "edit-instructions" && id)
+      this.editProfile(listInstructionsProfiles().find(profile => profile.id === id));
+    else if (action === "delete-instructions" && id) this.removeProfile(id);
+    else if (action === "export-instructions" && id) this.exportProfile(id);
+    else if (action === "set-active-instructions" && id) this.setActiveProfile(id);
     else if (action === "new-skill") this.editSkill();
     else if (action === "edit-skill" && id) this.editSkill(listSkills().find(skill => skill.id === id));
     else if (action === "delete-skill" && id) this.removeSkill(id);
@@ -113,13 +130,33 @@ class CustomizeSheet {
     this.saveEditor();
   }
 
-  private saveInstructions(): void {
-    saveInstructions(el<HTMLTextAreaElement>("assistantInstructions").value);
-    this.render(t("Instructions saved."));
+  private editProfile(profile?: InstructionsProfile): void {
+    editing = {
+      kind: "profile",
+      profile: profile ?? { id: "", name: "", text: "", updated: 0 }
+    };
+    this.render();
   }
 
-  private exportInstructions(): void {
-    downloadFile(getInstructions(), "AGENTS.md", "text/markdown");
+  private removeProfile(id: string): void {
+    deleteInstructionsProfile(id);
+    if (editing?.kind === "profile" && editing.profile.id === id) editing = null;
+    this.render(t("Deleted."));
+  }
+
+  private setActiveProfile(id: string): void {
+    try {
+      setActiveInstructionsProfile(id);
+    } catch (failure) {
+      error = errorText(failure);
+    }
+    this.render();
+  }
+
+  private exportProfile(id: string): void {
+    const profile = listInstructionsProfiles().find(entry => entry.id === id);
+    if (!profile) return;
+    downloadFile(instructionsProfileToMarkdown(profile), `${safeName(profile.name)}.md`, "text/markdown");
   }
 
   private editSkill(skill?: Skill): void {
@@ -155,6 +192,8 @@ class CustomizeSheet {
           body,
           enabled: el<HTMLInputElement>("assistantEditorEnabled").checked
         });
+      else if (target.kind === "profile")
+        saveInstructionsProfile({ id: target.profile.id || undefined, name, text: body });
       else savePrompt({ id: target.prompt.id || undefined, name, text: body });
     } catch (failure) {
       error = errorText(failure);
@@ -196,28 +235,48 @@ class CustomizeSheet {
     downloadFile(content, `${safeName(prompt.name)}.md`, "text/markdown");
   }
 
-  /** AGENTS.md sets the instructions, any other markdown file becomes a skill */
-  private async importFiles(event: Event): Promise<void> {
+  /** Each file imports as one entry of its own section; names are suffixed when taken */
+  private async importFiles(event: Event, section: "profile" | "skill"): Promise<void> {
     const input = event.target as HTMLInputElement;
     const files = [...(input.files ?? [])];
     input.value = "";
     if (!files.length) return;
-    let message = "";
+    let imported = 0;
     for (const file of files) {
       try {
-        const imported = importFile(file.name, await file.text());
-        message = imported.kind === "instructions" ? t("Instructions imported.") : t("Skill imported.");
+        if (section === "profile") importInstructionsProfileFile(file.name, await file.text());
+        else importSkillFile(file.name, await file.text());
+        imported++;
       } catch (failure) {
         error = errorText(failure);
       }
     }
-    if (message) {
-      el<HTMLTextAreaElement>("assistantInstructions").value = getInstructions();
-      el("assistantInstructionsCount").textContent = `${getInstructions().length} / ${INSTRUCTIONS_LIMIT}`;
-    }
+    const message = imported
+      ? imported === 1
+        ? section === "profile"
+          ? t("Profile imported.")
+          : t("Skill imported.")
+        : t("{{count}} files imported.", { count: imported })
+      : "";
     this.render(error || message);
   }
 }
+
+const profileRowHtml = (profile: InstructionsProfile, active: boolean): string => {
+  const name = escapeHtml(profile.name);
+  const firstLine = profile.text.split("\n").find(line => line.trim())?.trim() ?? "";
+  const preview = escapeHtml(firstLine.length > 80 ? `${firstLine.slice(0, 80).trimEnd()}…` : firstLine);
+  return /* html */ `<div class="assistantCustomRow${active ? " active" : ""}">
+    <label class="assistantCustomToggle">
+      <input type="radio" name="assistantInstructionsActive" ${active ? "checked" : ""} data-action="set-active-instructions" data-id="${profile.id}" aria-label="${t("Use {{- name}}", { name })}" />
+      <span class="assistantCustomName">${name}</span>
+    </label>
+    <small>${preview || `<em>${t("Empty profile")}</em>`}</small>
+    <button type="button" class="assistantLink" data-action="edit-instructions" data-id="${profile.id}">${t("Edit")}</button>
+    <button type="button" class="assistantLink" data-action="export-instructions" data-id="${profile.id}">${t("Export")}</button>
+    <button type="button" class="assistantDelete icon-trash" data-action="delete-instructions" data-id="${profile.id}" aria-label="${t("Delete {{- name}}", { name })}"></button>
+  </div>`;
+};
 
 const skillRowHtml = (skill: Skill): string => {
   const name = escapeHtml(skill.name);

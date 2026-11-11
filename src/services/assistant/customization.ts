@@ -20,18 +20,30 @@ export interface Prompt {
   updated: number;
 }
 
+/** A named AGENTS.md-style profile; one of them is the active set of standing instructions */
+export interface InstructionsProfile {
+  id: string;
+  name: string;
+  text: string;
+  updated: number;
+}
+
 export const INSTRUCTIONS_LIMIT = 16_000; // about 4k tokens, the built-in prompt's own budget
 export const SKILL_LIMIT = 32_000;
 export const NAME_LIMIT = 40;
 export const DESCRIPTION_LIMIT = 120;
 const MAX_SKILLS = 50;
 const MAX_PROMPTS = 50;
+const MAX_PROFILES = 20;
 
-const INSTRUCTIONS_KEY = "fmg-assistant-instructions";
+const INSTRUCTIONS_KEY = "fmg-assistant-instructions"; // legacy single instructions, migrated on load
+const PROFILES_KEY = "fmg-assistant-instructions-profiles";
+const ACTIVE_KEY = "fmg-assistant-instructions-active";
 const SKILLS_KEY = "fmg-assistant-skills";
 const PROMPTS_KEY = "fmg-assistant-prompts";
 
-let instructions = { text: "", updated: 0 };
+let profiles: InstructionsProfile[] = [];
+let activeProfile = "";
 let skills: Skill[] = [];
 let prompts: Prompt[] = [];
 let loaded = false;
@@ -41,14 +53,34 @@ let loading: Promise<void> | undefined;
 export function load(): Promise<void> {
   loading ??= Promise.all([
     LocalDB.get<{ text: string; updated: number }>(INSTRUCTIONS_KEY),
+    LocalDB.get<InstructionsProfile[]>(PROFILES_KEY),
+    LocalDB.get<string>(ACTIVE_KEY),
     LocalDB.get<Skill[]>(SKILLS_KEY),
     LocalDB.get<Prompt[]>(PROMPTS_KEY)
   ]).then(
-    ([storedInstructions, storedSkills, storedPrompts]) => {
-      if (storedInstructions) instructions = storedInstructions;
+    ([storedInstructions, storedProfiles, storedActive, storedSkills, storedPrompts]) => {
+      if (Array.isArray(storedProfiles) && storedProfiles.length) profiles = storedProfiles;
+      else if (storedInstructions?.text)
+        // the pre-profile instructions become one profile, kept active
+        profiles = [
+          {
+            id: globalThis.crypto?.randomUUID?.() ?? `legacy-${storedInstructions.updated}`,
+            name: "Default",
+            text: storedInstructions.text,
+            updated: storedInstructions.updated
+          }
+        ];
+      activeProfile =
+        storedActive && profiles.some(profile => profile.id === storedActive) ? storedActive : (profiles[0]?.id ?? "");
+      loaded = true; // lets the migration persist below
+      if (storedInstructions && profiles.length && !storedProfiles?.length) {
+        // one-time migration; the legacy slot is left empty to prove it migrated
+        persist(PROFILES_KEY, profiles);
+        persist(ACTIVE_KEY, activeProfile);
+        persist(INSTRUCTIONS_KEY, { text: "", updated: 0 });
+      }
       if (Array.isArray(storedSkills)) skills = storedSkills;
       if (Array.isArray(storedPrompts)) prompts = storedPrompts;
-      loaded = true;
     },
     () => {
       loading = undefined;
@@ -62,11 +94,57 @@ const persist = (key: string, value: unknown): void => {
   LocalDB.set(key, value).catch(error => log.error("Assistant customization could not be saved", error));
 };
 
-export const getInstructions = (): string => instructions.text;
+const activeInstructions = (): InstructionsProfile | undefined =>
+  profiles.find(profile => profile.id === activeProfile);
 
-export function saveInstructions(text: string): void {
-  instructions = { text: text.slice(0, INSTRUCTIONS_LIMIT), updated: Date.now() };
-  persist(INSTRUCTIONS_KEY, instructions);
+/** The active profile's text, what the Assistant reads; empty when there are no profiles */
+export const getInstructions = (): string => activeInstructions()?.text ?? "";
+
+export const listInstructionsProfiles = (): InstructionsProfile[] => [...profiles];
+export const activeInstructionsId = (): string | null => activeInstructions()?.id ?? null;
+
+export function setActiveInstructionsProfile(id: string): void {
+  if (!profiles.some(profile => profile.id === id)) throw new Error("The profile was deleted.");
+  activeProfile = id;
+  persist(ACTIVE_KEY, id);
+}
+
+const newId = (): string =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+export function saveInstructionsProfile(input: { id?: string; name?: string; text?: string }): InstructionsProfile {
+  const existing = profiles.find(entry => entry.id === input.id);
+  if (input.id && !existing) throw new Error("The profile was deleted.");
+  const name = (input.name ?? existing?.name ?? "").trim().slice(0, NAME_LIMIT);
+  if (!name) throw new Error("Enter a profile name.");
+  const profile: InstructionsProfile = {
+    id: input.id ?? newId(),
+    name,
+    text: (input.text ?? existing?.text ?? "").slice(0, INSTRUCTIONS_LIMIT),
+    updated: Date.now()
+  };
+  if (profiles.some(entry => entry.id !== profile.id && entry.name.toLowerCase() === name.toLowerCase()))
+    throw new Error(`A profile named "${name}" already exists.`);
+  profiles = existing
+    ? profiles.map(entry => (entry.id === profile.id ? profile : entry))
+    : [...profiles, profile];
+  if (!existing && profiles.length > MAX_PROFILES) {
+    profiles = profiles.filter(entry => entry.id !== profile.id);
+    throw new Error(`At most ${MAX_PROFILES} profiles can be kept.`);
+  }
+  if (!existing && profiles.length === 1) activeProfile = profile.id;
+  persist(PROFILES_KEY, profiles);
+  persist(ACTIVE_KEY, activeProfile); // the active id may have healed or adopted the first profile
+  return profile;
+}
+
+export function deleteInstructionsProfile(id: string): void {
+  profiles = profiles.filter(profile => profile.id !== id);
+  if (activeProfile === id) {
+    activeProfile = profiles[0]?.id ?? "";
+    persist(ACTIVE_KEY, activeProfile);
+  }
+  persist(PROFILES_KEY, profiles);
 }
 
 export const listSkills = (): Skill[] => [...skills];
@@ -166,23 +244,26 @@ const toMarkdown = (name: string, description: string, body: string): string =>
 /** A skill as a shareable markdown file */
 export const skillToMarkdown = (skill: Skill): string => toMarkdown(skill.name, skill.description, skill.body);
 
-/** The instructions as an AGENTS.md file */
-export const instructionsToMarkdown = (): string => instructions.text;
+/** An instructions profile as a shareable markdown file */
+export const instructionsProfileToMarkdown = (profile: InstructionsProfile): string =>
+  `---\nname: ${profile.name}\n---\n\n${profile.text}`;
 
-export type Imported = { kind: "instructions"; text: string } | { kind: "skill"; skill: Skill };
-
-/** AGENTS.md becomes the instructions, any other markdown file a skill; saved and returned.
- * A name the user already uses is suffixed, so a shared file imports beside their own skill */
-export function importFile(fileName: string, content: string): Imported {
+/** Import one markdown file as a new instructions profile; a name the user already uses is suffixed */
+export function importInstructionsProfileFile(fileName: string, content: string): InstructionsProfile {
   const { fields, body } = parseMarkdown(content);
-  if (/^agents(\.md)?$/i.test(fileName.trim())) {
-    saveInstructions(body);
-    return { kind: "instructions", text: body };
-  }
+  let name = (fields.name || fileName.replace(/\.md$/i, "")).trim().slice(0, NAME_LIMIT);
+  for (let n = 2; profiles.some(profile => profile.name.toLowerCase() === name.toLowerCase()); n++)
+    name = `${fields.name || fileName.replace(/\.md$/i, "")} ${n}`.slice(0, NAME_LIMIT);
+  return saveInstructionsProfile({ name, text: body });
+}
+
+/** Import one markdown file as a new skill; a name the user already uses is suffixed */
+export function importSkillFile(fileName: string, content: string): Skill {
+  const { fields, body } = parseMarkdown(content);
   let name = (fields.name || fileName.replace(/\.md$/i, "")).trim().slice(0, NAME_LIMIT);
   for (let n = 2; skills.some(skill => skill.name.toLowerCase() === name.toLowerCase()); n++)
     name = `${fields.name || fileName.replace(/\.md$/i, "")} ${n}`.slice(0, NAME_LIMIT);
   const description = fields.description || body.match(/^#\s+(.+)$/m)?.[1]?.trim() || "";
   const enabled = fields.enabled !== "false";
-  return { kind: "skill", skill: saveSkill({ name, description, body, enabled }) };
+  return saveSkill({ name, description, body, enabled });
 }
