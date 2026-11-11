@@ -21,6 +21,17 @@ const OFF_ROAD_SPEED_FACTOR = 0.5;
 const BASELINE_BIOME_COST = 50;
 const HEIGHT_COST_THRESHOLD = 25;
 
+/**
+ * The route groups a journey segment of each transport domain may follow. The realm networks
+ * join the registry with their realm's mode: air lanes fly direct, underdark tunnels burrow
+ * beneath the surface network, undersea passages are traced by the water pathfinder's costs.
+ */
+const DOMAIN_ROUTE_GROUPS: Record<"land" | "water" | "air", readonly string[]> = {
+  land: ["roads", "trails", "searoutes", "underdarkroutes"],
+  water: ["searoutes", "undersearoutes"],
+  air: ["airroutes"]
+};
+
 export interface PathfindingResult {
   points: JourneyPoint[];
   distance: number;
@@ -487,7 +498,16 @@ class JourneysModule {
 
     if (domain === "water") return this.findWaterPath(from, to);
     if (domain === "land") return this.findLandPath(from, to, options.avoidRoads);
-    return this.toResult([this.getPoint(from), this.getPoint(to)]); // air and stay go in a direct line
+    if (domain === "air") {
+      // follow the air lanes when they connect the endpoints, else fly a direct line
+      const chain = this.findRouteChain(from, to, () => true, DOMAIN_ROUTE_GROUPS.air);
+      if (chain) {
+        const points = this.collectRoutePoints(chain);
+        if (this.isValidPath(points, "air")) return this.toResult(points);
+      }
+      return this.toResult([this.getPoint(from), this.getPoint(to)]);
+    }
+    return this.toResult([this.getPoint(from), this.getPoint(to)]); // stay goes in a direct line
   }
 
   private findLandPath(from: number, to: number, avoidRoads = false): PathfindingResult {
@@ -501,7 +521,7 @@ class JourneysModule {
     }
 
     if (!avoidRoads) {
-      const chain = this.findRouteChain(from, to, cellId => isLand(cellId, pack));
+      const chain = this.findRouteChain(from, to, cellId => isLand(cellId, pack), DOMAIN_ROUTE_GROUPS.land);
       if (chain) {
         const points = this.collectRoutePoints(chain);
         if (this.isValidPath(points, "land")) return this.toResult(points);
@@ -598,11 +618,20 @@ class JourneysModule {
    * `canTraverse` gates intermediate cells by terrain, because pack.cells.routes merges
    * every route group into one graph — roads, trails and searoutes alike. Without it a
    * land journey happily walks a sea route across the ocean.
+   *
+   * `allowedGroups` narrows the traversal to those route groups; the realm networks join
+   * the registry through {@link DOMAIN_ROUTE_GROUPS}.
    */
-  private findRouteChain(start: number, end: number, canTraverse: (cellId: number) => boolean): number[] | null {
+  private findRouteChain(
+    start: number,
+    end: number,
+    canTraverse: (cellId: number) => boolean,
+    allowedGroups?: readonly string[]
+  ): number[] | null {
     const links = pack.cells.routes;
     if (!links[start] || !links[end]) return null;
 
+    const groupById = allowedGroups ? new Map(pack.routes.map(route => [route.i, route.group])) : undefined;
     const from: number[] = [];
     const visited = new Set<number>([start]);
     const queue: number[] = [start];
@@ -612,6 +641,8 @@ class JourneysModule {
       for (const key of Object.keys(links[current] ?? {})) {
         const next = +key;
         if (visited.has(next)) continue;
+        // a refused group refuses the link, not the cell: another link may yet be allowed
+        if (allowedGroups && !allowedGroups.includes(groupById?.get(links[current][next]) ?? "")) continue;
         visited.add(next);
         if (next === end) {
           from[next] = current;

@@ -9,7 +9,8 @@ Progress:
 - Phase 1 — Data Model, Options & Realm Helpers: ✅ done
 - Phase 2 — Multi-Realm Burg Generation: ✅ done
 - Phase 3 — Zero-Surface-Territory States, Provinces & Labels: ✅ done
-- Phase 4 – Phase 8: pending
+- Phase 4 — Multi-Realm Route Networks: ✅ done
+- Phase 5 – Phase 8: pending
 
 Implementation notes:
 - Realm rolls run on their own seeded stream (`Math.random = Alea(seed + ":realms")`, restored after), so the
@@ -30,6 +31,14 @@ Implementation notes:
   markers are never placed (`addMarker` rejects out-of-bounds) — they were dropped on restore before, silently
   changing marker counts; `real-map.testing.ts` seeds the ambient stream like the app boots, making the
   scenario suite order-independent
+- Phase 4 additionally: realm hub flags (`skyPort`/`underdarkGate`) are assigned by `Burgs.assignRealmHubs()`
+  in a `realmHubs` pipeline step between burgs and states — `specify()` runs after routes, so the flags must
+  exist before route generation (the cell score stands in for burg population, which specify assigns later);
+  surface road/trail/sea builders skip realm burgs entirely and realm paths never enter the shared
+  `connections` discount map; air lanes arc between far-apart cells so `route-steps` integrity only checks
+  surface networks and `restoreRoutes` must not gap-fill their points; the journeys route-chain BFS gained
+  an allowed-groups filter with a domain→groups registry (`airroutes`/`underdarkroutes`/`undersearoutes`
+  resolve to their realm's mode)
 
 ---
 
@@ -86,7 +95,7 @@ Because `pack.cells.burg` (Uint16Array) and `pack.cells.state` (Uint16Array) are
 | `BurgRealm` helpers (`flying`, `underdark`, `underwater`, `skyPort`, `underdarkGate`, `altitude`) | ✅ present | `src/model/political/burgs-generator.ts` |
 | Multi-realm burg generation & cell-slot protection | ✅ present | `src/model/political/burgs-generator.ts` |
 | Zero-surface-territory states (`sky`, `underdark`, `underwater`) | ✅ present | `src/model/political/states-generator.ts` |
-| Multi-realm route networks (`airroutes`, `underdarkroutes`, `undersearoutes`) | ❌ missing | `src/model/economy/routes-generator.ts` |
+| Multi-realm route networks (`airroutes`, `underdarkroutes`, `undersearoutes`) | ✅ present | `src/model/economy/routes-generator.ts` |
 | Multi-realm production & cross-realm market linking | ❌ missing | `src/model/economy/production-generator.ts`, `markets-generator.ts` |
 | Style schema, default styles & zoom threshold toggles | ❌ missing | `src/model/styles/default-styles.json`, `draw-burg-icons.ts`, `draw-burg-labels.ts` |
 | Editor controls (Burg Editor, Overview, Creator, Options, Assistant) | ❌ missing | `src/controllers/political/burgs/*`, `options-controller.ts`, `assistant/*` |

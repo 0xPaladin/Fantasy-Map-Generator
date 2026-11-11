@@ -25,7 +25,7 @@ const RULES = [
   "river-unique", // the course does not come back to a cell it left
   "river-outlet", // -1 only ends a course, at a point on the map edge or off it
   "route-points", // a point's cell, or on a meander the next cell of the path, is under it or next to it
-  "route-steps", // consecutive cells are neighbors
+  "route-steps", // consecutive cells of a surface route are neighbors; air lanes fly between far cells
   "route-links", // cells.routes links cells along existing routes
   "route-cache", // the Routes path cache matches the routes
   "journey-points",
@@ -137,10 +137,12 @@ class MapIntegrityModule {
     const routePairs = new Set<string>();
     for (const route of pack.routes) {
       if (offPath(route.points)) fail("route-points", route.i);
+      // an air lane is a direct line between far-apart cells: adjacency is only for surface networks
+      const checkSteps = route.group !== "airroutes";
       for (let k = 1; k < route.points.length; k++) {
         const [a, b] = [route.points[k - 1][2], route.points[k][2]];
         routePairs.add(`${a}-${b}`).add(`${b}-${a}`);
-        if (valid(a) && valid(b) && !neighbors(a, b)) fail("route-steps", route.i);
+        if (checkSteps && valid(a) && valid(b) && !neighbors(a, b)) fail("route-steps", route.i);
       }
     }
     for (const [from, links] of Object.entries(cells.routes ?? {})) {

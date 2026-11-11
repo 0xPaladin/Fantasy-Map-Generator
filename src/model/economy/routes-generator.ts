@@ -7,6 +7,7 @@ import type { Point } from "@/model/graph/voronoi";
 import type { River } from "@/model/physical/river-generator";
 import { Rivers } from "@/model/physical/river-generator";
 import type { Burg } from "@/model/political/burgs-generator";
+import { isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Tags } from "@/model/tags";
 import { isLand } from "@/utils/height-utils";
 import { getAdjective, replaceWholeWord } from "@/utils/language-utils";
@@ -100,6 +101,10 @@ export function splitAtSeam(points: number[][], width: number): [number, number]
 
 export const UNNAMED_ROUTE = "Unnamed route segment";
 
+/** the three realm networks built over the surface ones; their geometry answers to their own rules */
+export const REALM_ROUTE_GROUPS = ["airroutes", "underdarkroutes", "undersearoutes"] as const;
+export const isRealmRouteGroup = (group: string): boolean => (REALM_ROUTE_GROUPS as readonly string[]).includes(group);
+
 // name generator data
 const models: Record<string, Record<string, number>> = {
   roads: {
@@ -113,7 +118,10 @@ const models: Record<string, Record<string, number>> = {
     burg_suffix: 4,
     prefix_suffix: 2,
     the_descriptor_prefix_suffix: 1
-  }
+  },
+  airroutes: { prefix_suffix: 5, the_descriptor_prefix_suffix: 2 },
+  underdarkroutes: { burg_suffix: 4, the_descriptor_burg_suffix: 2, prefix_suffix: 2 },
+  undersearoutes: { burg_suffix: 4, prefix_suffix: 3, the_descriptor_prefix_suffix: 1 }
 };
 
 const prefixes: string[] = [
@@ -245,7 +253,10 @@ const descriptors = [
 const suffixes: Record<string, Record<string, number>> = {
   roads: { road: 7, route: 3, way: 2, highway: 1 },
   trails: { trail: 4, path: 1, track: 1, pass: 1 },
-  searoutes: { route: 5, lane: 2, passage: 1, "water way": 1 }
+  searoutes: { route: 5, lane: 2, passage: 1, "water way": 1 },
+  airroutes: { lane: 4, "air route": 3, "sky way": 2, passage: 1 },
+  underdarkroutes: { tunnel: 5, passage: 2, "under way": 2, road: 1 },
+  undersearoutes: { passage: 4, route: 3, trench: 2, "deep lane": 1 }
 };
 
 export interface Route {
@@ -317,7 +328,8 @@ class RoutesModule {
     };
 
     for (const burg of burgs) {
-      if (burg.i && !burg.removed) {
+      if (burg.i && !burg.removed && isSurfaceBurg(burg)) {
+        // realm burgs (sky, underdark, underwater) are networked by their own realm routes
         const { feature, capital, port } = burg;
         if (feature === undefined) continue;
         addBurg(burgsByFeature, feature, burg);
@@ -719,8 +731,300 @@ class RoutesModule {
     return seaRoutes;
   }
 
+  private getRealmSpan(): number {
+    return Math.hypot(graphWidth(), options.map.graph.height);
+  }
+
+  /** Air lanes: direct point-to-point lines between skyburgs and their ground skyports. No
+   *  pathfinding — the flight ignores terrain; long lanes arc off-axis and the renderer curves them */
+  private generateAirRoutes(): { group: string; cells: number[] }[] {
+    log.time("generateAirRoutes");
+    const routes: { group: string; cells: number[] }[] = [];
+    const flying = pack.burgs.filter(b => b.i && !b.removed && b.flying);
+    const skyPorts = pack.burgs.filter(b => b.i && !b.removed && b.skyPort);
+    if (!flying.length) {
+      log.timeEnd("generateAirRoutes");
+      return routes;
+    }
+
+    const wrap = isWrapEnabled();
+    const width = graphWidth();
+    const maxSpan = this.getRealmSpan();
+    const nodes = [...flying, ...skyPorts];
+
+    const links: [Burg, Burg][] = [];
+    const linked = new Set<string>();
+    const addLink = (a: Burg, b: Burg): boolean => {
+      const key = a.i < b.i ? `${a.i}-${b.i}` : `${b.i}-${a.i}`;
+      if (linked.has(key)) return false;
+      linked.add(key);
+      links.push([a, b]);
+      return true;
+    };
+
+    const points = nodes.map(burg => [burg.x, burg.y] as Point);
+    this.calculateUrquhartEdges(points, wrap, width).forEach(([a, b]) => {
+      // lanes connect a skyburg to the network; skyport-to-skyport links come from the trunk lines
+      if (nodes[a].flying || nodes[b].flying) addLink(nodes[a], nodes[b]);
+    });
+
+    // up to 2 shortest skyPort <-> skyPort trunk lines keep the ground hubs meshed
+    const trunks: [Burg, Burg, number][] = [];
+    const portPoints = skyPorts.map(burg => [burg.x, burg.y] as Point);
+    this.calculateUrquhartEdges(portPoints, wrap, width).forEach(([a, b]) => {
+      trunks.push([skyPorts[a], skyPorts[b], Math.hypot(skyPorts[a].x - skyPorts[b].x, skyPorts[a].y - skyPorts[b].y)]);
+    });
+    trunks.sort((x, y) => x[2] - y[2]);
+    let trunksAdded = 0;
+    for (const [a, b, d] of trunks) {
+      if (trunksAdded >= 2 || d > maxSpan * 0.25) break;
+      if (addLink(a, b)) trunksAdded++;
+    }
+
+    // every skyburg links into the surface trade network through at least one skyport
+    const hasPortLink = (burg: Burg) => links.some(([a, b]) => (a === burg && b.skyPort) || (b === burg && a.skyPort));
+    for (const burg of flying) {
+      if (hasPortLink(burg)) continue;
+      let nearest: Burg | undefined;
+      let best = Infinity;
+      for (const port of skyPorts) {
+        const d = wrapDistanceSquared([burg.x, burg.y], [port.x, port.y], wrap, width);
+        if (d < best) {
+          best = d;
+          nearest = port;
+        }
+      }
+      if (nearest) addLink(burg, nearest);
+    }
+
+    for (const [a, b] of links) {
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      if (!d) continue; // a skyburg directly above its skyport
+      const cells = [a.cell];
+      if (d > maxSpan * 0.15) {
+        // a long lane arcs: midpoint swung 8% of the chord off the axis, curved by the renderer
+        let bx = b.x;
+        if (wrap && Math.abs(b.x - a.x) > width / 2) bx = b.x + (b.x < a.x ? width : -width);
+        const mx = (a.x + bx) / 2;
+        const my = (a.y + b.y) / 2;
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const arc = d * 0.08 * side;
+        const midX = mx + (-(b.y - a.y) / d) * arc;
+        const midY = my + ((b.x - a.x) / d) * arc;
+        cells.push(Pack.findCell(midX, midY) ?? a.cell);
+      }
+      cells.push(b.cell);
+      routes.push({ group: "airroutes", cells });
+    }
+
+    log.timeEnd("generateAirRoutes");
+    return routes;
+  }
+
+  /** Underdark tunnels: Urquhart links between holds and their surface gates, tunnelled through
+   *  the bedrock. Every hold joins the gate-connected component of the network */
+  private generateUnderdarkRoutes(): { group: string; cells: number[] }[] {
+    log.time("generateUnderdarkRoutes");
+    const routes: { group: string; cells: number[] }[] = [];
+    const holds = pack.burgs.filter(b => b.i && !b.removed && b.underdark);
+    const gates = pack.burgs.filter(b => b.i && !b.removed && b.underdarkGate);
+    if (!holds.length) {
+      log.timeEnd("generateUnderdarkRoutes");
+      return routes;
+    }
+
+    const nodes = [...holds, ...gates];
+    const maxSpan = this.getRealmSpan();
+    const points = nodes.map(burg => [burg.x, burg.y] as Point);
+    const isHold = (burg: Burg) => Boolean(burg.underdark);
+
+    const links: [Burg, Burg][] = [];
+    const linked = new Set<string>();
+    const addLink = (a: Burg, b: Burg): boolean => {
+      const key = a.i < b.i ? `${a.i}-${b.i}` : `${b.i}-${a.i}`;
+      if (linked.has(key)) return false;
+      linked.add(key);
+      links.push([a, b]);
+      return true;
+    };
+
+    this.calculateUrquhartEdges(points).forEach(([a, b]) => {
+      if (!isHold(nodes[a]) && !isHold(nodes[b])) return; // a link must serve an underdark burg
+      const d = Math.hypot(nodes[a].x - nodes[b].x, nodes[a].y - nodes[b].y);
+      if (d > maxSpan * 0.35) return;
+      addLink(nodes[a], nodes[b]);
+    });
+
+    // every hold joins the gate-connected component: the nearest burg already linked to a gate
+    if (gates.length) {
+      const connectedToGate = new Set<Burg>(gates);
+      const propagate = () => {
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const [a, b] of links) {
+            if (connectedToGate.has(a) === connectedToGate.has(b)) continue;
+            connectedToGate.add(a);
+            connectedToGate.add(b);
+            changed = true;
+          }
+        }
+      };
+      propagate();
+      for (const hold of holds) {
+        if (connectedToGate.has(hold)) continue;
+        let nearest: Burg | undefined;
+        let best = Infinity;
+        for (const burg of connectedToGate) {
+          const d = (burg.x - hold.x) ** 2 + (burg.y - hold.y) ** 2;
+          if (d < best) {
+            best = d;
+            nearest = burg;
+          }
+        }
+        if (nearest) {
+          addLink(hold, nearest);
+          connectedToGate.add(hold);
+          propagate();
+        }
+      }
+    }
+
+    // tunnel each link through the bedrock: mountains are cheap, the abyss is impassable
+    const used = new Set<string>();
+    const getUnderdarkCellCost = (current: number, next: number) => {
+      const { h, t, r, p } = pack.cells;
+      let cost: number;
+      if (h[next] < 20) {
+        if (t[next] < -1) return Infinity; // the abyssal crust cannot be tunnelled
+        cost = 120; // a costly under-strait tunnel
+      } else cost = h[next] >= 50 ? 10 : 25; // solid bedrock is ideal, plain ground costlier
+      if (r[next]) cost += 35; // seepage and engineering near rivers and lakes
+      const discount = used.has(`${current}-${next}`) ? 0.5 : 1; // shared great subterranean highways
+      return distanceSquared(p[current], p[next]) * cost * discount;
+    };
+
+    for (const [a, b] of links) {
+      if (a.cell === b.cell) continue;
+      const pathCells = findPath(a.cell, next => next === b.cell, getUnderdarkCellCost, pack);
+      if (!pathCells) continue;
+      this.addRealmConnections(pathCells, used);
+      routes.push({ group: "underdarkroutes", cells: pathCells });
+    }
+
+    log.timeEnd("generateUnderdarkRoutes");
+    return routes;
+  }
+
+  /** Undersea passages: Urquhart links between underwater burgs and the coastal ports they trade
+   *  through, routed across the shelves and trenches by water-cell pathfinding */
+  private generateUnderseaRoutes(seaAdjacency?: number[][]): { group: string; cells: number[] }[] {
+    log.time("generateUnderseaRoutes");
+    const routes: { group: string; cells: number[] }[] = [];
+    const underwater = pack.burgs.filter(b => b.i && !b.removed && b.underwater);
+    if (!underwater.length) {
+      log.timeEnd("generateUnderseaRoutes");
+      return routes;
+    }
+
+    const wrap = isWrapEnabled();
+    const width = graphWidth();
+    const maxSpan = this.getRealmSpan();
+
+    // each underwater burg trades through the nearest coastal port within a fifth of the map span
+    const nodes: Burg[] = [];
+    const nodeIds = new Set<number>();
+    for (const burg of underwater) {
+      nodes.push(burg);
+      nodeIds.add(burg.i);
+      let nearest: Burg | undefined;
+      let best = (maxSpan * 0.2) ** 2;
+      for (const port of pack.burgs) {
+        if (!port.i || port.removed || !port.port) continue;
+        const d = wrapDistanceSquared([burg.x, burg.y], [port.x, port.y], wrap, width);
+        if (d < best) {
+          best = d;
+          nearest = port;
+        }
+      }
+      if (nearest && !nodeIds.has(nearest.i)) {
+        nodes.push(nearest);
+        nodeIds.add(nearest.i);
+      }
+    }
+
+    const links: [Burg, Burg][] = [];
+    const linked = new Set<string>();
+    const addLink = (a: Burg, b: Burg): boolean => {
+      const key = a.i < b.i ? `${a.i}-${b.i}` : `${b.i}-${a.i}`;
+      if (linked.has(key)) return false;
+      linked.add(key);
+      links.push([a, b]);
+      return true;
+    };
+
+    const points = nodes.map(burg => [burg.x, burg.y] as Point);
+    this.calculateUrquhartEdges(points, wrap, width).forEach(([a, b]) => {
+      addLink(nodes[a], nodes[b]);
+    });
+
+    // an isolated burg still gets its lane: the nearest node on the network
+    for (const burg of underwater) {
+      if (links.some(([a, b]) => a === burg || b === burg)) continue;
+      let nearest: Burg | undefined;
+      let best = Infinity;
+      for (const node of nodes) {
+        if (node === burg) continue;
+        const d = wrapDistanceSquared([burg.x, burg.y], [node.x, node.y], wrap, width);
+        if (d < best) {
+          best = d;
+          nearest = node;
+        }
+      }
+      if (nearest) addLink(burg, nearest);
+    }
+
+    // swim the shelves: land blocks the passage except at the port endpoints, existing lanes are cheap
+    const used = new Set<string>();
+    const graph = wrap && seaAdjacency ? { ...pack, cells: { ...pack.cells, c: seaAdjacency } } : pack;
+
+    for (const [a, b] of links) {
+      const [start, exit] = [a.cell, b.cell];
+      if (start === exit) continue;
+      const getUnderseaCellCost = (current: number, next: number) => {
+        const { h, t, p } = pack.cells;
+        if (h[next] >= 20 && next !== exit && next !== start) return Infinity;
+        const shelf = t[next] === -1 || t[next] === -2;
+        const cost = h[next] >= 20 || shelf ? 12 : 20;
+        const discount = used.has(`${current}-${next}`) ? 0.6 : 1;
+        return wrapDistanceSquared(p[current], p[next], wrap, width) * cost * discount;
+      };
+      const pathCells = findPath(start, next => next === exit, getUnderseaCellCost, graph);
+      if (!pathCells) continue;
+      this.addRealmConnections(pathCells, used);
+      routes.push({ group: "undersearoutes", cells: pathCells });
+    }
+
+    log.timeEnd("generateUnderseaRoutes");
+    return routes;
+  }
+
+  private addRealmConnections(pathCells: number[], used: Set<string>) {
+    for (let i = 0; i < pathCells.length - 1; i++) {
+      used.add(`${pathCells[i]}-${pathCells[i + 1]}`);
+      used.add(`${pathCells[i + 1]}-${pathCells[i]}`);
+    }
+  }
+
   private preparePointsArray(): Point[] {
-    return pack.cells.p.map((_point, cellId) => this.getCellAnchor(cellId));
+    const anchors = pack.cells.p.map((_point, cellId) => this.getCellAnchor(cellId));
+    // realm burgs hold no cell slot: cells hosting only a realm burg anchor at the burg itself
+    for (const burg of pack.burgs) {
+      if (!burg.i || burg.removed || isSurfaceBurg(burg)) continue;
+      if (pack.cells.burg[burg.cell]) continue;
+      anchors[burg.cell] = [burg.x, burg.y];
+    }
+    return anchors;
   }
 
   /** The point a route passes through in a cell: the burg's position at a port, the cell centre otherwise */
@@ -911,6 +1215,12 @@ class RoutesModule {
     const seaRoutes = this.generateSeaRoutes(seaAdjacency);
     const mainRoads = this.generateMainRoads();
     const trails = this.generateTrails();
+    // realm networks run after the surface ones: their cells never share the surface cost discounts
+    const realmRoutes = [
+      ...this.generateAirRoutes(),
+      ...this.generateUnderdarkRoutes(),
+      ...this.generateUnderseaRoutes(seaAdjacency)
+    ];
     const pointsArray = this.preparePointsArray();
 
     for (const { feature, cells, merged } of this.mergeRoutes(mainRoads)) {
@@ -932,6 +1242,16 @@ class RoutesModule {
       const points = this.getPoints("searoutes", cells!, pointsArray);
       const name = this.generateName({ group: "searoutes", points });
       routes.push({ i: routes.length, group: "searoutes", name, feature, points, tags: [] });
+    }
+
+    for (const { group, cells } of realmRoutes) {
+      // air lanes keep their deliberate arc: the sharp-angle resolver would flatten it
+      const points =
+        group === "airroutes"
+          ? cells.map(cellId => [...pointsArray[cellId], cellId])
+          : this.getPoints(group, cells, pointsArray);
+      const name = this.generateName({ group, points });
+      routes.push({ i: routes.length, group, name, feature: 0, points, tags: [] });
     }
 
     return routes;
@@ -1246,6 +1566,9 @@ class RoutesModule {
     roads: curveCatmullRom.alpha(0.1),
     trails: curveCatmullRom.alpha(0.1),
     searoutes: curveCatmullRom.alpha(0.5),
+    airroutes: curveCatmullRom.alpha(0.5),
+    underdarkroutes: curveCatmullRom.alpha(0.1),
+    undersearoutes: curveCatmullRom.alpha(0.5),
     default: curveCatmullRom.alpha(0.1)
   };
 

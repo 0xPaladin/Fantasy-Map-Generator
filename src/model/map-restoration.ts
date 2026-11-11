@@ -4,7 +4,7 @@ import { clipPolyline } from "lineclip";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
-import { Routes } from "@/model/economy/routes-generator";
+import { isRealmRouteGroup, Routes } from "@/model/economy/routes-generator";
 import { Taxes } from "@/model/economy/taxes";
 import { Grid } from "@/model/graph/grid-generator";
 import { Pack } from "@/model/graph/pack-generator";
@@ -903,19 +903,23 @@ class MapRestorationModule {
       const parts = clipPolyline(projected as Point[], bbox) as unknown as number[][][];
       const clipped = parts.reduce((longest, part) => (part.length > longest.length ? part : longest), []);
       if (clipped.length < 2) return null;
-      const points = this.fillPathGaps(
-        clipped.map(([x, y, cell]): [number, number, number] => {
-          const [px, py] = [rn(x, 2), rn(y, 2)];
-          return [
-            px,
-            py,
-            cell === undefined ? this.findCell(px, py) : this.findPathCell(parent, projection, cell, px, py)
-          ];
-        })
-      );
-      const wasWater = !parent.features[route.feature]?.land;
+      const resolve = ([x, y, cell]: number[]): [number, number, number] => {
+        const [px, py] = [rn(x, 2), rn(y, 2)];
+        return [
+          px,
+          py,
+          cell === undefined ? this.findCell(px, py) : this.findPathCell(parent, projection, cell, px, py)
+        ];
+      };
+      // air lanes arc between far-apart cells: the gap filler assumes adjacent cells and would
+      // flatten the arc into a straight chain, so their points are taken as drawn
+      const isAir = route.group === "airroutes";
+      const points = isAir ? clipped.map(resolve) : this.fillPathGaps(clipped.map(resolve));
+      const isRealm = isRealmRouteGroup(route.group);
+      const wasWater = isRealm ? false : !parent.features[route.feature]?.land;
       const firstCell = points.find(([, , cell]) => isWater(cell, pack) === wasWater)?.[2] ?? points[0][2];
-      const feature = featureIds.get(route.feature) ?? cells.f[firstCell];
+      // realm routes carry the realm sentinel, not a landmass feature
+      const feature = isRealm ? 0 : (featureIds.get(route.feature) ?? cells.f[firstCell]);
       const routeCells = route.cells && { cells: points.map(([, , cell]) => cell) };
       return this.projectLabel({ ...route, feature, points, ...routeCells }, projection);
     });

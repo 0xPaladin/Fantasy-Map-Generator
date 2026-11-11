@@ -929,12 +929,22 @@ class BurgModule {
       if (!burg.i || burg.removed) return;
       this.defineGroup(burg, populations);
     });
-
-    this.specifySkyPorts();
-    this.specifyUnderdarkGates();
   }
 
-  /** surface capitals and spaced major cities double as ground airfields for air routes */
+  /** The realm hubs, assigned at burg generation so the realm routes can find them: surface
+   *  capitals and spaced major cities double as ground airfields; every underdark hold marks its
+   *  nearest surface burg — favoring mountain roots and capitals — as a gate */
+  assignRealmHubs(): void {
+    const originalRandom = Math.random;
+    Math.random = Alea(`${options.map.seed}:realm-hubs`);
+    try {
+      this.specifySkyPorts();
+      this.specifyUnderdarkGates();
+    } finally {
+      Math.random = originalRandom;
+    }
+  }
+
   private specifySkyPorts() {
     const minDist = Math.hypot(options.map.graph.width, options.map.graph.height) * 0.06;
     const tree = quadtree();
@@ -943,14 +953,15 @@ class BurgModule {
       if (!burg.lock) delete burg.skyPort;
       if (burg.lock || !isSurfaceBurg(burg)) continue;
       const isCapital = Boolean(burg.capital);
-      if (!isCapital && ((burg.population as number) <= 5 || this.realmRandom() > 0.35)) continue;
+      // population is assigned later in specify: the cell score is the same measure
+      // (a burg of population 5 sits on a cell of score 25)
+      if (!isCapital && (pack.cells.s[burg.cell] <= 25 || Math.random() > 0.35)) continue;
       if (!isCapital && tree.find(burg.x, burg.y, minDist) !== undefined) continue;
       burg.skyPort = 1;
       tree.add([burg.x, burg.y]);
     }
   }
 
-  /** every underdark burg marks its nearest surface burg — preferring mountain roots and capitals — as a gate */
   private specifyUnderdarkGates() {
     const { cells, burgs } = pack;
     const maxDist = Math.hypot(options.map.graph.width, options.map.graph.height) * 0.12;
@@ -1311,6 +1322,7 @@ class BurgModule {
 
     for (const cell of oldCells) Development.vacate(cell); // land a dropped burg stood on alone
     this.specify();
+    this.assignRealmHubs(); // the realm routes need the regenerated hub flags
     for (const province of provinces)
       if (province.i && !province.removed && !province.burg) this.seatProvince(province);
     Routes.regenerate();
