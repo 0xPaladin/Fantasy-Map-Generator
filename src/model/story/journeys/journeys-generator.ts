@@ -656,7 +656,6 @@ class JourneysModule {
 
     return null;
   }
-
   /** Walk the `from` predecessors back to `start` and return the chain in travel order. */
   private tracePath(from: number[], start: number, end: number): number[] {
     const chain = [end];

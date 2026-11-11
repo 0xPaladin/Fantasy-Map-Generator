@@ -10,7 +10,8 @@ Progress:
 - Phase 2 — Multi-Realm Burg Generation: ✅ done
 - Phase 3 — Zero-Surface-Territory States, Provinces & Labels: ✅ done
 - Phase 4 — Multi-Realm Route Networks: ✅ done
-- Phase 5 – Phase 8: pending
+- Phase 5 — Multi-Realm Economy, Production & Markets: ✅ done
+- Phase 6 – Phase 8: pending
 
 Implementation notes:
 - Realm rolls run on their own seeded stream (`Math.random = Alea(seed + ":realms")`, restored after), so the
@@ -39,6 +40,14 @@ Implementation notes:
   surface networks and `restoreRoutes` must not gap-fill their points; the journeys route-chain BFS gained
   an allowed-groups filter with a domain→groups registry (`airroutes`/`underdarkroutes`/`undersearoutes`
   resolve to their realm's mode)
+- Phase 5 additionally: realm economies are a tag-based production layer in `production-generator` —
+  skyburgs are consumer-only (imports only, no manufacture), underdark holds exclude surface sources
+  (forestry/livestock) while mining ore/minerals ×1.8 (×1.25 more over mountain roots or mineral riches),
+  farming fungi ×0.4 and crafting ×1.3 (ritual/educational goods too), underwater settlements harvest
+  aquatic goods ×1.8, farm kelp ×0.5 and mine vents ×0.6. Markets never found at realm burgs; realm burgs
+  trade through their portal hub's market (skyport/gate/coastal port, falling back to a realm capital's or
+  the surface market below them). `transports-generator` needed no changes: its four domains already
+  cover realm travel
 
 ---
 
@@ -96,7 +105,7 @@ Because `pack.cells.burg` (Uint16Array) and `pack.cells.state` (Uint16Array) are
 | Multi-realm burg generation & cell-slot protection | ✅ present | `src/model/political/burgs-generator.ts` |
 | Zero-surface-territory states (`sky`, `underdark`, `underwater`) | ✅ present | `src/model/political/states-generator.ts` |
 | Multi-realm route networks (`airroutes`, `underdarkroutes`, `undersearoutes`) | ✅ present | `src/model/economy/routes-generator.ts` |
-| Multi-realm production & cross-realm market linking | ❌ missing | `src/model/economy/production-generator.ts`, `markets-generator.ts` |
+| Multi-realm production & cross-realm market linking | ✅ present | `src/model/economy/production-generator.ts`, `markets-generator.ts` |
 | Style schema, default styles & zoom threshold toggles | ❌ missing | `src/model/styles/default-styles.json`, `draw-burg-icons.ts`, `draw-burg-labels.ts` |
 | Editor controls (Burg Editor, Overview, Creator, Options, Assistant) | ❌ missing | `src/controllers/political/burgs/*`, `options-controller.ts`, `assistant/*` |
 

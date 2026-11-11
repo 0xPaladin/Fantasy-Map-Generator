@@ -1,6 +1,7 @@
 import Alea from "alea";
 import { quadtree } from "d3";
 import type { Burg } from "@/model/political/burgs-generator";
+import { isSurfaceBurg } from "@/model/political/burgs-generator";
 import type { Market } from "@/types/economy";
 import { getColors, getRandomColor, requireFill } from "@/utils/color-utils";
 import { FlatQueue } from "@/utils/flat-queue";
@@ -92,7 +93,8 @@ export class MarketsModule {
       treeByLandmass.get(burg.feature!)!.add([burg.x, burg.y, marketId]);
     };
 
-    const living = scored.filter(({ burg }) => burg.i && !burg.removed);
+    // realm burgs trade through their portal hub's market, not their own
+    const living = scored.filter(({ burg }) => burg.i && !burg.removed && isSurfaceBurg(burg));
     for (const { burg } of living) {
       const { x, y } = burg;
       const minSpacing = spacing.get(burg.i!)!;
