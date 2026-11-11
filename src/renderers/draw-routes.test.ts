@@ -125,7 +125,7 @@ test("erasing the layer keeps the groups, which carry the user's styles", () => 
   drawRoutes(routesLayer);
   removeRoutes();
   expect(document.querySelectorAll("#routes path")).toHaveLength(0);
-  expect(document.querySelectorAll("#routes > g")).toHaveLength(3);
+  expect(document.querySelectorAll("#routes > g")).toHaveLength(Object.keys(styles.routes.groups).length); // the store groups mirror into the layer
 
   ViewportLayers.renderNow();
   expect(document.querySelectorAll("#routes path")).toHaveLength(0); // invalidated: nothing to reconcile against

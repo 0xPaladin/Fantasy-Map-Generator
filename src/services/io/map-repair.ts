@@ -3,8 +3,8 @@
 import { Pack } from "@/model/graph/pack-generator";
 import { type IntegrityViolation, MapIntegrity } from "@/model/map-integrity";
 import { Lakes } from "@/model/physical/lakes";
+import { Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
 import type { Burg } from "@/model/political/burgs-generator";
-import { Burgs } from "@/model/political/burgs-generator";
 import { Transports } from "@/model/story/journeys/transports-generator";
 import { last } from "@/utils/array-utils";
 import { log } from "@/utils/logger";
@@ -83,6 +83,19 @@ class MapRepairService {
       for (const [id, count] of invalid) repairs.push(`Invalid ${name} ${id} unassigned from ${count} cells`);
     }
 
+    // the slot is reserved for the primary surface burg: a realm burg in it is legacy or corruption
+    const realmBurgs = new Set(pack.burgs.filter(burg => burg?.i && !isSurfaceBurg(burg)).map(burg => burg.i));
+    if (realmBurgs.size) {
+      let realmSlots = 0;
+      for (let cell = 0; cell < cells.i.length; cell++) {
+        if (cells.burg[cell] && realmBurgs.has(cells.burg[cell])) {
+          cells.burg[cell] = 0;
+          realmSlots++;
+        }
+      }
+      if (realmSlots) repairs.push(`Realm burgs cleared from ${realmSlots} cell slots (realm burgs never own one)`);
+    }
+
     const invalidFeatures = [...new Set(cells.f)].filter(f => f && !pack.features[f]);
     for (const f of invalidFeatures) repairs.push(`Invalid feature ${f} is assigned to cells, not fixed`);
     return repairs;
@@ -123,7 +136,8 @@ class MapRepairService {
         repairs.push(`Burg ${burg.i} is linked to invalid cell ${burg.cell}`);
         burg.cell = Pack.findCell(burg.x, burg.y)!;
         for (const i of cells.i) if (cells.burg[i] === burg.i) cells.burg[i] = 0;
-        cells.burg[burg.cell] = burg.i;
+        // the slot belongs to the surface burg only; a realm burg never takes it
+        if (isSurfaceBurg(burg)) cells.burg[burg.cell] = burg.i;
       }
 
       if (burg.state && !pack.states[burg.state]) {

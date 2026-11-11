@@ -123,6 +123,37 @@ export class LabelsModule {
         type: "burg",
         zoom: { min: 1, max: 25 }
       },
+      // the realm settlements: minor holds stay hidden at world zoom (their icons share the threshold)
+      {
+        name: "skyheart",
+        type: "burg",
+        zoom: { min: 1, max: 25 }
+      },
+      {
+        name: "skyhold",
+        type: "burg",
+        zoom: { min: 1.5, max: 25 }
+      },
+      {
+        name: "underdark_capital",
+        type: "burg",
+        zoom: { min: 1, max: 25 }
+      },
+      {
+        name: "underdark_hold",
+        type: "burg",
+        zoom: { min: 1.5, max: 25 }
+      },
+      {
+        name: "underwater_capital",
+        type: "burg",
+        zoom: { min: 1, max: 25 }
+      },
+      {
+        name: "underwater_settlement",
+        type: "burg",
+        zoom: { min: 1.5, max: 25 }
+      },
       // province, state and default group for custom labels
       {
         name: "province",

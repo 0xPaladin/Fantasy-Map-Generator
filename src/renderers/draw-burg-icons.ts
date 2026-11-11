@@ -62,12 +62,15 @@ function reconcileBurgIcons({ root, bounds }: ViewportRenderContext): void {
   const fallback = stylesByGroup.town ?? Object.values(stylesByGroup)[0];
   const markup: string[] = [];
 
-  for (const { name } of [...options.map.burgs.groups].sort((a, b) => a.order - b.order)) {
+  for (const { name, zoomThreshold } of [...options.map.burgs.groups].sort((a, b) => a.order - b.order)) {
     const entry = stylesByGroup[name] ?? fallback;
     if (!entry) continue;
     const groupName = escapeHtml(name);
     const burgs = burgsByGroup.get(name) ?? [];
-    markup.push(`<g data-group="${groupName}">`);
+    // a zoom-threshold group stays hidden until the map is zoomed in past it
+    const style = zoomThreshold ? (bounds.scale >= zoomThreshold ? "" : "display: none") : "";
+    const threshold = zoomThreshold ? ` data-zoom-threshold="${zoomThreshold}"${style ? ` style="${style}"` : ""}` : "";
+    markup.push(`<g id="${groupName}" data-group="${groupName}"${threshold}>`);
     markup.push(part("icons", entry.groups.icons, burgs, bounds, false));
     markup.push(part("anchors", entry.groups.anchors, burgs, bounds, true));
     markup.push("</g>");

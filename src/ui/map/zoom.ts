@@ -158,6 +158,12 @@ export function invokeActiveZooming(): void {
   applyZoomFontSize();
   ViewportLayers.renderNow();
 
+  // zoom-tier groups (e.g. minor realm holds) appear only past their threshold
+  for (const group of document.querySelectorAll<SVGGElement>("[data-zoom-threshold]")) {
+    const threshold = Number(group.dataset.zoomThreshold);
+    group.style.display = viewport.scale >= threshold ? "" : "none";
+  }
+
   if (!options.app.mode && isStateHaloVisible()) {
     const statesHalo = select("#statesHalo");
     const desired = styles.states.groups.statesHalo.attrs["stroke-width"] ?? 0;

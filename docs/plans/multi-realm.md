@@ -11,7 +11,8 @@ Progress:
 - Phase 3 — Zero-Surface-Territory States, Provinces & Labels: ✅ done
 - Phase 4 — Multi-Realm Route Networks: ✅ done
 - Phase 5 — Multi-Realm Economy, Production & Markets: ✅ done
-- Phase 6 – Phase 8: pending
+- Phase 6 — Map Integrity, Auto-Update Migration & Styling: ✅ done
+- Phase 7 – Phase 8: pending
 
 Implementation notes:
 - Realm rolls run on their own seeded stream (`Math.random = Alea(seed + ":realms")`, restored after), so the
@@ -48,6 +49,15 @@ Implementation notes:
   trade through their portal hub's market (skyport/gate/coastal port, falling back to a realm capital's or
   the surface market below them). `transports-generator` needed no changes: its four domains already
   cover realm travel
+- Phase 6 additionally: `VERSION` stays with upstream master (the fork ships the realm work ahead of the
+  upstream release), so the older `.map` backfill in `auto-update.ts` runs unconditionally and idempotently
+  — it adds the missing realm burg groups, burg label groups and realm route/icon/label styles to the
+  loaded record; new maps are untouched. `map-repair` clears realm burgs from `cells.burg` cell slots on
+  load (realm burgs never own a slot); `map-integrity` knows realm burgs are non-owning (phases 1–4). The
+  realm route/icon/label styles ship as defaults; realm minor-hold icons gate on `zoomThreshold` (1.5,
+  appearing on zoom-in) and `invokeActiveZooming` toggles them by scale; realm label groups exist in the
+  label registry with `zoom.min = 1.5`, which also removes them from world-level label collision since
+  label spread only sees visible groups
 
 ---
 
@@ -105,6 +115,7 @@ Because `pack.cells.burg` (Uint16Array) and `pack.cells.state` (Uint16Array) are
 | Multi-realm burg generation & cell-slot protection | ✅ present | `src/model/political/burgs-generator.ts` |
 | Zero-surface-territory states (`sky`, `underdark`, `underwater`) | ✅ present | `src/model/political/states-generator.ts` |
 | Multi-realm route networks (`airroutes`, `underdarkroutes`, `undersearoutes`) | ✅ present | `src/model/economy/routes-generator.ts` |
+| Style schema, default styles & zoom threshold toggles | ✅ present | `src/model/styles/default-styles.json`, `draw-burg-icons.ts`, `labels-generator.ts`, `ui/map/zoom.ts` |
 | Multi-realm production & cross-realm market linking | ✅ present | `src/model/economy/production-generator.ts`, `markets-generator.ts` |
 | Style schema, default styles & zoom threshold toggles | ❌ missing | `src/model/styles/default-styles.json`, `draw-burg-icons.ts`, `draw-burg-labels.ts` |
 | Editor controls (Burg Editor, Overview, Creator, Options, Assistant) | ❌ missing | `src/controllers/political/burgs/*`, `options-controller.ts`, `assistant/*` |
