@@ -72,6 +72,9 @@ const TEMPLATE = /* html */ `
     <button data-tip="${t("Standard view mode for editing the map")}" id="viewStandard" class="pressed">
       ${t("Standard")}
     </button>
+    <button data-tip="${t("Astral view: star chart of the sector")}" id="viewAstral">
+      ${t("Astral")}
+    </button>
     <button
       data-tip="${sentences(t("Map presentation in 3D scene"), t("Works best for heightmap"), t("Cannot be used for editing"))}"
       id="viewMesh"
@@ -180,12 +183,16 @@ ensureEl("layersOrderButton").addEventListener("click", () => void Controllers.L
 Layers.subscribe(render);
 subscribeAstralView(render);
 
-// Astral view hides the 3D scene and Globe view mode buttons
+// Astral view removes the 3D scene and Globe view mode buttons (incompatible with the star chart)
 function syncViewModeVisibility(): void {
   const astral = isAstralView();
+  const viewMode = ensureEl("viewMode");
+  const anchor = viewMode.querySelector(".astral-nav-btn");
   for (const id of ["viewMesh", "viewGlobe"]) {
     const el = findEl(id);
-    if (el) el.hidden = astral;
+    if (!el) continue;
+    if (astral) viewMode.removeChild(el);
+    else if (!viewMode.contains(el)) viewMode.insertBefore(el, anchor);
   }
 }
 

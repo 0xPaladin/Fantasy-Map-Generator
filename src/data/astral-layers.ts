@@ -15,22 +15,18 @@ export const ASTRAL_PRESETS: Record<string, AstralPreset> = {
   },
   empires: {
     name: "Empires",
-    layers: ["texture", "nebulae", "states", "provinces", "borders", "labels", "scaleBar"]
-  },
-  composition: {
-    name: "Composition",
-    layers: ["texture", "composition", "scaleBar"]
+    layers: ["states", "provinces", "borders", "labels", "scaleBar"]
   },
   dustDensity: {
     name: "Dust Density",
-    layers: ["texture", "dustDensity", "scaleBar"]
+    layers: ["dustDensity", "scaleBar"]
   },
   survey: {
     name: "Survey scan",
-    layers: ["texture", "starDensity", "coordinates", "scaleBar", "coreRim"]
+    layers: ["starDensity", "coordinates", "scaleBar"]
   },
   systems: {
     name: "Systems and lanes",
-    layers: ["texture", "nebulae", "systems", "routes", "labels", "scaleBar"]
+    layers: ["systems", "routes", "labels", "scaleBar"]
   }
 };

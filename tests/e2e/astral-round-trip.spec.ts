@@ -2,6 +2,9 @@ import fs from "fs";
 import { expect, test } from "@playwright/test";
 import { waitForMap } from "./wait-for-map";
 
+// the app's console surface, see src/app/fmg.ts
+declare const FMG: any;
+
 // The mode flag, the layer state and the chart style all live in the saved file: a map saved in
 // Astral reloads as the same chart, hydrated without re-applying anything, and can still leave
 // the mode through the cross-reload profile store.
@@ -45,8 +48,8 @@ test.describe("Astral round trip", () => {
 
     const charted = await page.evaluate(() => ({
       astral: options.map.astral,
-      active: [...Layers.state.active].sort(),
-      order: [...Layers.state.order]
+      active: [...FMG.Layers.state.active].sort(),
+      order: [...FMG.Layers.state.order]
     }));
     expect(charted.astral).toBe(true);
     expect(charted.active).toContain("systems");
@@ -57,7 +60,7 @@ test.describe("Astral round trip", () => {
     await page.evaluate(() => {
       // This round trip captures a download, not the native file picker.
       Object.defineProperty(window, "showSaveFilePicker", { value: undefined, configurable: true });
-      return Services.Save.toMachine();
+      return FMG.Services.Save.toMachine();
     });
     const download = await downloadPromise;
     const buffer = fs.readFileSync(await download.path());
@@ -72,11 +75,11 @@ test.describe("Astral round trip", () => {
       astral: options.map.astral,
       preset: options.map.style.preset,
       href: styles.texture.options.href,
-      active: [...Layers.state.active].sort(),
-      order: [...Layers.state.order],
+      active: [...FMG.Layers.state.active].sort(),
+      order: [...FMG.Layers.state.order],
       buttonPressed: document.getElementById("viewAstral")!.classList.contains("pressed"),
-      listItem: Boolean(document.querySelector('#mapLayers li[data-layer="nebulae"]')),
-      standardItem: Boolean(document.querySelector('#mapLayers li[data-layer="heightmap"]')),
+      nebulaeButton: document.querySelector('#mapLayers button[data-layer="nebulae"]') === null,
+      standardItem: Boolean(document.querySelector('#mapLayers button[data-layer="heightmap"]')),
       markers: document.querySelectorAll("#systems [data-id]").length,
       clouds: document.querySelectorAll("#nebulae ellipse").length
     }));
@@ -86,7 +89,7 @@ test.describe("Astral round trip", () => {
     expect(after.active).toEqual(charted.active);
     expect(after.order).toEqual(charted.order);
     expect(after.buttonPressed).toBe(true); // hydrate adopts the flag without re-applying
-    expect(after.listItem).toBe(true); // the nebulae button is there, the layer is simply off
+    expect(after.nebulaeButton).toBe(true); // the nebulae layer is removed entirely
     expect(after.standardItem).toBe(false);
     expect(after.markers).toBeGreaterThan(0);
     expect(after.clouds).toBe(0); // the chart came back with the same off-by-default layers
@@ -97,7 +100,7 @@ test.describe("Astral round trip", () => {
     await expect.poll(() => page.evaluate(() => options.map.astral)).toBe(false);
     await expect.poll(() => page.evaluate(() => options.map.style.preset)).toBe(before.preset);
     await expect.poll(() => page.evaluate(() => styles.texture.options.href)).toBe(before.href);
-    const restored = await page.evaluate(() => [...Layers.state.active].sort());
+    const restored = await page.evaluate(() => [...FMG.Layers.state.active].sort());
     expect(restored).not.toContain("nebulae");
   });
 });
