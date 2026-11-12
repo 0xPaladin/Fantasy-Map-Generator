@@ -255,7 +255,7 @@ Inside the two large role folders, `model/` and `controllers/`, files are groupe
 | `graph/`       | the grid and packed Voronoi graph, and the tools that rebuild it            |
 | `physical/`    | heightmap, climate, features, coastline, lakes, rivers, ice, biomes, relief, and the Living World / chronicle simulation |
 | `society/`     | population, cultures, religions, names                                      |
-| `political/`   | states, provinces, burgs, diplomacy, military, zones, emblems               |
+| `political/`   | states, provinces, burgs, diplomacy, military, zones, emblems. Three of the burg kinds found here are the fork's **non-land (realm) burgs** — sky, underdark, underwater — with their own states (zero surface territory), trade routes and production |
 | `battle/`      | combined-arms battle resolution, garrisons and battle reporting             |
 | `economy/`     | goods, production, markets and trade, state economies, routes               |
 | `story/`       | markers, notes, lore, journeys and their transports                         |
