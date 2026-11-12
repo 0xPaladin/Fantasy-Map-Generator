@@ -34,6 +34,7 @@ class CorruptionModule {
 
   /** By where each expense is spent, or by people when it spends nothing */
   ofState(state: State, collected: number): number {
+    if (!state?.i) return 0;
     return this.byExpenses(state, d => this.ofProvince(state, d, collected)) ?? this.curb(state, collected);
   }
 
@@ -44,17 +45,20 @@ class CorruptionModule {
 
   /** The state's official corruption budget as its ruler leaves it (§5.2) */
   effectiveBudget(state: State): number {
+    if (!state?.i) return 0;
     return stateCorruption(state);
   }
 
   /** The state's before administration, weighed as ofState */
   getStateTendency(state: State): number {
+    if (!state?.i) return 0;
     return this.byExpenses(state, d => this.getTendency(state, d)) ?? this.effectiveBudget(state);
   }
 
   /** Percent officials pocket once this much is collected, curbed as administration meets its need */
   curb(state: State, collected: number, corruption = this.effectiveBudget(state)): number {
-    const { administration } = state.economy.budget;
+    if (!state?.i || !state.economy?.budget) return 0;
+    const administration = state.economy.budget.administration ?? 0;
     const need = ADMINISTRATION_NEED * ((state.urban || 0) + (state.rural || 0));
     if (!corruption || !need || collected <= 0) return corruption;
     // pay = allotted × (1 − graft), graft = corruption × (1 − curb × pay ÷ need): solved for pay
@@ -84,11 +88,14 @@ class CorruptionModule {
 
   /** The provinces' rate for the state by expense or else by people; null without provinces */
   private byExpenses(state: State, rate: (province: ProvinceCorruption) => number): number | null {
+    if (!state?.i) return null;
     const provinces = this.getProvinces(state.i);
     const capital = this.ofCapital(state);
     if (!provinces.length || !capital) return null;
     const inProvinces = provinces.reduce((sum, d) => sum + d.share * rate(d), 0);
-    const { court, military, administration, infrastructure } = state.economy.budget;
+    const budget = state.economy?.budget;
+    if (!budget) return inProvinces;
+    const { court = 0, military = 0, administration = 0, infrastructure = 0 } = budget;
     const total = court + military + administration + infrastructure;
     if (!total) return inProvinces;
     return ((court + military) * rate(capital) + (administration + infrastructure) * inProvinces) / total;

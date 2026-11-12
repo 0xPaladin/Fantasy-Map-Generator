@@ -128,5 +128,25 @@ test.describe("Verse Map Verification", () => {
     expect(wsIconState.lineVisible).toBe(true);
     expect(wsIconState.isGateInactive).toBe(true);
     expect(wsIconState.isWsActive).toBe(true);
+
+    // Verify States Editor opens cleanly with 48 rows (neutral + 47 polities)
+    await page.evaluate(() => {
+      const FMG = (window as any).FMG;
+      FMG.Controllers.StatesEditor.open();
+    });
+    await page.waitForSelector("#statesEditor", { state: "visible" });
+    const statesCount = await page.locator("#statesEditor .states").count();
+    console.log("States Editor rows:", statesCount);
+    expect(statesCount).toBe(48);
+
+    // Verify Cultures Editor opens cleanly with 23 rows (neutral + 22 cultures)
+    await page.evaluate(() => {
+      const FMG = (window as any).FMG;
+      FMG.Controllers.CulturesEditor.open();
+    });
+    await page.waitForSelector("#culturesEditor", { state: "visible" });
+    const culturesCount = await page.locator("#culturesEditor .states").count();
+    console.log("Cultures Editor rows:", culturesCount);
+    expect(culturesCount).toBe(23);
   });
 });
