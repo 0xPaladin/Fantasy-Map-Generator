@@ -6,7 +6,7 @@ Progress:
 - Phase 1 — Data model, options & burg groups: ✅ done (2026-11-12)
 - Phase 2 — Drift mode: seeded wander placement per realm: ✅ done (2026-11-12)
 - Phase 3 — Integrity, restore, provinces & states for movers: ✅ done (2026-11-12)
-- Phase 4 — Journey-linked march mode (year-driven): pending
+- Phase 4 — Journey-linked march mode (year-driven): ✅ done (2026-11-12)
 - Phase 5 — Rendering: moving icons, paths, headings: pending
 - Phase 6 — Assistant operations & UI (editor, overview, creator, commands): pending
 - Phase 7 — Autonomous mode (Living World tick + chronicle hooks): pending
@@ -249,11 +249,13 @@ are excluded from seating like realm burgs; `isSurfaceBurg` becomes
 
 - Note on `march` carrying total journeys: march mode (Phase 4) will exercise the `mobile-consistency` march path end-to-end; the rule is already in place and unit-tested for it.
 
-### Phase 4 — March mode (junction with Journeys)
-- journey `burgs`/`carrier` payload; migration destination resolution
-- position from `departedYear` + transport speed; ETA for carriers; docking (`pausedAt`)
-- path rendering reuse (Journeys layer + mobile-specific skin), frozen marker when docked
-- chronicle events on arrival/departure
+### Phase 4 — March mode ✅ done (2026-11-12)
+- march riders link via `Burg.journey` (the burg names its journey; no payload on the journey — simpler, same idea)
+- position = `f(year − departedYear)`, one lore year = the transport's hoursPerDay of marching; frozen at `pausedAt`
+- ETA via `Burgs.marchEta` (hours and years); docking at the journey's end; arrival connects the burg to the roads
+- `Lore.setYear` re-stamps every riding burg (positions are derived, never stored)
+- chronicle events on arrival/departure deferred to the hooks for the UI (Phase 6/7)
+- path rendering reuse deferred to Phase 5
 
 ### Phase 5 — Rendering
 - icon rotation by `heading` (titan/horde) — new transform in `draw-burg-icons.ts`

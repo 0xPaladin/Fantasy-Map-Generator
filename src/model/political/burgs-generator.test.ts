@@ -857,3 +857,181 @@ describe("multi-realm cell slots", () => {
     expect(getBurgRealm(realmBurgPlan(4, "horde", 0) as Burg)).toBe("horde");
   });
 });
+
+describe("marching mobiles", () => {
+  const YEAR = 1000;
+  const JOURNEY = {
+    i: 9001,
+    name: "The titan walks",
+    type: "Migration",
+    color: "#9a7b02",
+    visible: true,
+    segments: [
+      {
+        i: 0,
+        name: "The road east",
+        visible: true,
+        from: 0,
+        to: 2,
+        transport: "Horseback (spare horse)",
+        speed: 12,
+        distance: 200, // 100 map units per leg × 2 legs, km scale 1
+        points: [
+          [0, 0, 0],
+          [100, 0, 1],
+          [200, 0, 2]
+        ]
+      }
+    ]
+  };
+
+  beforeEach(() => {
+    globalThis.options = {
+      ...globalThis.options,
+      map: {
+        ...globalThis.options.map,
+        seed: "march-test",
+        graph: { width: 100, height: 100, points: 100 },
+        units: { ...(globalThis.options.map.units ?? {}), distance: { unit: "km", scale: 1 } },
+        transports: globalThis.options.map.transports,
+        lore: { ...globalThis.options.map.lore, calendar: { ...globalThis.options.map.lore?.calendar, year: YEAR } }
+      }
+    } as any;
+    vi.spyOn(Names, "getCulture").mockReturnValue("Testville");
+    vi.spyOn(Burgs as any, "defineEmblem").mockImplementation(() => {});
+    globalThis.pack = {
+      cells: {
+        i: [0, 1, 2],
+        h: [30, 30, 30],
+        s: [10, 10, 10],
+        p: [
+          [0, 0],
+          [100, 0],
+          [200, 0]
+        ] as [number, number][],
+        v: [[], [], []],
+        g: [0, 0, 0],
+        r: [0, 0, 0],
+        fl: [0, 0, 0],
+        state: [3, 3, 3],
+        pop: [10, 10, 10],
+        culture: [1, 1, 1],
+        f: [1, 1, 1],
+        religion: [1, 1, 1],
+        burg: new Uint16Array(3),
+        province: [0, 0, 0],
+        good: [0, 0, 0],
+        biome: [1, 1, 1],
+        routes: {} as Record<number, object>,
+        c: [[1], [0, 2], [1]],
+        development: new Uint8Array(3)
+      },
+      burgs: [{ i: 0 } as any],
+      biomes: [
+        { i: 0, name: "Grassland", habitability: 100 } as any,
+        { i: 1, name: "Grassland", habitability: 100 } as any
+      ],
+      states: [{ i: 0, name: "Neutrals" } as any],
+      provinces: [],
+      markets: [],
+      deals: [],
+      cultures: [{ i: 1, type: "Generic" }],
+      religions: [{ i: 1 }],
+      zones: [],
+      journeys: [JOURNEY as any]
+    } as any;
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  const addTitan = () => Burgs.add(10, 10, "titan");
+
+  it("march stamps the burg's departure and places it at the journey start", () => {
+    const t = addTitan();
+    Burgs.march(t, JOURNEY.i);
+
+    const burg = pack.burgs[t];
+    expect(burg.mobile).toBe(1);
+    expect(burg.mobility).toBe("march");
+    expect(burg.journey).toBe(JOURNEY.i);
+    expect(burg.departedYear).toBe(YEAR);
+    expect(burg.x).toBeCloseTo(0);
+    expect(burg.y).toBeCloseTo(0);
+    expect(burg.cell).toBe(0);
+  });
+
+  it("the burg walks with the lore year, and docks at the journey's end", () => {
+    const t = addTitan();
+    Burgs.march(t, JOURNEY.i);
+
+    options.map.lore.calendar.year = YEAR + 1;
+    Burgs.marchEta(t); // exercise the readout before the move
+    Burgs.applyMobileAll();
+    // 1 year at 10 hours/day, 12 km/h → 120 km of the 200 km road
+    expect(pack.burgs[t].x).toBeCloseTo(120);
+    expect(pack.burgs[t].y).toBeCloseTo(0);
+    expect(pack.burgs[t].cell).toBe(1);
+
+    options.map.lore.calendar.year = YEAR + 2;
+    Burgs.applyMobileAll();
+    // 240 km ≥ 200 km: docked at the end
+    expect(pack.burgs[t].x).toBeCloseTo(200);
+    expect(pack.burgs[t].cell).toBe(2);
+    expect(Burgs.marchEta(t).done).toBe(true);
+  });
+
+  it("a paused march freezes where the burg stands", () => {
+    const t = addTitan();
+    Burgs.march(t, JOURNEY.i);
+
+    options.map.lore.calendar.year = YEAR + 1;
+    Burgs.pauseMobile(t);
+    Burgs.applyMobileAll();
+    expect(pack.burgs[t].x).toBeCloseTo(120);
+
+    options.map.lore.calendar.year = YEAR + 5;
+    Burgs.applyMobileAll();
+    expect(pack.burgs[t].x).toBeCloseTo(120); // frozen at the pause year
+
+    Burgs.resumeMobile(t);
+    Burgs.applyMobileAll();
+    expect(pack.burgs[t].x).toBeCloseTo(200); // YEAR + 5 → 600 km, docked
+  });
+
+  it("a marching capital is rejected, and a marching burg never owns the slot", () => {
+    const t = addTitan();
+    expect(() => Burgs.march(999, JOURNEY.i)).toThrow(); // burg 999 does not exist
+    Burgs.march(t, JOURNEY.i);
+    expect(pack.cells.burg[0]).toBe(0); // the wanderer rides, so the slot stays empty
+  });
+
+  it("unmarch leaves the burg where it stands, drifting", () => {
+    const t = addTitan();
+    Burgs.march(t, JOURNEY.i);
+    options.map.lore.calendar.year = YEAR + 1;
+    Burgs.applyMobileAll();
+
+    Burgs.unmarch(t);
+    const burg = pack.burgs[t];
+    expect(burg.mobility).toBe("drift");
+    expect(burg.journey).toBeUndefined();
+    expect(burg.departedYear).toBeUndefined();
+    expect(burg.pausedAt).toBeUndefined();
+    expect(burg.x).toBeCloseTo(120); // didn't move
+  });
+
+  it("marchEta reports the remaining hours and years", () => {
+    const t = addTitan();
+    Burgs.march(t, JOURNEY.i);
+    options.map.lore.calendar.year = YEAR + 2;
+    const eta = Burgs.marchEta(t);
+    expect(eta.done).toBe(true);
+
+    const t2 = addTitan();
+    Burgs.march(t2, JOURNEY.i);
+    options.map.lore.calendar.year = YEAR; // departure year — a fresh march
+    const t2Eta = Burgs.marchEta(t2);
+    expect(t2Eta.done).toBe(false);
+    expect(t2Eta.yearsRemaining).toBeCloseTo(200 / (10 * 12), 1);
+  });
+});

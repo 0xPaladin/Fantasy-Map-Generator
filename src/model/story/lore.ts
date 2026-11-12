@@ -1,4 +1,5 @@
 // The map's lore in `options.map.lore`: its name, calendar and the author's description. See docs/architecture/configuration.md
+import { Burgs } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
 import type { HistoryMode } from "@/types/history";
 import { requireName } from "@/utils/validation-utils";
@@ -13,6 +14,7 @@ class LoreModel {
   setYear(year: number): void {
     if (typeof year !== "number" || !Number.isFinite(year)) throw new Error("The year must be a number");
     options.map.lore.calendar.year = Math.round(year);
+    Burgs.applyMobileAll();
   }
 
   /** Set the era the current year belongs to and its short form, such as "Winter Era" and "WE"; without one the short form is abbreviated from the era */

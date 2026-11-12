@@ -14,10 +14,13 @@ import type { Province } from "@/model/political/provinces-generator";
 import { Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { Population } from "@/model/society/population-generator";
+import { Journeys } from "@/model/story/journeys/journeys-generator";
+import { Transports } from "@/model/story/journeys/transports-generator";
 import type { BurgGroup } from "@/types/burg-groups";
 import type { BurgProduction } from "@/types/economy";
 import type { Emblem } from "@/types/emblems";
 import type { IconSet } from "@/types/icons";
+import type { Journey } from "@/types/journey";
 import { log } from "@/utils/logger";
 import { minmax, normalize, rn } from "@/utils/number-utils";
 import { each, gauss, P, ra, rand } from "@/utils/probability-utils";
@@ -1793,6 +1796,144 @@ class BurgModule {
     }
     if (typeof altitude !== "number" || !Number.isFinite(altitude)) throw new Error("The altitude must be a number");
     burg.altitude = rn(altitude, 1);
+  }
+
+  // --- Marching mechanics: a wandering burg rides a journey across the map; see docs/plans/mobile-burgs.md ---
+
+  /** Put a burg onto a journey; its place along the road is stamped from the lore year */
+  march(burgId: number, journeyId: number): void {
+    const burg = this.living(burgId);
+    const journey = this.requireJourney(journeyId);
+    if (burg.capital) throw new Error("A capital cannot ride a journey");
+    if (burg.lock) throw new Error("Unlock the burg first; a locked burg keeps its place");
+    delete burg.pausedAt;
+    if (burg.departedYear === undefined) burg.departedYear = options.map.lore.calendar.year;
+    burg.journey = journey.i;
+    burg.mobility = "march";
+    burg.mobile = 1;
+    this.applyMobile(burgId);
+  }
+
+  /** Take a burg off its journey; it stays wherever it stands */
+  unmarch(burgId: number): void {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) throw new Error("The burg is not on a journey");
+    delete burg.journey;
+    delete burg.departedYear;
+    delete burg.pausedAt;
+    burg.mobility = "drift";
+    this.applyMobile(burgId);
+  }
+
+  /** Whether a burg is currently riding a journey */
+  isMarching(burg: Burg): boolean {
+    return burg.mobility === "march" && burg.journey !== undefined;
+  }
+
+  /** Halt the march in place; the burg sits wherever it stood until resumed */
+  pauseMobile(burgId: number): void {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) throw new Error("The burg is not on a journey");
+    burg.pausedAt = options.map.lore.calendar.year;
+  }
+
+  /** Resume a paused march; the burg picks up the road where it stopped */
+  resumeMobile(burgId: number): void {
+    const burg = this.living(burgId);
+    delete burg.pausedAt;
+  }
+
+  /** Hours of the journey yet to travel at the current lore year, and how many years that lasts */
+  marchEta(burgId: number): { hoursRemaining: number; yearsRemaining: number; done: boolean } {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) throw new Error("The burg is not on a journey");
+    const journey = this.requireJourney(burg.journey!);
+    const totals = Journeys.getTotals(journey);
+    const walked = this.distanceWalked(burg);
+    const remainingDistance = Math.max(0, totals.totalDistance - walked);
+    const averageSpeed = Math.max(totals.avgSpeed, 0.001);
+    const hoursRemaining = remainingDistance / averageSpeed;
+    return {
+      hoursRemaining,
+      yearsRemaining: this.avgHoursPerDay(journey) > 0 ? hoursRemaining / this.avgHoursPerDay(journey) : 0,
+      done: remainingDistance <= 0
+    };
+  }
+
+  /** Re-stamp every marching burg's cell and position for the current lore year */
+  applyMobileAll(): void {
+    for (const burg of pack.burgs) {
+      if (burg.i && !burg.removed && this.isMarching(burg)) this.applyMobile(burg.i);
+    }
+  }
+
+  /** Stamp the marching burg's cell, position and feature for the current lore year */
+  applyMobile(burgId: number): void {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) return;
+    const journey = this.requireJourney(burg.journey!);
+    const totals = Journeys.getTotals(journey);
+    const walked = this.distanceWalked(burg);
+    const [x, y] = this.pointAlong(journey, walked);
+    const cell = Pack.findCell(x, y) ?? burg.cell;
+    Object.assign(burg, { x: rn(x, 2), y: rn(y, 2), cell, feature: pack.cells.f[cell] });
+    // a walker that has arrived joins the roads like any fresh burg beside the road
+    if (walked >= totals.totalDistance && !Routes.isConnected(cell)) Routes.connect(cell);
+  }
+
+  /** Map units the burg has marched since it set out, frozen at a pause if any */
+  private distanceWalked(burg: Burg): number {
+    const journey = this.requireJourney(burg.journey!);
+    const totals = Journeys.getTotals(journey);
+    if (burg.departedYear === undefined) return 0;
+    const endYear =
+      burg.pausedAt !== undefined
+        ? Math.min(burg.pausedAt, options.map.lore.calendar.year)
+        : options.map.lore.calendar.year;
+    const elapsed = Math.max(0, endYear - burg.departedYear);
+    return Math.min(elapsed * this.avgHoursPerDay(journey) * totals.avgSpeed, totals.totalDistance);
+  }
+
+  /** Where along the journey's polyline a burg is after covering `along` units */
+  private pointAlong(journey: Journey, along: number): [number, number] {
+    let remaining = Math.max(0, along);
+    let last: [number, number] | undefined;
+    for (const segment of journey.segments) {
+      if (segment.visible === false) continue;
+      for (const point of segment.points) {
+        if (!last) {
+          last = [point[0], point[1]];
+          continue;
+        }
+        const leg = Math.hypot(point[0] - last[0], point[1] - last[1]);
+        if (remaining <= leg) {
+          const t = leg > 0 ? remaining / leg : 0;
+          return [last[0] + (point[0] - last[0]) * t, last[1] + (point[1] - last[1]) * t];
+        }
+        remaining -= leg;
+        last = [point[0], point[1]];
+      }
+    }
+    return last ?? [0, 0];
+  }
+
+  /** Journey average daily travel hours over the moving segments; one year = a day of marching */
+  private avgHoursPerDay(journey: Journey): number {
+    let sum = 0;
+    let count = 0;
+    for (const segment of journey.segments) {
+      if (segment.visible === false) continue;
+      if (Transports.getDomain(segment.transport) === "stay") continue;
+      sum += Transports.getHoursPerDay(segment.transport);
+      count += 1;
+    }
+    return count ? sum / count : 1;
+  }
+
+  private requireJourney(journeyId: number): Journey {
+    const journey = (pack.journeys ?? []).find(journey => journey.i === journeyId);
+    if (!journey) throw new Error(`Journey ${journeyId} does not exist`);
+    return journey;
   }
 }
 
