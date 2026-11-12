@@ -66,7 +66,11 @@ export const METHODS = {
     "remove",
     "setAdjustments",
     "setLocked",
-    "setLink"
+    "setLink",
+    "setRealm",
+    "setSkyPort",
+    "setUnderdarkGate",
+    "setAltitude"
   ],
   States: [
     "rename",

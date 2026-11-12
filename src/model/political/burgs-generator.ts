@@ -1181,12 +1181,18 @@ class BurgModule {
     return previewGeneratorsMap[group.preview](burg);
   }
 
-  /** Found a burg on a free land cell at a map point; returns its id */
-  add(x: number, y: number): number {
+  /** Found a burg; realm defaults to surface */
+  add(x: number, y: number, realm: BurgRealm = "surface"): number {
     const { cells } = pack;
     const cellId = Pack.requireCell(x, y);
-    if (cells.h[cellId] < 20) throw new Error("A burg cannot be placed in the water");
-    if (cells.burg[cellId]) throw new Error(`Cell ${cellId} already has burg ${cells.burg[cellId]}`);
+    if (!["surface", "sky", "underdark", "underwater"].includes(realm))
+      throw new Error(`Unknown realm: ${realm}. Expected surface, sky, underdark or underwater`);
+    if (realm === "underwater" && cells.h[cellId] >= 20) throw new Error("An underwater burg cannot be placed on land");
+    if (realm === "surface" && cells.h[cellId] < 20) throw new Error("A burg cannot be placed in the water");
+    if (realm === "underdark" && cells.h[cellId] < 20) throw new Error("An underdark burg must tunnel under land");
+    // a realm burg never takes the surface cell's slot
+    if (realm === "surface" && cells.burg[cellId])
+      throw new Error(`Cell ${cellId} already has burg ${cells.burg[cellId]}`);
 
     const burgId = pack.burgs.length;
     const culture = cells.culture[cellId];
@@ -1195,13 +1201,20 @@ class BurgModule {
       x,
       y,
       i: burgId,
-      state: cells.state[cellId],
+      state: realm === "surface" ? cells.state[cellId] : 0,
       culture,
       name: Names.getCulture(culture),
       feature: cells.f[cellId],
       capital: 0,
       port: 0,
-      tags: []
+      tags: [],
+      ...(realm === "sky"
+        ? { flying: 1 }
+        : realm === "underdark"
+          ? { underdark: 1 }
+          : realm === "underwater"
+            ? { underwater: 1 }
+            : {})
     };
     this.definePopulation(burg);
     this.defineEmblem(burg);
@@ -1214,8 +1227,11 @@ class BurgModule {
     this.defineGroup(burg, populations);
 
     pack.burgs.push(burg);
-    cells.burg[cellId] = burgId;
-    Development.settle(cellId);
+    if (realm === "surface") {
+      cells.burg[cellId] = burgId;
+      Development.settle(cellId);
+    }
+    if (realm !== "surface") this.assignToRealmState(burg);
     Pack.markChanged();
 
     Routes.connect(cellId);
@@ -1464,7 +1480,7 @@ class BurgModule {
     cells.burg[burg.cell] = cellSlotAfterRemoval(cells.burg[burg.cell], burgId);
     cells.burg[cell] = groundSlotOnPlacement(cells.burg[cell], burg);
     Development.vacate(burg.cell);
-    Development.settle(cell);
+    if (isSurfaceBurg(burg)) Development.settle(cell);
     Object.assign(burg, { cell, state, x: rn(x, 2), y: rn(y, 2), feature: cells.f[cell] });
     Pack.markChanged();
     if (burg.capital) pack.states[state].center = cell;
@@ -1521,6 +1537,81 @@ class BurgModule {
     delete burg.coa;
     for (const province of pack.provinces ?? []) if (province.burg === burgId) province.burg = 0;
     if (pack.deals) pack.deals = pack.deals.filter(([dealBurg]) => dealBurg !== burgId); // its trade is gone too
+  }
+
+  /** Assign a non-surface burg to the nearest living realm state of its realm, or to the neutrals if none exists */
+  private assignToRealmState(burg: Burg): void {
+    const realm = getBurgRealm(burg);
+    if (realm === "surface") return;
+    let nearest = 0;
+    let best = Infinity;
+    for (const state of pack.states) {
+      if (!state.i || state.removed) continue;
+      const capital = pack.burgs[state.capital];
+      if (!capital || getBurgRealm(capital) !== realm) continue;
+      const dist = Math.hypot(capital.x - burg.x, capital.y - burg.y);
+      if (dist < best) {
+        best = dist;
+        nearest = state.i;
+      }
+    }
+    burg.state = nearest;
+  }
+
+  /** Set a burg's realm. A capital cannot change realm */
+  setRealm(burgId: number, realm: string): void {
+    const burg = this.living(burgId);
+    const next = requireOneOf(realm, ["surface", "sky", "underdark", "underwater"], "The realm") as BurgRealm;
+    if (burg.capital) throw new Error("A capital cannot change realm; make another burg the capital first");
+    const previous = getBurgRealm(burg);
+    if (next === previous) return;
+
+    const { cells } = pack;
+    if (next === "surface") {
+      delete burg.flying;
+      delete burg.underdark;
+      delete burg.underwater;
+      burg.state = cells.state[burg.cell];
+      // the slot may still hold a corrupt or legacy occupant — retake it cleanly
+      cells.burg[burg.cell] = 0;
+      cells.burg[burg.cell] = burg.i;
+    } else {
+      delete burg.port; // realm burgs are never ports
+      if (cells.burg[burg.cell] === burg.i) cells.burg[burg.cell] = 0; // hand the slot back to the surface
+      delete burg.flying;
+      delete burg.underdark;
+      delete burg.underwater;
+      burg[next === "sky" ? "flying" : next === "underdark" ? "underdark" : "underwater"] = 1;
+      this.assignToRealmState(burg);
+    }
+    this.changeGroup(burg, null);
+  }
+
+  /** Set a surface burg as a ground airfield for air routes */
+  setSkyPort(burgId: number, port: boolean): void {
+    const burg = this.living(burgId);
+    if (!isSurfaceBurg(burg)) throw new Error("Only a surface burg can be a skyport");
+    if (port) burg.skyPort = 1;
+    else delete burg.skyPort;
+  }
+
+  /** Set a surface burg as an underdark entrance hub */
+  setUnderdarkGate(burgId: number, gate: boolean): void {
+    const burg = this.living(burgId);
+    if (!isSurfaceBurg(burg)) throw new Error("Only a surface burg can be an underdark gate");
+    if (gate) burg.underdarkGate = 1;
+    else delete burg.underdarkGate;
+  }
+
+  /** Set a burg's vertical offset in feet; 0 clears it */
+  setAltitude(burgId: number, altitude: number | null): void {
+    const burg = this.living(burgId);
+    if (altitude === null || altitude === 0) {
+      delete burg.altitude;
+      return;
+    }
+    if (typeof altitude !== "number" || !Number.isFinite(altitude)) throw new Error("The altitude must be a number");
+    burg.altitude = rn(altitude, 1);
   }
 }
 

@@ -12,7 +12,8 @@ Progress:
 - Phase 4 — Multi-Realm Route Networks: ✅ done
 - Phase 5 — Multi-Realm Economy, Production & Markets: ✅ done
 - Phase 6 — Map Integrity, Auto-Update Migration & Styling: ✅ done
-- Phase 7 – Phase 8: pending
+- Phase 7 — UI Controllers, Editors & Assistant Operations: ✅ done
+- Phase 8: pending
 
 Implementation notes:
 - Realm rolls run on their own seeded stream (`Math.random = Alea(seed + ":realms")`, restored after), so the
@@ -58,6 +59,18 @@ Implementation notes:
   appearing on zoom-in) and `invokeActiveZooming` toggles them by scale; realm label groups exist in the
   label registry with `zoom.min = 1.5`, which also removes them from world-level label collision since
   label spread only sees visible groups
+- Phase 7 additionally: Burg Editor gained a Realm row (sky/underdark/underwater icons, mutually exclusive
+  toggles) and a Hub row (skyPort/underdarkGate, surface-only); the Altitude field shows `+X ft above
+  surface` / `X ft below ground` / `X ft below sea level` (thousand separators) and is editable inline.
+  Burgs Overview has realm + hub filter badge chips; its + button reads a realm selector beside it.
+  Burg Creator arms realm-aware placement (`Burgs.add(x, y, realm)`), validating cell compatibility by
+  realm. Options tab adds a "Realm networks" checkbox trio for new maps — imperative binding, not the
+  `data-option` event path (checkboxes don't read `.value`). The Assistant can call
+  `Burgs.setRealm/setSkyPort/setUnderdarkGate/setAltitude`; `Burgs.add` gains the realm argument; the
+  realm layers (burgIcons, labels, emblems, population) draw on any realm change. The cached-instructions
+  budget moved from 15,800 to 15,850 chars (the realm network genuinely needs the room; documented inline
+  in context.test.ts). `Burgs.setRealm` assigns the nearest same-realm state by Euclidean distance, or
+  neutrals if none exists; the realm burg never takes the surface cell's slot
 
 ---
 
@@ -118,7 +131,7 @@ Because `pack.cells.burg` (Uint16Array) and `pack.cells.state` (Uint16Array) are
 | Style schema, default styles & zoom threshold toggles | ✅ present | `src/model/styles/default-styles.json`, `draw-burg-icons.ts`, `labels-generator.ts`, `ui/map/zoom.ts` |
 | Multi-realm production & cross-realm market linking | ✅ present | `src/model/economy/production-generator.ts`, `markets-generator.ts` |
 | Style schema, default styles & zoom threshold toggles | ❌ missing | `src/model/styles/default-styles.json`, `draw-burg-icons.ts`, `draw-burg-labels.ts` |
-| Editor controls (Burg Editor, Overview, Creator, Options, Assistant) | ❌ missing | `src/controllers/political/burgs/*`, `options-controller.ts`, `assistant/*` |
+| Editor controls (Burg Editor, Overview, Creator, Options, Assistant) | ✅ present | `src/controllers/political/burgs/*`, `options-tab.ts`, `assistant/*` |
 
 ---
 

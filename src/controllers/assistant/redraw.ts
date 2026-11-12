@@ -18,7 +18,13 @@ const ENTITY_LAYERS: Record<string, Record<string, readonly LayerId[]>> = {
     x: BURG_PLACE,
     y: BURG_PLACE,
     population: ["population"],
-    production: ["goods"]
+    production: ["goods"],
+    flying: ["burgIcons", "labels"],
+    underdark: ["burgIcons", "labels"],
+    underwater: ["burgIcons", "labels"],
+    skyPort: ["burgIcons"],
+    underdarkGate: ["burgIcons"],
+    altitude: ["burgIcons"]
   },
   state: { "": TERRITORY, ...NAMES, color: ["states", "military"], military: ["military"] },
   province: { "": PROVINCES, ...NAMES, name: ["provinces", "labels"], color: ["provinces"], center: ["emblems"] },
