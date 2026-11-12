@@ -1,7 +1,7 @@
 # Plan — Astral Terrain Layers: Dust Density, Composition, Remnants, Core–Rim, Currents
 
 Updated: 2026-10-24. Follows [astral-ui-overhaul.md](astral-ui-overhaul.md) (all its phases shipped).
-Inputs: [docs/astral/README.md](../astral/README.md), [glossary](../domain/glossary.md),
+Inputs: [docs/wiki/Astral-Cartographer.md](../wiki/Astral-Cartographer.md), [glossary](../domain/glossary.md),
 [layer management PRD](../prd/layers-management.md).
 
 ## Goal
@@ -269,7 +269,7 @@ public/styles/astral.json                 values for all new sections
 public/styles/astralSchematic.json        same
 scripts/render-style-thumbnails.mjs        (only if it enumerates sections, else nothing)
 docs/wiki/User-Interface.md               Astral button list
-docs/astral/README.md                     roadmap link to this plan
+docs/wiki/Astral-Cartographer.md          roadmap link to this plan
 MERGING.md                                new touch points
 ```
 

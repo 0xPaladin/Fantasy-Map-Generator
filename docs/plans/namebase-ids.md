@@ -71,27 +71,34 @@ Stock and Astral bases (0–54) keep their current order; ids are the only new t
 | 20 | BASQU | Basque | 48 | GRMGO | Grimdark Gothic |
 | 21 | NIGER | Nigerian | 49 | GRMIR | Grimdark Iron |
 | 22 | CELTI | Celtic | 50 | GRMCH | Grimdark Machine |
-| 23 | MESOP | Mesopotamian | | | |
-| 24 | IRANI | Iranian | | | |
-| 25 | HAWAI | Hawaiian | | | |
-| 26 | KARNA | Karnataka | | | |
-| 27 | QUECH | Quechua | | | |
+| 23 | MESOP | Mesopotamian | 51 | VRARC | Verse Archilect |
+| 24 | IRANI | Iranian | 52 | VRACN | Verse Archon |
+| 25 | HAWAI | Hawaiian | 53 | VRELY | Verse Elysian |
+| 26 | KARNA | Karnataka | 54 | VRSOL | Verse Solari |
+| 27 | QUECH | Quechua | 55 | VRHEG | Verse Hegemony |
+| | | | 56 | VRMIG | Verse Mi-Go |
+| | | | 57 | VRHUI | Verse Huijhoh |
+| | | | 58 | VRCRY | Verse Crysik |
+| | | | 59 | VRECH | Verse Echani |
+| | | | 60 | VRGRY | Verse Syndicate |
+| | | | 61 | VRXOT | Verse Xothian |
+| | | | 62 | VRFRN | Verse Frontier |
 
 Reserved for RPG Fantasy in Phase 2 ([rpg-fantasy-cultures.md](rpg-fantasy-cultures.md)):
 
 | i | id | Base |
 | --- | --- | --- |
-| 51 | HALFL | Halfling |
-| 52 | FEYFO | Fey |
-| 53 | INFER | Infernal |
-| 54 | CELES | Celestial |
-| 55 | GRAVE | Grave |
-| 56 | MERFO | Merfolk |
-| 57 | BEAST | Beastfolk |
-| 58 | ELEME | Elemental |
-| 59 | CONST | Construct |
-| 60 | ELDRI | Eldritch |
-| 61 | TRIBA | Tribal |
+| 63 | HALFL | Halfling |
+| 64 | FEYFO | Fey |
+| 65 | INFER | Infernal |
+| 66 | CELES | Celestial |
+| 67 | GRAVE | Grave |
+| 68 | MERFO | Merfolk |
+| 69 | BEAST | Beastfolk |
+| 70 | ELEME | Elemental |
+| 71 | CONST | Construct |
+| 72 | ELDRI | Eldritch |
+| 73 | TRIBA | Tribal |
 
 ## Data model
 

@@ -1,6 +1,6 @@
 # Plan — The System Dialog
 
-Updated: 2026-10-25. Inputs: [docs/astral/README.md](../astral/README.md),
+Updated: 2026-10-25. Inputs: [docs/wiki/Astral-Cartographer.md](../wiki/Astral-Cartographer.md),
 [astral-ui-overhaul.md](astral-ui-overhaul.md) (this plan supersedes its Phase 4 click seam),
 [data-model.md](../architecture/data-model.md).
 
@@ -147,7 +147,7 @@ src/renderers/astral/system-markers.ts  gains the per-system marker emission (pu
 src/renderers/astral/draw-systems.ts    imports it from system-markers
 src/controllers/index.ts            AstralSystemEditor registry entry
 tests/e2e/astral-systems.spec.ts    click test expects the System Editor; new editing tests
-docs/astral/README.md               the view section names the System Editor; roadmap entry
+docs/wiki/Astral-Cartographer.md    the view section names the System Editor; roadmap entry
 MERGING.md                          viewbox-events seam update under the Astral section
 ```
 

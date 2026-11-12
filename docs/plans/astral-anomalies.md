@@ -1,6 +1,6 @@
 # Plan — Astral Anomalies: the markers read as anomalies
 
-Updated: 2026-10-26. Inputs: [docs/astral/README.md](../astral/README.md),
+Updated: 2026-10-26. Inputs: [docs/wiki/Astral-Cartographer.md](../wiki/Astral-Cartographer.md),
 [astral-system-dialog.md](astral-system-dialog.md) (the precedent for derived astral readings),
 [astral-ui-overhaul.md](astral-ui-overhaul.md) (the Anomalies layer button).
 
@@ -162,7 +162,7 @@ src/components/options/tabs/tools-tab.ts   the Tools button
 src/components/map-commands.ts      the omnibar command
 src/controllers/index.ts            AstralMarkers registry entry
 tests/e2e/astral-markers.spec.ts    the reading and the conversion
-docs/astral/README.md               the anomalies section and roadmap entry
+docs/wiki/Astral-Cartographer.md    the anomalies section and roadmap entry
 MERGING.md                          the touch-point section
 ```
 

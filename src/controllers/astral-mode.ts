@@ -39,7 +39,28 @@ const POLITICAL_LAYERS = [
   "vignette"
 ];
 
-const ASTRAL_NAME_BASES = ["TRKCO", "TRKTE", "TRKCN", "TRKSY", "GRMCO", "GRMGO", "GRMIR", "GRMCH"];
+const ASTRAL_NAME_BASES = [
+  "TRKCO",
+  "TRKTE",
+  "TRKCN",
+  "TRKSY",
+  "GRMCO",
+  "GRMGO",
+  "GRMIR",
+  "GRMCH",
+  "VRARC",
+  "VRACN",
+  "VRELY",
+  "VRSOL",
+  "VRHEG",
+  "VRMIG",
+  "VRHUI",
+  "VRCRY",
+  "VRECH",
+  "VRGRY",
+  "VRXOT",
+  "VRFRN"
+];
 
 interface BurgSnapshot {
   i: number;

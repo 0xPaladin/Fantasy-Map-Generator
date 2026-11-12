@@ -3,7 +3,7 @@
 Updated: 2026-11-04. **Status: phases 1–5 shipped** on the astral branch (crater primitive and
 planetary templates, archetypes/climate/exo-biomes, the `SolarSystem` registry with
 `switchBody` and the Sol preset, the 3D orrery opened from the System Editor, and the
-sector-bound planetary polity and physical globe pipeline). See [`docs/astral/README.md`](../astral/README.md) → *The colonized solar
+sector-bound planetary polity and physical globe pipeline). See [`docs/wiki/Astral-Cartographer.md`](../wiki/Astral-Cartographer.md) → *The colonized solar
 system* for the shipped overview. Inputs:
 [globe-world.md](globe-world.md),
 [astral-system-details.md](astral-system-details.md),

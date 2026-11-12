@@ -1,6 +1,6 @@
 // The Astral mapping: FMG's world read as a star map. Polities, sectors and star systems.
 // The content (the name bases and their groups) lives in src/data/name-bases.ts; this module
-// only reads it and applies it. See docs/astral/README.md
+// only reads it and applies it. See docs/wiki/Astral-Cartographer.md
 import { ASTRAL_WORLD_TYPE_KEYS, ASTRAL_WORLD_TYPES, type AstralWorldType } from "@/data/astral-goods";
 import { Tags } from "@/model/tags";
 import { createRng } from "./astral-system/rng";

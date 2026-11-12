@@ -13,7 +13,8 @@ A culture set is the pool of cultures a map can draw from. It is picked in the _
 | Dark Fantasy | 34                   | 18           |
 | AstralTrek   | 8                    | 8            |
 | Grimdark     | 8                    | 8            |
-| RPG Fantasy  | 43                   | 24           |
+| Verse        | 22                   | 22           |
+| RPG Fantasy  | 44                   | 24           |
 | Random       | generated on the fly | 100          |
 
 Every culture in a set has an _odd_ — a chance to be included at all — and a _sort_ function that scores cells to pick the culture center. That is why two maps with the same set rarely get the same cultures, and why e.g. Inuk tends to appear in cold regions and Maui on tropical islands.
@@ -217,6 +218,41 @@ The dark-fantasy register, industrial and cold: darklings, foundrymen, and the m
 - Calculators (Cold): those who calculate for them. Namesbase: Grimdark Machine.
 - Core Holds (Mixed): the fortified holds of the new order. Namesbase: Grimdark Core.
 - Rust Kingdoms (Mixed): the kingdoms that did not hold. Namesbase: Grimdark Core.
+
+### Verse
+
+Cosmic science-fiction setting featuring twenty-two cultures across three tiers: five Celestial superpowers, seven Ancient interstellar civilizations, and ten independent frontier and thrall factions.
+
+**Celestials**
+
+- Archilects (Celestial): Transhuman machine-gods of Dyson spheres and orbital megastructures. Namesbase: Verse Archilect.
+- Archons (Celestial): Psionic warrior-priests and dimensional lords of fortress-worlds. Namesbase: Verse Archon.
+- Elysians (Celestial): Bio-sculpted immortals of living garden worlds and spires. Namesbase: Verse Elysian.
+- Solari (Celestial): Radiant star-forgers and stellar architects. Namesbase: Verse Solari.
+- Guardians (Celestial): Ancient sentinel orders and shield-worlds along celestial borders. Namesbase: Verse Solari.
+
+**Ancients**
+
+- Hegemony (Ancient): Expansive human interstellar superpower of core worlds and colonies. Namesbase: Verse Hegemony.
+- Mi-Go Primacy (Ancient): Fungal-crustacean scholar-harvesters of deep-space research stations. Namesbase: Verse Mi-Go.
+- Huijhoh Sovereignty (Ancient): Nomadic fleet-born trade clans and void-pilots. Namesbase: Verse Huijhoh.
+- Crysik Expanse (Ancient): Crystalline silicon-based hive collectives of frigid worlds. Namesbase: Verse Crysik.
+- Echani Reach (Ancient): Monastic martial duelists of austere frontier citadels. Namesbase: Verse Echani.
+- Gray Syndicate (Ancient): Clandestine corporate cartels, shadow banks, and black-ops enclaves. Namesbase: Verse Syndicate.
+- Xothians (Ancient): Eldritch star-spawn warlocks and abyssal void-cults. Namesbase: Verse Xothian.
+
+**Independents & Thralls**
+
+- The One (Nexus): Cybernetic consensus intelligence anchored in frigid data-cores. Namesbase: Verse Frontier.
+- Ascendancy (Independent): Militaristic breakaway sector-states and highland bastions. Namesbase: Verse Frontier.
+- Collective (Independent): Free-port merchant leagues and orbital habitats. Namesbase: Verse Frontier.
+- Venar (Independent): Reclusive outer-rim prospectors and drift-miners. Namesbase: Verse Frontier.
+- Mazani (Independent): Proud clan-bound corsairs and ridge-hold defenders. Namesbase: Verse Frontier.
+- Crimson Concord (Independent): Privateer coalitions and waystation syndicates. Namesbase: Verse Frontier.
+- Wanderers (Confluence): Cosmopolitan pilgrim flotillas and nexus crossroads. Namesbase: Verse Frontier.
+- Data Conclave (Independent): Information brokers, archive-keepers, and relay guilds. Namesbase: Verse Frontier.
+- Gemeli (Independent): Twin-world industrial combines and forge-baronies. Namesbase: Verse Frontier.
+- Cthyre & Thralls (Thrall): Subjugated client-worlds and deep-trench servitor cults of the Xothians. Namesbase: Verse Xothian.
 
 ### RPG Fantasy
 

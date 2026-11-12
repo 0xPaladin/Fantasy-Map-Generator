@@ -1060,6 +1060,134 @@ class CulturesGenerator {
       ];
     }
 
+    if (set === "verse") {
+      return [
+        // Celestials
+        { name: "Archilects (Celestial)", base: "VRARC", odd: 1, sort: (i: number) => n(i), shield: "hexagon" },
+        { name: "Archons (Celestial)", base: "VRACN", odd: 1, sort: (i: number) => n(i) + h[i], shield: "heater" },
+        {
+          name: "Elysians (Celestial)",
+          base: "VRELY",
+          odd: 0.9,
+          sort: (i: number) => n(i) / bd(i, [6, 7, 8, 9], 10),
+          shield: "vesicaPiscis"
+        },
+        {
+          name: "Solari (Celestial)",
+          base: "VRSOL",
+          odd: 1,
+          sort: (i: number) => n(i) / td(i, 14),
+          shield: "boeotian"
+        },
+        {
+          name: "Guardians (Celestial)",
+          base: "VRSOL",
+          odd: 0.75,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "kite"
+        },
+
+        // Ancients
+        { name: "Hegemony (Ancient)", base: "VRHEG", odd: 1, sort: (i: number) => n(i), shield: "oldFrench" },
+        {
+          name: "Mi-Go Primacy (Ancient)",
+          base: "VRMIG",
+          odd: 1,
+          sort: (i: number) => n(i) / bd(i, [6, 7, 8, 9], 10),
+          shield: "diamond"
+        },
+        {
+          name: "Huijhoh Sovereignty (Ancient)",
+          base: "VRHUI",
+          odd: 0.95,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "dovetail"
+        },
+        {
+          name: "Crysik Expanse (Ancient)",
+          base: "VRCRY",
+          odd: 0.85,
+          sort: (i: number) => n(i) / td(i, -10),
+          shield: "embowed"
+        },
+        {
+          name: "Echani Reach (Ancient)",
+          base: "VRECH",
+          odd: 0.7,
+          sort: (i: number) => 1 / (n(i) + 1),
+          shield: "pavise"
+        },
+        { name: "Gray Syndicate (Ancient)", base: "VRGRY", odd: 0.85, sort: (i: number) => n(i), shield: "targe" },
+        {
+          name: "Xothians (Ancient)",
+          base: "VRXOT",
+          odd: 0.9,
+          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
+          shield: "urukHai"
+        },
+
+        // Independents & Thralls
+        {
+          name: "The One (Nexus)",
+          base: "VRFRN",
+          odd: 0.8,
+          sort: (i: number) => n(i) / td(i, -10),
+          shield: "square"
+        },
+        {
+          name: "Ascendancy (Independent)",
+          base: "VRFRN",
+          odd: 0.85,
+          sort: (i: number) => n(i) + h[i],
+          shield: "roman"
+        },
+        {
+          name: "Collective (Independent)",
+          base: "VRFRN",
+          odd: 0.85,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "round"
+        },
+        {
+          name: "Venar (Independent)",
+          base: "VRFRN",
+          odd: 0.75,
+          sort: (i: number) => 1 / (n(i) + 1),
+          shield: "noldor"
+        },
+        {
+          name: "Mazani (Independent)",
+          base: "VRFRN",
+          odd: 0.7,
+          sort: (i: number) => n(i) + h[i],
+          shield: "fantasy2"
+        },
+        {
+          name: "Crimson Concord (Independent)",
+          base: "VRFRN",
+          odd: 0.75,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "banner"
+        },
+        { name: "Wanderers (Confluence)", base: "VRFRN", odd: 0.7, sort: (i: number) => n(i), shield: "gonfalon" },
+        { name: "Data Conclave (Independent)", base: "VRFRN", odd: 0.6, sort: (i: number) => n(i), shield: "oval" },
+        {
+          name: "Gemeli (Independent)",
+          base: "VRFRN",
+          odd: 0.6,
+          sort: (i: number) => n(i) + h[i],
+          shield: "ironHills"
+        },
+        {
+          name: "Cthyre & Thralls (Thrall)",
+          base: "VRXOT",
+          odd: 0.65,
+          sort: (i: number) => n(i) / td(i, 20) + (sMax - h[i]),
+          shield: "moriaOrc"
+        }
+      ];
+    }
+
     if (set === "rpgFantasy") {
       const habitat = {
         forest: (i: number) => n(i) / bd(i, [6, 7, 8, 9], 10),

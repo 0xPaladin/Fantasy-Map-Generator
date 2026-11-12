@@ -1,6 +1,6 @@
 # Plan — Astral Goods: Sci-Fi Commodities & System-Level Resources
 
-Updated: 2026-11-02. Inputs: [docs/astral/README.md](../astral/README.md),
+Updated: 2026-11-02. Inputs: [docs/wiki/Astral-Cartographer.md](../wiki/Astral-Cartographer.md),
 [docs/domain/goods_schema.md](../domain/goods_schema.md),
 [docs/domain/production_schema.md](../domain/production_schema.md),
 [docs/domain/trade_schema.md](../domain/trade_schema.md),
@@ -168,5 +168,5 @@ FMG's market and treasury arithmetic.
      - When `Goods.isAstralCatalogue()` is true, clicking on the map snaps to the star system (`pack.cells.burg[cellId]` or the nearest burg to the cursor) and sets `pack.cells.good[burg.cell]`, ensuring resources are never placed on empty space cells.
 2. **`src/controllers/astral-system-editor.ts` & `src/controllers/astral-systems.ts`**:
    - Display the system's **World Type** (with an inline selector in the System Editor to override `worldTypeFor(burg)`) and its local Trade Table commodities.
-3. **`docs/astral/README.md`**:
+3. **`docs/wiki/Astral-Cartographer.md`**:
    - Document the Astral Goods catalogue, the 8 World Types, and the system-level resource architecture.

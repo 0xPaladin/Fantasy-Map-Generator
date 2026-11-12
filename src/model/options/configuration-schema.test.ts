@@ -118,7 +118,7 @@ describe("the schema describes the value, not merely its type", () => {
 
   it("validates astral and rpg culture-set ids and accepts them in schema and pins", () => {
     const defaults = Options.getDefaultOptions();
-    for (const setId of ["astralTrek", "grimdark", "rpgFantasy"]) {
+    for (const setId of ["astralTrek", "grimdark", "verse", "rpgFantasy"]) {
       const generation = {
         ...defaults.generation,
         cultures: { ...defaults.generation.cultures, set: setId }
