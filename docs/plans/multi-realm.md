@@ -1,6 +1,6 @@
 # Plan — Unified Multi-Realm Settlements, States, Routes & Economy (`sky`, `underdark`, `underwater`)
 
-Updated: 2026-11-10. Inputs:
+Updated: 2026-11-11. Inputs:
 - [barrulus skyburg zoom & toggle design](https://github.com/barrulus/Fantasy-Map-Generator/blob/main/docs/superpowers/specs/2026-06-01-skyburg-zoom-and-toggle-design.md)
 - [barrulus skyburg overhaul design](https://github.com/barrulus/Fantasy-Map-Generator/blob/main/docs/superpowers/specs/2026-06-11-skyburg-overhaul-design.md)
 - `docs/architecture/architecture.md`, `docs/architecture/data-model.md`
@@ -47,9 +47,18 @@ Implementation notes:
   (forestry/livestock) while mining ore/minerals ×1.8 (×1.25 more over mountain roots or mineral riches),
   farming fungi ×0.4 and crafting ×1.3 (ritual/educational goods too), underwater settlements harvest
   aquatic goods ×1.8, farm kelp ×0.5 and mine vents ×0.6. Markets never found at realm burgs; realm burgs
-  trade through their portal hub's market (skyport/gate/coastal port, falling back to a realm capital's or
-  the surface market below them). `transports-generator` needed no changes: its four domains already
+  trade at the market of the cell they stand on (`cells.market`), like every burg — upstream's per-burg
+  `market` field and hub-attachment hook were removed with the Economy rework on rebase (`Markets.ofBurg`
+  derives membership from cells). `transports-generator` needed no changes: its four domains already
   cover realm travel
+- Rebased onto `master` at the v1.157.0 economy/living rework (PR #36/#37 era, `c2241472`): conflicts
+  resolved by keeping upstream's model — per-burg `production` tuples, `cells.market` membership,
+  `recenter()` market seats (the fork's `unlockedMarketCenters` was dropped), upstream `markPlazas`,
+  unconditional idempotent `.map` backfills (the fork ships ahead of upstream, so `VERSION` stays
+  upstream-owned) — with `isSurfaceBurg` filtering retained for market founding; realm multipliers fold
+  into `getBurgModifiers`; skyburg consumer-only is `goals: []` in `createBurgDay`; locked realm states
+  carry through `States.recreate()` untouched after the surface ones; realm burgs keep their own id
+  stream but never own a `cells.burg` slot
 - Phase 6 additionally: `VERSION` stays with upstream master (the fork ships the realm work ahead of the
   upstream release), so the older `.map` backfill in `auto-update.ts` runs unconditionally and idempotently
   — it adds the missing realm burg groups, burg label groups and realm route/icon/label styles to the

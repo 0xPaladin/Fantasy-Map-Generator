@@ -694,7 +694,6 @@ export function syncOptionInputs(): void {
   syncPngResolution();
   syncViewOnly();
   syncDebugModes();
-  syncExtentsLock();
   syncRealmOptions();
 }
 
@@ -774,36 +773,11 @@ function onOptionInput(event: Event): void {
   }
 }
 
-/** The part of the world the next map covers: Whole / Northern / Tropical / Southern mirror the
- * Configure World presets; Astral switches the map to the star chart and cannot be undone.
- * Changing this only sets a preference for the next map: it never alters the current map. */
-async function applyExtents(value: string): Promise<void> {
-  // once astral there is no going back to a standard extent
-  if (options.map.astral === true && value !== "astral") {
-    syncExtentsLock();
-    return;
-  }
-  if (value === options.map.extents) return;
-  Options.set(o => {
-    o.map.extents = value as OptionsData["map"]["extents"];
-    if (value === "astral") o.map.astral = true;
-  });
-  syncExtentsLock();
-}
-
 function syncRealmOptions(): void {
   for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs"] as const) {
     const input = document.querySelector<HTMLInputElement>(`#${key}`);
     if (input) input.checked = options.map.population[key];
   }
-}
-
-function syncExtentsLock(): void {
-  const astral = options.map.astral === true;
-  const select = optionInputs<HTMLSelectElement>("extents")[0];
-  if (!select) return;
-  select.disabled = astral;
-  if (astral) select.value = "astral";
 }
 /** The extent the next map is generated on: not the window it will be looked at through */
 function onMapSizeChange(): void {
