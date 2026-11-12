@@ -101,6 +101,7 @@ export interface Burg {
 
 /** the vertical layer a burg belongs to; see docs/plans/multi-realm.md */
 export type BurgRealm = "surface" | "sky" | "underdark" | "underwater" | "titan" | "horde";
+export type NonSurfaceRealm = Exclude<BurgRealm, "surface">;
 
 export function getBurgRealm(
   b: Pick<Burg, "flying" | "underdark" | "underwater" | "titan" | "horde"> | undefined
@@ -261,9 +262,22 @@ class BurgModule {
     const realmTree = quadtree<[number, number]>();
 
     const realmFlagOf = (
-      realm: "sky" | "underdark" | "underwater"
-    ): Pick<Burg, "flying"> | Pick<Burg, "underdark"> | Pick<Burg, "underwater"> =>
-      realm === "sky" ? { flying: 1 } : realm === "underdark" ? { underdark: 1 } : { underwater: 1 };
+      realm: NonSurfaceRealm
+    ):
+      | Pick<Burg, "flying">
+      | Pick<Burg, "underdark">
+      | Pick<Burg, "underwater">
+      | Pick<Burg, "titan">
+      | Pick<Burg, "horde"> =>
+      realm === "sky"
+        ? { flying: 1 }
+        : realm === "underdark"
+          ? { underdark: 1 }
+          : realm === "underwater"
+            ? { underwater: 1 }
+            : realm === "titan"
+              ? { titan: 1 }
+              : { horde: 1 };
 
     const addRealmBurg = (
       cell: number,
@@ -396,6 +410,96 @@ class BurgModule {
       );
     };
 
+    /** wandering settlements: drifting sky-cities, living islands, walking titans and roving hordes */
+    const generateMobileBurgs = () => {
+      const wanderers = options.map.population.wanderers;
+      if (!wanderers) return;
+      const span = options.map.graph.width + options.map.graph.height;
+      const landCells = cells.i.filter(cell => cells.h[cell] >= 20);
+      const waterCells = cells.i.filter(cell => cells.h[cell] < 20);
+      const enabled: NonSurfaceRealm[] = [];
+      if (options.map.population.skyBurgs) enabled.push("sky");
+      if (options.map.population.underdarkBurgs && landCells.length) enabled.push("underdark");
+      if (options.map.population.underwaterBurgs && waterCells.length) enabled.push("underwater");
+      if (options.map.population.titanBurgs && landCells.length) enabled.push("titan");
+      if (options.map.population.hordeBurgs && landCells.length) enabled.push("horde");
+      if (!enabled.length) return;
+
+      const specOf = (realm: NonSurfaceRealm) => {
+        switch (realm) {
+          case "sky":
+            return { candidates: cells.i, weightOf: () => 1, altitudeOf: () => rand(5, 50) * 10 };
+          case "underdark":
+            return {
+              candidates: landCells,
+              weightOf: (cell: number) => (cells.h[cell] >= 70 ? 5 : cells.h[cell] >= 50 ? 3 : 1),
+              altitudeOf: () => -rand(20, 300) * 10
+            };
+          case "underwater":
+            return {
+              candidates: waterCells,
+              weightOf: (cell: number) =>
+                (cells.t[cell] === -1 || cells.t[cell] === -2 ? 3 : 1) *
+                (grid.cells.temp[cells.g[cell]] >= 5 ? 1.5 : grid.cells.temp[cells.g[cell]] <= 0 ? 0.5 : 1),
+              altitudeOf: () => -rand(5, 200) * 10
+            };
+          case "titan":
+            // open plains; the highest peaks are no place to stride
+            return {
+              candidates: landCells,
+              weightOf: (cell: number) => (cells.h[cell] < 50 ? 3 : cells.h[cell] >= 70 ? 0.4 : 1),
+              altitudeOf: () => 0
+            };
+          default: {
+            // savanna and grassland; mountains are too steep to march a host through
+            const weightOf = (cell: number) => {
+              const biome = cells.biome[cell];
+              let weight = 1;
+              if (biome === 3) weight *= 3;
+              else if (biome === 4) weight *= 2.5;
+              if (cells.h[cell] >= 50) weight *= 0.3;
+              return weight;
+            };
+            return { candidates: landCells, weightOf, altitudeOf: () => 0 };
+          }
+        }
+      };
+
+      const originalRandom = Math.random;
+      Math.random = Alea(`${options.map.seed}:mobile`);
+      try {
+        for (let index = 0; index < wanderers; index++) {
+          const realm = enabled[index % enabled.length];
+          const { candidates, weightOf, altitudeOf } = specOf(realm);
+          const cell = pickWeightedSpaced(candidates, weightOf, span / 20);
+          if (cell === undefined) continue;
+          const cultureId = cells.culture[cell];
+          const [x, y] = cells.p[cell];
+          const burgId = burgs.length;
+          burgs.push({
+            cell,
+            x,
+            y,
+            i: burgId,
+            state: 0,
+            culture: cultureId,
+            name: Names.getCulture(cultureId),
+            feature: cells.f[cell],
+            capital: 0,
+            tags: [],
+            ...realmFlagOf(realm),
+            mobile: 1,
+            mobility: "drift",
+            altitude: altitudeOf(),
+            heading: rn(Math.random() * 360)
+          });
+          realmTree.add([x, y]);
+        }
+      } finally {
+        Math.random = originalRandom;
+      }
+    };
+
     // realm burgs roll on their own seeded stream: the surface map's rolls stay untouched
     const originalRandom = Math.random;
     Math.random = Alea(`${options.map.seed}:realms`);
@@ -406,6 +510,7 @@ class BurgModule {
     } finally {
       Math.random = originalRandom;
     }
+    generateMobileBurgs();
 
     pack.burgs = burgs;
     this.assignPorts();

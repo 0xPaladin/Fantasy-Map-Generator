@@ -4,7 +4,7 @@ Updated: 2026-11-12. Inputs: `docs/plans/multi-realm.md` (the realm system mobil
 
 Progress:
 - Phase 1 — Data model, options & burg groups: ✅ done (2026-11-12)
-- Phase 2 — Drift mode: seeded wander placement per realm: pending
+- Phase 2 — Drift mode: seeded wander placement per realm: ✅ done (2026-11-12)
 - Phase 3 — Integrity, markets, provinces & states for movers: pending
 - Phase 4 — Journey-linked march mode (year-driven): pending
 - Phase 5 — Rendering: moving icons, paths, headings: pending
@@ -23,6 +23,12 @@ Implementation notes:
 - User decisions taken into the design (2026-11-12): drift placement for all four realms in one phase; drift is seeded-random, march is the purposeful mode; titans are a realm concept like skyburg
   (titan capitals + subordinate burgs, can claim stationary surface neighbours); horde is a state of its own (zero land, like realm states); default 0–5 mobiles with 2 as the default; arrivals always
   write chronicle entries; drift mode first.
+- Phase 2 delivered: wanderers generate on their own seeded stream (`seed:mobile`, restored after), placed after realm placement (phase after surface = never disturbs byte identity of surface or
+  realm rolls). Round-robin across enabled archetypes; spacing enforced by the shared `realmTree` quadtree (mobiles and realm burgs keep each other apart). Per-archetype candidates/weighting: sky
+  (any cell, `altitude` 50–500), underdark (mountain-weighted land, `-3000..-200`), underwater (shelves-weighted warm water, `-2000..-50`), titan (open-ground weighting favoring plains), horde
+  (savanna/grassland-weighted, mountains avoided). Each wanderer is `capital: 0`, `state: 0`, `mobile: 1`, `mobility: "drift"`, with a `heading` roll. `Options → Realm networks` gained a `Mobile wanderers`
+  slider (0–5, default 2) bound imperatively with a lock icon; `population.wanderers` in schema/defaults. Roads connect titans/hordes via `sortBurgsByFeature` (the road network passes through them;
+  they are `capital: 0`, never hub-adjacent anchors, never ports). Scenario test pins placement determinism per seed.
 
 ## Goal
 

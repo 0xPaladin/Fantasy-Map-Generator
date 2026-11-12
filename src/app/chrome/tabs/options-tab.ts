@@ -137,6 +137,13 @@ const OPTION_BINDINGS: Record<string, OptionBinding> = {
     parse: Number,
     pin: "freeBurgs"
   }),
+  wanderers: option({
+    read: o => o.map.population.wanderers,
+    write: (o, value) => (o.map.population.wanderers = value),
+    parse: value => minmax(Math.round(+value || 0), 0, 5),
+    pin: "wanderers",
+    effect: () => syncRealmOptions()
+  }),
   provincesRatio: option({
     read: o => o.generation.provinces.ratio,
     write: (o, value) => (o.generation.provinces.ratio = value),
@@ -444,6 +451,15 @@ ${Object.entries(CULTURE_SETS)
             <span class="checkbox-label">${t("Horde burgs")}</span>
           </label>
         </div>
+      </td>
+    </tr>
+    <tr data-tip="${t("How many drifting settlements to place: wandering sky-cities, living islands, walking titans and roving hordes. They hold no fixed land and always live on the road")}">
+      <td>
+        <i data-locked="0" id="lock_wanderers" class="icon-lock-open"></i>
+      </td>
+      <td>${t("Mobile wanderers")}</td>
+      <td colspan="2">
+        <slider-input id="wanderers" data-option="wanderers" min="0" max="5" step="1"></slider-input>
       </td>
     </tr>
   </table>
