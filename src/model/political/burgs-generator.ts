@@ -1,3 +1,4 @@
+import Alea from "alea";
 import { quadtree } from "d3";
 import { CULTURE_TYPES, type CultureType, DEFAULT_CULTURE_TYPE } from "@/data/culture-types";
 import type { Label } from "@/model/annotations/labels-generator";
@@ -19,7 +20,7 @@ import type { Emblem } from "@/types/emblems";
 import type { IconSet } from "@/types/icons";
 import { log } from "@/utils/logger";
 import { minmax, normalize, rn } from "@/utils/number-utils";
-import { each, gauss, P } from "@/utils/probability-utils";
+import { each, gauss, P, ra, rand } from "@/utils/probability-utils";
 import { safeParseJSON } from "@/utils/string-utils";
 import { requireAdjustments, requireName, requireOneOf } from "@/utils/validation-utils";
 
@@ -27,6 +28,24 @@ const BUILDINGS = ["citadel", "plaza", "shanty", "temple", "walls"] as const;
 
 /** the default burg style: white art with a dark outline */
 const BURG_PAINT = { fill: "#ffffff", stroke: "#3e3e4b" };
+
+/** name bases of subterranean peoples (Drow, Dwarven/Duergar, Goblin kin) and of aquatic peoples */
+const SUBTERRANEAN_NAME_BASES = new Set(["DARKE", "DWARV", "GOBLI"]);
+const AQUATIC_NAME_BASES = new Set(["MERFO"]);
+const SUBTERRANEAN_MARKER_TYPES = new Set(["caves", "dungeons", "mines"]);
+
+/** a random candidate, weightier ones likelier; undefined when candidates is empty */
+function pickWeighted(candidates: number[], weightOf: (cell: number) => number): number | undefined {
+  let total = 0;
+  for (const cell of candidates) total += weightOf(cell);
+  if (total <= 0) return undefined;
+  let roll = Math.random() * total;
+  for (const cell of candidates) {
+    roll -= weightOf(cell);
+    if (roll < 0) return cell;
+  }
+  return candidates[candidates.length - 1];
+}
 
 export const isAutoBurgLimit = (): boolean => options.generation.burgs.limit === AUTO_BURG_LIMIT;
 
@@ -62,6 +81,49 @@ export interface Burg {
   label?: Label;
   note?: string;
   tags?: string[];
+  flying?: 1;
+  underdark?: 1;
+  underwater?: 1;
+  skyPort?: 1;
+  underdarkGate?: 1;
+  /** vertical offset in feet relative to the cell's surface: sky +50..+500, underdark -200..-3000, underwater -50..-2000 */
+  altitude?: number;
+}
+
+/** the vertical layer a burg belongs to; see docs/plans/multi-realm.md */
+export type BurgRealm = "surface" | "sky" | "underdark" | "underwater";
+
+export function getBurgRealm(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): BurgRealm {
+  if (!b) return "surface";
+  if (b.flying) return "sky";
+  if (b.underdark) return "underdark";
+  if (b.underwater) return "underwater";
+  return "surface";
+}
+
+export function isSurfaceBurg(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): boolean {
+  return getBurgRealm(b) === "surface";
+}
+
+export function isBurgInRealm(
+  b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined,
+  realm: BurgRealm
+): boolean {
+  return getBurgRealm(b) === realm;
+}
+
+/** value to write to `pack.cells.burg[cell]` when placing `burg` onto `cell`: the slot stays
+ * reserved for the primary surface burg, so non-surface burgs never claim it */
+export function groundSlotOnPlacement(
+  currentSlot: number,
+  burg: Pick<Burg, "i" | "flying" | "underdark" | "underwater">
+): number {
+  return isSurfaceBurg(burg) ? burg.i : currentSlot;
+}
+
+/** value to write to `pack.cells.burg[cell]` when removing/moving `removedBurgId` */
+export function cellSlotAfterRemoval(currentSlot: number, removedBurgId: number): number {
+  return currentSlot === removedBurgId ? 0 : currentSlot;
 }
 
 // A burg that could become a port on a given water body.
@@ -180,6 +242,156 @@ class BurgModule {
     generateCapitals();
     generateTowns();
 
+    /** spacing tree for non-surface burgs; unlike surface burgs they may share cells freely */
+    const realmTree = quadtree<[number, number]>();
+
+    const realmFlagOf = (
+      realm: "sky" | "underdark" | "underwater"
+    ): Pick<Burg, "flying"> | Pick<Burg, "underdark"> | Pick<Burg, "underwater"> =>
+      realm === "sky" ? { flying: 1 } : realm === "underdark" ? { underdark: 1 } : { underwater: 1 };
+
+    const addRealmBurg = (
+      cell: number,
+      realm: "sky" | "underdark" | "underwater",
+      capital: boolean,
+      altitude: number,
+      culture?: number
+    ) => {
+      const burgId = burgs.length;
+      const cultureId = culture ?? cells.culture[cell];
+      const [x, y] = cells.p[cell];
+      burgs.push({
+        cell,
+        x,
+        y,
+        i: burgId,
+        state: 0,
+        culture: cultureId,
+        name: Names.getCulture(cultureId),
+        feature: cells.f[cell],
+        capital: capital ? 1 : 0,
+        tags: [],
+        ...realmFlagOf(realm),
+        altitude
+      });
+      realmTree.add([x, y]);
+    };
+
+    /** a weighted candidate far enough from the realm burgs already placed */
+    const pickWeightedSpaced = (
+      candidates: number[],
+      weightOf: (cell: number) => number,
+      spacing: number
+    ): number | undefined => {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const cell = pickWeighted(candidates, weightOf);
+        if (cell === undefined) return undefined;
+        const [x, y] = cells.p[cell];
+        if (realmTree.find(x, y, spacing) === undefined) return cell;
+      }
+      return undefined;
+    };
+
+    const placeRealmBurgs = (
+      realm: "sky" | "underdark" | "underwater",
+      candidates: number[],
+      weightOf: (cell: number) => number,
+      count: number,
+      capitals: number,
+      altitudeOf: () => number,
+      cultureOf?: (cell: number) => number
+    ) => {
+      const span = options.map.graph.width + options.map.graph.height;
+      for (let placed = 0; placed < capitals; placed++) {
+        const cell = pickWeightedSpaced(candidates, weightOf, span / 2 / (capitals * 3));
+        if (cell === undefined) break;
+        addRealmBurg(cell, realm, true, altitudeOf(), cultureOf?.(cell));
+      }
+      for (let placed = 0; placed < count - capitals; placed++) {
+        const cell = pickWeightedSpaced(candidates, weightOf, span / 20);
+        if (cell === undefined) break;
+        addRealmBurg(cell, realm, false, altitudeOf(), cultureOf?.(cell));
+      }
+    };
+
+    const generateSkyBurgs = () => {
+      if (!options.map.population.skyBurgs) return;
+      const baseCount = Math.max(1, Math.round(cells.i.length / 2500));
+      const count = rand(baseCount, baseCount * 2);
+      const capitals = Math.min(2, Math.max(1, Math.floor(count / 3)));
+      placeRealmBurgs(
+        "sky",
+        cells.i,
+        () => 1,
+        count,
+        capitals,
+        () => rand(5, 50) * 10
+      );
+    };
+
+    const generateUnderdarkBurgs = () => {
+      if (!options.map.population.underdarkBurgs) return;
+      const landCells = cells.i.filter(cell => cells.h[cell] >= 20);
+      if (!landCells.length) return;
+      const baseCount = Math.max(1, Math.round(landCells.length / 2000));
+      const count = rand(baseCount, baseCount * 2);
+      const capitals = Math.min(2, Math.max(1, Math.floor(count / 3)));
+
+      // mountain roots and subterranean peoples make the best tunneling grounds
+      const weightOf = (cell: number) => {
+        let weight = 1;
+        if (cells.h[cell] >= 70) weight *= 5;
+        else if (cells.h[cell] >= 50) weight *= 3;
+        if (SUBTERRANEAN_NAME_BASES.has(pack.cultures[cells.culture[cell]]?.base)) weight *= 2;
+        // markers are generated after burgs, so the bonus applies when burgs are re-generated on an existing map
+        if (pack.markers?.some(marker => marker.cell === cell && SUBTERRANEAN_MARKER_TYPES.has(marker.type)))
+          weight *= 2;
+        return weight;
+      };
+
+      placeRealmBurgs("underdark", landCells, weightOf, count, capitals, () => -rand(20, 300) * 10);
+    };
+
+    const generateUnderwaterBurgs = () => {
+      if (!options.map.population.underwaterBurgs) return;
+      const waterCells = cells.i.filter(cell => cells.h[cell] < 20);
+      if (!waterCells.length) return;
+      const baseCount = Math.max(1, Math.round(waterCells.length / 2500));
+      const count = rand(baseCount, baseCount * 2);
+      const capitals = Math.min(2, Math.max(1, Math.floor(count / 3)));
+
+      // continental shelves in warm and temperate waters are the livable benthic grounds
+      const weightOf = (cell: number) => {
+        let weight = 1;
+        if (cells.t[cell] === -1 || cells.t[cell] === -2) weight *= 3;
+        const temp = grid.cells.temp[cells.g[cell]];
+        if (temp >= 5) weight *= 1.5;
+        else if (temp <= 0) weight *= 0.5;
+        return weight;
+      };
+
+      placeRealmBurgs(
+        "underwater",
+        waterCells,
+        weightOf,
+        count,
+        capitals,
+        () => -rand(5, 200) * 10,
+        cell => this.getUnderwaterCulture(cell)
+      );
+    };
+
+    // realm burgs roll on their own seeded stream: the surface map's rolls stay untouched
+    const originalRandom = Math.random;
+    Math.random = Alea(`${options.map.seed}:realms`);
+    try {
+      generateSkyBurgs();
+      generateUnderdarkBurgs();
+      generateUnderwaterBurgs();
+    } finally {
+      Math.random = originalRandom;
+    }
+
     pack.burgs = burgs;
     this.assignPorts();
 
@@ -240,7 +452,7 @@ class BurgModule {
 
     // Shift non-port river burgs slightly toward the bank
     for (const burg of burgs) {
-      if (!burg.i || burg.lock || burg.port || !cells.r[burg.cell]) continue;
+      if (!burg.i || burg.lock || burg.port || !isSurfaceBurg(burg) || !cells.r[burg.cell]) continue;
       const [x, y] = this.shiftTowardsRiverBank(burg.cell, riversById);
       burg.x = x;
       burg.y = y;
@@ -259,7 +471,7 @@ class BurgModule {
     };
 
     for (const burg of burgs) {
-      if (!burg.i || burg.lock) continue;
+      if (!burg.i || burg.lock || !isSurfaceBurg(burg)) continue; // realm burgs are never ports
       const haven = cells.haven[burg.cell];
       const landFeature = cells.f[burg.cell];
 
@@ -394,6 +606,20 @@ class BurgModule {
   }
 
   private definePopulation(burg: Burg) {
+    // realm burgs live off their realm, not the land's cell score
+    if (burg.flying) {
+      burg.population = rn(burg.capital ? rand(1, 10) : rand(1, 5), 3);
+      return;
+    }
+    if (burg.underdark) {
+      burg.population = rn(burg.capital ? rand(5, 25) : rand(1, 12), 3);
+      return;
+    }
+    if (burg.underwater) {
+      burg.population = rn(burg.capital ? rand(4, 20) : rand(1, 10), 3);
+      return;
+    }
+
     const cellId = burg.cell;
     let population = pack.cells.s[cellId] / 5;
     if (burg.capital) population *= 1.5;
@@ -421,6 +647,32 @@ class BurgModule {
   }
 
   private defineFeatures(burg: Burg) {
+    // realm burgs never take a port and keep their realm's building profile
+    if (burg.flying) {
+      burg.citadel = Number(burg.capital);
+      burg.walls = 0;
+      burg.plaza = Number(P(0.5));
+      burg.temple = Number(P(0.5));
+      burg.shanty = 0;
+      return;
+    }
+    if (burg.underdark) {
+      burg.citadel = Number(P(0.8));
+      burg.walls = Number(P(0.85));
+      burg.plaza = Number(P(0.6));
+      burg.temple = Number(P(0.7));
+      burg.shanty = 0;
+      return;
+    }
+    if (burg.underwater) {
+      burg.citadel = Number(P(0.6));
+      burg.walls = Number(P(0.4));
+      burg.plaza = Number(P(0.7));
+      burg.temple = Number(P(0.6));
+      burg.shanty = 0;
+      return;
+    }
+
     const pop = burg.population as number;
     burg.citadel = Number(burg.capital || (pop > 50 && P(0.75)) || (pop > 15 && P(0.5)) || P(0.1));
     burg.walls = Number(burg.capital || pop > 30 || (pop > 20 && P(0.75)) || (pop > 10 && P(0.5)) || P(0.1));
@@ -452,6 +704,47 @@ class BurgModule {
 
   getDefaultGroups(): BurgGroup[] {
     return [
+      // realm groups resolve first: a realm capital carries `capital` too and would
+      // otherwise match the surface `capital` group; see docs/plans/multi-realm.md
+      {
+        name: "skyheart",
+        active: true,
+        features: { flying: true, capital: true },
+        order: 5
+      },
+      {
+        name: "skyhold",
+        active: true,
+        features: { flying: true, capital: false },
+        order: 6,
+        zoomThreshold: 1.5
+      },
+      {
+        name: "underdark_capital",
+        active: true,
+        features: { underdark: true, capital: true },
+        order: 7
+      },
+      {
+        name: "underdark_hold",
+        active: true,
+        features: { underdark: true, capital: false },
+        order: 8,
+        zoomThreshold: 1.5
+      },
+      {
+        name: "underwater_capital",
+        active: true,
+        features: { underwater: true, capital: true },
+        order: 9
+      },
+      {
+        name: "underwater_settlement",
+        active: true,
+        features: { underwater: true, capital: false },
+        order: 10,
+        zoomThreshold: 1.5
+      },
       {
         name: "capital",
         active: true,
@@ -603,9 +896,25 @@ class BurgModule {
     }
   }
 
+  /** the realm burgs' own random stream, seeded per specification run */
+  private realmRandom: () => number = Math.random;
+
   specify() {
+    this.realmRandom = Alea(`${options.map.seed}:realm-specify`);
     pack.burgs.forEach(burg => {
       if (!burg.i || burg.removed || burg.lock) return;
+      if (!isSurfaceBurg(burg)) {
+        const originalRandom = Math.random;
+        Math.random = this.realmRandom;
+        try {
+          this.definePopulation(burg);
+          this.defineEmblem(burg);
+          this.defineFeatures(burg);
+        } finally {
+          Math.random = originalRandom;
+        }
+        return;
+      }
       this.definePopulation(burg);
       this.defineEmblem(burg);
       this.defineFeatures(burg);
@@ -620,6 +929,86 @@ class BurgModule {
       if (!burg.i || burg.removed) return;
       this.defineGroup(burg, populations);
     });
+  }
+
+  /** The realm hubs, assigned at burg generation so the realm routes can find them: surface
+   *  capitals and spaced major cities double as ground airfields; every underdark hold marks its
+   *  nearest surface burg — favoring mountain roots and capitals — as a gate */
+  assignRealmHubs(): void {
+    const originalRandom = Math.random;
+    Math.random = Alea(`${options.map.seed}:realm-hubs`);
+    try {
+      this.specifySkyPorts();
+      this.specifyUnderdarkGates();
+    } finally {
+      Math.random = originalRandom;
+    }
+  }
+
+  private specifySkyPorts() {
+    const minDist = Math.hypot(options.map.graph.width, options.map.graph.height) * 0.06;
+    const tree = quadtree();
+    for (const burg of pack.burgs) {
+      if (!burg.i || burg.removed) continue;
+      if (!burg.lock) delete burg.skyPort;
+      if (burg.lock || !isSurfaceBurg(burg)) continue;
+      const isCapital = Boolean(burg.capital);
+      // population is assigned later in specify: the cell score is the same measure
+      // (a burg of population 5 sits on a cell of score 25)
+      if (!isCapital && (pack.cells.s[burg.cell] <= 25 || Math.random() > 0.35)) continue;
+      if (!isCapital && tree.find(burg.x, burg.y, minDist) !== undefined) continue;
+      burg.skyPort = 1;
+      tree.add([burg.x, burg.y]);
+    }
+  }
+
+  private specifyUnderdarkGates() {
+    const { cells, burgs } = pack;
+    const maxDist = Math.hypot(options.map.graph.width, options.map.graph.height) * 0.12;
+    for (const burg of burgs) {
+      if (burg.i && !burg.removed && !burg.lock) delete burg.underdarkGate;
+    }
+
+    const candidates = burgs.filter(burg => burg.i && !burg.removed && !burg.lock && isSurfaceBurg(burg));
+    for (const hold of burgs) {
+      if (!hold.i || hold.removed || !hold.underdark) continue;
+      let best: Burg | undefined;
+      let bestScore = Infinity;
+      for (const gate of candidates) {
+        const dist = Math.hypot(gate.x - hold.x, gate.y - hold.y);
+        if (dist > maxDist) continue;
+        const score = dist - (gate.capital ? maxDist : 0) - (cells.h[gate.cell] >= 50 ? maxDist / 2 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          best = gate;
+        }
+      }
+      if (best) best.underdarkGate = 1;
+    }
+  }
+
+  /** an aquatic culture when the set has one, else the coastal culture nearest to a water cell */
+  private getUnderwaterCulture(cell: number): number {
+    const { cells, cultures } = pack;
+    const aquatic = cultures.filter(culture => AQUATIC_NAME_BASES.has(culture.base));
+    if (aquatic.length) return ra(aquatic).i;
+
+    const coastal = cultures.filter(culture => culture.type === "Naval");
+    const pool = (coastal.length ? coastal : cultures).filter(culture => culture.center !== undefined);
+    if (!pool.length) return cells.culture[cell];
+
+    const [x, y] = cells.p[cell];
+    let nearest = pool[0];
+    let minDist = Infinity;
+    for (const culture of pool) {
+      const [cx, cy] = cells.p[culture.center as number];
+      const dist = (cx - x) ** 2 + (cy - y) ** 2;
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = culture;
+      }
+    }
+    return nearest.i;
   }
 
   private createWatabouCityLinks(burg: Burg) {
@@ -792,12 +1181,18 @@ class BurgModule {
     return previewGeneratorsMap[group.preview](burg);
   }
 
-  /** Found a burg on a free land cell at a map point; returns its id */
-  add(x: number, y: number): number {
+  /** Found a burg; realm defaults to surface */
+  add(x: number, y: number, realm: BurgRealm = "surface"): number {
     const { cells } = pack;
     const cellId = Pack.requireCell(x, y);
-    if (cells.h[cellId] < 20) throw new Error("A burg cannot be placed in the water");
-    if (cells.burg[cellId]) throw new Error(`Cell ${cellId} already has burg ${cells.burg[cellId]}`);
+    if (!["surface", "sky", "underdark", "underwater"].includes(realm))
+      throw new Error(`Unknown realm: ${realm}. Expected surface, sky, underdark or underwater`);
+    if (realm === "underwater" && cells.h[cellId] >= 20) throw new Error("An underwater burg cannot be placed on land");
+    if (realm === "surface" && cells.h[cellId] < 20) throw new Error("A burg cannot be placed in the water");
+    if (realm === "underdark" && cells.h[cellId] < 20) throw new Error("An underdark burg must tunnel under land");
+    // a realm burg never takes the surface cell's slot
+    if (realm === "surface" && cells.burg[cellId])
+      throw new Error(`Cell ${cellId} already has burg ${cells.burg[cellId]}`);
 
     const burgId = pack.burgs.length;
     const culture = cells.culture[cellId];
@@ -806,13 +1201,20 @@ class BurgModule {
       x,
       y,
       i: burgId,
-      state: cells.state[cellId],
+      state: realm === "surface" ? cells.state[cellId] : 0,
       culture,
       name: Names.getCulture(culture),
       feature: cells.f[cellId],
       capital: 0,
       port: 0,
-      tags: []
+      tags: [],
+      ...(realm === "sky"
+        ? { flying: 1 }
+        : realm === "underdark"
+          ? { underdark: 1 }
+          : realm === "underwater"
+            ? { underwater: 1 }
+            : {})
     };
     this.definePopulation(burg);
     this.defineEmblem(burg);
@@ -825,8 +1227,11 @@ class BurgModule {
     this.defineGroup(burg, populations);
 
     pack.burgs.push(burg);
-    cells.burg[cellId] = burgId;
-    Development.settle(cellId);
+    if (realm === "surface") {
+      cells.burg[cellId] = burgId;
+      Development.settle(cellId);
+    }
+    if (realm !== "surface") this.assignToRealmState(burg);
     Pack.markChanged();
 
     Routes.connect(cellId);
@@ -845,6 +1250,10 @@ class BurgModule {
     const seatOf = new Map(provinces.filter(province => province.i && province.burg).map(p => [p.burg, p]));
     const newIds = new Map<number, number>();
     cells.burg = new Uint16Array(cells.i.length);
+    // realm states survive regeneration only while their realm capital is kept (locked)
+    const realmStates = states.filter(
+      state => state.i && !state.removed && state.capital && !isSurfaceBurg(burgs[state.capital])
+    );
     states
       .filter(state => state.i)
       .forEach(state => {
@@ -865,7 +1274,7 @@ class BurgModule {
       burg.i = newId;
       newBurgs.push(burg);
       burgsTree.add([burg.x, burg.y]);
-      cells.burg[burg.cell] = newId;
+      cells.burg[burg.cell] = groundSlotOnPlacement(cells.burg[burg.cell], burg);
 
       if (burg.capital && burg.state !== undefined) {
         states[burg.state].capital = newId;
@@ -909,6 +1318,11 @@ class BurgModule {
     pack.burgs = newBurgs;
     this.assignPorts();
 
+    for (const state of realmStates) {
+      const capital = state.capital ? newBurgs[state.capital] : undefined;
+      if (!capital || capital.removed) state.removed = true;
+    }
+
     states
       .filter(state => state.i && !state.removed && !state.capital)
       .forEach(state => {
@@ -924,6 +1338,7 @@ class BurgModule {
 
     for (const cell of oldCells) Development.vacate(cell); // land a dropped burg stood on alone
     this.specify();
+    this.assignRealmHubs(); // the realm routes need the regenerated hub flags
     for (const province of provinces)
       if (province.i && !province.removed && !province.burg) this.seatProvince(province);
     Routes.regenerate();
@@ -1051,19 +1466,21 @@ class BurgModule {
     const burg = this.living(burgId);
     const { cells } = pack;
     const cell = Pack.requireCell(x, y);
-    if (cells.h[cell] < 20) throw new Error("A burg cannot be placed in the water");
-    if (cells.burg[cell] && cells.burg[cell] !== burgId)
+    if (burg.underwater && cells.h[cell] >= 20) throw new Error("An underwater burg cannot be placed on land");
+    if (!burg.flying && !burg.underwater && cells.h[cell] < 20) throw new Error("A burg cannot be placed in the water");
+    // a non-surface burg may share its new cell with the surface burg holding the slot
+    if (isSurfaceBurg(burg) && cells.burg[cell] && cells.burg[cell] !== burgId)
       throw new Error(`Cell ${cell} already has burg ${cells.burg[cell]}`);
-    const state = cells.state[cell];
+    const state = isSurfaceBurg(burg) ? cells.state[cell] : (burg.state ?? 0);
     if (burg.capital && state !== burg.state) throw new Error("A capital cannot be moved into another state");
     const province = pack.provinces?.find(p => p.i && !p.removed && p.burg === burgId);
     if (province && cells.province[cell] !== province.i)
       throw new Error(`Burg ${burgId} is the capital of province ${province.i} and cannot leave it`);
 
-    cells.burg[burg.cell] = 0;
+    cells.burg[burg.cell] = cellSlotAfterRemoval(cells.burg[burg.cell], burgId);
+    cells.burg[cell] = groundSlotOnPlacement(cells.burg[cell], burg);
     Development.vacate(burg.cell);
-    cells.burg[cell] = burgId;
-    Development.settle(cell);
+    if (isSurfaceBurg(burg)) Development.settle(cell);
     Object.assign(burg, { cell, state, x: rn(x, 2), y: rn(y, 2), feature: cells.f[cell] });
     Pack.markChanged();
     if (burg.capital) pack.states[state].center = cell;
@@ -1113,13 +1530,99 @@ class BurgModule {
     if (pack.markets?.some(market => market.centerBurgId === burgId))
       throw new Error(`Burg ${burgId} is a market center; remove the market first`);
 
-    pack.cells.burg[burg.cell] = 0;
+    pack.cells.burg[burg.cell] = cellSlotAfterRemoval(pack.cells.burg[burg.cell], burgId);
     Development.vacate(burg.cell);
     burg.removed = true;
     delete burg.note;
     delete burg.coa;
     for (const province of pack.provinces ?? []) if (province.burg === burgId) province.burg = 0;
     if (pack.deals) pack.deals = pack.deals.filter(([dealBurg]) => dealBurg !== burgId); // its trade is gone too
+  }
+
+  /** Assign a non-surface burg to the nearest living realm state of its realm, or to the neutrals if none exists */
+  private assignToRealmState(burg: Burg): void {
+    const realm = getBurgRealm(burg);
+    if (realm === "surface") return;
+    let nearest = 0;
+    let best = Infinity;
+    for (const state of pack.states) {
+      if (!state.i || state.removed) continue;
+      const capital = pack.burgs[state.capital];
+      if (!capital || getBurgRealm(capital) !== realm) continue;
+      const dist = Math.hypot(capital.x - burg.x, capital.y - burg.y);
+      if (dist < best) {
+        best = dist;
+        nearest = state.i;
+      }
+    }
+    burg.state = nearest;
+  }
+
+  /** Set a burg's realm. A capital cannot change realm */
+  setRealm(burgId: number, realm: string): void {
+    const burg = this.living(burgId);
+    const next = requireOneOf(realm, ["surface", "sky", "underdark", "underwater"], "The realm") as BurgRealm;
+    if (burg.capital) throw new Error("A capital cannot change realm; make another burg the capital first");
+    const previous = getBurgRealm(burg);
+    if (next === previous) return;
+
+    const { cells } = pack;
+    if ((next === "surface" || next === "underdark") && cells.h[burg.cell] < 20)
+      throw new Error(
+        `${next === "surface" ? "A surface" : "An underdark"} burg cannot be placed in the water; move it to land first`
+      );
+    if (next === "underwater" && cells.h[burg.cell] >= 20) throw new Error("An underwater burg must live in the water");
+
+    if (next === "surface") {
+      const occupant = cells.burg[burg.cell];
+      const occupantBurg = occupant ? pack.burgs[occupant] : undefined;
+      if (occupantBurg && occupant !== burg.i && !occupantBurg.removed)
+        throw new Error(`Cell ${burg.cell} already holds a surface burg; move or remove it first`);
+      delete burg.flying;
+      delete burg.underdark;
+      delete burg.underwater;
+      delete burg.altitude; // the surface has no vertical offset
+      burg.state = cells.state[burg.cell];
+      cells.burg[burg.cell] = burg.i;
+    } else {
+      delete burg.port; // realm burgs are never ports
+      delete burg.skyPort; // skyports are surface-only hubs
+      delete burg.underdarkGate; // gates are surface-only hubs
+      if (cells.burg[burg.cell] === burg.i) cells.burg[burg.cell] = 0; // hand the slot back to the surface
+      delete burg.flying;
+      delete burg.underdark;
+      delete burg.underwater;
+      burg[next === "sky" ? "flying" : next === "underdark" ? "underdark" : "underwater"] = 1;
+      this.assignToRealmState(burg);
+    }
+    this.changeGroup(burg, null);
+  }
+
+  /** Set a surface burg as a ground airfield for air routes */
+  setSkyPort(burgId: number, port: boolean): void {
+    const burg = this.living(burgId);
+    if (!isSurfaceBurg(burg)) throw new Error("Only a surface burg can be a skyport");
+    if (port) burg.skyPort = 1;
+    else delete burg.skyPort;
+  }
+
+  /** Set a surface burg as an underdark entrance hub */
+  setUnderdarkGate(burgId: number, gate: boolean): void {
+    const burg = this.living(burgId);
+    if (!isSurfaceBurg(burg)) throw new Error("Only a surface burg can be an underdark gate");
+    if (gate) burg.underdarkGate = 1;
+    else delete burg.underdarkGate;
+  }
+
+  /** Set a burg's vertical offset in feet; 0 clears it */
+  setAltitude(burgId: number, altitude: number | null): void {
+    const burg = this.living(burgId);
+    if (altitude === null || altitude === 0) {
+      delete burg.altitude;
+      return;
+    }
+    if (typeof altitude !== "number" || !Number.isFinite(altitude)) throw new Error("The altitude must be a number");
+    burg.altitude = rn(altitude, 1);
   }
 }
 

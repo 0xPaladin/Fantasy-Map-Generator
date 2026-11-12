@@ -2,6 +2,7 @@
 
 import { Routes } from "@/model/economy/routes-generator";
 import { Pack } from "@/model/graph/pack-generator";
+import { isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Transports } from "@/model/story/journeys/transports-generator";
 import { isWater } from "@/utils/height-utils";
 
@@ -24,18 +25,18 @@ const RULES = [
   "river-unique", // the course does not come back to a cell it left
   "river-outlet", // -1 only ends a course, at a point on the map edge or off it
   "route-points", // a point's cell, or on a meander the next cell of the path, is under it or next to it
-  "route-steps", // consecutive cells are neighbors
+  "route-steps", // consecutive cells of a surface route are neighbors; air lanes fly between far cells
   "route-links", // cells.routes links cells along existing routes
   "route-cache", // the Routes path cache matches the routes
   "journey-points",
   "journey-steps", // by land or water, consecutive cells are neighbors
   "marker-cells", // a marker's cell is the cell under it
-  "burg-cells", // a burg owns a land cell no other burg has
+  "burg-cells", // a surface burg owns a land cell no other surface burg has
   "burg-positions", // a burg lies in its cell
   "burg-features", // feature and port water fit the cell
   "burg-routes", // a burg is on the route network, so it can trade
   "burg-markets", // a burg's cell belongs to a living market, so it takes part in the economy
-  "cell-burgs", // cells.burg points at living burgs that point back
+  "cell-burgs", // cells.burg points at living surface burgs that point back
   "state-centers",
   "state-capitals", // a living state has a living capital
   "state-provinces", // a state lists living provinces only
@@ -136,10 +137,12 @@ class MapIntegrityModule {
     const routePairs = new Set<string>();
     for (const route of pack.routes) {
       if (offPath(route.points)) fail("route-points", route.i);
+      // an air lane is a direct line between far-apart cells: adjacency is only for surface networks
+      const checkSteps = route.group !== "airroutes";
       for (let k = 1; k < route.points.length; k++) {
         const [a, b] = [route.points[k - 1][2], route.points[k][2]];
         routePairs.add(`${a}-${b}`).add(`${b}-${a}`);
-        if (valid(a) && valid(b) && !neighbors(a, b)) fail("route-steps", route.i);
+        if (checkSteps && valid(a) && valid(b) && !neighbors(a, b)) fail("route-steps", route.i);
       }
     }
     for (const [from, links] of Object.entries(cells.routes ?? {})) {
@@ -169,18 +172,30 @@ class MapIntegrityModule {
     const burgsByCell = new Set<number>();
     const marketIds = new Set((pack.markets ?? []).map(market => market.i));
     for (const burg of living(pack.burgs)) {
-      if (!land(burg.cell) || cells.burg[burg.cell] !== burg.i || burgsByCell.has(burg.cell))
-        fail("burg-cells", burg.i);
-      burgsByCell.add(burg.cell);
+      // only surface burgs own a land cell slot; realm burgs may share cells freely
+      if (isSurfaceBurg(burg)) {
+        if (!land(burg.cell) || cells.burg[burg.cell] !== burg.i || burgsByCell.has(burg.cell))
+          fail("burg-cells", burg.i);
+        burgsByCell.add(burg.cell);
+      }
       if (valid(burg.cell) && Pack.findCell(burg.x, burg.y) !== burg.cell) fail("burg-positions", burg.i);
       const port = burg.port ? features[burg.port] : undefined;
       if (burg.feature !== cells.f[burg.cell] || (burg.port && (!port || port.land))) fail("burg-features", burg.i);
       if (valid(burg.cell) && !Object.keys(cells.routes?.[burg.cell] ?? {}).length) fail("burg-routes", burg.i);
-      if (!marketIds.has(cells.market?.[burg.cell] ?? 0)) fail("burg-markets", burg.i);
+      // a realm burg on intact land takes part in the economy like any burg; off the grid it trades as it can
+      if (
+        (isSurfaceBurg(burg) || (valid(burg.cell) && cells.h[burg.cell] >= 20)) &&
+        !marketIds.has(cells.market?.[burg.cell] ?? 0)
+      )
+        fail("burg-markets", burg.i);
     }
     for (let cell = 0; cell < n; cell++) {
       const burgId = cells.burg[cell];
-      if (burgId && (!alive(pack.burgs, burgId) || pack.burgs[burgId].cell !== cell)) fail("cell-burgs", cell);
+      if (
+        burgId &&
+        (!alive(pack.burgs, burgId) || !isSurfaceBurg(pack.burgs[burgId]) || pack.burgs[burgId].cell !== cell)
+      )
+        fail("cell-burgs", cell);
     }
 
     for (const state of living(pack.states)) {

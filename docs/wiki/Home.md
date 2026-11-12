@@ -62,6 +62,7 @@ To report a problem or propose a feature, see [Reporting bugs and suggesting ide
 [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Living-World) ·
 [Battle Engine](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Battle-Engine) ·
 [Astral Cartographer](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Astral-Cartographer) ·
+[Non-land burgs](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Non-land-burgs) ·
 [History](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/History) ·
 [Legends browser](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Legends) ·
 [Globe generation and use](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Globe-generation-and-use)

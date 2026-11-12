@@ -2320,6 +2320,43 @@ async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacyS
     migrateEconomyRun();
   }
 
+  // The fork's realm networks (sky, underdark, underwater burgs) landed ahead of the upstream
+  // release that ships them, so the map version cannot gate this repair: a pre-realm map and a
+  // realm-aware one both carry the same version. Backfill unconditionally, mutating only what is
+  // missing — a no-op for maps the fork generated.
+  const realmGroupNames = ["skyheart", "skyhold", "underdark_capital", "underdark_hold", "underwater_capital", "underwater_settlement"];
+
+  for (const group of Burgs.getDefaultGroups()) {
+    if (!realmGroupNames.includes(group.name)) continue;
+    if (options.map.burgs.groups.some(existing => existing.name === group.name)) continue;
+    options.map.burgs.groups.push({ ...group });
+  }
+
+  for (const group of Labels.getDefaultGroups()) {
+    if (group.type !== "burg" || !realmGroupNames.includes(group.name)) continue;
+    if (options.map.labels.groups.some(existing => existing.type === "burg" && existing.name === group.name)) continue;
+    options.map.labels.groups.push({ ...group });
+  }
+
+  // the realm route and burg styles: taken from the defaults the same way generation would; the
+  // store is the only record of a route group, so without these a loaded old map draws no realm routes
+  const realmStyleRecord = data[48] ? safeParseJSON(data[48]) : undefined;
+  if (realmStyleRecord) {
+    const defaults = Styles.parse(undefined);
+    realmStyleRecord.routes ??= { groups: {} };
+    realmStyleRecord.routes.groups ??= {};
+    for (const group of ["airroutes", "underdarkroutes", "undersearoutes"]) {
+      realmStyleRecord.routes.groups[group] ??= defaults.routes.groups[group];
+    }
+    realmStyleRecord.burgIcons ??= { groups: {} };
+    realmStyleRecord.labels ??= { groups: {} };
+    for (const group of realmGroupNames) {
+      realmStyleRecord.burgIcons.groups[group] ??= defaults.burgIcons.groups[group];
+      realmStyleRecord.labels.groups[group] ??= defaults.labels.groups[group];
+    }
+    data[48] = JSON.stringify(realmStyleRecord);
+  }
+
   pack.factions ??= [{ i: 0 } as Faction];
 }
 

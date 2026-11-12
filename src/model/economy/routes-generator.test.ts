@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { MIN_NAVIGABLE_FLUX, Rivers } from "@/model/physical/river-generator";
+import type { Burg } from "@/model/political/burgs-generator";
 import { isWrapEnabled, Routes, wrapDeltaX, wrapDistanceSquared } from "./routes-generator";
 
 describe("RoutesModule river-aware water cost", () => {
@@ -655,6 +656,140 @@ describe("ensureRouteGroupStyles before a map exists", () => {
   });
 });
 
+describe("RoutesModule realm networks", () => {
+  const cells = () => ({
+    i: [0, 1, 2, 3, 4, 5, 6, 7],
+    h: [60, 55, 30, 30, 30, 60, 30, 30],
+    t: [0, 0, 0, 0, 0, 0, 0, 0],
+    r: [0, 0, 0, 0, 0, 0, 0, 0],
+    fl: [0, 0, 0, 0, 0, 0, 0, 0],
+    p: [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [0, 2],
+      [1, 1],
+      [1, 2],
+      [2, 1]
+    ] as [number, number][],
+    c: [[1], [0, 2, 5], [1, 3], [2, 4, 7], [3, 6], [1, 5, 6], [4, 5, 7], [3, 6]],
+    routes: {} as Record<number, object>,
+    f: [1, 1, 1, 1, 1, 1, 1, 1],
+    state: [0, 0, 0, 0, 0, 0, 0, 0],
+    burg: [0, 0, 0, 0, 0, 0, 0, 0],
+    good: [0, 0, 0, 0, 0, 0, 0, 0]
+  });
+
+  beforeEach(async () => {
+    globalThis.options = {
+      ...globalThis.options,
+      map: {
+        ...globalThis.options.map,
+        seed: "realm-route-test",
+        graph: { width: 100, height: 100, points: 100 }
+      }
+    } as any;
+    globalThis.pack = {
+      cells: cells(),
+      burgs: [{ i: 0 } as any],
+      rivers: [],
+      routes: [],
+      markers: []
+    } as any;
+    await import("./routes-generator");
+  });
+
+  const addBurg = (burg: { i: number; x: number; y: number; cell: number } & Partial<Burg>) => {
+    (globalThis.pack.burgs as Burg[]).push({ tags: [], ...burg } as Burg);
+  };
+
+  it("airroutes mesh the skyburgs and every lane touches a skyburg", () => {
+    addBurg({ i: 1, cell: 0, x: 10, y: 10, flying: 1 });
+    addBurg({ i: 2, cell: 1, x: 15, y: 12, flying: 1 });
+    addBurg({ i: 3, cell: 2, x: 20, y: 10, skyPort: 1 });
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const routes = (Routes as any)["generateAirRoutes"]() as { group: string; cells: number[] }[];
+
+    expect(routes.length).toBeGreaterThan(0);
+    for (const route of routes) expect(route.group).toBe("airroutes");
+    const lanes = routes.map(route => route.cells);
+    // every skyburg reached by at least one lane
+    expect(lanes.some(cells => cells.includes(0))).toBe(true);
+    expect(lanes.some(cells => cells.includes(1))).toBe(true);
+    // lanes link a skyburg to a skyport or to each other
+    for (const cells of lanes) {
+      const kinds = cells.map(cell => (cell === 0 || cell === 1 ? "flying" : "port"));
+      expect(kinds).toContain("flying");
+    }
+  });
+
+  it("underdarkroutes tunnel through the bedrock when there is a mountain path", () => {
+    // cell 0 hold (h=60), cell 5 g1 (h=60), cell 7 gate (h=30); plain ground would be slower
+    addBurg({ i: 1, cell: 0, x: 1, y: 1, underdark: 1 });
+    addBurg({ i: 4, cell: 7, x: 20, y: 10, underdarkGate: 1 });
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const routes = (Routes as any)["generateUnderdarkRoutes"]() as { group: string; cells: number[] }[];
+
+    expect(routes).toHaveLength(1);
+    expect(routes[0].group).toBe("underdarkroutes");
+    // the mountain path: 0 - 1 - 5 - 6 - 7, not the low road via 2 and 3
+    expect(routes[0].cells).toEqual([0, 1, 5, 6, 7]);
+  });
+
+  it("underdarkroutes cannot cross the abyss (t < -1)", () => {
+    globalThis.pack.cells.h[3] = 10; // cell 3 is open water
+    globalThis.pack.cells.t[3] = -2; // the abyss, no tunnelling
+    addBurg({ i: 1, cell: 0, x: 1, y: 1, underdark: 1 });
+    addBurg({ i: 4, cell: 7, x: 20, y: 10, underdarkGate: 1 });
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const routes = (Routes as any)["generateUnderdarkRoutes"]() as { group: string; cells: number[] }[];
+
+    // the tunnel cannot pierce the abyss at cell 3; the route must use the other branch
+    for (const route of routes) {
+      expect(route.cells).not.toContain(3);
+    }
+  });
+
+  it("undersearoutes stay in water cells between the endpoints", () => {
+    // a coastal world in a straight row: water row 0-1-2-3-4 with the port town at 2
+    globalThis.pack.cells = {
+      i: [0, 1, 2, 3, 4],
+      h: [15, 15, 30, 15, 15],
+      t: [0, 0, 0, 0, 0],
+      r: [0, 0, 0, 0, 0],
+      fl: [0, 0, 0, 0, 0],
+      p: [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+        [3, 0],
+        [4, 0]
+      ] as [number, number][],
+      c: [[1], [0, 2], [1, 3], [2, 4], [3]],
+      f: [1, 1, 1, 1, 1],
+      state: [0, 0, 0, 0, 0],
+      burg: [0, 0, 0, 0, 0],
+      good: [0, 0, 0, 0, 0],
+      routes: {}
+    } as any;
+    addBurg({ i: 1, cell: 0, x: 0, y: 0, underwater: 1 });
+    addBurg({ i: 2, cell: 4, x: 4, y: 0, underwater: 1 });
+    addBurg({ i: 3, cell: 2, x: 2, y: 0, port: 1 });
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const routes = (Routes as any)["generateUnderseaRoutes"]() as { group: string; cells: number[] }[];
+
+    expect(routes.length).toBeGreaterThan(0);
+    for (const route of routes) expect(route.group).toBe("undersearoutes");
+    for (const route of routes) {
+      for (const cell of route.cells.slice(1, -1)) expect(pack.cells.h[cell]).toBeLessThan(20);
+    }
+  });
+});
 describe("Seam-wrapping routes (lonT === 360)", () => {
   beforeEach(() => {
     globalThis.options = {

@@ -65,7 +65,9 @@ const burgGroup = z.strictObject({
   states: ids,
   cultures: ids,
   religions: ids,
-  preview: z.string().optional()
+  preview: z.string().optional(),
+  /** the zoom scale a group becomes visible at; unset means visible at every scale */
+  zoomThreshold: z.number().min(0).optional()
 });
 
 const militaryUnit = z.strictObject({
@@ -221,6 +223,12 @@ export const mapSchema = z.strictObject({
   /** Whole world / Northern / Tropical / Southern map placement, or Astral star chart */
   extents: z.enum(["whole", "northern", "tropical", "southern", "astral"]).default("whole"),
   burgs: z.strictObject({ groups: z.array(burgGroup) }),
+  /** per-realm settlement generation toggles; see docs/plans/multi-realm.md */
+  population: z.strictObject({
+    skyBurgs: z.boolean().default(true),
+    underdarkBurgs: z.boolean().default(true),
+    underwaterBurgs: z.boolean().default(true)
+  }),
   labels: z.strictObject({ groups: z.array(labelGroup) }),
   military: z.strictObject({ units: z.array(militaryUnit) }),
   transports: z.array(transport),

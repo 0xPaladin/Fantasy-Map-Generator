@@ -167,6 +167,44 @@ type DemandEntry = {
 /** One step of a burg's production run, logged in debug mode */
 export type ProductionLogEntry = ManufacturingEntry | TradeEntry | DemandEntry;
 
+/** A realm economy: the surface sources a realm lacks (forestry, livestock), what it harvests
+ *  instead and at what multiplier, and whether it produces at all */
+type RealmEconomy = {
+  consumerOnly?: boolean;
+  excludedNames: Set<string>;
+  multipliers: Record<string, number>;
+  stapleTags: string[];
+  /** extra mining multiplier on high ground or over mineral riches */
+  miningBoost?: (burg: Burg, good: Good) => number;
+};
+
+const SURFACE_SOURCE_GOODS = new Set(["Wood", "Mahogany", "Cattle", "Sheep", "Horses"]);
+
+const REALM_ECONOMIES: Record<string, RealmEconomy> = {
+  // skyburgs are consumers: they do not make anything, they only buy at their cell's market
+  sky: { excludedNames: SURFACE_SOURCE_GOODS, multipliers: {}, stapleTags: [], consumerOnly: true },
+  underdark: {
+    excludedNames: SURFACE_SOURCE_GOODS,
+    multipliers: { ore: 1.8, mineral: 1.8, food: 0.4, ritual: 1.3, educational: 1.3 },
+    stapleTags: ["food"],
+    miningBoost: (burg, good) => (pack.cells.h[burg.cell] >= 50 || good.tags.includes("mineral") ? 1.25 : 1) // mountain roots and mineral riches
+  },
+  underwater: {
+    excludedNames: SURFACE_SOURCE_GOODS,
+    multipliers: { aquatic: 1.8, food: 0.5, ore: 0.6, mineral: 0.6, luxury: 1.2 },
+    stapleTags: ["food", "aquatic"] // kelp farms
+  }
+};
+
+const getRealmEconomy = (burg: Burg): RealmEconomy | undefined =>
+  burg.flying
+    ? REALM_ECONOMIES.sky
+    : burg.underdark
+      ? REALM_ECONOMIES.underdark
+      : burg.underwater
+        ? REALM_ECONOMIES.underwater
+        : undefined;
+
 export class ProductionModule {
   regenerate(): void {
     Markets.claimWaterDeposits();
@@ -313,9 +351,14 @@ export class ProductionModule {
   private createBurgDay(index: ProductionIndex, burg: Burg, market: Market, recording = false): BurgDay {
     const workers = this.getWorkers(burg);
     if (workers === MAX_WORKERS) log.warn(`Burg ${burg.name} (${burg.i}) workforce is capped at ${MAX_WORKERS}`);
+    // a sky is a realm with nothing under it: the burg consumes without lifting a tool
+    const realm = getRealmEconomy(burg);
     const deposit = Goods.get(pack.cells.good[burg.cell]);
-    const goals =
-      deposit && !index.productiveGoods.includes(deposit) ? [...index.productiveGoods, deposit] : index.productiveGoods;
+    const goals = realm?.consumerOnly
+      ? []
+      : deposit && !index.productiveGoods.includes(deposit)
+        ? [...index.productiveGoods, deposit]
+        : index.productiveGoods;
 
     return {
       burg,
@@ -382,7 +425,7 @@ export class ProductionModule {
     workerFraction: number
   ): number {
     const { good, ingredients, maxYield } = decision.action;
-    const modifier = this.getBurgModifiers(day, good);
+    const modifier = this.getBurgModifiers(day, good) * this.getRealmOutputModifier(day.burg, good);
     const specialization = this.getSpecialization(index, day, good.i);
     const output = modifier * specialization; // units a worker makes
     let actualYield = Math.min(workerFraction, maxYield);
@@ -863,7 +906,10 @@ export class ProductionModule {
 
   /** The good's modifiers at the burg, fixed for the run; a deposit gives more while it lasts */
   private getBurgModifiers(day: BurgDay, good: Good): number {
-    day.modifiers[good.i] ??= Output.getModifiers(good, day.burg.cell) * this.getBuildingModifier(day.burg, good);
+    day.modifiers[good.i] ??=
+      Output.getModifiers(good, day.burg.cell) *
+      this.getBuildingModifier(day.burg, good) *
+      this.getRealmOutputModifier(day.burg, good);
     return day.modifiers[good.i] * (this.isWorkingDeposit(day, good) ? DEPOSIT_OUTPUT : 1);
   }
 
@@ -1036,6 +1082,11 @@ export class ProductionModule {
   ): GoalActionPlan | null {
     if (workersLeft <= 0 || targetUnits <= 0 || targetUnits > workersLeft + 0.001) return null;
     if (path[good.i]) return null;
+    // a realm burg cannot raise what its realm has no access to; it buys such goods from its market
+    if (this.isRealmExcluded(day.burg, good)) {
+      path[good.i] = false;
+      return null;
+    }
 
     const recipeList = this.getRecipes(index, day, good);
     if (!recipeList?.length) return null;
@@ -1260,6 +1311,26 @@ export class ProductionModule {
   // Urban production for a single burg
   getBurgProduction(burg: Burg): Record<number, number> {
     return Object.fromEntries(burg.production ?? []);
+  }
+
+  /** The realm economy multiplier for a good, on top of the culture modifiers */
+  private getRealmOutputModifier(burg: Burg, good: Good): number {
+    const economy = getRealmEconomy(burg);
+    if (!economy) return 1;
+
+    let multiplier = 1;
+    for (const [tag, value] of Object.entries(economy.multipliers)) {
+      if (good.tags.includes(tag)) multiplier *= value;
+    }
+    if (economy.miningBoost && (good.tags.includes("ore") || good.tags.includes("mineral"))) {
+      multiplier *= economy.miningBoost(burg, good);
+    }
+    return multiplier;
+  }
+
+  /** Whether a realm burg cannot raise this good itself (it buys it from its market instead) */
+  private isRealmExcluded(burg: Burg, good: Good): boolean {
+    return Boolean(getRealmEconomy(burg)?.excludedNames.has(good.name));
   }
 }
 

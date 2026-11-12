@@ -1,6 +1,7 @@
 import Alea from "alea";
 import { quadtree } from "d3";
 import type { Burg } from "@/model/political/burgs-generator";
+import { isSurfaceBurg } from "@/model/political/burgs-generator";
 import type { Market } from "@/types/economy";
 import { getColors, getRandomColor, requireFill } from "@/utils/color-utils";
 import { FlatQueue } from "@/utils/flat-queue";
@@ -68,7 +69,7 @@ export class MarketsModule {
 
   private createMarkets(scored = this.scoreBurgs()): Market[] {
     const spacing = this.getSpacing(
-      scored.map(({ burg }) => burg).filter(burg => burg.i && !burg.removed),
+      scored.map(({ burg }) => burg).filter(burg => burg.i && !burg.removed && isSurfaceBurg(burg)),
       burg => this.feeFactor(burg)
     );
 
@@ -92,7 +93,8 @@ export class MarketsModule {
       treeByLandmass.get(burg.feature!)!.add([burg.x, burg.y, marketId]);
     };
 
-    const living = scored.filter(({ burg }) => burg.i && !burg.removed);
+    // realm burgs never found a market; they take part in the one their cell falls to, like any burg
+    const living = scored.filter(({ burg }) => burg.i && !burg.removed && isSurfaceBurg(burg));
     for (const { burg } of living) {
       const { x, y } = burg;
       const minSpacing = spacing.get(burg.i!)!;
@@ -127,6 +129,7 @@ export class MarketsModule {
     for (const { burg } of scored) {
       const marketId = cellMarket[burg.cell];
       if (!burg.i || burg.removed || !marketId || best.has(marketId)) continue;
+      if (!isSurfaceBurg(burg)) continue; // a market never seats at a realm burg
       if (burg.feature === pack.burgs[this.marketById[marketId].centerBurgId].feature) best.set(marketId, burg.i);
     }
     for (const market of markets) market.centerBurgId = best.get(market.i) ?? market.centerBurgId;

@@ -2,8 +2,8 @@ import { type HierarchyCircularNode, pack as packLayout, select, stratify } from
 import { Controllers } from "@/controllers";
 import { Markets } from "@/model/economy/markets-generator";
 import { Prosperity } from "@/model/economy/prosperity";
-import type { Burg } from "@/model/political/burgs-generator";
-import { Burgs } from "@/model/political/burgs-generator";
+import type { Burg, BurgRealm } from "@/model/political/burgs-generator";
+import { Burgs, getBurgRealm, isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
 import { convertTemperature, getHeight, getTemperatureLikeness } from "@/model/units";
@@ -39,7 +39,7 @@ import { ensureEl, findEl } from "@/utils/node-utils";
 import { rn, si } from "@/utils/number-utils";
 
 type Filters = { stateId?: number | null; cultureId?: number | null };
-type FilterState = { search: string; stateId: number; cultureId: number };
+type FilterState = { search: string; stateId: number; cultureId: number; realm: string; hub: string };
 
 const dialogId = "burgsOverview" as const;
 const CSV_COLUMNS = [
@@ -219,7 +219,15 @@ const burgsTable = initEditorTable<Burg>({
 
 function open(filters: Filters = {}): void {
   if (options.app.mode) return;
-  filterState = dialogState.get(dialogId, "filters", () => ({ search: "", stateId: -1, cultureId: -1 }));
+  filterState = dialogState.get(dialogId, "filters", () => ({
+    search: "",
+    stateId: -1,
+    cultureId: -1,
+    realm: "all",
+    hub: "all"
+  }));
+  if (!["all", "surface", "sky", "underdark", "underwater"].includes(filterState.realm)) filterState.realm = "all";
+  if (!["all", "skyPort", "underdarkGate"].includes(filterState.hub)) filterState.hub = "all";
   Dialog.closeAll(`#${dialogId}, .stable`);
   Layers.show("burgIcons", "labels");
 
@@ -250,6 +258,20 @@ function renderDialog(): void {
           >${t("State")}:
           <select id="burgsFilterState"></select
         ></label>
+        <div id="burgsHubFilters" data-tip="${t("Filter by cross-realm hub: skyports serve the air lanes, underdark gates open to the tunnel network")}" class="editorFilters">
+          <span class="label" style="align-self: center">${t("Hub")}:</span>
+          <button id="burgsHubAll" data-hub="all" class="burgsFilterButton active">${t("All")}</button>
+          <button id="burgsHubSkyPort" data-hub="skyPort" class="burgsFilterButton">${t("Skyport")}</button>
+          <button id="burgsHubUnderdarkGate" data-hub="underdarkGate" class="burgsFilterButton">${t("Underdark Gate")}</button>
+        </div>
+        <div id="burgsRealmFilters" data-tip="${t("Filter by realm: surface, sky, underdark or underwater")}" class="editorFilters">
+          <span class="label" style="align-self: center">${t("Realm")}:</span>
+          <button id="burgsRealmAll" data-realm="all" class="burgsFilterButton active">${t("All")}</button>
+          <button id="burgsRealmSurface" data-realm="surface" class="burgsFilterButton">${t("Surface")}</button>
+          <button id="burgsRealmSky" data-realm="sky" class="burgsFilterButton">${t("Sky")}</button>
+          <button id="burgsRealmUnderdark" data-realm="underdark" class="burgsFilterButton">${t("Underdark")}</button>
+          <button id="burgsRealmUnderwater" data-realm="underwater" class="burgsFilterButton">${t("Underwater")}</button>
+        </div>
         <label for="burgsFilterCulture"
           >${t("Culture")}:
           <select id="burgsFilterCulture"></select
@@ -285,6 +307,12 @@ function renderDialog(): void {
           class="icon-retweet"
         ></button>
         <button id="addNewBurg" data-tip="${sentences(t("Add"), t("Hold Shift to add multiple"))}" class="icon-plus"></button>
+        <select id="addBurgRealm" title="${t("Realm for the next burg")}" class="compact">
+          <option value="surface">${t("Surface")}</option>
+          <option value="sky">${t("Sky")}</option>
+          <option value="underdark">${t("Underdark")}</option>
+          <option value="underwater">${t("Underwater")}</option>
+        </select>
         <button
           id="burgsExport"
           data-tip="${t("Save data as a CSV file")}"
@@ -321,8 +349,14 @@ function renderDialog(): void {
   ensureEl("burgsFilterState").addEventListener("change", onFilterChange);
   ensureEl("burgsFilterCulture").addEventListener("change", onFilterChange);
   ensureEl("burgsSearch").addEventListener("input", onFilterChange);
+  ensureEl("burgsRealmFilters").addEventListener("click", onRealmHubFilterClick);
+  ensureEl("burgsHubFilters").addEventListener("click", onRealmHubFilterClick);
   ensureEl("regenerateBurgNames").addEventListener("click", regenerateNames);
-  ensureEl("addNewBurg").addEventListener("click", () => void Controllers.BurgCreator.toggle());
+  ensureEl("addNewBurg").addEventListener("click", () => {
+    const realm = ensureEl<HTMLSelectElement>("addBurgRealm").value as BurgRealm;
+    Controllers.BurgCreator.setRealm(realm);
+    void Controllers.BurgCreator.toggle(realm);
+  });
   ensureEl("burgsExport").addEventListener("click", downloadBurgsData);
   ensureEl("burgsImport").addEventListener("click", () => Csv.pick(uploadBurgsCsv));
   ensureEl("burgsLockAll").addEventListener("click", toggleLockAll);
@@ -361,7 +395,30 @@ function updateFilter(): void {
   culturesSorted.forEach(
     c => void cultureFilter.options.add(new Option(c.name, String(c.i), false, c.i === filterState.cultureId))
   );
+  captureRealmFilterButtons();
   dialogState.set(dialogId, "filters", filterState);
+}
+
+function captureRealmFilterButtons(): void {
+  for (const id of [
+    "burgsRealmAll",
+    "burgsRealmSurface",
+    "burgsRealmSky",
+    "burgsRealmUnderdark",
+    "burgsRealmUnderwater"
+  ])
+    ensureEl(id).classList.toggle("active", ensureEl(id).dataset.realm === filterState.realm);
+  for (const id of ["burgsHubAll", "burgsHubSkyPort", "burgsHubUnderdarkGate"])
+    ensureEl(id).classList.toggle("active", ensureEl(id).dataset.hub === filterState.hub);
+}
+
+function onRealmHubFilterClick(event: Event): void {
+  const button = (event.target as HTMLElement).closest<HTMLElement>("[data-realm], [data-hub]");
+  if (button?.dataset.realm) filterState.realm = button.dataset.realm;
+  else if (button?.dataset.hub) filterState.hub = button.dataset.hub;
+  dialogState.set(dialogId, "filters", filterState);
+  captureRealmFilterButtons();
+  burgsTable.reset();
 }
 
 function onFilterChange(): void {
@@ -389,6 +446,10 @@ function getFilteredBurgs(): Burg[] {
   }
   if (filterState.stateId !== -1) filtered = filtered.filter(b => b.state === filterState.stateId); // filtered by state
   if (filterState.cultureId !== -1) filtered = filtered.filter(b => b.culture === filterState.cultureId); // filtered by culture
+  if (filterState.realm === "surface") filtered = filtered.filter(b => isSurfaceBurg(b));
+  else if (filterState.realm !== "all") filtered = filtered.filter(b => getBurgRealm(b) === filterState.realm);
+  if (filterState.hub === "skyPort") filtered = filtered.filter(b => b.skyPort === 1);
+  else if (filterState.hub === "underdarkGate") filtered = filtered.filter(b => b.underdarkGate === 1);
   return filtered;
 }
 

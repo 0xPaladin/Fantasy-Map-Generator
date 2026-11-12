@@ -4,7 +4,7 @@ import { clipPolyline } from "lineclip";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
-import { Routes } from "@/model/economy/routes-generator";
+import { isRealmRouteGroup, Routes } from "@/model/economy/routes-generator";
 import { Taxes } from "@/model/economy/taxes";
 import { Grid } from "@/model/graph/grid-generator";
 import { Pack } from "@/model/graph/pack-generator";
@@ -15,7 +15,7 @@ import { Precipitation } from "@/model/physical/precipitation-generator";
 import { Relief } from "@/model/physical/relief-generator";
 import { Rivers } from "@/model/physical/river-generator";
 import { Temperature } from "@/model/physical/temperature-generator";
-import { Burgs } from "@/model/political/burgs-generator";
+import { Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { States } from "@/model/political/states-generator";
 import { Journeys } from "@/model/story/journeys/journeys-generator";
@@ -69,7 +69,7 @@ class MapRestorationModule {
   applyHeights(heights: Uint8Array, { erosion }: { erosion: boolean }): void {
     this.transaction(() => {
       for (const burg of pack.burgs) {
-        if (!burg.i || burg.removed) continue;
+        if (!burg.i || burg.removed || !isSurfaceBurg(burg)) continue; // realm burgs do not pin the surface
         const gridCell = pack.cells.g[burg.cell];
         if (heights[gridCell] < 20) heights[gridCell] = 20;
       }
@@ -687,6 +687,11 @@ class MapRestorationModule {
       // a port can lie just off the map edge: its cell decides whether the burg is still on the map
       const home = this.projectPoint(parent, burg.cell, projection) ?? [x, y];
       if (!this.isInMap(...home)) continue;
+      // a realm burg keeps its spot: it takes no land and claims no cell slot
+      if (!isSurfaceBurg(burg)) {
+        placed.set(burg.i, this.findCell(x, y));
+        continue;
+      }
       const under = this.findCell(x, y);
       if (cells.h[under] < 20 || taken.has(under)) {
         displaced.push([x, y, burg.i]);
@@ -713,7 +718,8 @@ class MapRestorationModule {
         return { ...burg, removed: true, lock: false, capital: 0 };
       }
 
-      cells.burg[cell] = burg.i;
+      // the cell slot stays reserved for surface burgs
+      if (isSurfaceBurg(burg)) cells.burg[cell] = burg.i;
       const [x, y] = projection(burg.x, burg.y).map(value => rn(value, 2));
       const haven = cells.haven[cell];
       const under = this.findCell(x, y);
@@ -747,6 +753,7 @@ class MapRestorationModule {
       if (!state.i || state.removed) continue;
       const capital = burgs[state.capital];
       if (!capital?.i || capital.removed || strayed.has(capital.i) || cells.state[capital.cell] === state.i) continue;
+      if (!isSurfaceBurg(capital)) continue; // realm states hold no surface territory
       // a shifted border does not take a capital from its state: the cell returns to it and to the capital's province
       const province = parent.cells.province[parent.burgs[state.capital].cell];
       const ownProvince = parent.provinces[province];
@@ -761,6 +768,10 @@ class MapRestorationModule {
       if (!state.i || state.removed) return state;
       if (present.has(state.i))
         return this.projectLabel({ ...state, culture: this.keptCulture(state.culture) }, projection);
+      // a realm state claims no surface land: it survives with its realm capital
+      const capital = burgs[state.capital];
+      if (capital && !capital.removed && !isSurfaceBurg(capital))
+        return this.projectLabel({ ...state, culture: this.keptCulture(state.culture) }, projection);
       removed.push(state.i);
       return { ...state, removed: true, lock: false };
     });
@@ -768,7 +779,7 @@ class MapRestorationModule {
 
     // a burg belongs to the state whose land it is on; a capital moved off its state's land turns ordinary
     for (const burg of burgs) {
-      if (!burg.i || burg.removed) continue;
+      if (!burg.i || burg.removed || !isSurfaceBurg(burg)) continue; // realm burgs answer to their realm states
       const state = cells.state[burg.cell];
       if (burg.capital && state !== burg.state) {
         burg.capital = 0;
@@ -782,14 +793,21 @@ class MapRestorationModule {
     for (const state of pack.states) {
       if (!state.i || state.removed) continue;
       const capital = burgs[state.capital];
-      if (!capital?.i || capital.removed || !capital.capital) {
+      const isRealmState = Boolean(capital && !isSurfaceBurg(capital));
+      if (isRealmState) {
+        // a realm state goes with its realm capital; it never takes a surface successor
+        if (!capital.i || capital.removed || !capital.capital) state.removed = true;
+        else state.center = capital.cell;
+      } else if (!capital?.i || capital.removed || !capital.capital) {
         // the capital is lost: the most populous burg on the state's land takes over, else one is founded at its center
         state.capital = 0;
         const successor = this.findMostPopulous(burg => burg.state === state.i)?.i;
         const center = () => this.keepCenter(parent, projection, state.center, cells.state, state.i, state.pole);
         Burgs.setCapital(successor ?? Burgs.add(...cells.p[center()]));
+        state.center = burgs[state.capital].cell;
+      } else {
+        state.center = capital.cell;
       }
-      state.center = burgs[state.capital].cell;
 
       const restoreRegiment = (regiment: Regiment): Regiment => {
         const [x, y] = projection(regiment.x, regiment.y);
@@ -885,19 +903,23 @@ class MapRestorationModule {
       const parts = clipPolyline(projected as Point[], bbox) as unknown as number[][][];
       const clipped = parts.reduce((longest, part) => (part.length > longest.length ? part : longest), []);
       if (clipped.length < 2) return null;
-      const points = this.fillPathGaps(
-        clipped.map(([x, y, cell]): [number, number, number] => {
-          const [px, py] = [rn(x, 2), rn(y, 2)];
-          return [
-            px,
-            py,
-            cell === undefined ? this.findCell(px, py) : this.findPathCell(parent, projection, cell, px, py)
-          ];
-        })
-      );
-      const wasWater = !parent.features[route.feature]?.land;
+      const resolve = ([x, y, cell]: number[]): [number, number, number] => {
+        const [px, py] = [rn(x, 2), rn(y, 2)];
+        return [
+          px,
+          py,
+          cell === undefined ? this.findCell(px, py) : this.findPathCell(parent, projection, cell, px, py)
+        ];
+      };
+      // air lanes arc between far-apart cells: the gap filler assumes adjacent cells and would
+      // flatten the arc into a straight chain, so their points are taken as drawn
+      const isAir = route.group === "airroutes";
+      const points = isAir ? clipped.map(resolve) : this.fillPathGaps(clipped.map(resolve));
+      const isRealm = isRealmRouteGroup(route.group);
+      const wasWater = isRealm ? false : !parent.features[route.feature]?.land;
       const firstCell = points.find(([, , cell]) => isWater(cell, pack) === wasWater)?.[2] ?? points[0][2];
-      const feature = featureIds.get(route.feature) ?? cells.f[firstCell];
+      // realm routes carry the realm sentinel, not a landmass feature
+      const feature = isRealm ? 0 : (featureIds.get(route.feature) ?? cells.f[firstCell]);
       const routeCells = route.cells && { cells: points.map(([, , cell]) => cell) };
       return this.projectLabel({ ...route, feature, points, ...routeCells }, projection);
     });
@@ -1024,7 +1046,7 @@ class MapRestorationModule {
   /** a burg no kept market reaches, as on land cut off by deep water, centers a market of its own */
   private expandMarkets() {
     for (let cellMarket = Markets.expand(); pack.markets.length; ) {
-      const unreached = this.findMostPopulous(burg => !cellMarket[burg.cell]);
+      const unreached = this.findMostPopulous(burg => !cellMarket[burg.cell] && isSurfaceBurg(burg));
       if (!unreached) return;
       Markets.addMarket(unreached.i);
       cellMarket = Markets.expand();

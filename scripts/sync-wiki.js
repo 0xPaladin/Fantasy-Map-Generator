@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * Mirrors docs/wiki/ to the GitHub wiki repository (Fantasy-Map-Generator.wiki.git).
+ * Mirrors docs/wiki/ to the fork's GitHub wiki repository (0xPaladin/Fantasy-Map-Generator.wiki.git).
  *
  * docs/wiki is the single source of truth: the wiki is a publishing target, and
  * direct edits there are overwritten. A file name is the page title, with
@@ -16,7 +16,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const REPO = "Azgaar/Fantasy-Map-Generator";
+// The fork mirrors to its own wiki: docs/wiki carries fork pages, which don't belong on upstream's
+const REPO = "0xPaladin/Fantasy-Map-Generator";
 const SOURCE_DIR = path.join(__dirname, "..", "docs", "wiki");
 
 // A mirror deletes whatever is not in the source, so refuse to run against a

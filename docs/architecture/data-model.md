@@ -99,7 +99,7 @@ World data is mainly stored in typed arrays within `cells` object in both `grid`
 - `pack.cells.t`: `number[]` - distance field. `1, 2, ...` - land cells, `-1, -2, ...` - water cells, `0` - unmarked cell. `Uint8Array`
 - `pack.cells.s`: `number[]` - cells score. Scoring is used to define best cells to place a burg. `Uint16Array`
 - `pack.cells.biome`: `number[]` - cells biome index. `Uint8Array`
-- `pack.cells.burg`: `number[]` - cells burg index. `Uint16Array`
+- `pack.cells.burg`: `number[]` - cells burg index. Reserved for the primary **surface** burg of the cell; burgs of the other realms (sky, underdark, underwater) live only in `pack.burgs` and never claim a slot. `Uint16Array`
 - `pack.cells.culture`: `number[]` - cells culture index. `Uint16Array`
 - `pack.cells.state`: `number[]` - cells state index. `Uint16Array`
 - `pack.cells.province`: `number[]` - cells province index. `Uint16Array`
@@ -153,7 +153,7 @@ Burgs (settlements) data is stored as an array of objects with strict element or
 
 - `i`: `number` - burg id, always equal to the array index
 - `name`: `string` - burg name
-- `cell`: `number` - burg cell id. One cell can have only one burg
+- `cell`: `number` - burg cell id. One cell hosts at most one **surface** burg (tracked in `cells.burg`); non-surface burgs of other realms may share the same cell
 - `x`: `number` - x axis coordinate, rounded to two decimals
 - `y`: `number` - y axis coordinate, rounded to two decimals
 - `culture`: `number` - burg culture id
@@ -169,6 +169,15 @@ Burgs (settlements) data is stored as an array of objects with strict element or
 - `capital`: `number` - `1` if burg is a capital, `0` if not (each state has only 1 capital)
 - `port`: `number` - if burg is not a port, then `0`, otherwise feature id of the water body the burg trades by. For coastal burgs this is the adjacent sea/lake; for burgs on a navigable river it is the water body the river ultimately drains into (the ocean, or a closed lake for endorheic basins), so river burgs join that body's sea-route network
 - `production`: `[good: number, units: number][]` - units of each good made in the last production run, what its deposit yielded included. The burg's trades are its `pack.deals`. Economy debug mode keeps every step of the run in memory, never in the burg (see `EconomyDebug` in the economy domain doc)
+- `flying`: `number` - `1` if the burg is a Sky settlement floating above the cell's surface (also a burg group `feature`)
+- `underdark`: `number` - `1` if the burg is a subterranean settlement beneath the cell's surface (also a burg group `feature`)
+- `underwater`: `number` - `1` if the burg is a benthic settlement in a water cell (also a burg group `feature`)
+- `skyPort`: `number` - `1` if a surface burg serves as a ground airfield hub for air routes
+- `underdarkGate`: `number` - `1` if a surface burg is an entrance hub for underdark routes
+- `altitude`: `number` - vertical offset in feet relative to the cell's surface: sky +50..+500, underdark -200..-3000, underwater -50..-2000
+
+The realm flags are mutually exclusive; a burg's realm (`surface`, `sky`, `underdark`, `underwater`) is resolved by `getBurgRealm` from them. Realm settlements belong to zero-surface-territory states and use burg groups `skyheart`/`skyhold`, `underdark_capital`/`underdark_hold`, `underwater_capital`/`underwater_settlement`; see `docs/plans/multi-realm.md`
+- `market`: `number` - id of the market this burg belongs to (`0` if none). Derived from `cells.market[burg.cell]` during market territory expansion
 - `product`: `number` - net product (gross sell revenue minus ingredient costs) from the last production run
 - `treasury`: `number` - cash balance after the last economy run, below zero when the burg is in debt: reset to its adjustments minus its poll tax when production starts, then changed by ingredient purchases, post-tax sale revenue and demand-fill purchases. A market's center also takes the margin on each trade there, less the license fee, which the margin pays as it comes in and the treasury pays for what is left at the day's end.
 - `adjustments`: `{ name: string, value: number }[]` - optional, the burg's income or costs a day besides trade, as named lines set by the user (`Burgs.setAdjustments`): rents, gifts; negative for debts or upkeep. Their sum comes at dawn; kept on regeneration
@@ -193,7 +202,7 @@ States (countries) data is stored as an array of objects with strict element ord
 - `fullName`: `string` - full state name. Combination of the proper name and state `formName`
 - `color`: `string` - state color in hex (e.g. `#45ff12`) or link to hatching pattern (e.g. `url(#hatch7)`, or `url(#hatch7-c0392b)` for one drawn in a color)
 - `center`: `number` - cell id of state center (initial cell)
-- `pole`: `number[]` - state pole of inaccessibility (visual center) coordinates, see [the concept description](https://blog.mapbox.com/a-new-algorithm-for-finding-a-visual-center-of-a-polygon-7c77e6492fbc?gi=6bd4fcb9ecc1)
+- `pole`: `number[]` - state pole of inaccessibility (visual center) coordinates, see [the concept description](https://blog.mapbox.com/a-new-algorithm-for-finding-a-visual-center-of-a-polygon-7c77e6492fbc?gi=6bd4fcb9ecc1). Realm states (sky, underdark, underwater) hold no land cells: their `pole` is the realm capital's own position and `cells`/`area`/`rural` are `0`, while `burgs` and `urban` count only realm burgs
 - `culture`: `number` - state culture id (equals to initial cell culture)
 - `type`: `string` - state type, see [culture types](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Culture types)
 - `expansionism`: `number` - state growth multiplier. Used mainly during state generation to spread states not uniformly

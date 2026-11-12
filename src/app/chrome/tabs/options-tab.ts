@@ -418,6 +418,26 @@ ${Object.entries(CULTURE_SETS)
         ></slider-input>
       </td>
     </tr>
+    <tr data-tip="${t("Generate floating settlements (skyburgs), subterranean holds and benthic cities on the map. They hold zero surface territory and get their own states, routes and economy")}">
+      <td></td>
+      <td>${t("Realm networks")}</td>
+      <td colspan="2">
+        <div style="display: flex; flex-direction: column; gap: 0.2em">
+          <label for="skyBurgs" data-tip="${t("Give the map floating settlements above the surface, skyports and air routes")}">
+            <input id="skyBurgs" class="checkbox" type="checkbox" />
+            <span class="checkbox-label">${t("Sky burgs")}</span>
+          </label>
+          <label for="underdarkBurgs" data-tip="${t("Give the map subterranean settlements below the surface, underdark gates and tunnel routes")}">
+            <input id="underdarkBurgs" class="checkbox" type="checkbox" />
+            <span class="checkbox-label">${t("Underdark burgs")}</span>
+          </label>
+          <label for="underwaterBurgs" data-tip="${t("Give the map benthic settlements in the water, aquatic states and undersea routes")}">
+            <input id="underwaterBurgs" class="checkbox" type="checkbox" />
+            <span class="checkbox-label">${t("Underwater burgs")}</span>
+          </label>
+        </div>
+      </td>
+    </tr>
   </table>
   <p data-tip="${t("Interface preferences saved in this browser. Changes apply immediately")}">
     ${t("Interface settings")}:
@@ -616,6 +636,14 @@ function addListeners(): void {
   ensureEl("optionsContent").addEventListener("click", onClick);
   ensureEl(ADVANCED_OPTIONS_ID).addEventListener("click", onClick);
   ensureEl(ADVANCED_OPTIONS_ID).addEventListener("change", onDebugChange);
+  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs"] as const) {
+    ensureEl<HTMLInputElement>(key).addEventListener("change", (event: Event) => {
+      const target = event.target as HTMLInputElement;
+      Options.set(o => {
+        o.map.population[key] = target.checked;
+      });
+    });
+  }
 }
 
 /** The diagnostics checked in the Advanced options, kept for this browser */
@@ -666,6 +694,7 @@ export function syncOptionInputs(): void {
   syncPngResolution();
   syncViewOnly();
   syncDebugModes();
+  syncRealmOptions();
 }
 
 function syncViewOnly(): void {
@@ -744,9 +773,12 @@ function onOptionInput(event: Event): void {
   }
 }
 
-/** The part of the world the next map covers: Whole / Northern / Tropical / Southern mirror the
- * Configure World presets; Astral switches the map to the star chart and cannot be undone.
- * Changing this only sets a preference for the next map: it never alters the current map. */
+function syncRealmOptions(): void {
+  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs"] as const) {
+    const input = document.querySelector<HTMLInputElement>(`#${key}`);
+    if (input) input.checked = options.map.population[key];
+  }
+}
 /** The extent the next map is generated on: not the window it will be looked at through */
 function onMapSizeChange(): void {
   // a pin outlives the control, so it cannot hold what the input's own `min` would have rejected

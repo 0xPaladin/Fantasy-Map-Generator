@@ -12,7 +12,7 @@ import { replaceWholeWord } from "@/utils/language-utils";
 import { getPolesOfInaccessibility } from "@/utils/path-utils";
 import { gauss, generateSeed, P, rand, rw } from "@/utils/probability-utils";
 import { requireName } from "@/utils/validation-utils";
-import { Burgs } from "./burgs-generator";
+import { Burgs, isSurfaceBurg } from "./burgs-generator";
 import { States } from "./states-generator";
 
 export interface Province {
@@ -119,11 +119,12 @@ class ProvinceModule {
     states.forEach(s => {
       s.provinces = [];
       if (!s.i || s.removed) return;
+      if (!s.cells || !isSurfaceBurg(burgs[s.capital])) return; // realm states hold no provinces
       if (provinces.length) s.provinces = provinces.filter(p => p.state === s.i).map(p => p.i); // locked provinces ids
       if (isStateKept(s.i)) return;
 
       const stateBurgs = burgs
-        .filter(b => b.state === s.i && !b.removed && !provinceIds[b.cell]) // burgs in this state without province assigned
+        .filter(b => b.state === s.i && !b.removed && !provinceIds[b.cell] && isSurfaceBurg(b)) // surface burgs in this state without province assigned
         .map(burg => ({ burg: burg, score: burg.population! * gauss(1, 0.2, 0.5, 1.5, 3) }))
         .sort((a, b) => b.burg.capital! - a.burg.capital! || b.score - a.score) // capitals first, biggest population next
         .map(b => b.burg);

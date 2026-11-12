@@ -136,6 +136,49 @@ function renderDialog(): void {
               <div class="label">${t("Elevation")}:</div>
               <span id="burgElevation"></span> ${t("above sea level")}
             </div>
+            <div data-tip="${t("Vertical offset relative to the cell's surface. Skyburgs float above, underdark holds tunnel below, underwater settlements lie on the seabed")}" style="display: flex; justify-content: space-between; gap: 0.5em;">
+              <div>
+                <div class="label">${t("Altitude")}:</div>
+                <span id="burgAltitude"></span>
+              </div>
+              <span id="burgAltitudeEdit" data-tip="${t("Set the burg's vertical offset in feet")}" class="icon-pencil pointer" style="align-self: center"></span>
+            </div>
+            <div data-tip="${t("Realm: surface burgs belong to a land state; realm burgs hold zero surface territory and answer to their realm state")}">
+              <div class="label">${t("Realm")}:</div>
+              <span
+                id="burgFlying"
+                data-tip="${sentences(t("Skyburg: a floating settlement above the surface"), t("Click to toggle"))}"
+                data-feature="flying"
+                class="burgFeature icon-rocket"
+              ></span>
+              <span
+                id="burgUnderdark"
+                data-tip="${sentences(t("Underdark hold: a subterranean settlement below the surface"), t("Click to toggle"))}"
+                data-feature="underdark"
+                class="burgFeature icon-mountain"
+              ></span>
+              <span
+                id="burgUnderwater"
+                data-tip="${sentences(t("Underwater settlement: a benthic settlement in water cells"), t("Click to toggle"))}"
+                data-feature="underwater"
+                class="burgFeature icon-ship"
+              ></span>
+            </div>
+            <div data-tip="${t("Cross-realm hubs and bridges: ground airfields for air lanes and mines and sinkholes for underdark tunnels")}">
+              <div class="label">${t("Hub")}:</div>
+              <span
+                id="burgSkyPort"
+                data-tip="${sentences(t("Skyport: a surface burg with an airfield, doubling as an air-route bridge"), t("Click to toggle"))}"
+                data-feature="skyPort"
+                class="burgFeature icon-button-air"
+              ></span>
+              <span
+                id="burgUnderdarkGate"
+                data-tip="${sentences(t("Underdark Gate: a surface burg with a mine or sinkhole, opening to the underdark tunnel network"), t("Click to toggle"))}"
+                data-feature="underdarkGate"
+                class="burgFeature icon-key"
+              ></span>
+            </div>
             <div>
               <div class="label">${t("Features", { context: "burg" })}:</div>
               <span
@@ -299,7 +342,17 @@ function renderDialog(): void {
   ensureEl("burgTags").addEventListener("change", changeTags);
   ensureEl("burgBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
-    .forEach(el => void el.addEventListener("click", toggleFeature));
+    .forEach(el => {
+      // realm and hub toggles are handled by their own handlers, not the generic building toggles
+      if (["burgFlying", "burgUnderdark", "burgUnderwater", "burgSkyPort", "burgUnderdarkGate"].includes(el.id)) return;
+      void el.addEventListener("click", toggleFeature);
+    });
+  ensureEl("burgFlying").addEventListener("click", () => toggleRealm("sky"));
+  ensureEl("burgUnderdark").addEventListener("click", () => toggleRealm("underdark"));
+  ensureEl("burgUnderwater").addEventListener("click", () => toggleRealm("underwater"));
+  ensureEl("burgSkyPort").addEventListener("click", toggleSkyPort);
+  ensureEl("burgUnderdarkGate").addEventListener("click", toggleUnderdarkGate);
+  ensureEl("burgAltitudeEdit").addEventListener("click", editAltitude);
   ensureEl("burgLinkOpen").addEventListener("click", openBurgLink);
   ensureEl("burgPreviewReset").addEventListener("click", resetPreviewZoom);
   ensureEl("burgPreviewObject").addEventListener("wheel", onPreviewWheel as EventListener, { passive: false });
@@ -365,6 +418,7 @@ function updateBurgValues(): void {
     place: getTemperatureLikeness(temperature)
   });
   ensureEl("burgElevation").innerHTML = getHeight(pack.cells.h[b.cell]);
+  ensureEl("burgAltitude").innerHTML = formatAltitude(b);
 
   ensureEl("burgCapital").classList.toggle("inactive", !b.capital);
   ensureEl("burgPort").classList.toggle("inactive", !b.port);
@@ -378,6 +432,15 @@ function updateBurgValues(): void {
   ensureEl("burgProsperityLine").dataset.tip = living ? prosperityTip(living.prosperity) : EconomyTerms.noData();
   const development = pack.cells.development?.[b.cell];
   ensureEl("burgDevelopment").textContent = development === undefined ? "—" : renderDevelopment(development);
+  const isSurface = !b.flying && !b.underdark && !b.underwater;
+  ensureEl("burgFlying").classList.toggle("inactive", !b.flying);
+  ensureEl("burgUnderdark").classList.toggle("inactive", !b.underdark);
+  ensureEl("burgUnderwater").classList.toggle("inactive", !b.underwater);
+  // realm burgs are never surface: they cannot carry surface hubs
+  ensureEl("burgSkyPort").classList.toggle("inactive", !b.skyPort);
+  ensureEl("burgUnderdarkGate").classList.toggle("inactive", !b.underdarkGate);
+  ensureEl("burgSkyPort").classList.toggle("disabled", !isSurface);
+  ensureEl("burgUnderdarkGate").classList.toggle("disabled", !isSurface);
 
   updateBurgLiving(id);
 
@@ -550,6 +613,55 @@ function confirmRemoveMarket(market: Market): void {
       updateBurgValues();
     }
   });
+}
+
+/** Toggle between a realm and the surface: clicking the active realm resets to surface */
+function toggleRealm(realm: "sky" | "underdark" | "underwater"): void {
+  const id = getSelectedId();
+  const burg = pack.burgs[id];
+  const current = burg.flying ? "sky" : burg.underdark ? "underdark" : burg.underwater ? "underwater" : "surface";
+  const next = current === realm ? "surface" : realm;
+  if (tryEdit(() => Burgs.setRealm(id, next))) {
+    Layers.draw("burgIcons", "labels");
+    updateBurgValues();
+  }
+}
+
+function toggleSkyPort(): void {
+  const id = getSelectedId();
+  const burg = pack.burgs[id];
+  if (tryEdit(() => Burgs.setSkyPort(id, !burg.skyPort))) {
+    Layers.draw("burgIcons", "labels");
+    updateBurgValues();
+  }
+}
+
+function toggleUnderdarkGate(): void {
+  const id = getSelectedId();
+  const burg = pack.burgs[id];
+  if (tryEdit(() => Burgs.setUnderdarkGate(id, !burg.underdarkGate))) {
+    Layers.draw("burgIcons", "labels");
+    updateBurgValues();
+  }
+}
+
+function editAltitude(): void {
+  const id = getSelectedId();
+  Dialog.prompt(
+    t(
+      "Vertical offset in feet relative to the cell's surface. Positive floats above, negative sinks below. Leave empty to clear"
+    ),
+    { default: String(pack.burgs[id].altitude ?? ""), required: false },
+    value => {
+      try {
+        Burgs.setAltitude(id, value === "" ? null : Number(value));
+      } catch (error) {
+        tip((error as Error).message, false, "error");
+        return;
+      }
+      updateBurgValues();
+    }
+  );
 }
 
 function togglePort(burgId: number): void {
@@ -892,6 +1004,17 @@ function closeBurgEditor(): void {
   selected = null;
   ensureEl("burgPreviewObject").replaceChildren();
   Dialog.destroy("burgEditor");
+}
+
+/** Formats the burg's vertical offset in feet, as +250 ft above surface / -1,200 ft below ground / -400 ft below sea level */
+function formatAltitude(b: Burg): string {
+  const altitude = b.altitude;
+  if (altitude === undefined || altitude === 0) return t("at surface level");
+  const feet = Math.abs(altitude);
+  const rounded = Math.round(feet).toLocaleString("en-US");
+  if (b.underwater) return t("{{n}} ft below sea level", { n: rounded });
+  if (b.underdark) return t("{{n}} ft below ground", { n: rounded });
+  return t("+{{n}} ft above surface", { n: rounded });
 }
 
 export const BurgEditor = { open };

@@ -69,7 +69,7 @@ the pipeline, since it depends only on name bases and the seeded random source.
 | Climate art              | `ice`                                           | `pack.ice`                                                                      |
 | Goods catalogue          | `goods`                                         | `options.map.goods`, `cells.good`                                    |
 | Ranking & cultures       | `rankCells`, `cultures`, `culturesExpand`       | `cells.s`, `cells.pop`, `pack.cultures`, `cells.culture`                        |
-| Settlement & politics    | `burgs`, `states`, `routes`                     | `pack.burgs`, `pack.states`, `pack.routes`                                      |
+| Settlement & politics    | `burgs`, `realmHubs`, `states`, `routes`               | `pack.burgs`, `pack.states`, `pack.routes`, realm hub flags (`skyPort`, `underdarkGate`) |
 | Development              | `development`                                   | `cells.development` (see [development](../domain/development.md))               |
 | Religions                | `religions`                                     | `pack.religions`                                                                |
 | Specification            | `burgsSpecify`, `stateStatistics`, `stateForms` | burg types, state stats and forms (tribal titles read `cells.development`)      |
@@ -84,6 +84,11 @@ Two constraints are easy to break when replicating a slice of this:
 - **Goods depend on nothing pack-side** but must exist before `markets`. `Goods.generate()` keeps an
   existing catalogue (it restores the defaults only when `options.map.goods` is empty) and places deposits
   on the cells; `Goods.regenerate()` reshuffles that placement with a fresh random seed.
+- **`realmHubs` runs between burgs and routes.** Realm hub flags (`skyPort`, `underdarkGate`) depend on
+  where the realm burgs landed but not on the state assignment or routes, so they are hoisted into their
+  own step rather than assigned in `specify()` (which runs after routes) — otherwise realm routes would
+  have no hubs to attach to. The realm burgs themselves are seated inside `burgs` on their own seeded
+  stream (`seed:realms`), keeping the surface map identical for the same seed.
 - **Economy depends on the whole settlement chain.** Production reads `state.culture`,
   `state.provinces`, `cells.biome`, `cells.pop`, `cells.market` and `pack.routes`. Anything that
   rebuilds burgs, states or provinces must rebuild the economy too, or markets, deals and treasuries
@@ -114,8 +119,9 @@ flowchart TD
     goods["goods<br/><i>writes: cells.good</i>"]
     rank["rankCells<br/><i>writes: cells.s, cells.pop</i>"]
     cult["cultures + culturesExpand<br/><i>writes: pack.cultures, cells.culture</i>"]
-    burgs["burgs<br/><i>writes: pack.burgs</i>"]
-    states["states<br/><i>writes: pack.states</i>"]
+    burgs["burgs<br/><i>writes: pack.burgs incl. realm (sky, underdark, underwater) burgs</i>"]
+    realmHubs["realmHubs<br/><i>writes: skyPort, underdarkGate hub flags</i>"]
+    states["states<br/><i>writes: pack.states incl. zero-territory realm states</i>"]
     routes["routes<br/><i>writes: pack.routes</i>"]
     relig["religions<br/><i>writes: pack.religions</i>"]
     spec["burgsSpecify + stateStatistics + stateForms"]
@@ -126,7 +132,7 @@ flowchart TD
     mil["military + markers + zones + addedLabels"]
     journeys["journeys + legends"]
 
-    gg --> hm --> mg --> lakes --> coord --> temp --> prec --> repack --> ruler --> rivers --> biomes --> fg --> ice --> goods --> rank --> cult --> burgs --> states --> routes --> dev --> relig --> spec --> prov --> names --> econ --> mil --> journeys
+    gg --> hm --> mg --> lakes --> coord --> temp --> prec --> repack --> ruler --> rivers --> biomes --> fg --> ice --> goods --> rank --> cult --> burgs --> realmHubs --> states --> routes --> dev --> relig --> spec --> prov --> names --> econ --> mil --> journeys
 
     %% cross-step (non-adjacent) global dependencies
     hm -. "grid.cells.h" .-> temp

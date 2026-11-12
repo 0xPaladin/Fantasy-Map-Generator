@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Names } from "@/model/society/names-generator";
+import { Emblems } from "./emblems-generator";
 import { noFinance, States } from "./states-generator";
 
 /** States as the model keeps them: each with its finances, zero but for the given ones */
@@ -527,5 +529,84 @@ describe("StatesModule regeneration of locked states", () => {
       { states: "all", goods: "all", rate: 0.05 },
       { states: [1], goods: "all", rate: 0.2 }
     ]);
+  });
+});
+
+describe("realm (non-land) states", () => {
+  const makePack = () => {
+    globalThis.pack = {
+      cells: {
+        i: [0, 1],
+        h: [30, 30],
+        state: [1, 1],
+        area: [10, 20],
+        pop: [10, 10],
+        burg: [1, 0],
+        province: [0, 0],
+        development: new Uint8Array(2)
+      },
+      burgs: [
+        { i: 0 },
+        { i: 1, cell: 0, x: 10, y: 10, culture: 1, capital: 1, name: "Portsville", population: 5 },
+        // one capital per realm, all on the same map, sequentially founded after the surface ones
+        { i: 2, cell: 0, x: 10, y: 10, culture: 1, capital: 1, flying: 1, name: "Skyfast", population: 4 },
+        { i: 3, cell: 0, x: 10, y: 10, culture: 1, capital: 1, underdark: 1, name: "Kholda", population: 4 },
+        { i: 4, cell: 0, x: 10, y: 10, culture: 1, capital: 1, underwater: 1, name: "Nerezza", population: 4 }
+      ],
+      cultures: [{ i: 0 } as any, { i: 1, name: "Test", type: "Generic" }],
+      states: [],
+      provinces: [],
+      religions: [],
+      zones: []
+    } as any;
+  };
+
+  beforeEach(() => {
+    vi.spyOn(Names, "getState").mockReturnValue("Testland");
+    vi.spyOn(Names, "getCultureShort").mockReturnValue("TEST");
+    vi.spyOn(Emblems, "generate").mockReturnValue({} as any);
+    vi.spyOn(Emblems, "getShield").mockReturnValue("heater");
+    makePack();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("every realm capital founds its state after the surface ones, with dense sequential ids", () => {
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const states = (States as any)["createStates"]();
+    expect(states.map((state: any) => state.i)).toEqual([0, 1, 2, 3, 4]);
+    // each realm capital founded exactly one state, named from the culture's short form
+    expect(states[1].capital).toBe(1);
+    expect(states[2].capital).toBe(2);
+    expect(states[3].capital).toBe(3);
+    expect(states[4].capital).toBe(4);
+    // realm burgs belong to their realm states, not to the surface state below them
+    expect(globalThis.pack.burgs[2].state).toBe(2);
+    expect(globalThis.pack.burgs[3].state).toBe(3);
+    expect(globalThis.pack.burgs[4].state).toBe(4);
+  });
+
+  it("realm states hold no cells, no land stats; their burgs and urban population still count", () => {
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const states = (States as any)["createStates"]();
+    globalThis.pack.states = states;
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    (States as any)["collectStatistics"]();
+
+    const surface = states[1];
+    expect(surface.cells).toBe(2); // both land cells belong to the surface state
+    expect(surface.area).toBe(30);
+    expect(surface.rural).toBe(20);
+    expect(surface.burgs).toBe(1); // only the surface burg, via its cell slot
+    expect(surface.urban).toBe(5);
+
+    for (const id of [2, 3, 4]) {
+      const realm = states[id];
+      expect(realm.cells).toBe(0);
+      expect(realm.area).toBe(0);
+      expect(realm.rural).toBe(0);
+      expect(realm.burgs).toBe(1); // the realm's one capital
+      expect(realm.urban).toBe(4); // its population, counted from the burg
+    }
   });
 });

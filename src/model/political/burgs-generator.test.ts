@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Routes } from "@/model/economy/routes-generator";
+import { Names } from "@/model/society/names-generator";
 import type { Burg } from "./burgs-generator";
-import { Burgs } from "./burgs-generator";
+import { Burgs, cellSlotAfterRemoval, groundSlotOnPlacement } from "./burgs-generator";
 
 // ---------------------------------------------------------------------------
 // Minimal pack geometry used across all scenarios
@@ -635,5 +636,170 @@ describe("BurgsModule.getPreview — Watabou river and coast", () => {
   ])("keeps village water features for a $name", ({ cell, port, water }) => {
     const tags = params({ cell, port, group: "village" }).get("tags")!.split(",");
     expect(tags.filter(tag => ["estuary", "river", "coast"].includes(tag))).toEqual([water]);
+  });
+});
+
+describe("multi-realm cell slots", () => {
+  // cell 0 and 1 are land, cell 2 is water; burgs at 10/11 are closest to cell 0
+  const cells = () => ({
+    i: [0, 1, 2],
+    h: [30, 30, 10],
+    s: [10, 10, 10],
+    p: [
+      [10, 10],
+      [90, 90],
+      [90, 10]
+    ] as [number, number][],
+    v: [[], [], []],
+    g: [0, 0, 0],
+    r: [0, 0, 0],
+    fl: [0, 0, 0],
+    state: [3, 3, 0],
+    pop: [10, 10, 0],
+    culture: [1, 1, 1],
+    f: [1, 1, 2],
+    religion: [1, 1, 1],
+    burg: new Uint16Array(3),
+    province: [0, 0, 0],
+    good: [0, 0, 0],
+    biome: [0, 0, 0],
+    routes: {} as Record<number, object>,
+    c: [[1], [0, 2], [1]],
+    development: new Uint8Array(3)
+  });
+
+  beforeEach(() => {
+    globalThis.options = {
+      ...globalThis.options,
+      map: {
+        ...globalThis.options.map,
+        seed: "slot-test",
+        graph: { width: 100, height: 100, points: 100 },
+        burgs: {
+          ...globalThis.options.map.burgs,
+          groups: [{ name: "Town", color: "#999999", order: 1, isDefault: true, active: true }]
+        }
+      }
+    } as any;
+    vi.spyOn(Names, "getCulture").mockReturnValue("Testville");
+    // emblems need the full heraldic pipeline; the slot mechanics do not
+    vi.spyOn(Burgs as any, "defineEmblem").mockImplementation(() => {});
+    globalThis.pack = {
+      cells: cells(),
+      burgs: [{ i: 0 } as any],
+      biomes: [{ i: 0, name: "Grassland", habitability: 100 } as any],
+      states: [
+        { i: 0, name: "Neutrals" } as any,
+        { i: 1 } as any,
+        { i: 2 } as any,
+        { i: 3, culture: 1, form: "Monarchy", economy: { adjustments: [] } } as any
+      ],
+      provinces: [],
+      markets: [],
+      deals: [],
+      cultures: [{ i: 1, type: "Generic" }],
+      religions: [{ i: 1 }],
+      zones: []
+    } as any;
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("a surface, sky and underdark burg share a cell; the surface burg owns the slot", () => {
+    const s = Burgs.add(10, 10, "surface");
+    const k = Burgs.add(11, 10, "sky");
+    const u = Burgs.add(10, 11, "underdark");
+    expect(pack.cells.burg[0]).toBe(s);
+    expect(pack.burgs[k].cell).toBe(0);
+    expect(pack.burgs[u].cell).toBe(0);
+    expect(pack.burgs[k].flying).toBe(1);
+    expect(pack.burgs[u].underdark).toBe(1);
+    // the non-surface burgs never claimed the slot
+    expect(pack.burgs[k].cell).toBe(pack.burgs[s].cell);
+  });
+
+  it("an underwater burg never takes the slot of a water cell either", () => {
+    const u = Burgs.add(90, 10, "underwater");
+    expect(pack.cells.burg[2]).toBe(0);
+    expect(pack.burgs[u].underwater).toBe(1);
+  });
+
+  it("rejects realm placements that do not fit the cell", () => {
+    expect(() => Burgs.add(10, 10, "underwater")).toThrow(/water/i);
+    expect(() => Burgs.add(90, 10, "surface")).toThrow(/water/i);
+    expect(() => Burgs.add(90, 10, "underdark")).toThrow(/under land/i);
+  });
+
+  it("an occupant cannot be evicted: a realm burg settled on a surface cell coexists with it", () => {
+    const s = Burgs.add(10, 10, "surface");
+    const k = Burgs.add(11, 10, "sky");
+    expect(pack.cells.burg[0]).toBe(s);
+
+    Burgs.remove(k);
+    expect(pack.cells.burg[0]).toBe(s);
+
+    Burgs.remove(s);
+    expect(pack.cells.burg[0]).toBe(0);
+  });
+
+  it("setRealm demotes a surface burg to the sky, handing the slot back to the surface", () => {
+    const s = Burgs.add(10, 10, "surface");
+    expect(pack.cells.burg[0]).toBe(s);
+
+    Burgs.setRealm(s, "sky");
+    expect(pack.cells.burg[0]).toBe(0);
+    expect(pack.burgs[s].flying).toBe(1);
+    expect(pack.burgs[s].underdark).toBeUndefined();
+
+    Burgs.setRealm(s, "surface");
+    expect(pack.cells.burg[0]).toBe(s);
+    expect(pack.burgs[s].flying).toBeUndefined();
+  });
+
+  it("a realm burg keeps its cell but releases it when promoted to surface on a free cell", () => {
+    const u = Burgs.add(90, 10, "underwater");
+    expect(pack.cells.burg[2]).toBe(0);
+    // the water cell cannot host a surface burg: promotion must fail, not evict
+    expect(() => Burgs.setRealm(u, "surface")).toThrow(/water/i);
+  });
+
+  it("promotion to surface on an occupied cell throws instead of evicting the surface burg", () => {
+    const s = Burgs.add(10, 10, "surface");
+    const k = Burgs.add(11, 10, "sky");
+    expect(() => Burgs.setRealm(k, "surface")).toThrow(/already holds a surface burg/);
+    expect(pack.cells.burg[0]).toBe(s); // the surface burg kept its slot
+  });
+
+  it("promotion to surface on a free cell hands the slot to the promoted burg", () => {
+    const s = Burgs.add(10, 10, "surface");
+    Burgs.setRealm(s, "sky");
+    expect(pack.cells.burg[0]).toBe(0);
+
+    Burgs.setRealm(s, "surface");
+    expect(pack.cells.burg[0]).toBe(s);
+    expect(pack.burgs[s].flying).toBeUndefined();
+  });
+
+  it("a surface hub loses its hub flags when it leaves the surface, altitude survives a realm move, promotion back clears it", () => {
+    const s = Burgs.add(10, 10, "surface");
+    Burgs.setSkyPort(s, true);
+    Burgs.setAltitude(s, 200);
+    expect(pack.burgs[s].skyPort).toBe(1);
+
+    Burgs.setRealm(s, "sky");
+    expect(pack.burgs[s].skyPort).toBeUndefined();
+    expect(pack.burgs[s].altitude).toBe(200);
+
+    Burgs.setRealm(s, "surface");
+    expect(pack.burgs[s].altitude).toBeUndefined();
+  });
+
+  it("the cell-slot helpers keep a non-surface burg out of the slot and back", () => {
+    expect(groundSlotOnPlacement(7, { i: 3, flying: 0 } as unknown as Burg)).toBe(3);
+    expect(groundSlotOnPlacement(7, { i: 3, flying: 1 } as Burg)).toBe(7);
+    expect(groundSlotOnPlacement(0, { i: 3, underdark: 1 } as Burg)).toBe(0);
+    expect(cellSlotAfterRemoval(7, 7)).toBe(0);
+    expect(cellSlotAfterRemoval(7, 3)).toBe(7);
+    expect(cellSlotAfterRemoval(0, 7)).toBe(0);
   });
 });

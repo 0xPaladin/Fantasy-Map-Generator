@@ -5,7 +5,7 @@ import { Goods } from "@/model/economy/goods-generator";
 import { Routes } from "@/model/economy/routes-generator";
 import { Pack } from "@/model/graph/pack-generator";
 import { Rivers } from "@/model/physical/river-generator";
-import { Burgs } from "@/model/political/burgs-generator";
+import { Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Military } from "@/model/political/military-generator";
 import { States } from "@/model/political/states-generator";
 import { Zones } from "@/model/political/zones-generator";
@@ -52,7 +52,8 @@ describe("Regenerate Burgs", () => {
 describe("Burgs on the map", () => {
   it("never loses a locked burg's cell to a new one", async () => {
     await generateMap({ seed: "regen-locked-cells" });
-    const locked = living(pack.burgs).filter((_, index) => index % 2 === 0);
+    // realm burgs never own a cells.burg slot by design; only surface burgs do
+    const locked = living(pack.burgs).filter((b, index) => index % 2 === 0 && isSurfaceBurg(b));
     for (const burg of locked) burg.lock = true;
     Burgs.regenerate();
     for (const burg of locked) expect(pack.cells.burg[burg.cell]).toBe(burg.i);

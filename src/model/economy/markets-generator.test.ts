@@ -177,6 +177,71 @@ describe("market placement", () => {
   });
 });
 
+describe("realm burgs and markets", () => {
+  const surfaceBurg = (i: number, x: number, y: number, feature = 1): Burg =>
+    ({ i, cell: i, x, y, feature, population: 10, capital: 0, port: 0, tags: [] }) as Burg;
+  const realmBurg = (
+    i: number,
+    x: number,
+    y: number,
+    realm: "flying" | "underdark" | "underwater",
+    feature = 1
+  ): Burg => ({ i, cell: i, x, y, feature, population: 10, capital: 1, port: 0, tags: [], [realm]: 1 }) as Burg;
+
+  beforeEach(() => {
+    globalThis.pack = {
+      cells: { i: [0, 1, 2, 3], h: [30, 30, 30, 30], state: [7, 7, 7, 7], f: [1, 1, 1, 1], routes: {} },
+      burgs: [{ i: 0 } as any],
+      states: [{ i: 0 } as any, { i: 7, economy: { marketFee: 0 } } as any],
+      markets: [],
+      deals: []
+    } as any;
+  });
+
+  it("never founds at a realm burg even when it outscores every surface burg", () => {
+    const sky = realmBurg(1, 10, 10, "flying");
+    const hold = realmBurg(2, 20, 20, "underdark");
+    const benthic = realmBurg(3, 30, 30, "underwater");
+    benthic.capital = 1;
+    const ground = surfaceBurg(4, 100, 100, 2);
+    sky.population = hold.population = benthic.population = 10000;
+    (globalThis.pack.burgs as Burg[]) = [{ i: 0 } as Burg, sky, hold, benthic, ground];
+    const scored = [sky, hold, benthic, ground].map(burg => ({ burg, score: burg.population! }));
+
+    // biome-ignore lint/complexity/useLiteralKeys: private access for testing
+    const markets = new MarketsModule()["createMarkets"](scored as any);
+
+    expect(markets).toHaveLength(1);
+    expect(markets[0].centerBurgId).toBe(4);
+    // biome-ignore lint/complexity/useLiteralKeys: private access for testing
+    new MarketsModule()["markPlazas"](markets);
+    expect(ground.plaza).toBe(1);
+    expect(sky.plaza ?? 0).toBe(0);
+    expect(hold.plaza ?? 0).toBe(0);
+    expect(benthic.plaza ?? 0).toBe(0);
+  });
+
+  it("recenter() seats a market on the best surface burg, never on a realm burg", () => {
+    const realm = realmBurg(2, 5, 5, "underwater");
+    const surface = surfaceBurg(3, 6, 6, 1);
+    const elsewhere = surfaceBurg(4, 30, 30, 2);
+    (globalThis.pack.burgs as Burg[]) = [{ i: 0 } as Burg, realmBurg(1, 0, 0, "underdark"), realm, surface, elsewhere];
+    const market: Market = { i: 1, centerBurgId: 2, color: "#ffffff", goods: {} };
+    const module = new MarketsModule();
+    // biome-ignore lint/complexity/useLiteralKeys: private access for testing
+    module["marketById"] = [undefined as any, market];
+    const scored = [
+      { burg: realm, score: 100 },
+      { burg: surface, score: 90 },
+      { burg: elsewhere, score: 80 }
+    ];
+    // biome-ignore lint/complexity/useLiteralKeys: private access for testing
+    module["recenter"]([market], scored as any, Uint16Array.from([0, 0, 1, 1, 0]));
+
+    expect(market.centerBurgId).toBe(3);
+  });
+});
+
 describe("claiming water deposits", () => {
   // water 1 and 2 beside a burg on land 0, land 3 painted to market 2
   const setPack = (good: number[], market: number[]) => {
