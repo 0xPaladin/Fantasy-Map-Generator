@@ -154,6 +154,26 @@ export class LabelsModule {
         type: "burg",
         zoom: { min: 1.5, max: 25 }
       },
+      {
+        name: "titan_capital",
+        type: "burg",
+        zoom: { min: 1, max: 25 }
+      },
+      {
+        name: "titan_hold",
+        type: "burg",
+        zoom: { min: 1.5, max: 25 }
+      },
+      {
+        name: "horde_capital",
+        type: "burg",
+        zoom: { min: 1, max: 25 }
+      },
+      {
+        name: "horde_hold",
+        type: "burg",
+        zoom: { min: 1.5, max: 25 }
+      },
       // province, state and default group for custom labels
       {
         name: "province",

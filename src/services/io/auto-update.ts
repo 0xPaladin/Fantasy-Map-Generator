@@ -2330,7 +2330,11 @@ async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacyS
     "underdark_capital",
     "underdark_hold",
     "underwater_capital",
-    "underwater_settlement"
+    "underwater_settlement",
+    "titan_capital",
+    "titan_hold",
+    "horde_capital",
+    "horde_hold"
   ];
 
   for (const group of Burgs.getDefaultGroups()) {

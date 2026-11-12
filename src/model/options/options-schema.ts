@@ -223,11 +223,13 @@ export const mapSchema = z.strictObject({
   /** Whole world / Northern / Tropical / Southern map placement, or Astral star chart */
   extents: z.enum(["whole", "northern", "tropical", "southern", "astral"]).default("whole"),
   burgs: z.strictObject({ groups: z.array(burgGroup) }),
-  /** per-realm settlement generation toggles; see docs/plans/multi-realm.md */
+  /** per-realm settlement generation toggles; see docs/plans/multi-realm.md and docs/plans/mobile-burgs.md */
   population: z.strictObject({
     skyBurgs: z.boolean().default(true),
     underdarkBurgs: z.boolean().default(true),
-    underwaterBurgs: z.boolean().default(true)
+    underwaterBurgs: z.boolean().default(true),
+    titanBurgs: z.boolean().default(true),
+    hordeBurgs: z.boolean().default(true)
   }),
   labels: z.strictObject({ groups: z.array(labelGroup) }),
   military: z.strictObject({ units: z.array(militaryUnit) }),

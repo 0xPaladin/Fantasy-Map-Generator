@@ -1402,3 +1402,51 @@ describe("v1.157.0 deposit counts", () => {
     expect(options.map.goods.some(good => "chance" in good)).toBe(false);
   });
 });
+
+describe("realm networks backfill (unconditional)", () => {
+  const REALM_GROUPS = [
+    "skyheart",
+    "skyhold",
+    "underdark_capital",
+    "underdark_hold",
+    "underwater_capital",
+    "underwater_settlement",
+    "titan_capital",
+    "titan_hold",
+    "horde_capital",
+    "horde_hold"
+  ];
+
+  it("restores the missing titan and horde groups, labels and styles of a pre-realm map", async () => {
+    // a map from before the realm networks: none of the realm groups is here
+    options.map.burgs.groups = options.map.burgs.groups.filter(group => !REALM_GROUPS.includes(group.name));
+    const record = structuredClone(Styles.defaults) as any;
+    for (const name of REALM_GROUPS) {
+      delete record.burgIcons?.groups?.[name];
+      delete record.labels?.groups?.[name];
+    }
+    const data: string[] = [];
+    data[48] = JSON.stringify(record);
+
+    await resolveVersionConflicts(VERSION, data);
+
+    for (const name of REALM_GROUPS) {
+      expect(
+        options.map.burgs.groups.find(group => group.name === name),
+        `${name} burg group`
+      ).toBeDefined();
+      expect(
+        options.map.labels.groups.find(group => group.name === name),
+        `${name} label group`
+      ).toBeDefined();
+    }
+    const styles = JSON.parse(data[48]);
+    for (const name of REALM_GROUPS) {
+      expect(styles.burgIcons.groups[name], `${name} icon style`).toBeDefined();
+      expect(styles.labels.groups[name], `${name} label style`).toBeDefined();
+    }
+    // the new minor holds only resolve past the zoom threshold, like the realm minor holds
+    expect(options.map.burgs.groups.find(group => group.name === "titan_hold")?.zoomThreshold).toBe(1.5);
+    expect(options.map.burgs.groups.find(group => group.name === "horde_hold")?.zoomThreshold).toBe(1.5);
+  });
+});

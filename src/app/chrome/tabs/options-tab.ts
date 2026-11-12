@@ -418,7 +418,7 @@ ${Object.entries(CULTURE_SETS)
         ></slider-input>
       </td>
     </tr>
-    <tr data-tip="${t("Generate floating settlements (skyburgs), subterranean holds and benthic cities on the map. They hold zero surface territory and get their own states, routes and economy")}">
+    <tr data-tip="${t("Generate floating settlements (skyburgs), subterranean holds, benthic cities, titans and roving hordes on the map. They hold zero surface territory and get their own states, routes and economy")}">
       <td></td>
       <td>${t("Realm networks")}</td>
       <td colspan="2">
@@ -434,6 +434,14 @@ ${Object.entries(CULTURE_SETS)
           <label for="underwaterBurgs" data-tip="${t("Give the map benthic settlements in the water, aquatic states and undersea routes")}">
             <input id="underwaterBurgs" class="checkbox" type="checkbox" />
             <span class="checkbox-label">${t("Underwater burgs")}</span>
+          </label>
+          <label for="titanBurgs" data-tip="${t("Give the map titanic settlements borne on walking titans; the titans roam the land")}">
+            <input id="titanBurgs" class="checkbox" type="checkbox" />
+            <span class="checkbox-label">${t("Titan burgs")}</span>
+          </label>
+          <label for="hordeBurgs" data-tip="${t("Give the map roving nomad hordes that pick up everything and move on")}">
+            <input id="hordeBurgs" class="checkbox" type="checkbox" />
+            <span class="checkbox-label">${t("Horde burgs")}</span>
           </label>
         </div>
       </td>
@@ -636,7 +644,7 @@ function addListeners(): void {
   ensureEl("optionsContent").addEventListener("click", onClick);
   ensureEl(ADVANCED_OPTIONS_ID).addEventListener("click", onClick);
   ensureEl(ADVANCED_OPTIONS_ID).addEventListener("change", onDebugChange);
-  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs"] as const) {
+  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs", "titanBurgs", "hordeBurgs"] as const) {
     ensureEl<HTMLInputElement>(key).addEventListener("change", (event: Event) => {
       const target = event.target as HTMLInputElement;
       Options.set(o => {
@@ -774,7 +782,7 @@ function onOptionInput(event: Event): void {
 }
 
 function syncRealmOptions(): void {
-  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs"] as const) {
+  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs", "titanBurgs", "hordeBurgs"] as const) {
     const input = document.querySelector<HTMLInputElement>(`#${key}`);
     if (input) input.checked = options.map.population[key];
   }

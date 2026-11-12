@@ -88,25 +88,40 @@ export interface Burg {
   underdarkGate?: 1;
   /** vertical offset in feet relative to the cell's surface: sky +50..+500, underdark -200..-3000, underwater -50..-2000 */
   altitude?: number;
+  titan?: 1;
+  horde?: 1;
+  /** a mobile burg's in-flight state; see docs/plans/mobile-burgs.md */
+  mobile?: 1;
+  mobility?: "drift" | "march" | "live";
+  journey?: number;
+  departedYear?: number;
+  heading?: number;
+  pausedAt?: number;
 }
 
 /** the vertical layer a burg belongs to; see docs/plans/multi-realm.md */
-export type BurgRealm = "surface" | "sky" | "underdark" | "underwater";
+export type BurgRealm = "surface" | "sky" | "underdark" | "underwater" | "titan" | "horde";
 
-export function getBurgRealm(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): BurgRealm {
+export function getBurgRealm(
+  b: Pick<Burg, "flying" | "underdark" | "underwater" | "titan" | "horde"> | undefined
+): BurgRealm {
   if (!b) return "surface";
   if (b.flying) return "sky";
   if (b.underdark) return "underdark";
   if (b.underwater) return "underwater";
+  if (b.titan) return "titan";
+  if (b.horde) return "horde";
   return "surface";
 }
 
-export function isSurfaceBurg(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): boolean {
+export function isSurfaceBurg(
+  b: Pick<Burg, "flying" | "underdark" | "underwater" | "titan" | "horde"> | undefined
+): boolean {
   return getBurgRealm(b) === "surface";
 }
 
 export function isBurgInRealm(
-  b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined,
+  b: Pick<Burg, "flying" | "underdark" | "underwater" | "titan" | "horde"> | undefined,
   realm: BurgRealm
 ): boolean {
   return getBurgRealm(b) === realm;
@@ -116,7 +131,7 @@ export function isBurgInRealm(
  * reserved for the primary surface burg, so non-surface burgs never claim it */
 export function groundSlotOnPlacement(
   currentSlot: number,
-  burg: Pick<Burg, "i" | "flying" | "underdark" | "underwater">
+  burg: Pick<Burg, "i" | "flying" | "underdark" | "underwater" | "titan" | "horde">
 ): number {
   return isSurfaceBurg(burg) ? burg.i : currentSlot;
 }
@@ -746,6 +761,32 @@ class BurgModule {
         zoomThreshold: 1.5
       },
       {
+        name: "titan_capital",
+        active: true,
+        features: { titan: true, capital: true },
+        order: 11
+      },
+      {
+        name: "titan_hold",
+        active: true,
+        features: { titan: true, capital: false },
+        order: 12,
+        zoomThreshold: 1.5
+      },
+      {
+        name: "horde_capital",
+        active: true,
+        features: { horde: true, capital: true },
+        order: 13
+      },
+      {
+        name: "horde_hold",
+        active: true,
+        features: { horde: true, capital: false },
+        order: 14,
+        zoomThreshold: 1.5
+      },
+      {
         name: "capital",
         active: true,
         order: 9,
@@ -1185,11 +1226,13 @@ class BurgModule {
   add(x: number, y: number, realm: BurgRealm = "surface"): number {
     const { cells } = pack;
     const cellId = Pack.requireCell(x, y);
-    if (!["surface", "sky", "underdark", "underwater"].includes(realm))
-      throw new Error(`Unknown realm: ${realm}. Expected surface, sky, underdark or underwater`);
+    if (!["surface", "sky", "underdark", "underwater", "titan", "horde"].includes(realm))
+      throw new Error(`Unknown realm: ${realm}. Expected surface, sky, underdark, underwater, titan or horde`);
     if (realm === "underwater" && cells.h[cellId] >= 20) throw new Error("An underwater burg cannot be placed on land");
     if (realm === "surface" && cells.h[cellId] < 20) throw new Error("A burg cannot be placed in the water");
     if (realm === "underdark" && cells.h[cellId] < 20) throw new Error("An underdark burg must tunnel under land");
+    if ((realm === "titan" || realm === "horde") && cells.h[cellId] < 20)
+      throw new Error(`A ${realm} cannot cross the sea; move it to land first`);
     // a realm burg never takes the surface cell's slot
     if (realm === "surface" && cells.burg[cellId])
       throw new Error(`Cell ${cellId} already has burg ${cells.burg[cellId]}`);
@@ -1214,7 +1257,11 @@ class BurgModule {
           ? { underdark: 1 }
           : realm === "underwater"
             ? { underwater: 1 }
-            : {})
+            : realm === "titan"
+              ? { titan: 1 }
+              : realm === "horde"
+                ? { horde: 1 }
+                : {})
     };
     this.definePopulation(burg);
     this.defineEmblem(burg);
@@ -1561,16 +1608,20 @@ class BurgModule {
   /** Set a burg's realm. A capital cannot change realm */
   setRealm(burgId: number, realm: string): void {
     const burg = this.living(burgId);
-    const next = requireOneOf(realm, ["surface", "sky", "underdark", "underwater"], "The realm") as BurgRealm;
+    const next = requireOneOf(
+      realm,
+      ["surface", "sky", "underdark", "underwater", "titan", "horde"],
+      "The realm"
+    ) as BurgRealm;
     if (burg.capital) throw new Error("A capital cannot change realm; make another burg the capital first");
     const previous = getBurgRealm(burg);
     if (next === previous) return;
 
     const { cells } = pack;
-    if ((next === "surface" || next === "underdark") && cells.h[burg.cell] < 20)
-      throw new Error(
-        `${next === "surface" ? "A surface" : "An underdark"} burg cannot be placed in the water; move it to land first`
-      );
+    if (["surface", "underdark", "titan", "horde"].includes(next) && cells.h[burg.cell] < 20) {
+      const article = next === "underdark" ? "An underdark" : `A ${next}`;
+      throw new Error(`${article} burg cannot be placed in the water; move it to land first`);
+    }
     if (next === "underwater" && cells.h[burg.cell] >= 20) throw new Error("An underwater burg must live in the water");
 
     if (next === "surface") {
@@ -1581,6 +1632,8 @@ class BurgModule {
       delete burg.flying;
       delete burg.underdark;
       delete burg.underwater;
+      delete burg.titan;
+      delete burg.horde;
       delete burg.altitude; // the surface has no vertical offset
       burg.state = cells.state[burg.cell];
       cells.burg[burg.cell] = burg.i;
@@ -1592,7 +1645,19 @@ class BurgModule {
       delete burg.flying;
       delete burg.underdark;
       delete burg.underwater;
-      burg[next === "sky" ? "flying" : next === "underdark" ? "underdark" : "underwater"] = 1;
+      delete burg.titan;
+      delete burg.horde;
+      burg[
+        next === "sky"
+          ? "flying"
+          : next === "underdark"
+            ? "underdark"
+            : next === "titan"
+              ? "titan"
+              : next === "horde"
+                ? "horde"
+                : "underwater"
+      ] = 1;
       this.assignToRealmState(burg);
     }
     this.changeGroup(burg, null);

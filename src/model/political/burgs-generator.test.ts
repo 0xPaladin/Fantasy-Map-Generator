@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Routes } from "@/model/economy/routes-generator";
 import { Names } from "@/model/society/names-generator";
 import type { Burg } from "./burgs-generator";
-import { Burgs, cellSlotAfterRemoval, groundSlotOnPlacement } from "./burgs-generator";
+import { Burgs, cellSlotAfterRemoval, getBurgRealm, groundSlotOnPlacement, isSurfaceBurg } from "./burgs-generator";
 
 // ---------------------------------------------------------------------------
 // Minimal pack geometry used across all scenarios
@@ -801,5 +801,59 @@ describe("multi-realm cell slots", () => {
     expect(cellSlotAfterRemoval(7, 7)).toBe(0);
     expect(cellSlotAfterRemoval(7, 3)).toBe(7);
     expect(cellSlotAfterRemoval(0, 7)).toBe(0);
+  });
+
+  const realmBurgPlan = (
+    id: number,
+    realm: "titan" | "horde",
+    cell: number
+  ): Pick<Burg, "i" | "cell" | "flying" | "underdark" | "underwater" | "titan" | "horde"> =>
+    ({ i: id, cell, [realm]: 1 }) as Pick<
+      Burg,
+      "i" | "cell" | "flying" | "underdark" | "underwater" | "titan" | "horde"
+    >;
+
+  it("a titan and a horde share the land with a surface burg, never taking its slot", () => {
+    const s = Burgs.add(10, 10, "surface");
+    const t = Burgs.add(11, 10, "titan");
+    const h = Burgs.add(10, 11, "horde");
+    expect(pack.cells.burg[0]).toBe(s);
+    expect(pack.burgs[t].titan).toBe(1);
+    expect(pack.burgs[h].horde).toBe(1);
+    expect(pack.burgs[t].cell).toBe(0);
+    expect(pack.burgs[h].cell).toBe(0);
+  });
+
+  it("titans and hordes cannot be founded on water", () => {
+    expect(() => Burgs.add(90, 10, "titan")).toThrow(/sea/i);
+    expect(() => Burgs.add(90, 10, "horde")).toThrow(/sea/i);
+  });
+
+  it("promoting a surface burg to titan or horde hands back the slot, and demoting fails onto water but succeeds on land", () => {
+    const s = Burgs.add(10, 10, "surface");
+    Burgs.setRealm(s, "titan");
+    expect(pack.cells.burg[0]).toBe(0);
+    expect(pack.burgs[s].titan).toBe(1);
+    expect(pack.burgs[s].horde).toBeUndefined();
+
+    Burgs.setRealm(s, "horde");
+    expect(pack.burgs[s].horde).toBe(1);
+    expect(pack.burgs[s].titan).toBeUndefined();
+
+    Burgs.setRealm(s, "surface");
+    expect(pack.cells.burg[0]).toBe(s);
+  });
+
+  it("an underwater burg cannot become a titan on the same water cell", () => {
+    const t = Burgs.add(90, 10, "underwater");
+    expect(() => Burgs.setRealm(t, "titan")).toThrow(/water/i);
+    expect(pack.burgs[t].underwater).toBe(1);
+  });
+
+  it("realm flag helpers see titans and hordes as non-surface", () => {
+    expect(isSurfaceBurg(realmBurgPlan(1, "titan", 0) as Burg)).toBe(false);
+    expect(isSurfaceBurg(realmBurgPlan(2, "horde", 0) as Burg)).toBe(false);
+    expect(getBurgRealm(realmBurgPlan(3, "titan", 0) as Burg)).toBe("titan");
+    expect(getBurgRealm(realmBurgPlan(4, "horde", 0) as Burg)).toBe("horde");
   });
 });
