@@ -252,6 +252,11 @@ t,
   cursor: pointer;
 }
 
+#burgIcons use[data-mobility="march"] {
+  opacity: 0.85;
+  filter: drop-shadow(0 0 0.35em rgba(186, 133, 33, 0.9));
+}
+
 .strokes {
   stroke-width: 0.08px;
   width: 2px;

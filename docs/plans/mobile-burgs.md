@@ -7,7 +7,7 @@ Progress:
 - Phase 2 — Drift mode: seeded wander placement per realm: ✅ done (2026-11-12)
 - Phase 3 — Integrity, restore, provinces & states for movers: ✅ done (2026-11-12)
 - Phase 4 — Journey-linked march mode (year-driven): ✅ done (2026-11-12)
-- Phase 5 — Rendering: moving icons, paths, headings: pending
+- Phase 5 — Rendering: ✅ done (2026-11-12)
 - Phase 6 — Assistant operations & UI (editor, overview, creator, commands): pending
 - Phase 7 — Autonomous mode (Living World tick + chronicle hooks): pending
 - Phase 8 — Mover economy rules: pending
@@ -257,9 +257,12 @@ are excluded from seating like realm burgs; `isSurfaceBurg` becomes
 - chronicle events on arrival/departure deferred to the hooks for the UI (Phase 6/7)
 - path rendering reuse deferred to Phase 5
 
-### Phase 5 — Rendering
-- icon rotation by `heading` (titan/horde) — new transform in `draw-burg-icons.ts`
-- "in transit" icon states; path-clause styling; label group spread for movers (avoid following text)
+### Phase 5 — Rendering ✅ done (2026-11-12)
+- burg icons rotate with the burg's `heading` (`rotate(<deg> <x> <y>)`) for mobile burgs
+- marching burgs carry `data-mobility="march"` for CSS targeting; marching icons get a drop-shadow in `index.css`
+- labels ride along with marching burgs (`anchor: [burg.x, burg.y]` rebuilt live on every `Layers.draw`)
+- `Layers.draw("burgIcons", "labels")` after the lore year changes (Lore Editor + assistant proposals) so a marching burg visibly walks with the year
+- icon rotation test pinned in the burg-icons test file
 
 ### Phase 6 — Assistant & UI
 - assistant ops (`setMobile`, `setDepartureYear`, `setHeading`, `advanceMobile`, `togglePause`)

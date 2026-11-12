@@ -45,6 +45,7 @@ const ENTITY_LAYERS: Record<string, Record<string, readonly LayerId[]>> = {
   marker: { "*": ["markers"] },
   addedLabel: { "*": ["labels"] },
   journey: { "*": ["journeys"] },
+  lore: { "*": ["burgIcons", "labels"] },
   good: { icon: ["goods"], color: ["goods"] },
   market: { "*": ["markets"] }
 };
