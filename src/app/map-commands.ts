@@ -31,6 +31,7 @@ import { Zones } from "@/model/political/zones-generator";
 import { Cultures } from "@/model/society/cultures-generator";
 import { Population } from "@/model/society/population-generator";
 import { Religions } from "@/model/society/religions-generator";
+import { Lore } from "@/model/story/lore";
 import type { LayerId } from "@/renderers/layers";
 import { Layers } from "@/renderers/layers";
 import { unfog } from "@/renderers/overlays/fogging";
@@ -662,6 +663,24 @@ export const MAP_COMMANDS: MapCommand[] = [
     run: () => openEconomyRegeneration(["production"])
   },
   {
+    id: "advanceMapYear",
+    name: t("Advance the map a millennium"),
+    aliases: "skip years clock forward time march progress",
+    run: () => advanceMobileYear()
+  },
+  {
+    id: "pauseAllMobiles",
+    name: t("Pause marching burgs"),
+    aliases: "halt stop marchers hold wanderers",
+    run: () => pauseAllMobiles(true)
+  },
+  {
+    id: "resumeAllMobiles",
+    name: t("Resume marching burgs"),
+    aliases: "march resume unpause continue",
+    run: () => pauseAllMobiles(false)
+  },
+  {
     id: "regenerateIce",
     name: `${t("Regenerate")}: ${t("Ice")}`,
     aliases: "generate glaciers icebergs",
@@ -1018,6 +1037,28 @@ function regenerateBurgs(): void {
   Markets.regenerate(); // the market centers were burgs
   Production.regenerate();
   Layers.draw("burgIcons", "labels", "routes", "population", "markets", "goods", "trade", "emblems");
+}
+
+/** a millennium passes for the world: marching burgs advance, the year advances with them */
+function advanceMobileYear(): void {
+  const year = options.map.lore.calendar.year;
+  for (const burg of pack.burgs) {
+    if (!burg.i || burg.removed || !burg.mobile) continue;
+    burg.departedYear = (burg.departedYear ?? year) - 1000;
+  }
+  Lore.setYear(year + 1000);
+  Layers.draw("burgIcons", "labels");
+}
+
+/** pause or resume every marching burg on the map */
+function pauseAllMobiles(pause: boolean): void {
+  for (const burg of pack.burgs) {
+    if (!burg.i || burg.removed || burg.mobility !== "march") continue;
+    if (pause) {
+      if (burg.pausedAt === undefined) Burgs.pauseMobile(burg.i);
+    } else Burgs.resumeMobile(burg.i);
+  }
+  Layers.draw("burgIcons", "labels");
 }
 
 function regenerateHistory(): void {

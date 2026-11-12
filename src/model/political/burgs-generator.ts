@@ -1779,6 +1779,71 @@ class BurgModule {
     else delete burg.skyPort;
   }
 
+  /** Set how the burg travels; pinned = off, drift = wanders when the map is regenerated, march = rides a journey */
+  setMobility(burgId: number, mobility: "pinned" | "drift" | "march"): void {
+    const burg = this.living(burgId);
+    if (mobility === "pinned") {
+      if (!burg.mobile) return;
+      delete burg.mobile;
+      delete burg.mobility;
+      delete burg.journey;
+      delete burg.departedYear;
+      delete burg.pausedAt;
+      return;
+    }
+    if (mobility === "drift") {
+      delete burg.journey;
+      delete burg.departedYear;
+      delete burg.pausedAt;
+      burg.mobile = 1;
+      burg.mobility = "drift";
+      return;
+    }
+    // march needs a journey; pick the first one when the burg has none yet
+    if (burg.journey === undefined) {
+      const first = (pack.journeys ?? []).find(journey => journey.i);
+      if (!first) throw new Error("No journeys exist; create one in the Journeys editor first");
+      burg.journey = first.i;
+    }
+    if (burg.departedYear === undefined) burg.departedYear = options.map.lore.calendar.year;
+    burg.mobile = 1;
+    burg.mobility = "march";
+    this.applyMobile(burgId);
+  }
+
+  /** Set the burg's single heading in degrees; 0 clears it */
+  setHeading(burgId: number, heading?: number): void {
+    const burg = this.living(burgId);
+    if (heading === undefined) {
+      delete burg.heading;
+      return;
+    }
+    if (typeof heading !== "number" || !Number.isFinite(heading))
+      throw new Error("The heading must be a number of degrees");
+    burg.heading = rn(heading, 1);
+  }
+
+  /** Set the year the burg set out; null re-stamps it to the current year */
+  setDepartureYear(burgId: number, year: number | null): void {
+    const burg = this.living(burgId);
+    if (year === null) {
+      delete burg.departedYear;
+      return;
+    }
+    if (typeof year !== "number" || !Number.isFinite(year)) throw new Error("The departure year must be a number");
+    burg.departedYear = Math.round(year);
+    this.applyMobile(burgId);
+  }
+
+  /** Jump a riding burg ahead (or back) by a number of years along its journey */
+  advanceMobile(burgId: number, years: number): void {
+    const burg = this.living(burgId);
+    if (typeof years !== "number" || !Number.isFinite(years))
+      throw new Error("The years to advance by must be a number");
+    burg.departedYear = (burg.departedYear ?? options.map.lore.calendar.year) - years;
+    this.applyMobile(burgId);
+  }
+
   /** Set a surface burg as an underdark entrance hub */
   setUnderdarkGate(burgId: number, gate: boolean): void {
     const burg = this.living(burgId);

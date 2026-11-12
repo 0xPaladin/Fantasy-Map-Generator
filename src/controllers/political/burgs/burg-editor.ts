@@ -179,6 +179,28 @@ function renderDialog(): void {
                 class="burgFeature icon-key"
               ></span>
             </div>
+            <div data-tip="${t("How the burg moves: pinned burgs stay put, drifting burgs wander when the map is regenerated, marching burgs ride a journey and ride by the lore year")}">
+              <div class="label">${t("Mobility")}:</div>
+              <span
+                id="burgPinned"
+                data-tip="${sentences(t("Pinned: the burg stays where it stands"), t("Click to toggle"))}"
+                class="burgFeature icon-thumbtack"
+              ></span>
+              <span
+                id="burgDrift"
+                data-tip="${sentences(t("Drift: the burg wanders when the map is regenerated"), t("Click to toggle"))}"
+                class="burgFeature icon-wind"
+              ></span>
+              <span
+                id="burgMarch"
+                data-tip="${sentences(t("March: the burg rides a journey"), t("Click to toggle"))}"
+                class="burgFeature icon-person-walking"
+              ></span>
+            </div>
+            <div id="burgMarchRow" data-tip="${t("The journey the marching burg rides")}" style="display: none">
+              <div class="label">${t("Ride")}:</div>
+              <select id="burgMarchJourney" style="width: 9em"></select>
+            </div>
             <div>
               <div class="label">${t("Features", { context: "burg" })}:</div>
               <span
@@ -343,8 +365,20 @@ function renderDialog(): void {
   ensureEl("burgBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
     .forEach(el => {
-      // realm and hub toggles are handled by their own handlers, not the generic building toggles
-      if (["burgFlying", "burgUnderdark", "burgUnderwater", "burgSkyPort", "burgUnderdarkGate"].includes(el.id)) return;
+      // realm, hub and mobility toggles are handled by their own handlers, not the generic building toggles
+      if (
+        [
+          "burgFlying",
+          "burgUnderdark",
+          "burgUnderwater",
+          "burgSkyPort",
+          "burgUnderdarkGate",
+          "burgPinned",
+          "burgDrift",
+          "burgMarch"
+        ].includes(el.id)
+      )
+        return;
       void el.addEventListener("click", toggleFeature);
     });
   ensureEl("burgFlying").addEventListener("click", () => toggleRealm("sky"));
@@ -352,6 +386,10 @@ function renderDialog(): void {
   ensureEl("burgUnderwater").addEventListener("click", () => toggleRealm("underwater"));
   ensureEl("burgSkyPort").addEventListener("click", toggleSkyPort);
   ensureEl("burgUnderdarkGate").addEventListener("click", toggleUnderdarkGate);
+  ensureEl("burgPinned").addEventListener("click", () => changeMobility("pinned"));
+  ensureEl("burgDrift").addEventListener("click", () => changeMobility("drift"));
+  ensureEl("burgMarch").addEventListener("click", () => changeMobility("march"));
+  ensureEl("burgMarchJourney").addEventListener("change", changeMarchJourney);
   ensureEl("burgAltitudeEdit").addEventListener("click", editAltitude);
   ensureEl("burgLinkOpen").addEventListener("click", openBurgLink);
   ensureEl("burgPreviewReset").addEventListener("click", resetPreviewZoom);
@@ -441,6 +479,20 @@ function updateBurgValues(): void {
   ensureEl("burgUnderdarkGate").classList.toggle("inactive", !b.underdarkGate);
   ensureEl("burgSkyPort").classList.toggle("disabled", !isSurface);
   ensureEl("burgUnderdarkGate").classList.toggle("disabled", !isSurface);
+
+  // mobility: pinned / drift / march
+  const mobility = b.mobility ?? (b.mobile ? "drift" : "pinned");
+  ensureEl("burgPinned").classList.toggle("inactive", mobility !== "pinned");
+  ensureEl("burgDrift").classList.toggle("inactive", mobility !== "drift");
+  ensureEl("burgMarch").classList.toggle("inactive", mobility !== "march");
+  const marching = mobility === "march";
+  ensureEl("burgMarchRow").style.display = marching ? "" : "none";
+  if (marching) {
+    const journeySelect = ensureEl<HTMLSelectElement>("burgMarchJourney");
+    journeySelect.options.length = 0;
+    for (const journey of pack.journeys ?? []) journeySelect.options.add(new Option(journey.name, String(journey.i)));
+    journeySelect.value = String(b.journey);
+  }
 
   updateBurgLiving(id);
 
@@ -631,6 +683,24 @@ function toggleSkyPort(): void {
   const id = getSelectedId();
   const burg = pack.burgs[id];
   if (tryEdit(() => Burgs.setSkyPort(id, !burg.skyPort))) {
+    Layers.draw("burgIcons", "labels");
+    updateBurgValues();
+  }
+}
+
+function changeMobility(mobility: "pinned" | "drift" | "march"): void {
+  const id = getSelectedId();
+  if (tryEdit(() => Burgs.setMobility(id, mobility))) {
+    Layers.draw("burgIcons", "labels");
+    updateBurgValues();
+  }
+}
+
+function changeMarchJourney(): void {
+  const id = getSelectedId();
+  const journeyId = +ensureEl<HTMLSelectElement>("burgMarchJourney").value;
+  if (!journeyId) return;
+  if (tryEdit(() => Burgs.march(id, journeyId))) {
     Layers.draw("burgIcons", "labels");
     updateBurgValues();
   }

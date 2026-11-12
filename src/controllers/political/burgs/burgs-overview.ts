@@ -226,7 +226,8 @@ function open(filters: Filters = {}): void {
     realm: "all",
     hub: "all"
   }));
-  if (!["all", "surface", "sky", "underdark", "underwater"].includes(filterState.realm)) filterState.realm = "all";
+  if (!["all", "surface", "sky", "underdark", "underwater", "titan", "horde"].includes(filterState.realm))
+    filterState.realm = "all";
   if (!["all", "skyPort", "underdarkGate"].includes(filterState.hub)) filterState.hub = "all";
   Dialog.closeAll(`#${dialogId}, .stable`);
   Layers.show("burgIcons", "labels");
@@ -264,13 +265,15 @@ function renderDialog(): void {
           <button id="burgsHubSkyPort" data-hub="skyPort" class="burgsFilterButton">${t("Skyport")}</button>
           <button id="burgsHubUnderdarkGate" data-hub="underdarkGate" class="burgsFilterButton">${t("Underdark Gate")}</button>
         </div>
-        <div id="burgsRealmFilters" data-tip="${t("Filter by realm: surface, sky, underdark or underwater")}" class="editorFilters">
+        <div id="burgsRealmFilters" data-tip="${t("Filter by realm: surface, sky, underdark, underwater, titan or horde")}" class="editorFilters">
           <span class="label" style="align-self: center">${t("Realm")}:</span>
           <button id="burgsRealmAll" data-realm="all" class="burgsFilterButton active">${t("All")}</button>
           <button id="burgsRealmSurface" data-realm="surface" class="burgsFilterButton">${t("Surface")}</button>
           <button id="burgsRealmSky" data-realm="sky" class="burgsFilterButton">${t("Sky")}</button>
           <button id="burgsRealmUnderdark" data-realm="underdark" class="burgsFilterButton">${t("Underdark")}</button>
           <button id="burgsRealmUnderwater" data-realm="underwater" class="burgsFilterButton">${t("Underwater")}</button>
+          <button id="burgsRealmTitan" data-realm="titan" class="burgsFilterButton">${t("Titan")}</button>
+          <button id="burgsRealmHorde" data-realm="horde" class="burgsFilterButton">${t("Horde")}</button>
         </div>
         <label for="burgsFilterCulture"
           >${t("Culture")}:
@@ -312,6 +315,8 @@ function renderDialog(): void {
           <option value="sky">${t("Sky")}</option>
           <option value="underdark">${t("Underdark")}</option>
           <option value="underwater">${t("Underwater")}</option>
+          <option value="titan">${t("Titan")}</option>
+          <option value="horde">${t("Horde")}</option>
         </select>
         <button
           id="burgsExport"
@@ -405,7 +410,9 @@ function captureRealmFilterButtons(): void {
     "burgsRealmSurface",
     "burgsRealmSky",
     "burgsRealmUnderdark",
-    "burgsRealmUnderwater"
+    "burgsRealmUnderwater",
+    "burgsRealmTitan",
+    "burgsRealmHorde"
   ])
     ensureEl(id).classList.toggle("active", ensureEl(id).dataset.realm === filterState.realm);
   for (const id of ["burgsHubAll", "burgsHubSkyPort", "burgsHubUnderdarkGate"])

@@ -8,7 +8,7 @@ Progress:
 - Phase 3 — Integrity, restore, provinces & states for movers: ✅ done (2026-11-12)
 - Phase 4 — Journey-linked march mode (year-driven): ✅ done (2026-11-12)
 - Phase 5 — Rendering: ✅ done (2026-11-12)
-- Phase 6 — Assistant operations & UI (editor, overview, creator, commands): pending
+- Phase 6 — Assistant operations & UI: ✅ done (2026-11-12)
 - Phase 7 — Autonomous mode (Living World tick + chronicle hooks): pending
 - Phase 8 — Mover economy rules: pending
 - Phase 9 — Verification, tests & docs: pending
@@ -29,6 +29,7 @@ Implementation notes:
   (savanna/grassland-weighted, mountains avoided). Each wanderer is `capital: 0`, `state: 0`, `mobile: 1`, `mobility: "drift"`, with a `heading` roll. `Options → Realm networks` gained a `Mobile wanderers`
   slider (0–5, default 2) bound imperatively with a lock icon; `population.wanderers` in schema/defaults. Roads connect titans/hordes via `sortBurgsByFeature` (the road network passes through them;
   they are `capital: 0`, never hub-adjacent anchors, never ports). Scenario test pins placement determinism per seed.
+- Phase 6 delivered: assistant ops exposed and layer-mapped (`march`, `unmarch`, `setMobility`, `setHeading`, `setDepartureYear`, `advanceMobile`, `pauseMobile`, `resumeMobile`); the `setMobility`/`march` pair on the model switches between pinned / drift / march (marching auto-picks a journey when none is assigned). Burg Editor: under the Hub row a Mobility row with Pinned/Drift/March icons (greyed when off, like other feature icons) plus a `Ride` select (populated from `pack.journeys`, shown only in march mode). Burgs Overview: Titan and Horde realm filter chips; the creator's realm selector gains Titan and Horde. Map commands `advanceMapYear`, `pauseAllMobiles`, `resumeAllMobiles` with aliases. Assistant `redraw.ts` redraws `burgIcons`/`labels` on any burg mobility field change and on `Lore` year changes.
 
 ## Goal
 
@@ -264,10 +265,13 @@ are excluded from seating like realm burgs; `isSurfaceBurg` becomes
 - `Layers.draw("burgIcons", "labels")` after the lore year changes (Lore Editor + assistant proposals) so a marching burg visibly walks with the year
 - icon rotation test pinned in the burg-icons test file
 
-### Phase 6 — Assistant & UI
-- assistant ops (`setMobile`, `setDepartureYear`, `setHeading`, `advanceMobile`, `togglePause`)
-- editor row, overview chips, creator toggles
-- map commands (`advance-map-year`, `pause-all-mobiles`)
+### Phase 6 — Assistant & UI ✅ done (2026-11-12)
+- assistant ops (registered in `METHODS` + `redraw.ts` layers): `march`, `unmarch`, `setMobility`, `setHeading`, `setDepartureYear`, `advanceMobile`, `pauseMobile`, `resumeMobile`
+- context regenerated; `BurgRealm` gains titan/horde there (should already show)
+- editor: Mobility row (Pinned / Drift / March icons + `Ride` journey select visible only in march mode)
+- Burgs Overview: Titan and Horde realm chips in the realm filter; the creator's realm selector gains Titan and Horde; validation list extended
+- map commands: `advanceMapYear` (a millennium passes and every marching burg advances), `pauseAllMobiles`, `resumeAllMobiles`; omnibar-aliases for all three
+- see Phase 6 implementation notes
 
 ### Phase 7 — Live mode (optional, Living World only)
 - season tick evaluation; `migrate` agenda behaviour; chronicle coupling
