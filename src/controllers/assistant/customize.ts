@@ -6,19 +6,19 @@ import {
   deleteInstructionsProfile,
   deletePrompt,
   deleteSkill,
+  type InstructionsProfile,
   importInstructionsProfileFile,
   importSkillFile,
   instructionsProfileToMarkdown,
-  type InstructionsProfile,
   listInstructionsProfiles,
   listPrompts,
   listSkills,
   type Prompt,
+  type Skill,
   saveInstructionsProfile,
   savePrompt,
   saveSkill,
   setActiveInstructionsProfile,
-  type Skill,
   skillToMarkdown
 } from "@/services/assistant/customization";
 import { downloadFile } from "@/utils/file-utils";
@@ -93,8 +93,7 @@ class CustomizeSheet {
     el("assistantEditorEnabledField").hidden = !skill;
     el<HTMLInputElement>("assistantEditorName").value =
       target.kind === "skill" ? target.skill.name : profile ? target.profile.name : target.prompt.name;
-    el<HTMLInputElement>("assistantEditorDescription").value =
-      target.kind === "skill" ? target.skill.description : "";
+    el<HTMLInputElement>("assistantEditorDescription").value = target.kind === "skill" ? target.skill.description : "";
     el<HTMLTextAreaElement>("assistantEditorBody").value =
       target.kind === "skill" ? target.skill.body : profile ? target.profile.text : target.prompt.text;
     el("assistantEditorBodyLabel").textContent = skill ? t("Body") : profile ? t("Instructions") : t("Text");
@@ -264,7 +263,11 @@ class CustomizeSheet {
 
 const profileRowHtml = (profile: InstructionsProfile, active: boolean): string => {
   const name = escapeHtml(profile.name);
-  const firstLine = profile.text.split("\n").find(line => line.trim())?.trim() ?? "";
+  const firstLine =
+    profile.text
+      .split("\n")
+      .find(line => line.trim())
+      ?.trim() ?? "";
   const preview = escapeHtml(firstLine.length > 80 ? `${firstLine.slice(0, 80).trimEnd()}…` : firstLine);
   return /* html */ `<div class="assistantCustomRow${active ? " active" : ""}">
     <label class="assistantCustomToggle">

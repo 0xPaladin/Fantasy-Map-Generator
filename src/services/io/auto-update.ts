@@ -2324,7 +2324,14 @@ async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacyS
   // release that ships them, so the map version cannot gate this repair: a pre-realm map and a
   // realm-aware one both carry the same version. Backfill unconditionally, mutating only what is
   // missing — a no-op for maps the fork generated.
-  const realmGroupNames = ["skyheart", "skyhold", "underdark_capital", "underdark_hold", "underwater_capital", "underwater_settlement"];
+  const realmGroupNames = [
+    "skyheart",
+    "skyhold",
+    "underdark_capital",
+    "underdark_hold",
+    "underwater_capital",
+    "underwater_settlement"
+  ];
 
   for (const group of Burgs.getDefaultGroups()) {
     if (!realmGroupNames.includes(group.name)) continue;

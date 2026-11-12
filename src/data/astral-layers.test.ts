@@ -20,12 +20,9 @@ describe("the Astral layer profiles", () => {
   });
 
   it("keeps removed layers out of every profile", () => {
-    for (const preset of Object.values(ASTRAL_PRESETS))
-      expect(preset.layers).not.toContain("coreRim");
-    for (const preset of Object.values(ASTRAL_PRESETS))
-      expect(preset.layers).not.toContain("composition");
-    for (const preset of Object.values(ASTRAL_PRESETS))
-      expect(preset.layers).not.toContain("nebulae");
+    for (const preset of Object.values(ASTRAL_PRESETS)) expect(preset.layers).not.toContain("coreRim");
+    for (const preset of Object.values(ASTRAL_PRESETS)) expect(preset.layers).not.toContain("composition");
+    for (const preset of Object.values(ASTRAL_PRESETS)) expect(preset.layers).not.toContain("nebulae");
   });
 
   it("shows only empires, hyperlanes, systems, labels and the scale bar by default", () => {

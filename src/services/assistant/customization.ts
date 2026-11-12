@@ -109,8 +109,7 @@ export function setActiveInstructionsProfile(id: string): void {
   persist(ACTIVE_KEY, id);
 }
 
-const newId = (): string =>
-  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const newId = (): string => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function saveInstructionsProfile(input: { id?: string; name?: string; text?: string }): InstructionsProfile {
   const existing = profiles.find(entry => entry.id === input.id);
@@ -125,9 +124,7 @@ export function saveInstructionsProfile(input: { id?: string; name?: string; tex
   };
   if (profiles.some(entry => entry.id !== profile.id && entry.name.toLowerCase() === name.toLowerCase()))
     throw new Error(`A profile named "${name}" already exists.`);
-  profiles = existing
-    ? profiles.map(entry => (entry.id === profile.id ? profile : entry))
-    : [...profiles, profile];
+  profiles = existing ? profiles.map(entry => (entry.id === profile.id ? profile : entry)) : [...profiles, profile];
   if (!existing && profiles.length > MAX_PROFILES) {
     profiles = profiles.filter(entry => entry.id !== profile.id);
     throw new Error(`At most ${MAX_PROFILES} profiles can be kept.`);

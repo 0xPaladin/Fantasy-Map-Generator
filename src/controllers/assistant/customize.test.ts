@@ -164,10 +164,12 @@ it("imports AGENTS.md as the instructions and another file as a skill", async ()
   profileInput.dispatchEvent(new Event("change"));
 
   await vi.waitFor(() => expect(customization.listInstructionsProfiles()).toHaveLength(2));
-  expect(customization.listInstructionsProfiles().map(profile => profile.name).sort()).toEqual([
-    "AGENTS",
-    "map-editor"
-  ]);
+  expect(
+    customization
+      .listInstructionsProfiles()
+      .map(profile => profile.name)
+      .sort()
+  ).toEqual(["AGENTS", "map-editor"]);
   expect(customization.getInstructions()).toBe("Standards for this world."); // the first imported profile is active
 
   const skillInput = el<HTMLInputElement>("assistantSkillFile");

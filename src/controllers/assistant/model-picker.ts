@@ -25,9 +25,7 @@ export function openModelPicker(models: string[], current: string, onSelect: (mo
     const matching = wanted.filter(model => !query || model.toLowerCase().includes(query));
     const previous = select.value;
     select.replaceChildren(
-      ...(matching.length
-        ? matching.map(model => new Option(model, model))
-        : [new Option(t("No models match"), "")])
+      ...(matching.length ? matching.map(model => new Option(model, model)) : [new Option(t("No models match"), "")])
     );
     select.disabled = !matching.length;
     select.value = matching.includes(previous) ? previous : (matching[0] ?? "");
@@ -61,10 +59,7 @@ export function openModelPicker(models: string[], current: string, onSelect: (mo
     message: wrapper,
     width: "26em",
     modal: true,
-    buttons: [
-      { label: t("Select"), onClick: onConfirm },
-      { label: t("Cancel") }
-    ]
+    buttons: [{ label: t("Select"), onClick: onConfirm }, { label: t("Cancel") }]
   });
   render();
   filter.focus();

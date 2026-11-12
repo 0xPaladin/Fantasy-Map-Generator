@@ -30,7 +30,6 @@ import { askProvider } from "@/services/assistant/provider/answerer";
 import * as Connection from "@/services/assistant/provider/connection";
 import { listModels } from "@/services/assistant/provider/models";
 import { PROVIDERS } from "@/services/assistant/provider/providers";
-import { openModelPicker as openPicker } from "./model-picker";
 import { markAssistantOpen } from "@/ui/assistant-bubble";
 import { Dialog } from "@/ui/dialog/dialog";
 import { t } from "@/utils/i18n";
@@ -42,6 +41,7 @@ import { Customize } from "./customize";
 import { AssistantImages } from "./images";
 import { KeySheet } from "./key-sheet";
 import { AssistantMap } from "./map";
+import { openModelPicker as openPicker } from "./model-picker";
 import { ProposalCard } from "./proposal-card";
 import { Proposals } from "./proposals";
 import { AssistantWidgets, type WidgetContext } from "./widgets";
@@ -822,11 +822,7 @@ function renderFooter(): void {
     reasoning.hidden = connection.provider === "local";
   }
   el("assistantStatus").textContent =
-    now === "key"
-      ? `${si(tokens(chat))} tokens`
-      : now && limits
-        ? limitsLabel(limits)
-        : "";
+    now === "key" ? `${si(tokens(chat))} tokens` : now && limits ? limitsLabel(limits) : "";
   el("assistantSignIn").hidden = now !== "guest";
   el("assistantSignOut").hidden = now !== "member";
   el("assistantUseKey").textContent = "Use key";

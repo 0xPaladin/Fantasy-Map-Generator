@@ -3,8 +3,8 @@
 import { Pack } from "@/model/graph/pack-generator";
 import { type IntegrityViolation, MapIntegrity } from "@/model/map-integrity";
 import { Lakes } from "@/model/physical/lakes";
-import { Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
 import type { Burg } from "@/model/political/burgs-generator";
+import { Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Transports } from "@/model/story/journeys/transports-generator";
 import { last } from "@/utils/array-utils";
 import { log } from "@/utils/logger";
