@@ -13,7 +13,7 @@ Progress:
 - Phase 5 — Multi-Realm Economy, Production & Markets: ✅ done
 - Phase 6 — Map Integrity, Auto-Update Migration & Styling: ✅ done
 - Phase 7 — UI Controllers, Editors & Assistant Operations: ✅ done
-- Phase 8: pending
+- Phase 8 — Verification & Unit Tests: ✅ done
 
 Implementation notes:
 - Realm rolls run on their own seeded stream (`Math.random = Alea(seed + ":realms")`, restored after), so the
@@ -79,7 +79,18 @@ Implementation notes:
   realm layers (burgIcons, labels, emblems, population) draw on any realm change. The cached-instructions
   budget moved from 15,800 to 15,850 chars (the realm network genuinely needs the room; documented inline
   in context.test.ts). `Burgs.setRealm` assigns the nearest same-realm state by Euclidean distance, or
-  neutrals if none exists; the realm burg never takes the surface cell's slot
+  neutrals if none exists; the realm burg never takes the surface cell's slot. `setRealm` to surface is
+  validated: a water cell rejects it, and an occupied surface slot rejects promotion — the surface burg
+  keeps its slot
+- Phase 8: unit tests for the cell-slot mechanics (share/coexist/eviction/promotion-rejection), the zero
+  -surface-territory states (dense ids, no cells, burgs/urban still counted), realm route networks (air
+  mesh, bedrock preference, abyss impassability, undersea water-exclusivity), the realm economy
+  (consumer-only skyburgs, underdark mining/fungal flavor, underwater marine flavor), realm market
+  rules (never founded, never re-seated at a realm burg), and realm integrity rules (burg-markets off the
+  claimable grid, cell-burgs realm-aware). `REALM_ECONOMIES.sky` was missing `consumerOnly: true` — sky
+  burgs were mining and manufacturing like anyone else; fixed with the phase 8 tests. Realm-route tests
+  drive the private generators with a mocked pack rather than the full pipeline. The pole and province
+  invariants are covered by the scenario suite (real maps with realms generated end to end)
 
 ---
 
@@ -379,26 +390,25 @@ In `buildStateLabels()`:
 
 ### 5.1 Realm-Specific Production (`src/model/economy/production-generator.ts`)
 
-Update `calculateBurgProduction(burg, pack)`:
-- **Sky (`burg.flying`)**: Consumer-only (`return {}`), importing food and goods from connected `skyPort` markets.
+Realm economies live in `REALM_ECONOMIES` (same mechanism as the culture multipliers, folded into `getBurgModifiers`):
+- **Sky (`burg.flying`)**: consumer-only (`consumerOnly` — empty production goals), importing everything from the market of the cell it floats over.
 - **Underdark (`burg.underdark`)**:
-  - Zero surface `forestry` or `livestock`.
-  - Subterranean mushroom/fungal cultivation (`farming: 0.4 * popFactor`).
-  - High subterranean `mining` (`1.8 * popFactor`, boosted further by mountain height `cells.h >= 50` or mineral resources).
-  - Strong artisan `manufacturing` (`1.3 * popFactor`) and `alchemy`/`magic` output.
+  - Zero `Wood`/`Mahogany`/`Cattle`/`Sheep`/`Horses` (excluded names, bought from markets instead).
+  - Fungal staple (`food: 0.4 * popFactor` via the `food` tag).
+  - High subterranean `mining` (`ore`/`mineral: 1.8 * popFactor`, boosted further ×1.25 by mountain roots `cells.h >= 50` or mineral-tagged goods).
+  - Strong artisan `manufacturing` and `ritual`/`educational` output (`1.3 * popFactor`).
 - **Underwater (`burg.underwater`)**:
-  - Zero `forestry` or `livestock`.
-  - Kelp/aquaculture (`farming: 0.5 * popFactor`) and rich marine harvesting (`fishing: 1.8 * popFactor`).
-  - Vent/trench `mining` (`0.6 * popFactor`) and pearl/coral `luxury` goods.
+  - Zero `Wood`/`Mahogany`/`Cattle`/`Sheep`/`Horses` (excluded names).
+  - Kelp/aquaculture (`food: 0.5 * popFactor` via the `food` tag and `aquatic` staple).
+  - Rich marine harvesting (`aquatic: 1.8 * popFactor`).
+  - Vent/trench `mining` (`ore`/`mineral: 0.6 * popFactor`) and pearl/coral `luxury` goods (`luxury: 1.2 * popFactor`).
 
-### 5.2 Cross-Realm Market Attachment (`src/model/economy/markets-generator.ts`)
+### 5.2 Markets and realm burgs (`src/model/economy/markets-generator.ts`)
 
-In `Markets.generate()`:
-1. Surface markets form around capitals and major trade hubs as before.
-2. Realm capitals (`flying`, `underdark`, `underwater` with `capital: 1`) can also anchor realm markets, or non-surface burgs attach to the market of their connected cross-realm portal hub:
-   - `flying: 1` burgs attach to the market of their connected `skyPort` (or nearest `skyPort` within `maxDist`).
-   - `underdark: 1` burgs attach to the market of their connected `underdarkGate` (or Underdark capital market).
-   - `underwater: 1` burgs attach to the market of their connected coastal `port` (or Underwater capital market).
+Upstream removed the per-burg `market` field in the v1.157.0 economy rework: market membership derives from `cells.market[burg.cell]` (`Markets.ofBurg(burg)`). The realm layer merges with that model, unchanged from the surface rule:
+1. Markets are never founded at realm burgs (`createMarkets` filters non-surface burgs out of the founding pool), and `recenter()` never re-seats a market on one.
+2. Realm burgs take part in the market their cell falls to, like any surface burg. A realm burg whose cell joins no market (e.g. an underwater cell carrying no deposit) takes part in none.
+3. Market spacing counts only surface burgs.
 
 ---
 
@@ -474,11 +484,8 @@ In `Markets.generate()`:
 - `src/model/economy/markets-generator.test.ts`
 - `src/model/map-integrity.test.ts`
 
-1. **Cell-Slot Coexistence Tests**: Verify a Surface burg, a Skyburg, and an Underdark burg can occupy the same cell `c`, with `pack.cells.burg[c]` always equal to the Surface burg's ID across placement, relocation, removal, and `validateCellsBurg`.
-2. **Zero-Surface-Territory State Tests**: Verify Sky, Underdark, and Underwater capitals create states with dense sequential IDs, `cells === 0`, valid `pole` coordinates, and `0` provinces, while retaining state ownership on their realm's burgs.
-3. **Route Network Tests**:
-   - Verify `airroutes` connect `flying: 1` burgs and `skyPort: 1` hubs.
-   - Verify `underdarkroutes` prefer high-elevation cells (`h >= 50`), avoid deep ocean cells (`t < -1`), and connect `underdark: 1` burgs to `underdarkGate: 1` hubs.
-   - Verify `undersearoutes` stay within water cells (`h < 20`) and coastal `port` endpoints.
-4. **Economy & Market Tests**: Verify Skyburgs produce `{}` while Underdark burgs produce mining/fungal goods and Underwater burgs produce marine goods, and all three realms attach to markets via their portal hubs.
+1. **Cell-Slot Coexistence Tests** (`burgs-generator.test.ts`, "multi-realm cell slots"): verify a Surface burg, a Skyburg, and an Underdark burg can occupy the same cell `c`, with `pack.cells.burg[c]` always equal to the Surface burg's ID across add/remove paths and realm changes. Covers placement compatibility (water cells reject surface/underdark placements), eviction-avoidance, `setRealm` round trips (promotion onto an occupied cell throws, promotion onto a free cell takes the slot, demotion hands it back), the surface hub flag rules, altitude survival across realm moves, and the pure `groundSlotOnPlacement`/`cellSlotAfterRemoval` helpers.
+2. **Zero-Surface-Territory State Tests** (`states-generator.test.ts`, "realm (non-land) states"): `createStates()` founds dense sequential ids (surface first, then sky/underdark/underwater capitals), realm states hold `cells === 0`/`area === 0`/`rural === 0` and still count their realm burgs and urban population in `collectStatistics()`. No provinces are possible (`Provinces.generate` skips realm capitals) and `pole` sits on the capital (covered by the scenario suite on real maps). Locked realm states carry through regeneration with their ids, so multiplier rules follow them — covered by the scenario test "follow a locked state through its new id".
+3. **Route Network Tests** (`routes-generator.test.ts`, "RoutesModule realm networks"): `airroutes` mesh skyburgs with lanes that always touch a skyburg; `underdarkroutes` prefer high-elevation bedrock, pass through highlands (`h ≥ 50`), treat deep ocean (`t < -1`) as impassable, and connect `underdark` burgs to `underdarkGate` hubs; `undersearoutes` stay in water cells apart from their coastal port/underwater endpoints. Tests drive the private generators with a mocked pack (`generateAirRoutes`/`generateUnderdarkRoutes`/`generateUnderseaRoutes`).
+4. **Economy & Market Tests** (`production-generator.test.ts`, "realm burg economies"; `markets-generator.test.ts`, "realm burgs and markets"): Skyburgs produce `{}` (consumer-only, empty goals and inventory); Underdark burgs harvest the deep earth at realm multipliers (ore/mineral ×1.8, ×1.25 better over mountain roots, surface goods excluded); Underwater burgs harvest aquatic goods (×1.8) and cannot raise surface goods. Markets are never found at realm burgs (`createMarkets`) and never re-seat at one (`recenter`), and realm burgs never carry cell slots (`add`/`setRealm`).
 5. Run `npm run test` (Vitest) and `npm run lint` (Biome).

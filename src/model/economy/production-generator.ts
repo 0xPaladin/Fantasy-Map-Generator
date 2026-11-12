@@ -181,8 +181,8 @@ type RealmEconomy = {
 const SURFACE_SOURCE_GOODS = new Set(["Wood", "Mahogany", "Cattle", "Sheep", "Horses"]);
 
 const REALM_ECONOMIES: Record<string, RealmEconomy> = {
-  // skyburgs are consumers: they import food and goods from their skyport's market
-  sky: { excludedNames: SURFACE_SOURCE_GOODS, multipliers: {}, stapleTags: [] },
+  // skyburgs are consumers: they do not make anything, they only buy at their cell's market
+  sky: { excludedNames: SURFACE_SOURCE_GOODS, multipliers: {}, stapleTags: [], consumerOnly: true },
   underdark: {
     excludedNames: SURFACE_SOURCE_GOODS,
     multipliers: { ore: 1.8, mineral: 1.8, food: 0.4, ritual: 1.3, educational: 1.3 },

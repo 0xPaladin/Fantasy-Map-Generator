@@ -844,3 +844,75 @@ describe("technology tiers", () => {
     expect(modifiers(90)).toBe(3);
   });
 });
+
+describe("realm burg economies", () => {
+  const realms = {
+    sky: { i: 10, cell: 0, population: 100, flying: 1 } as Burg,
+    underdark: { i: 11, cell: 0, population: 100, underdark: 1 } as Burg,
+    underwater: { i: 12, cell: 0, population: 100, underwater: 1 } as Burg
+  };
+  const tagged = (i: number, name: string, value: number, tags: string[]): Good => ({
+    ...good(i, name, value),
+    tags
+  });
+
+  beforeEach(() => {
+    // a world of earth and water, one burg per realm on the same cell
+    globalThis.pack = {
+      cells: { good: [0], market: [1], h: [30], development: [1] },
+      burgs: [{ i: 0 } as any, realms.sky, realms.underdark, realms.underwater],
+      markets: [market],
+      deals: []
+    } as unknown as typeof pack;
+  });
+
+  it("skyburgs are consumer-only: no goals, nothing produced, nothing inventoried", () => {
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const index = production["buildProductionIndex"](catalogue);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    const day = production["createBurgDay"](index, realms.sky, market);
+    expect(day.goals).toEqual([]);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["runWorkerLoop"](index, day);
+    expect(day.produced).toEqual([]);
+    expect(day.inventory).toEqual([]);
+    expect(day.workersUsed).toBe(0);
+  });
+
+  it("underdark holds harvest the deep earth and cannot raise the surface", () => {
+    const ore = tagged(1, "Iron", 4, ["ore"]);
+    const wood = tagged(2, "Wood", 4, []);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["getRealmOutputModifier"](realms.underdark, ore)).toBeCloseTo(1.8); // the cell is not a mountain root
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["isRealmExcluded"](realms.underdark, wood)).toBe(true);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["getRealmOutputModifier"](realms.sky, ore)).toBe(1); // the sky does not care about ore either way
+  });
+
+  it("mines better over the mountains and over mineral riches", () => {
+    globalThis.pack.cells = { good: [0], h: [60], market: [1], development: [1] } as unknown as typeof pack.cells;
+    const ore = tagged(1, "Iron", 4, ["ore"]);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["getRealmOutputModifier"](realms.underdark, ore)).toBeCloseTo(1.8 * 1.25); // mountain roots
+    const mineral = tagged(2, "Saltpetre", 4, ["mineral"]);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["getRealmOutputModifier"](realms.underdark, mineral)).toBeCloseTo(1.8 * 1.25); // mineral riches
+    globalThis.pack.cells = { good: [0], h: [10], market: [1], development: [1] } as unknown as typeof pack.cells;
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["getRealmOutputModifier"](realms.underdark, ore)).toBeCloseTo(1.8); // the plain ground gives the plain rate
+  });
+
+  it("underwater cities farm and fish the deep, and cannot raise the surface", () => {
+    const fish = tagged(1, "Deepsea fish", 4, ["aquatic"]);
+    const cattle = tagged(2, "Cattle", 4, []);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["getRealmOutputModifier"](realms.underwater, fish)).toBeCloseTo(1.8);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["isRealmExcluded"](realms.underwater, cattle)).toBe(true);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["isRealmExcluded"](realms.sky, cattle)).toBe(true);
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    expect(production["isRealmExcluded"](realms.sky, fish)).toBe(false);
+  });
+});

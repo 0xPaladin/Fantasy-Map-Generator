@@ -1567,16 +1567,27 @@ class BurgModule {
     if (next === previous) return;
 
     const { cells } = pack;
+    if ((next === "surface" || next === "underdark") && cells.h[burg.cell] < 20)
+      throw new Error(
+        `${next === "surface" ? "A surface" : "An underdark"} burg cannot be placed in the water; move it to land first`
+      );
+    if (next === "underwater" && cells.h[burg.cell] >= 20) throw new Error("An underwater burg must live in the water");
+
     if (next === "surface") {
+      const occupant = cells.burg[burg.cell];
+      const occupantBurg = occupant ? pack.burgs[occupant] : undefined;
+      if (occupantBurg && occupant !== burg.i && !occupantBurg.removed)
+        throw new Error(`Cell ${burg.cell} already holds a surface burg; move or remove it first`);
       delete burg.flying;
       delete burg.underdark;
       delete burg.underwater;
+      delete burg.altitude; // the surface has no vertical offset
       burg.state = cells.state[burg.cell];
-      // the slot may still hold a corrupt or legacy occupant — retake it cleanly
-      cells.burg[burg.cell] = 0;
       cells.burg[burg.cell] = burg.i;
     } else {
       delete burg.port; // realm burgs are never ports
+      delete burg.skyPort; // skyports are surface-only hubs
+      delete burg.underdarkGate; // gates are surface-only hubs
       if (cells.burg[burg.cell] === burg.i) cells.burg[burg.cell] = 0; // hand the slot back to the surface
       delete burg.flying;
       delete burg.underdark;

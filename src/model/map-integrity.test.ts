@@ -12,8 +12,20 @@ function check(
     journeys = [],
     burgs = [],
     links = {},
-    markets = []
-  }: { routes?: unknown[]; journeys?: unknown[]; burgs?: unknown[]; links?: object; markets?: unknown[] }
+    markets = [],
+    h = [30, 30, 30],
+    market = [1, 0, 2],
+    burgCells = [0, 0, 0]
+  }: {
+    routes?: unknown[];
+    journeys?: unknown[];
+    burgs?: unknown[];
+    links?: object;
+    markets?: unknown[];
+    h?: number[];
+    market?: number[];
+    burgCells?: number[];
+  }
 ) {
   globalThis.pack = {
     cells: {
@@ -24,10 +36,10 @@ function check(
         [10, 0],
         [10, 8]
       ],
-      h: [30, 30, 30],
+      h,
       f: [1, 1, 1],
-      burg: [0, 0, 0],
-      market: [1, 0, 2],
+      burg: burgCells,
+      market,
       routes: links
     },
     features: [0, { i: 1, type: "island", land: true, name: "Isle", group: "isle" }],
@@ -104,4 +116,19 @@ it("flags a burg on a cell of no market or of a removed one", () => {
   ];
   const markets = [{ i: 1, centerBurgId: 1, goods: {} }];
   expect(check("burg-markets", { burgs, markets })).toMatchObject({ count: 2, examples: ["2", "3"] });
+});
+
+it("does not demand a market for a realm burg on an unclaimable water cell", () => {
+  const burgs = [{ i: 1, flying: 1, cell: 2, x: 10, y: 8, feature: 1 }];
+  expect(check("burg-markets", { burgs, h: [30, 30, 10], market: [1, 0, 0] })).toBeUndefined();
+});
+
+it("still demands a market for a realm burg on intact land", () => {
+  const burgs = [{ i: 1, underdark: 1, cell: 2, x: 10, y: 8, feature: 1 }];
+  expect(check("burg-markets", { burgs, market: [1, 0, 0] })).toMatchObject({ count: 1, examples: ["1"] });
+});
+
+it("flags a realm burg squatting in the surface slot", () => {
+  const burgs = [{ i: 2, flying: 1, cell: 0, x: 0, y: 0, feature: 1 }];
+  expect(check("cell-burgs", { burgs, burgCells: [2, 0, 0] })).toMatchObject({ count: 1, examples: ["0"] });
 });
