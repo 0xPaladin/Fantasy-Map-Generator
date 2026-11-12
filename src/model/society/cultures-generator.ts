@@ -999,67 +999,6 @@ class CulturesGenerator {
       ];
     }
 
-    if (set === "astralJammer") {
-      return [
-        {
-          name: "Ethereal (Kindred)",
-          base: "JAMET",
-          odd: 1,
-          sort: (i: number) => 1 / (n(i) + 1),
-          shield: "vesicaPiscis"
-        },
-        {
-          name: "Silver Kin (Kindred)",
-          base: "JAMET",
-          odd: 0.8,
-          sort: (i: number) => n(i),
-          shield: "fantasy1"
-        },
-        {
-          name: "Stoneborn (Deep)",
-          base: "JAMST",
-          odd: 0.9,
-          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
-          shield: "wedged"
-        },
-        {
-          name: "Deepkin (Deep)",
-          base: "JAMST",
-          odd: 0.7,
-          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
-          shield: "fantasy2"
-        },
-        {
-          name: "Wild (Ferals)",
-          base: "JAMWI",
-          odd: 0.8,
-          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
-          shield: "moriaOrc"
-        },
-        {
-          name: "Scavengers (Ferals)",
-          base: "JAMWI",
-          odd: 0.6,
-          sort: (i: number) => n(i),
-          shield: "fantasy4"
-        },
-        {
-          name: "Deep Choir (Collective)",
-          base: "JAMDE",
-          odd: 0.7,
-          sort: (i: number) => n(i),
-          shield: "pavise"
-        },
-        {
-          name: "Far Chorus (Collective)",
-          base: "JAMDE",
-          odd: 0.5,
-          sort: (i: number) => 1 / (n(i) + 1),
-          shield: "fantasy5"
-        }
-      ];
-    }
-
     if (set === "grimdark") {
       return [
         {

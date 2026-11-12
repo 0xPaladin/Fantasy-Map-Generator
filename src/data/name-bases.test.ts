@@ -7,24 +7,23 @@ import { Cultures } from "@/model/society/cultures-generator";
 
 const ASTRAL_SETS = {
   astralTrek: ["Trek Core", "Trek Terran", "Trek Continental", "Trek Synthetic"],
-  astralJammer: ["Jammer Deep", "Jammer Ethereal", "Jammer Stoneborn", "Jammer Wild"],
   grimdark: ["Grimdark Core", "Grimdark Gothic", "Grimdark Iron", "Grimdark Machine"]
 } as const;
 
 const ALL_ASTRAL_BASE_NAMES = Object.values(ASTRAL_SETS).flat();
 
 const RPG_BASES = [
-  { name: "Halfling", id: "HALFL", i: 55, min: 5, max: 12, d: "lnst" },
-  { name: "Fey", id: "FEYFO", i: 56, min: 5, max: 13, d: "lrnm" },
-  { name: "Infernal", id: "INFER", i: 57, min: 5, max: 13, d: "rxz" },
-  { name: "Celestial", id: "CELES", i: 58, min: 5, max: 12, d: "ln" },
-  { name: "Grave", id: "GRAVE", i: 59, min: 5, max: 13, d: "rn" },
-  { name: "Merfolk", id: "MERFO", i: 60, min: 5, max: 12, d: "lrnm" },
-  { name: "Beastfolk", id: "BEAST", i: 61, min: 4, max: 11, d: "rk" },
-  { name: "Elemental", id: "ELEME", i: 62, min: 5, max: 12, d: "lnr" },
-  { name: "Construct", id: "CONST", i: 63, min: 5, max: 12, d: "rn" },
-  { name: "Eldritch", id: "ELDRI", i: 64, min: 4, max: 13, d: "rl" },
-  { name: "Tribal", id: "TRIBA", i: 65, min: 4, max: 9, d: "nk" }
+  { name: "Halfling", id: "HALFL", i: 51, min: 5, max: 12, d: "lnst" },
+  { name: "Fey", id: "FEYFO", i: 52, min: 5, max: 13, d: "lrnm" },
+  { name: "Infernal", id: "INFER", i: 53, min: 5, max: 13, d: "rxz" },
+  { name: "Celestial", id: "CELES", i: 54, min: 5, max: 12, d: "ln" },
+  { name: "Grave", id: "GRAVE", i: 55, min: 5, max: 13, d: "rn" },
+  { name: "Merfolk", id: "MERFO", i: 56, min: 5, max: 12, d: "lrnm" },
+  { name: "Beastfolk", id: "BEAST", i: 57, min: 4, max: 11, d: "rk" },
+  { name: "Elemental", id: "ELEME", i: 58, min: 5, max: 12, d: "lnr" },
+  { name: "Construct", id: "CONST", i: 59, min: 5, max: 12, d: "rn" },
+  { name: "Eldritch", id: "ELDRI", i: 60, min: 4, max: 13, d: "rl" },
+  { name: "Tribal", id: "TRIBA", i: 61, min: 4, max: 9, d: "nk" }
 ] as const;
 
 const ALL_RPG_BASE_NAMES = RPG_BASES.map(b => b.name);
@@ -51,9 +50,9 @@ function politiesOf(base: NameBase): string[] {
 }
 
 describe("Astral name bases content rules", () => {
-  it("ships all 12 Astral name bases in getDefaultNameBases()", () => {
+  it("ships all 8 Astral name bases in getDefaultNameBases()", () => {
     const bases = getAstralBases();
-    expect(bases).toHaveLength(12);
+    expect(bases).toHaveLength(8);
     expect(bases.map(b => b.name)).toEqual(ALL_ASTRAL_BASE_NAMES);
   });
 
@@ -63,10 +62,10 @@ describe("Astral name bases content rules", () => {
     expect(new Set(indices).size).toBe(all.length);
     expect(indices).toEqual(all.map((_, i) => i));
 
-    // Stock bases 0..42, Astral bases 43..54
+    // Stock bases 0..42, Astral bases 43..50
     const astral = getAstralBases();
     expect(astral[0].i).toBe(43);
-    expect(astral[astral.length - 1].i).toBe(54);
+    expect(astral[astral.length - 1].i).toBe(50);
   });
 
   it("gives every base a unique five-letter id", () => {
@@ -144,10 +143,10 @@ describe("RPG Fantasy name bases content rules", () => {
     expect(new Set(indices).size).toBe(all.length);
     expect(indices).toEqual(all.map((_, i) => i));
 
-    // Stock bases 0..42, Astral bases 43..54, RPG bases 55..65
+    // Stock bases 0..42, Astral bases 43..50, RPG bases 51..61
     const rpg = getRpgBases();
-    expect(rpg[0].i).toBe(55);
-    expect(rpg[rpg.length - 1].i).toBe(65);
+    expect(rpg[0].i).toBe(51);
+    expect(rpg[rpg.length - 1].i).toBe(61);
   });
 
   it("assigns each RPG base its reserved stable five-letter id", () => {
@@ -338,9 +337,8 @@ describe("RPG Fantasy culture set", () => {
 });
 
 describe("Astral culture sets", () => {
-  it("registers astralTrek, astralJammer, and grimdark in CULTURE_SETS", () => {
+  it("registers astralTrek and grimdark in CULTURE_SETS", () => {
     expect(CULTURE_SETS.astralTrek).toEqual({ name: "AstralTrek", max: 100, probability: 5 });
-    expect(CULTURE_SETS.astralJammer).toEqual({ name: "AstralJammer", max: 100, probability: 4 });
     expect(CULTURE_SETS.grimdark).toEqual({ name: "Grimdark", max: 100, probability: 3 });
   });
 
@@ -492,7 +490,6 @@ describe("Phase A acceptance", () => {
       }
 
       expect(pinSchemas.culturesSet.safeParse("astralTrek").success).toBe(true);
-      expect(pinSchemas.culturesSet.safeParse("astralJammer").success).toBe(true);
       expect(pinSchemas.culturesSet.safeParse("grimdark").success).toBe(true);
     } finally {
       options.map = origMap;
@@ -506,7 +503,7 @@ describe("Phase A acceptance", () => {
     const source = readFileSync("src/app/chrome/tabs/options-tab.ts", "utf8");
     expect(source).toContain("CULTURE_SETS");
     expect(source).toContain('data-option="culturesSet"');
-    for (const key of ["astralTrek", "astralJammer", "grimdark"]) {
+    for (const key of ["astralTrek", "grimdark"]) {
       expect(CULTURE_SETS[key]).toBeDefined();
     }
   });

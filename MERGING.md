@@ -48,16 +48,15 @@ git fetch upstream && git merge upstream/master
 
 - **`src/data/name-bases.ts`**
   - **Interface extension**: `NameBase` interface includes optional `groups?: Record<string, string[]>`.
-  - **Appended array entries**: Appended 12 Astral name bases (indices 43..54) at the end of `getDefaultNameBases()`.
+  - **Appended array entries**: Appended 8 Astral name bases (indices 43..50) at the end of `getDefaultNameBases()`.
     - AstralTrek (Trek Core, Trek Terran, Trek Continental, Trek Synthetic)
-    - AstralJammer (Jammer Deep, Jammer Ethereal, Jammer Stoneborn, Jammer Wild)
     - Grimdark (Grimdark Core, Grimdark Gothic, Grimdark Iron, Grimdark Machine)
   - *Conflict resolution strategy*: If upstream adds new name bases, ensure Astral bases remain appended after upstream bases and culture generator base lookups continue resolving by name.
 
 - **`src/generators/cultures-generator.ts`**
-  - **`CULTURE_SETS` additions**: Appended `astralTrek`, `astralJammer`, and `grimdark` to `CULTURE_SETS` with `max: 8`.
-  - **`CulturesGenerator.getDefault()`**: Added `case "astralTrek"`, `case "astralJammer"`, and `case "grimdark"` branches returning each set's 8 cultures with habitat scoring callbacks.
-  - *Conflict resolution strategy*: Preserve these three case branches and `CULTURE_SETS` entries.
+  - **`CULTURE_SETS` additions**: Appended `astralTrek` and `grimdark` to `CULTURE_SETS` with `max: 8`.
+  - **`CulturesGenerator.getDefault()`**: Added `case "astralTrek"` and `case "grimdark"` branches returning each set's 8 cultures with habitat scoring callbacks.
+  - *Conflict resolution strategy*: Preserve these case branches and `CULTURE_SETS` entries.
 
 - **`src/components/options-schema.ts`**
   - Uses dynamic enumeration from `Object.keys(CULTURE_SETS)`. No direct stock modifications needed; automatically validates and pins the Astral sets.

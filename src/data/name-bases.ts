@@ -39,21 +39,8 @@ export function deriveBaseId(name: string, taken: Set<string>): string {
   throw new Error(`Cannot derive a unique name base id for "${name}"`);
 }
 
-/** The identity codes reserved for the 12 Astral Cartographer bases */
-export const ASTRAL_BASE_IDS = new Set([
-  "TRKCO",
-  "TRKTE",
-  "TRKCN",
-  "TRKSY",
-  "JAMDE",
-  "JAMET",
-  "JAMST",
-  "JAMWI",
-  "GRMCO",
-  "GRMGO",
-  "GRMIR",
-  "GRMCH"
-]);
+/** The identity codes reserved for the 8 Astral Cartographer bases */
+export const ASTRAL_BASE_IDS = new Set(["TRKCO", "TRKTE", "TRKCN", "TRKSY", "GRMCO", "GRMGO", "GRMIR", "GRMCH"]);
 
 /**
  * Is this base one of the Astral ones?
@@ -682,183 +669,9 @@ export function getDefaultNameBases(): NameBase[] {
       }
     },
     {
-      name: "Jammer Deep",
-      id: "JAMDE",
-      i: 47,
-      min: 6,
-      max: 16,
-      d: "srlm",
-      m: 0,
-      b: "Rosette Nebula,Crab Nebula,Helix Nebula,Ring Nebula,Cat's Eye,Eagle Nebula,Horsehead Nebula,Pelican Nebula,Flame Nebula,Cone Nebula,Boomerang Nebula,Retina Nebula,Ant Nebula,Beehive Cluster,Omega Centauri,Hercules Cluster,Double Cluster,Wild Duck Cluster,Coma Cluster,Triangulum Galaxy,Sombrero Galaxy,Whirlpool Galaxy,Pinwheel Galaxy,Cigar Galaxy,Bode's Galaxy,Sculptor Galaxy,Andromeda Galaxy,Large Magellanic Cloud,Small Magellanic Cloud,Local Bubble,Gould Belt,Oort Cloud,Kuiper Belt,Scattered Disc,Rho Ophiuchi,Taurus Molecular Cloud,Orion Complex,Local Arm,Sagittarius Arm,Scutum Arm,Perseus Arm,Norma Arm,Carina Arm,Crux Arm,Aquila Rift,Great Rift,Coalsack,Circlet,Lambda Centauri,W Carinae,Aeleva,Aelith,Aeloria,Aelori,Aelun,Aevora,Aevun,Aruun,Aruuna,Aurith,Caeluma,Celume,Elumel,Elyra,Elyth,Ilyana,Ilymar,Ilyran,Ilyth,Ilyven,Ilumara,Ilumel,Nacreous,Naurith,Nelith,Nethis,Nyrian,Olyven,Onaar,Ophira,Oryavan,Orysa,Oseva,Ouevan,Ovelia,Oveon,Ovi,Rysael,Selaia,Selune,Senvara,Sirael,Sorynth,Suvara,Thalassa,Thalor,Thalune,Thavil,Thela,Thessa,Thuvia,Vaelen,Vaelith,Vaelora,Vanthea,Velsan,Veloria,Vireth,Vossan,Ylora,Ylume,Yssael,Yssara,Yssian,Ythara",
-      groups: {
-        polities: [
-          "Aeon",
-          "Chorus",
-          "Lattice",
-          "Weave",
-          "Resonance",
-          "Meridian",
-          "Zenith",
-          "Aphelion",
-          "Perihelion",
-          "Syzygy",
-          "Eidolon",
-          "Choir",
-          "Harmonic",
-          "Symphony",
-          "Emanation",
-          "Aurora",
-          "Halcyon",
-          "Nimbus",
-          "Cascade",
-          "Confluence",
-          "Vergence",
-          "Solstice",
-          "Equinox",
-          "Parallax",
-          "Antipode",
-          "Umbra",
-          "Penumbra",
-          "Corona",
-          "Halo",
-          "Sigil",
-          "Glyph",
-          "Cipher",
-          "Almanac",
-          "Cadenza",
-          "Modality",
-          "Octave",
-          "Interval",
-          "Phrase",
-          "Measure",
-          "Cadence",
-          "Aria",
-          "Aural",
-          "Sillage",
-          "Nocturne",
-          "Symphony of Tides",
-          "Chorus of Bells",
-          "Lattice of Nine",
-          "Eidolon Assembly",
-          "Aurora Compact",
-          "Cascade Concord",
-          "Solstice Directorate",
-          "Meridian Union",
-          "Aeon Hegemony",
-          "Zenith Covenant",
-          "Umbra Compact",
-          "Glyph Assembly",
-          "Parallax League",
-          "Sigil Dominion"
-        ]
-      }
-    },
-    {
-      name: "Jammer Ethereal",
-      id: "JAMET",
-      i: 48,
-      min: 6,
-      max: 16,
-      d: "lsn",
-      m: 0,
-      b: "Aelindor,Celandine,Ilythiel,Miraliel,Serevain,Thaeniel,Vaelithir,Yssarael,Lumaviel,Narethil,Elythiel,Silverane,Thaevion,Caelithis,Orinathil,Virelith,Savaethis,Aluneth,Ilythea,Nemeon,Seraviel,Thaelyn,Velithis,Aelindis,Caelanthi,Eluvien,Ilythara,Naerithil,Ovelinde,Serephon,Thaenara,Uelindis,Vaelithor,Ylathiel,Aerandel,Calenith,Elythora,Ilyvaine,Naelithir,Savaethine,Thaerion,Velindis,Aelunthe,Caelindor,Elynara,Lyravel,Naraethis,Olythiel,Seryndel,Thaevindis,Uelithor,Vaelin,Aelunwen,Caelorith,Elytharen,Ilythanel,Naevindor,Savaelune,Ylathire,Aelivian,Caeluneth,Elyvindis,Ilyraeth,Naluvien,Serevandil,Thaelindor,Uelathis,Vaenareth,Yssalune,Aelunmere,Caelethra,Ilythaven,Savaeryth,Thaenelith,Vaelunara",
-      groups: {
-        polities: [
-          "The Silver Compact",
-          "Ethereal Concordance",
-          "The Long Kin",
-          "Aelish Dominion",
-          "Sovereign of the Veil",
-          "The Weaving",
-          "Children of the Light",
-          "The Quiet Court",
-          "The Silver Houses",
-          "The Sundering",
-          "The Gilded Choir",
-          "The Veiled Realm",
-          "The Eldest Compact",
-          "The Ninefold Kin",
-          "The Last Weave",
-          "Kin of the Quiet",
-          "The Verdant Accord",
-          "The Silver Nine",
-          "The Long Covenant",
-          "The House of Stars"
-        ]
-      }
-    },
-    {
-      name: "Jammer Stoneborn",
-      id: "JAMST",
-      i: 49,
-      min: 4,
-      max: 11,
-      d: "rdkltn",
-      m: 0,
-      b: "Kazad,Borun,Grusk,Dolvar,Thokk,Barok,Karnak,Vundr,Morgran,Zulbak,Hammerdeep,Stonevane,Deepdelve,Ironroot,Coldshaft,Granitehold,Deepvault,Rockstride,Stonewrought,Delvehold,Korvad,Grundar,Borrik,Drakmoor,Forgehold,Gloomdeep,Hadrun,Ironvein,Karhold,Lurdepth,Morvak,Norhold,Blackglass,Prondel,Quarhold,Redvein,Stonewell,Tharnak,Underforge,Vaultdeep,Wadrun,Yarkhold,Zanthor,Duskvein,Emberforge,Flintdelve,Greyvein,Hollowvein,Ivarkhold,Jarndeep,Kolvat,Mirendal,Norgrave,Ohrn,Pyrrhold,Quarreldepth,Runestone,Saltvein,Thornvein,Umbervein,Wartsteel,Ymirthold,Drakhelm,Kharzun,Malkarr,Orrvane,Skarrad,Thurkhal",
-      groups: {
-        polities: [
-          "The Deep Compact",
-          "Holds of Stone",
-          "The Deepforge",
-          "Clan Dominion",
-          "The Deep Council",
-          "The Forge Compact",
-          "The Stone Nine",
-          "Deepkin",
-          "The Ember Clans",
-          "The Iron Compact",
-          "Delve Dominion",
-          "The Mountain Covenant",
-          "The Ore Syndicates",
-          "The Deep Republic",
-          "The Stone League",
-          "The Anvil",
-          "Holdfast Compact",
-          "The Ore Compact",
-          "The Burrow Nine",
-          "The Deep Charters"
-        ]
-      }
-    },
-    {
-      name: "Jammer Wild",
-      id: "JAMWI",
-      i: 50,
-      min: 3,
-      max: 9,
-      d: "rk",
-      m: 0,
-      b: "Gnash,Skrit,Vorrel,Thugga,Skaal,Rukk,Ghar,Bhul,Harsk,Urgl,Tuck,Werr,Zibb,Klud,Oggra,Reth,Snarl,Grish,Yerg,Drogg,Hulg,Mraak,Nark,Pish,Quorl,Snag,Thrush,Ulk,Vesk,Yurd,Zurr,Ghaal,Brok,Skegg,Ulgh,Drash,Grash,Mugg,Wug,Zob,Bruk,Crav,Dush,Froth,Gitch,Hob,Jark,Krew,Lumb,Nabb,Ock,Prow,Rusk,Shol,Trub,Yur,Zukk,Gnarl,Bruck,Skarr,Vhul,Mugga,Ruk",
-      groups: {
-        polities: [
-          "The Hunting Clans",
-          "The Wild Swarm",
-          "Blood Clans",
-          "The Red Hand",
-          "Pack Dominion",
-          "The Ravening",
-          "The Snarl",
-          "The Hunt",
-          "Clan Swarm",
-          "The Feral League",
-          "Red Fist",
-          "The Broken Pack",
-          "The Sated",
-          "Ravenous Clans",
-          "The Wild Compact",
-          "The Hunting Compact",
-          "The Scavenger Clans",
-          "Feral Compact",
-          "The Blood Compact",
-          "The Wild Nine"
-        ]
-      }
-    },
-    {
       name: "Grimdark Core",
       id: "GRMCO",
-      i: 51,
+      i: 47,
       min: 3,
       max: 10,
       d: "rdkltn",
@@ -914,7 +727,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Grimdark Gothic",
       id: "GRMGO",
-      i: 52,
+      i: 48,
       min: 5,
       max: 13,
       d: "lnrst",
@@ -948,7 +761,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Grimdark Iron",
       id: "GRMIR",
-      i: 53,
+      i: 49,
       min: 4,
       max: 11,
       d: "rdkltn",
@@ -981,7 +794,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Grimdark Machine",
       id: "GRMCH",
-      i: 54,
+      i: 50,
       min: 4,
       max: 12,
       d: "srlm",
@@ -1018,7 +831,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Halfling",
       id: "HALFL",
-      i: 55,
+      i: 51,
       min: 5,
       max: 12,
       d: "lnst",
@@ -1047,7 +860,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Fey",
       id: "FEYFO",
-      i: 56,
+      i: 52,
       min: 5,
       max: 13,
       d: "lrnm",
@@ -1074,7 +887,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Infernal",
       id: "INFER",
-      i: 57,
+      i: 53,
       min: 5,
       max: 13,
       d: "rxz",
@@ -1101,7 +914,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Celestial",
       id: "CELES",
-      i: 58,
+      i: 54,
       min: 5,
       max: 12,
       d: "ln",
@@ -1127,7 +940,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Grave",
       id: "GRAVE",
-      i: 59,
+      i: 55,
       min: 5,
       max: 13,
       d: "rn",
@@ -1153,7 +966,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Merfolk",
       id: "MERFO",
-      i: 60,
+      i: 56,
       min: 5,
       max: 12,
       d: "lrnm",
@@ -1177,7 +990,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Beastfolk",
       id: "BEAST",
-      i: 61,
+      i: 57,
       min: 4,
       max: 11,
       d: "rk",
@@ -1203,7 +1016,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Elemental",
       id: "ELEME",
-      i: 62,
+      i: 58,
       min: 5,
       max: 12,
       d: "lnr",
@@ -1228,7 +1041,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Construct",
       id: "CONST",
-      i: 63,
+      i: 59,
       min: 5,
       max: 12,
       d: "rn",
@@ -1253,7 +1066,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Eldritch",
       id: "ELDRI",
-      i: 64,
+      i: 60,
       min: 4,
       max: 13,
       d: "rl",
@@ -1278,7 +1091,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Tribal",
       id: "TRIBA",
-      i: 65,
+      i: 61,
       min: 4,
       max: 9,
       d: "nk",

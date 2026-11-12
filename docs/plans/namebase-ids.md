@@ -67,31 +67,31 @@ Stock and Astral bases (0–54) keep their current order; ids are the only new t
 | 16 | TURKI | Turkish | 44 | TRKTE | Trek Terran |
 | 17 | AMAZI | Amazigh | 45 | TRKCN | Trek Continental |
 | 18 | ARABI | Arabic | 46 | TRKSY | Trek Synthetic |
-| 19 | INUIT | Inuit | 47 | JAMDE | Jammer Deep |
-| 20 | BASQU | Basque | 48 | JAMET | Jammer Ethereal |
-| 21 | NIGER | Nigerian | 49 | JAMST | Jammer Stoneborn |
-| 22 | CELTI | Celtic | 50 | JAMWI | Jammer Wild |
-| 23 | MESOP | Mesopotamian | 51 | GRMCO | Grimdark Core |
-| 24 | IRANI | Iranian | 52 | GRMGO | Grimdark Gothic |
-| 25 | HAWAI | Hawaiian | 53 | GRMIR | Grimdark Iron |
-| 26 | KARNA | Karnataka | 54 | GRMCH | Grimdark Machine |
+| 19 | INUIT | Inuit | 47 | GRMCO | Grimdark Core |
+| 20 | BASQU | Basque | 48 | GRMGO | Grimdark Gothic |
+| 21 | NIGER | Nigerian | 49 | GRMIR | Grimdark Iron |
+| 22 | CELTI | Celtic | 50 | GRMCH | Grimdark Machine |
+| 23 | MESOP | Mesopotamian | | | |
+| 24 | IRANI | Iranian | | | |
+| 25 | HAWAI | Hawaiian | | | |
+| 26 | KARNA | Karnataka | | | |
 | 27 | QUECH | Quechua | | | |
 
 Reserved for RPG Fantasy in Phase 2 ([rpg-fantasy-cultures.md](rpg-fantasy-cultures.md)):
 
 | i | id | Base |
 | --- | --- | --- |
-| 55 | HALFL | Halfling |
-| 56 | FEYFO | Fey |
-| 57 | INFER | Infernal |
-| 58 | CELES | Celestial |
-| 59 | GRAVE | Grave |
-| 60 | MERFO | Merfolk |
-| 61 | BEAST | Beastfolk |
-| 62 | ELEME | Elemental |
-| 63 | CONST | Construct |
-| 64 | ELDRI | Eldritch |
-| 65 | TRIBA | Tribal |
+| 51 | HALFL | Halfling |
+| 52 | FEYFO | Fey |
+| 53 | INFER | Infernal |
+| 54 | CELES | Celestial |
+| 55 | GRAVE | Grave |
+| 56 | MERFO | Merfolk |
+| 57 | BEAST | Beastfolk |
+| 58 | ELEME | Elemental |
+| 59 | CONST | Construct |
+| 60 | ELDRI | Eldritch |
+| 61 | TRIBA | Tribal |
 
 ## Data model
 

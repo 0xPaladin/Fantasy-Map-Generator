@@ -12,7 +12,6 @@ A culture set is the pool of cultures a map can draw from. It is picked in the _
 | High Fantasy | 17                   | 17           |
 | Dark Fantasy | 34                   | 18           |
 | AstralTrek   | 8                    | 8            |
-| AstralJammer | 8                    | 8            |
 | Grimdark     | 8                    | 8            |
 | RPG Fantasy  | 43                   | 24           |
 | Random       | generated on the fly | 100          |
@@ -205,19 +204,6 @@ The clean, optimistic register of classic science fiction: people who still live
 - Posthuman (Machine): what is left of people after long travel. Namesbase: Trek Synthetic.
 - Core Worlds (Mixed): the rich inner systems. Namesbase: Trek Core.
 - Inner Reach (Mixed): the frontier beyond them. Namesbase: Trek Core.
-
-### AstralJammer
-
-The high-fantasy register, told in the vocabulary of the deep places: the kindred, the deep folk, the ferals and the choruses.
-
-- Ethereal (Kindred): the bright spirits of the upper places. Namesbase: Jammer Ethereal.
-- Silver Kin (Kindred): their kin, of the old blood. Namesbase: Jammer Ethereal.
-- Stoneborn (Deep): the people of the deep stone. Namesbase: Jammer Stoneborn.
-- Deepkin (Deep): their children. Namesbase: Jammer Stoneborn.
-- Wild (Ferals): the unclaimed wilds. Namesbase: Jammer Wild.
-- Scavengers (Ferals): those who take from the wilds. Namesbase: Jammer Wild.
-- Deep Choir (Collective): the choirs of the deep. Namesbase: Jammer Deep.
-- Far Chorus (Collective): the choirs that answer from afar. Namesbase: Jammer Deep.
 
 ### Grimdark
 

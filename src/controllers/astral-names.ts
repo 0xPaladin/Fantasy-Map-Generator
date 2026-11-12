@@ -1,4 +1,4 @@
-﻿// The Polity naming action: give the map's polities their own words and its provinces their
+// The Polity naming action: give the map's polities their own words and its provinces their
 import { applyNaming, groupsOf, isRpgMap } from "@/model/physical/polity-naming";
 import { Layers } from "@/renderers/layers";
 // regional titles or sectors. See docs/plans/rpg-fantasy-cultures.md and docs/astral/README.md
@@ -13,7 +13,7 @@ function apply(): void {
   if (!qualifying) {
     const errorMsg = isRpg
       ? "This map has no RPG peoples: generate it with a culture set of RPG Fantasy first"
-      : "This map has no Astral peoples: generate it with a culture set of AstralTrek, AstralJammer or Grimdark first";
+      : "This map has no Astral peoples: generate it with a culture set of AstralTrek or Grimdark first";
     tip(errorMsg, true, "error", 8000);
     return;
   }

@@ -22,20 +22,18 @@
 ## Integrated Content
 
 ### Name Bases
-12 science-fiction name bases built directly into core data (`src/data/name-bases.ts`):
+8 science-fiction name bases built directly into core data (`src/data/name-bases.ts`):
 - **AstralTrek**: `Trek Core`, `Trek Terran`, `Trek Continental`, `Trek Synthetic`
-- **AstralJammer**: `Jammer Deep`, `Jammer Ethereal`, `Jammer Stoneborn`, `Jammer Wild`
 - **Grimdark**: `Grimdark Core`, `Grimdark Gothic`, `Grimdark Iron`, `Grimdark Machine`
 
 Each base provides rich pools of star system designations, planetary bodies, and polity names.
 
 ### Culture Sets
-Three dedicated culture sets available directly from the Cultures generator dropdown:
+Two dedicated culture sets available directly from the Cultures generator dropdown:
 - **AstralTrek** (`astralTrek`): Space-opera civilizations, high-tech federations, and exploratory fleets.
-- **AstralJammer** (`astralJammer`): Planar voyagers, void sailors, and spell-jammer astral factions.
 - **Grimdark** (`grimdark`): Feudal hive-worlds, gothic crusaders, iron legions, and machine cults.
 
-Each set generates 8 distinct cultures with habitat scoring callbacks mapped to star-map preferences (`temperate`, `harsh`, `remote`, `any`). All three sets are fully supported by options schema validation and persistent option pinning.
+Each set generates 8 distinct cultures with habitat scoring callbacks mapped to star-map preferences (`temperate`, `harsh`, `remote`, `any`). Both sets are fully supported by options schema validation and persistent option pinning.
 
 ## The mapping — polities, sectors and star systems
 

@@ -1,15 +1,14 @@
 ## Astral Cartographer
 Astral Cartographer is the fork's science-fiction reading of a fantasy map: the peoples of the world are star-faring civilizations, their states are polities, their provinces are sectors, and their towns are star systems.
 
-Two parts of it are in the generator: the **content** (three culture sets and twelve name bases), and the **mapping** (what the polities are called, what the systems are).
+Two parts of it are in the generator: the **content** (two culture sets and eight name bases), and the **mapping** (what the polities are called, what the systems are).
 
 ### The culture sets
-Three sets join the stock ones in the _Options_ tab under _Map settings_ → _Cultures set_:
+Two sets join the stock ones in the _Options_ tab under _Map settings_ → _Cultures set_:
 
 | Set | Register |
 |---|---|
 | **AstralTrek** | clean, optimistic classic science fiction: people who still live on a world, and the machine intelligences that do not |
-| **AstralJammer** | the high-fantasy register told in the vocabulary of the deep places: the kindred, the deep folk, the ferals, the choirs |
 | **Grimdark** | the dark-fantasy register, industrial and cold: darklings, foundrymen, and the machine calculators that took the world apart |
 
 Each set holds eight peoples, two per name base, and each base names its settlements from a pool of star and system names — Vega, Sirius, Rigel, Proxima Centauri and the rest. See [Culture sets](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Culture-sets) for the full lists.
