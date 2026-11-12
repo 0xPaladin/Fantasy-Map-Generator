@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Options } from "@/model/options/options-model";
+import { AUTO_BURG_LIMIT } from "@/model/options/options-schema";
 import { Pins } from "@/model/options/pins";
 import { Emblems } from "@/model/political/emblems-generator";
 import { toggleAssistant } from "@/ui/assistant-bubble";
@@ -217,9 +218,11 @@ describe("options tab bindings", () => {
   it("preserves the automatic burg readout alongside the legacy panel listener", () => {
     edit(control("manors"), "400");
     expect(output("manors").value).toBe("400");
-    edit(control("manors"), "1000");
+    edit(control("manors"), "5000");
+    expect(output("manors").value).toBe("5000");
+    edit(control("manors"), String(AUTO_BURG_LIMIT));
     expect(output("manors").value).toBe("Auto");
-    expect(Pins.valueOr("manors", 0)).toBe(1000);
+    expect(Pins.valueOr("manors", 0)).toBe(AUTO_BURG_LIMIT);
   });
 
   it("commits map dimensions together on change, leaving the current map intact", () => {

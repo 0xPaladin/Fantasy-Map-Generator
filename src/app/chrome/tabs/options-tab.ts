@@ -16,7 +16,7 @@ import { isLanguage, LANGUAGES } from "@/data/languages";
 import { precreatedHeightmaps } from "@/data/precreated-heightmaps";
 import type { Sampling } from "@/model/graph/lattice";
 import { DEFAULT_THEME_COLOR, Options } from "@/model/options/options-model";
-import type { OptionsData } from "@/model/options/options-schema";
+import { AUTO_BURG_LIMIT, type OptionsData } from "@/model/options/options-schema";
 import { Pins } from "@/model/options/pins";
 import { isAutoBurgLimit } from "@/model/political/burgs-generator";
 import { Emblems } from "@/model/political/emblems-generator";
@@ -402,7 +402,15 @@ ${Object.entries(CULTURE_SETS)
       </td>
       <td>${t("Number of burgs")}</td>
       <td>
-        <input id="manorsInput" data-option="manors" type="range" min="0" max="1000" step="1" value="1000" />
+        <input
+          id="manorsInput"
+          data-option="manors"
+          type="range"
+          min="0"
+          max="${AUTO_BURG_LIMIT}"
+          step="1"
+          value="${AUTO_BURG_LIMIT}"
+        />
       </td>
       <td>
         <output id="manorsOutput" data-option-output="manors" value="auto"></output>
