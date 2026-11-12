@@ -5,7 +5,7 @@ Updated: 2026-11-12. Inputs: `docs/plans/multi-realm.md` (the realm system mobil
 Progress:
 - Phase 1 — Data model, options & burg groups: ✅ done (2026-11-12)
 - Phase 2 — Drift mode: seeded wander placement per realm: ✅ done (2026-11-12)
-- Phase 3 — Integrity, markets, provinces & states for movers: pending
+- Phase 3 — Integrity, restore, provinces & states for movers: ✅ done (2026-11-12)
 - Phase 4 — Journey-linked march mode (year-driven): pending
 - Phase 5 — Rendering: moving icons, paths, headings: pending
 - Phase 6 — Assistant operations & UI (editor, overview, creator, commands): pending
@@ -238,11 +238,16 @@ are excluded from seating like realm burgs; `isSurfaceBurg` becomes
 - ridge/biome weighting for titan/horde options; island drift on shelves
 - determinism tests
 
-### Phase 3 — Integrity, restore, provinces, markets, states
-- `isSessileSurfaceBurg` split; province seating skips mobiles
-- integrity `mobile-consistency` rule; `burg-routes` exemption while moving
-- restore rules (position match, pinning split by mobility state)
-- market/tax dock rules; poll tax skipped while moving
+### Phase 3 — Integrity, restore, provinces, markets, states ✅ done (2026-11-12)
+- `mobile-consistency` integrity rule (new): a mobile burg carries a known mobility kind; a `march` references an existing journey; drift/live never carry `journey`/`departedYear`. Unit-tested.
+- `burg-routes` exemption is NOT needed: titans/hordes ride the road network (`sortBurgsByFeature`), the rest are networked by their realms.
+- restore: mobile burgs are realm-class — restore matches them by projection, they pin no land, keep their treasury and population; no change required.
+- markets: wanderers never found markets (realm-class) and trade at their cell's market like other realm burgs; poll tax applies while docked — no change required.
+- provinces/states: mobile burgs never seat provinces (realm-class; `isSurfaceBurg` gates the seat picker) and assign to the nearest same-realm state or the surface fallback (existing realm path) — no change required.
+- `isSessileSurfaceBurg` split: dropped — no mobile burg is surface-class, so the realm guards cover the province path already.
+- scenario test: a wanderer-enabled map passes every integrity rule.
+
+- Note on `march` carrying total journeys: march mode (Phase 4) will exercise the `mobile-consistency` march path end-to-end; the rule is already in place and unit-tested for it.
 
 ### Phase 4 — March mode (junction with Journeys)
 - journey `burgs`/`carrier` payload; migration destination resolution

@@ -132,3 +132,42 @@ it("flags a realm burg squatting in the surface slot", () => {
   const burgs = [{ i: 2, flying: 1, cell: 0, x: 0, y: 0, feature: 1 }];
   expect(check("cell-burgs", { burgs, burgCells: [2, 0, 0] })).toMatchObject({ count: 1, examples: ["0"] });
 });
+
+it("flags a mobile burg without a mobility, and a march without a journey", () => {
+  const drift = { i: 2, cell: 1, x: 10, y: 0, feature: 1, mobile: 1 };
+  expect(check("mobile-consistency", { burgs: [drift] })).toMatchObject({ count: 1, examples: ["2"] });
+
+  const march = { i: 3, cell: 1, x: 10, y: 0, feature: 1, mobile: 1, mobility: "march", journey: 99 };
+  expect(check("mobile-consistency", { burgs: [march] })).toMatchObject({ count: 1, examples: ["3"] });
+
+  const marchWithJourney = { i: 4, cell: 1, x: 10, y: 0, feature: 1, mobile: 1, mobility: "march", journey: 7 };
+  expect(
+    check("mobile-consistency", {
+      burgs: [marchWithJourney],
+      journeys: [{ i: 7, type: "Migration", name: "The titan walks", segments: [] }]
+    })
+  ).toBeUndefined();
+});
+
+it("flags a drift burg carrying a journey or a departure year", () => {
+  const drift = {
+    i: 2,
+    cell: 1,
+    x: 10,
+    y: 0,
+    feature: 1,
+    mobile: 1,
+    mobility: "drift",
+    journey: 1,
+    departedYear: 1000
+  };
+  expect(
+    check("mobile-consistency", {
+      burgs: [drift],
+      journeys: [{ i: 1, type: "Quest", name: "q", segments: [] }]
+    })
+  ).toMatchObject({
+    count: 1,
+    examples: ["2"]
+  });
+});

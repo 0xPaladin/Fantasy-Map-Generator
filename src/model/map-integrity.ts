@@ -36,6 +36,7 @@ const RULES = [
   "burg-features", // feature and port water fit the cell
   "burg-routes", // a burg is on the route network, so it can trade
   "burg-markets", // a burg's cell belongs to a living market, so it takes part in the economy
+  "mobile-consistency", // a mobile burg carries a valid mobility kind and its march references its journey
   "cell-burgs", // cells.burg points at living surface burgs that point back
   "state-centers",
   "state-capitals", // a living state has a living capital
@@ -188,6 +189,15 @@ class MapIntegrityModule {
         !marketIds.has(cells.market?.[burg.cell] ?? 0)
       )
         fail("burg-markets", burg.i);
+
+      // a mobile burg carries a known mobility; a march rides an existing journey, the others don't
+      if (burg.mobile) {
+        const mobility = burg.mobility;
+        if (!["drift", "march", "live"].includes(mobility ?? "")) fail("mobile-consistency", burg.i);
+        else if (mobility === "march" && !(pack.journeys ?? []).some(journey => journey.i === burg.journey))
+          fail("mobile-consistency", burg.i);
+        else if (mobility !== "march" && (burg.journey || burg.departedYear)) fail("mobile-consistency", burg.i);
+      }
     }
     for (let cell = 0; cell < n; cell++) {
       const burgId = cells.burg[cell];

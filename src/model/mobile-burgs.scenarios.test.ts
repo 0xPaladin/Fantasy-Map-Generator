@@ -2,7 +2,7 @@
 // Mobile wanderers on real generated maps: placement determinism and shape
 import { expect, it } from "vitest";
 import type { BurgRealm } from "./political/burgs-generator";
-import { generateMap, living } from "./real-map.testing";
+import { generateMap, living, violations } from "./real-map.testing";
 
 it("mobile wanderers appear deterministically for the same seed", async () => {
   await generateMap({ seed: "wander-a" });
@@ -23,6 +23,11 @@ it("mobile wanderers appear deterministically for the same seed", async () => {
     .filter(burg => burg.mobile)
     .map(burg => [burg.cell, burg.heading, burg.altitude]);
   expect(otherSeed).not.toEqual(positions);
+});
+
+it("a wanderer-enabled map passes every integrity rule", async () => {
+  await generateMap({ seed: "wander-a" });
+  expect(violations().size).toBe(0);
 });
 
 it("wanderers span the realm archetypes and keep to their altitude bands", async () => {
