@@ -1046,7 +1046,7 @@ class MapRestorationModule {
   /** a burg no kept market reaches, as on land cut off by deep water, centers a market of its own */
   private expandMarkets() {
     for (let cellMarket = Markets.expand(); pack.markets.length; ) {
-      const unreached = this.findMostPopulous(burg => !cellMarket[burg.cell]);
+      const unreached = this.findMostPopulous(burg => !cellMarket[burg.cell] && isSurfaceBurg(burg));
       if (!unreached) return;
       Markets.addMarket(unreached.i);
       cellMarket = Markets.expand();

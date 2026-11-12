@@ -2,8 +2,8 @@
 
 import { Routes } from "@/model/economy/routes-generator";
 import { Pack } from "@/model/graph/pack-generator";
-import { Transports } from "@/model/story/journeys/transports-generator";
 import { isSurfaceBurg } from "@/model/political/burgs-generator";
+import { Transports } from "@/model/story/journeys/transports-generator";
 import { isWater } from "@/utils/height-utils";
 
 export type IntegrityRule = (typeof RULES)[number];
@@ -182,7 +182,12 @@ class MapIntegrityModule {
       const port = burg.port ? features[burg.port] : undefined;
       if (burg.feature !== cells.f[burg.cell] || (burg.port && (!port || port.land))) fail("burg-features", burg.i);
       if (valid(burg.cell) && !Object.keys(cells.routes?.[burg.cell] ?? {}).length) fail("burg-routes", burg.i);
-      if (!marketIds.has(cells.market?.[burg.cell] ?? 0)) fail("burg-markets", burg.i);
+      // a realm burg on intact land takes part in the economy like any burg; off the grid it trades as it can
+      if (
+        (isSurfaceBurg(burg) || (valid(burg.cell) && cells.h[burg.cell] >= 20)) &&
+        !marketIds.has(cells.market?.[burg.cell] ?? 0)
+      )
+        fail("burg-markets", burg.i);
     }
     for (let cell = 0; cell < n; cell++) {
       const burgId = cells.burg[cell];

@@ -285,9 +285,9 @@ class StatesModule {
         ? `Not enough burgs to generate ${statesCount} states. Will generate only ${validBurgs.length} states`
         : undefined;
     const validStates = pack.states.filter(state => state.i && !state.removed);
-    // only surface states lock regeneration; a locked realm state is untouched by it anyway
+    // only surface states lock regeneration; a locked realm state carries through untouched with its realm capital
     const surfaceStates = validStates.filter(state => isSurfaceBurg(pack.burgs[state.capital]));
-    const lockedStates = surfaceStates.filter(state => state.lock);
+    const lockedStates = validStates.filter(state => state.lock); // kept in map order so the multiplier remap holds
     if (surfaceStates.length && lockedStates.length === surfaceStates.length) {
       return { error: "Unable to regenerate as all states are locked" };
     }
