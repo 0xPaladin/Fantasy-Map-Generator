@@ -999,67 +999,6 @@ class CulturesGenerator {
       ];
     }
 
-    if (set === "astralJammer") {
-      return [
-        {
-          name: "Ethereal (Kindred)",
-          base: "JAMET",
-          odd: 1,
-          sort: (i: number) => 1 / (n(i) + 1),
-          shield: "vesicaPiscis"
-        },
-        {
-          name: "Silver Kin (Kindred)",
-          base: "JAMET",
-          odd: 0.8,
-          sort: (i: number) => n(i),
-          shield: "fantasy1"
-        },
-        {
-          name: "Stoneborn (Deep)",
-          base: "JAMST",
-          odd: 0.9,
-          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
-          shield: "wedged"
-        },
-        {
-          name: "Deepkin (Deep)",
-          base: "JAMST",
-          odd: 0.7,
-          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
-          shield: "fantasy2"
-        },
-        {
-          name: "Wild (Ferals)",
-          base: "JAMWI",
-          odd: 0.8,
-          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
-          shield: "moriaOrc"
-        },
-        {
-          name: "Scavengers (Ferals)",
-          base: "JAMWI",
-          odd: 0.6,
-          sort: (i: number) => n(i),
-          shield: "fantasy4"
-        },
-        {
-          name: "Deep Choir (Collective)",
-          base: "JAMDE",
-          odd: 0.7,
-          sort: (i: number) => n(i),
-          shield: "pavise"
-        },
-        {
-          name: "Far Chorus (Collective)",
-          base: "JAMDE",
-          odd: 0.5,
-          sort: (i: number) => 1 / (n(i) + 1),
-          shield: "fantasy5"
-        }
-      ];
-    }
-
     if (set === "grimdark") {
       return [
         {
@@ -1117,6 +1056,134 @@ class CulturesGenerator {
           odd: 0.6,
           sort: (i: number) => 1 / (n(i) + 1),
           shield: "pavise"
+        }
+      ];
+    }
+
+    if (set === "verse") {
+      return [
+        // Celestials
+        { name: "Archilects (Celestial)", base: "VRARC", odd: 1, sort: (i: number) => n(i), shield: "hexagon" },
+        { name: "Archons (Celestial)", base: "VRACN", odd: 1, sort: (i: number) => n(i) + h[i], shield: "heater" },
+        {
+          name: "Elysians (Celestial)",
+          base: "VRELY",
+          odd: 0.9,
+          sort: (i: number) => n(i) / bd(i, [6, 7, 8, 9], 10),
+          shield: "vesicaPiscis"
+        },
+        {
+          name: "Solari (Celestial)",
+          base: "VRSOL",
+          odd: 1,
+          sort: (i: number) => n(i) / td(i, 14),
+          shield: "boeotian"
+        },
+        {
+          name: "Guardians (Celestial)",
+          base: "VRSOL",
+          odd: 0.75,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "kite"
+        },
+
+        // Ancients
+        { name: "Hegemony (Ancient)", base: "VRHEG", odd: 1, sort: (i: number) => n(i), shield: "oldFrench" },
+        {
+          name: "Mi-Go Primacy (Ancient)",
+          base: "VRMIG",
+          odd: 1,
+          sort: (i: number) => n(i) / bd(i, [6, 7, 8, 9], 10),
+          shield: "diamond"
+        },
+        {
+          name: "Huijhoh Sovereignty (Ancient)",
+          base: "VRHUI",
+          odd: 0.95,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "dovetail"
+        },
+        {
+          name: "Crysik Expanse (Ancient)",
+          base: "VRCRY",
+          odd: 0.85,
+          sort: (i: number) => n(i) / td(i, -10),
+          shield: "embowed"
+        },
+        {
+          name: "Echani Reach (Ancient)",
+          base: "VRECH",
+          odd: 0.7,
+          sort: (i: number) => 1 / (n(i) + 1),
+          shield: "pavise"
+        },
+        { name: "Gray Syndicate (Ancient)", base: "VRGRY", odd: 0.85, sort: (i: number) => n(i), shield: "targe" },
+        {
+          name: "Xothians (Ancient)",
+          base: "VRXOT",
+          odd: 0.9,
+          sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
+          shield: "urukHai"
+        },
+
+        // Independents & Thralls
+        {
+          name: "The One (Nexus)",
+          base: "VRFRN",
+          odd: 0.8,
+          sort: (i: number) => n(i) / td(i, -10),
+          shield: "square"
+        },
+        {
+          name: "Ascendancy (Independent)",
+          base: "VRFRN",
+          odd: 0.85,
+          sort: (i: number) => n(i) + h[i],
+          shield: "roman"
+        },
+        {
+          name: "Collective (Independent)",
+          base: "VRFRN",
+          odd: 0.85,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "round"
+        },
+        {
+          name: "Venar (Independent)",
+          base: "VRFRN",
+          odd: 0.75,
+          sort: (i: number) => 1 / (n(i) + 1),
+          shield: "noldor"
+        },
+        {
+          name: "Mazani (Independent)",
+          base: "VRFRN",
+          odd: 0.7,
+          sort: (i: number) => n(i) + h[i],
+          shield: "fantasy2"
+        },
+        {
+          name: "Crimson Concord (Independent)",
+          base: "VRFRN",
+          odd: 0.75,
+          sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
+          shield: "banner"
+        },
+        { name: "Wanderers (Confluence)", base: "VRFRN", odd: 0.7, sort: (i: number) => n(i), shield: "gonfalon" },
+        { name: "Data Conclave (Independent)", base: "VRFRN", odd: 0.6, sort: (i: number) => n(i), shield: "oval" },
+        {
+          name: "Gemeli (Independent)",
+          base: "VRFRN",
+          odd: 0.6,
+          sort: (i: number) => n(i) + h[i],
+          shield: "ironHills"
+        },
+        {
+          name: "Cthyre & Thralls (Thrall)",
+          base: "VRXOT",
+          odd: 0.65,
+          sort: (i: number) => n(i) / td(i, 20) + (sMax - h[i]),
+          shield: "moriaOrc"
         }
       ];
     }
@@ -1601,10 +1668,9 @@ class CulturesGenerator {
     cultures.forEach((c: Culture, i: number) => {
       const newId = i + 1;
 
-      if (c.lock) {
+      if (c.lock && c.center !== undefined && this.cells.p[c.center]) {
         codes.push(c.code as string);
-        const lockedCenter = c.center === undefined ? undefined : this.cells.p[c.center];
-        if (lockedCenter) centers.add(lockedCenter);
+        centers.add(this.cells.p[c.center]);
 
         for (const i of this.cells.i) {
           if (this.cells.culture[i] === c.i) cultureIds[i] = newId;
@@ -1622,22 +1688,22 @@ class CulturesGenerator {
       c.i = newId;
       delete c.odd;
       delete c.sort;
-      c.color = colors[i];
-      c.type = defineCultureType(center);
-      c.expansionism = defineCultureExpansionism(c.type);
-      c.origins = [0];
-      c.code = abbreviate(c.name, codes);
+      c.color = c.color || colors[i];
+      c.type = c.type || defineCultureType(center);
+      c.expansionism = c.expansionism || defineCultureExpansionism(c.type);
+      c.origins = c.origins || [0];
+      c.code = c.code || abbreviate(c.name, codes);
       codes.push(c.code);
 
       // a culture starts from scratch: the neutral column, not its parent's
-      if (withTraits) {
+      if (withTraits && !c.alignment) {
         const rng = traitsRng(options.map.seed, "culture", newId);
         c.alignment = rollAlignment(rng);
         c.values = rollValues(rng, c.alignment);
       }
 
       cultureIds[center] = newId;
-      if (emblemShape === "random") c.shield = this.getRandomShield();
+      if (emblemShape === "random" && !c.shield) c.shield = this.getRandomShield();
       c.tags = c.tags ?? [];
     });
 
@@ -1741,7 +1807,7 @@ class CulturesGenerator {
     if (hasLocked) {
       for (const cellId of cells.i) {
         const culture = cultures[cells.culture[cellId]];
-        if (culture.lock) continue;
+        if (culture?.lock) continue;
         cells.culture[cellId] = 0;
       }
     } else {
@@ -1749,7 +1815,18 @@ class CulturesGenerator {
     }
 
     for (const culture of cultures) {
-      if (!culture.i || culture.removed || culture.lock) continue;
+      if (!culture.i || culture.removed) continue;
+      // Skip expanding if this locked culture already had established territory
+      if (culture.lock) {
+        let count = 0;
+        for (const cellId of cells.i) {
+          if (cells.culture[cellId] === culture.i) {
+            count++;
+            if (count > 1) break;
+          }
+        }
+        if (count > 1) continue;
+      }
       queue.push({ cellId: culture.center as number, cultureId: culture.i, priority: 0 }, 0);
     }
 

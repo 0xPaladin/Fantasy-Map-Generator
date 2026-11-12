@@ -1,6 +1,6 @@
 # Plan — Astral UI Overhaul: Nebulae, Density and the Star Chart
 
-Updated: 2026-10-22. Inputs: [docs/astral/README.md](../astral/README.md),
+Updated: 2026-10-22. Inputs: [docs/wiki/Astral-Cartographer.md](../wiki/Astral-Cartographer.md),
 [mod-merge-plan.md](mod-merge-plan.md), [layers-management.md](../prd/layers-management.md),
 [style.md](../architecture/style.md).
 
@@ -363,7 +363,7 @@ src/generators/styles-schema.ts           three new style elements
 src/generators/default-styles.json        their defaults
 src/services/style-presets.ts             astral in SYSTEM_PRESETS
 scripts/render-style-thumbnails.mjs        astral thumbnail
-docs/astral/README.md                     visual-mode section and roadmap
+docs/wiki/Astral-Cartographer.md          visual-mode section and roadmap
 docs/wiki/User-Interface.md               Astral view and preset
 MERGING.md                                new touch points
 ```

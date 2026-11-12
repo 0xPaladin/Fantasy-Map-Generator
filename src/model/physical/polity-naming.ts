@@ -5,7 +5,7 @@ import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 
 /** The culture sets that speak in the star-map register */
-export const ASTRAL_SETS = ["astralTrek", "astralJammer", "grimdark"];
+export const ASTRAL_SETS = ["astralTrek", "grimdark", "verse"];
 
 /** The culture sets that speak in the RPG fantasy register */
 export const RPG_SETS = ["rpgFantasy"];

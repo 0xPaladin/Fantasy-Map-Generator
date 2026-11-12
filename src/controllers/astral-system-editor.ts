@@ -20,6 +20,7 @@ import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-sy
 import { starTypeData } from "@/model/physical/astral-system/astrophysics";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
+import { extractSystemOriginContext } from "@/model/system/planetary-polity";
 import { SolarSystem } from "@/model/system/solar-system";
 import { type StarClassId, starShape, writeAttrs } from "@/renderers/astral/system-markers";
 import { removeEmblem } from "@/renderers/draw-emblems";
@@ -144,6 +145,12 @@ function renderDialog(): void {
                 <span id="systemTemple" data-tip="Shrine. Click to toggle" data-feature="temple" class="burgFeature icon-chess-bishop" style="font-size: 1.1em; margin-left: 3px"></span>
                 <span id="systemShanty" data-tip="Drift. Click to toggle" data-feature="shanty" class="burgFeature icon-campground"></span>
               </span>
+              <span id="systemPrecursorLine" data-tip="Precursor infrastructure in this star system" style="display: none; align-items: center; gap: 0.25em">
+                <span class="label">Precursor:</span>
+                <span id="systemSpaceGate" data-tip="Great Space Gate: instantaneous Precursor planar conduit connecting major galactic domains" class="burgFeature pointer" style="font-size: 1.1em">🌌</span>
+                <span id="systemWaystationActive" data-tip="Active Precursor Waystation: lattice node powering regional hyperlane conduit network" class="burgFeature pointer" style="font-size: 1.1em">🛰️</span>
+                <span id="systemWaystationDerelict" data-tip="Derelict Precursor Waystation: inactive relic / planar hazard anomaly" class="burgFeature pointer" style="font-size: 1.1em">⚠️</span>
+              </span>
             </div>
           </div>
         </div>
@@ -220,6 +227,9 @@ function renderDialog(): void {
   ensureEl("astralSystemBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
     .forEach(el => void el.addEventListener("click", toggleFeature));
+  ensureEl("systemSpaceGate").addEventListener("click", openPrecursorNote);
+  ensureEl("systemWaystationActive").addEventListener("click", openPrecursorNote);
+  ensureEl("systemWaystationDerelict").addEventListener("click", openPrecursorNote);
   ensureEl("systemStyleShow").addEventListener("click", showStyleSection);
   ensureEl("systemStyleHide").addEventListener("click", hideStyleSection);
   ensureEl("systemEditLabelStyle").addEventListener("click", editLabelStyle);
@@ -265,6 +275,14 @@ function updateSystemValues(): void {
   for (const feature of FEATURES) {
     ensureEl(featureId(feature)).classList.toggle("inactive", !burg[feature]);
   }
+
+  const isGate = Boolean(burg.spaceGate);
+  const isWsActive = burg.waystation === 1;
+  const isWsDerelict = burg.waystation === 2;
+  ensureEl("systemSpaceGate").classList.toggle("inactive", !isGate);
+  ensureEl("systemWaystationActive").classList.toggle("inactive", !isWsActive);
+  ensureEl("systemWaystationDerelict").classList.toggle("inactive", !isWsDerelict);
+  ensureEl("systemPrecursorLine").style.display = isGate || isWsActive || isWsDerelict ? "inline-flex" : "none";
 
   const worldTypeSelect = ensureEl<HTMLSelectElement>("systemWorldType");
   worldTypeSelect.options.length = 0;
@@ -446,10 +464,25 @@ function changePopulation(): void {
   Layers.draw("systems");
 }
 
-function toggleFeature(this: HTMLElement): void {
+function openPrecursorNote(): void {
   const burgId = getSelectedId();
   const burg = pack.burgs[burgId];
+  if (!burg) return;
+  const marker = pack.markers?.find(
+    m => m.cell === burg.cell || (Math.abs(m.x - burg.x) < 2 && Math.abs(m.y - burg.y) < 2)
+  );
+  if (marker) {
+    void Controllers.NotesEditor.open({ type: "marker", id: marker.i });
+  } else {
+    void Controllers.NotesEditor.open({ type: "burg", id: burgId });
+  }
+}
+
+function toggleFeature(this: HTMLElement): void {
   const feature = this.dataset.feature as Feature;
+  if (!feature) return;
+  const burgId = getSelectedId();
+  const burg = pack.burgs[burgId];
   const value = Number(this.classList.contains("inactive"));
 
   if (feature === "plaza" && !value) {
@@ -568,15 +601,16 @@ function ensureSolarSystem(): void {
   const seed = `${options.map.seed}/astral/system/${burgId}`;
   if (SolarSystem.seed === seed && SolarSystem.bodies.length) return; // keep materialized snapshots
   const burg = pack.burgs[burgId];
+  const originContext = extractSystemOriginContext(pack, burgId);
   if (isCoreOrCapital(burg)) {
-    SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name });
+    SolarSystem.initFromSeed(seed, { forceHabitable: true, systemName: burg.name }, originContext);
   } else {
     const { class: spectral } = starClassFor(burg);
-    SolarSystem.initFromSeed(seed, {
-      primaryType: starTypeData[spectral] ? spectral : "G",
-      forceHabitable: false,
-      systemName: burg.name
-    });
+    SolarSystem.initFromSeed(
+      seed,
+      { primaryType: starTypeData[spectral] ? spectral : "G", forceHabitable: false, systemName: burg.name },
+      originContext
+    );
   }
 }
 

@@ -217,9 +217,20 @@ async function parseLoadedResult(
 
     // CRLF line endings inside the svg record would break the split by records
     const svgContent = content.match(/<svg[^>]*id="map"[\s\S]*?<\/svg>/)?.[0];
-    if (svgContent?.includes("\r\n")) content = content.replace(svgContent, svgContent.replace(/\r\n/g, "\n"));
-
-    const mapData = content.split("\r\n"); // split by CRLF
+    let mapData: string[];
+    if (content.includes("\r\n")) {
+      if (svgContent?.includes("\r\n")) content = content.replace(svgContent, svgContent.replace(/\r\n/g, "\n"));
+      mapData = content.split("\r\n"); // split by CRLF
+    } else {
+      // LF line endings (e.g. from git checkout without CRLF preservation)
+      const placeholder = "___SVG_CONTENT_PLACEHOLDER___";
+      if (svgContent) {
+        content = content.replace(svgContent, placeholder);
+        mapData = content.split("\n").map(line => (line === placeholder ? svgContent : line));
+      } else {
+        mapData = content.split("\n");
+      }
+    }
     const mapVersion = parseMapVersion(mapData[0].split("|")[0] || mapData[0] || "");
 
     return { mapData, mapVersion };
