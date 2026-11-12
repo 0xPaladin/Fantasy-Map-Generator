@@ -169,7 +169,7 @@ test.describe("Verse Map Topography Transformation", () => {
 
       // 4. The 22 Verse Cultures
       p.cultures = [
-        { name: "Wildlands", i: 0, removed: true, base: "VRGRY", shield: "heater", type: "Generic" },
+        { name: "Wildlands", i: 0, removed: false, base: "VRGRY", origins: [null], shield: "round", type: "Generic", tags: [] },
         // Celestials
         { name: "Archilects (Celestial)", i: 1, base: "VRARC", shield: "hexagon", color: "#7b68ee", type: "Generic" },
         { name: "Archons (Celestial)", i: 2, base: "VRACN", shield: "heater", color: "#4682b4", type: "Generic" },
@@ -206,7 +206,18 @@ test.describe("Verse Map Topography Transformation", () => {
           fullName: "The Unclaimed Wilderness",
           color: "#555555",
           culture: 19,
-          economy: { tariffs: [], adjustments: [], marketFee: 0 },
+          economy: {
+            salesTax: 0,
+            pollTax: 0,
+            marketFee: 0,
+            tariffs: [],
+            adjustments: [],
+            spent: { court: 0, military: 0, administration: 0, infrastructure: 0 },
+            budget: { court: 0, military: 0, administration: 0, infrastructure: 0, corruption: 0 },
+            collected: 0,
+            pocketed: 0,
+            treasury: 0
+          },
           removed: false
         }
       ];
@@ -839,6 +850,51 @@ test.describe("Verse Map Topography Transformation", () => {
             p.cells.province[c] = provId;
           }
         }
+      }
+
+      // Ensure all cultures have unique centers, expansionism, etc.
+      const usedCultureCenters = new Set<number>();
+      for (let i = 1; i < p.cultures.length; i++) {
+        const cult = p.cultures[i];
+        cult.type = cult.type || "Generic";
+        cult.expansionism = cult.expansionism || 1;
+        cult.development = 30;
+        cult.origins = [0];
+        cult.tags = [];
+        cult.code = cult.name.slice(0, 3).toUpperCase();
+
+        const cultBurgs = burgs.filter(b => b.i && !b.removed && b.culture === cult.i);
+        let centerCell: number | undefined;
+
+        // Prefer capital burg, then any burg, then land cell of that culture
+        const cap = cultBurgs.find(b => b.capital && !usedCultureCenters.has(b.cell));
+        if (cap) {
+          centerCell = cap.cell;
+        } else {
+          const bg = cultBurgs.find(b => !usedCultureCenters.has(b.cell));
+          if (bg) {
+            centerCell = bg.cell;
+          } else {
+            for (const c of landCellIndices) {
+              if (cellCulture[c] === cult.i && !usedCultureCenters.has(c)) {
+                centerCell = c;
+                break;
+              }
+            }
+          }
+        }
+
+        if (centerCell === undefined) {
+          for (const c of landCellIndices) {
+            if (!usedCultureCenters.has(c)) {
+              centerCell = c;
+              break;
+            }
+          }
+        }
+
+        cult.center = centerCell ?? landCellIndices[0];
+        usedCultureCenters.add(cult.center);
       }
 
       // 11. Astral Economy & Metadata
