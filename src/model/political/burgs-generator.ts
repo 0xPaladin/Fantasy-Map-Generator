@@ -231,7 +231,7 @@ class BurgModule {
       const burgsNumber = getTownsNumber();
       let spacing = (options.map.graph.width + options.map.graph.height) / 150 / (burgsNumber ** 0.7 / 66); // min distance between town
 
-      for (let added = 0; added < burgsNumber && spacing > 1;) {
+      for (let added = 0; added < burgsNumber && spacing > 1; ) {
         for (let i = 0; added < burgsNumber && i < sorted.length; i++) {
           if (cells.burg[sorted[i]]) continue;
           const cell = sorted[i];
@@ -1174,7 +1174,7 @@ class BurgModule {
     const sizeRaw =
       2.13 *
       ((burgPopulation! * options.map.units.population.scale) / options.map.units.population.urbanization.density) **
-      0.385;
+        0.385;
     const size = minmax(Math.ceil(sizeRaw), 6, 100);
     const population = rn(
       burgPopulation! * options.map.units.population.scale * options.map.units.population.urbanization.rate
