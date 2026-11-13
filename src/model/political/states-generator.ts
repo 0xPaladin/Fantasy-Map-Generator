@@ -1,5 +1,6 @@
 import Alea from "alea";
 import { mean, median, quadtree, sum } from "d3";
+import { ALIGNMENTS, type Alignment, rollAlignment, traitsRng } from "@/data/culture-traits";
 import { CULTURE_TYPES } from "@/data/culture-types";
 import { getInverseRelation, RELATIONS } from "@/data/diplomacy";
 import { EXPENSES, type Expense, noExpenses } from "@/data/expenses";
@@ -41,6 +42,7 @@ export interface State {
   type: string;
   center: number;
   culture: number;
+  alignment?: Alignment;
   coa: Emblem;
   rosterId?: string;
   tags?: string[];
@@ -329,6 +331,7 @@ class StatesModule {
         if (pack.provinces[provinceId]) pack.provinces[provinceId].state = newId;
       });
       state.i = newId;
+      state.alignment ??= this.rollAlignment(newId, state.culture);
       newStates.push(state);
     }
 
@@ -349,6 +352,7 @@ class StatesModule {
     for (const state of realmStates) {
       const newId = newStates.length;
       state.i = newId;
+      state.alignment ??= this.rollAlignment(newId, state.culture);
       newStates.push(state);
     }
 
@@ -392,6 +396,7 @@ class StatesModule {
         capital: capital.i,
         center: capital.cell,
         culture,
+        alignment: this.rollAlignment(stateId, culture),
         expansionism,
         coa,
         rosterId,
@@ -430,6 +435,7 @@ class StatesModule {
         type: type!,
         center: burg.cell,
         culture: burg.culture!,
+        alignment: this.rollAlignment(stateId, burg.culture!),
         coa,
         rosterId,
         economy: noFinance(),
@@ -1332,6 +1338,17 @@ class StatesModule {
     state.fullName = this.getFullName(state);
   }
 
+  /** Roll a deterministic alignment for a state from its dominant culture's prevailing alignment */
+  rollAlignment(stateId: number, cultureId: number): Alignment {
+    const rng = traitsRng(String(options?.map?.seed || "map"), "state", stateId);
+    return rollAlignment(rng, pack.cultures?.[cultureId]?.alignment);
+  }
+
+  /** Set a state's alignment: good, lawful, neutral, chaotic or evil */
+  setAlignment(stateId: number, alignment: Alignment): void {
+    this.living(stateId).alignment = requireOneOf(alignment, ALIGNMENTS, "The alignment");
+  }
+
   /** Set a state's dominant culture */
   setCulture(stateId: number, cultureId: number): void {
     const culture = pack.cultures[cultureId];
@@ -1468,6 +1485,7 @@ class StatesModule {
       type: "Generic",
       center: capital.cell,
       culture,
+      alignment: this.rollAlignment(i, culture),
       rosterId,
       military: [],
       alert: 1,

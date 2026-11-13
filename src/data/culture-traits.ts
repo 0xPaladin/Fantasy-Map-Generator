@@ -340,7 +340,7 @@ const WORD_DRAWS = 5;
 /** one reproducible stream per entity, so traits never depend on the roll order around them */
 export function traitsRng(
   seed: string,
-  kind: "culture" | "figure" | "adventurer" | "campaign" | "faction",
+  kind: "culture" | "figure" | "adventurer" | "campaign" | "faction" | "state",
   id: number | string
 ): Rng {
   return createRng(`${seed}:traits:${kind}:${id}`);

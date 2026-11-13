@@ -1,6 +1,6 @@
 import { type D3DragEvent, drag, easeSinIn, select, transition } from "d3";
 import { Controllers } from "@/controllers";
-import { ALIGNMENT_COLORS, alignmentRank, valuesText } from "@/data/culture-traits";
+import { ALIGNMENT_COLORS, ALIGNMENTS, type Alignment, alignmentRank, valuesText } from "@/data/culture-traits";
 import { CULTURE_TYPES } from "@/data/culture-types";
 import { DEFAULT_DEVELOPMENT } from "@/data/development";
 import { CULTURE_TYPE_LABELS, SHIELD_LABELS } from "@/data/id-labels";
@@ -552,6 +552,9 @@ function culturesEditorAddLines(view: TableView<Culture>): void {
     .querySelectorAll("div > input.cultureDevelopment")
     .forEach($el => void $el.addEventListener("change", cultureChangeDevelopment));
   ensureEl("culturesBody")
+    .querySelectorAll("div > select.cultureAlignment")
+    .forEach($el => void $el.addEventListener("change", cultureChangeAlignment));
+  ensureEl("culturesBody")
     .querySelectorAll("div > select.cultureType")
     .forEach($el => void $el.addEventListener("change", cultureChangeType));
   ensureEl("culturesBody")
@@ -591,16 +594,23 @@ function culturesEditorAddLines(view: TableView<Culture>): void {
   Dialog.update(dialogId, { width: "fit-content", position });
 }
 
-/** the ethos badge, or an em dash when the culture predates the traits layer or the layer is off */
+/** the ethos selector, or an em dash for the wildlands */
 function getAlignmentCell(culture: Culture): string {
+  if (!culture.i) return /* html */ `<div data-col="alignment" class="cultureTraitsEmpty">—</div>`;
   const { alignment } = culture;
-  if (!alignment) return /* html */ `<div data-col="alignment" class="cultureTraitsEmpty">—</div>`;
-  const color = ALIGNMENT_COLORS[alignment];
-  return /* html */ `<div data-col="alignment"><span
+  const color = alignment ? ALIGNMENT_COLORS[alignment] : "";
+  const tipText = alignment
+    ? `${capitalize(alignment)} alignment. ${t("Click to change")}`
+    : t("Click to set alignment");
+  const options = [
+    `<option value="" ${!alignment ? "selected" : ""}>—</option>`,
+    ...ALIGNMENTS.map(a => `<option value="${a}" ${alignment === a ? "selected" : ""}>${capitalize(a)}</option>`)
+  ].join("");
+  return /* html */ `<div data-col="alignment"><select
     class="cultureAlignment"
-    style="color:${color}"
-    data-tip="${capitalize(alignment)} alignment"
-  >${alignment}</span></div>`;
+    style="${color ? `color:${color}` : ""}"
+    data-tip="${tipText}"
+  >${options}</select></div>`;
 }
 
 /** "truth · justice", or the dominant "truth above all", emphasized as a whole */
@@ -770,6 +780,22 @@ function cultureChangeDevelopment(this: HTMLInputElement): void {
   const level = Math.round(+this.value);
   if (level >= 1 && level <= 100) Cultures.setDevelopment(culture.i, level);
   this.value = String(culture.development ?? DEFAULT_DEVELOPMENT); // an invalid value goes back
+}
+
+function cultureChangeAlignment(this: HTMLSelectElement): void {
+  const row = this.closest(".states") as HTMLElement;
+  const culture = pack.cultures[+row.dataset.id!];
+  if (!culture) return;
+  const value = this.value as Alignment | "";
+  if (value && ALIGNMENTS.includes(value)) {
+    culture.alignment = value;
+    this.style.color = ALIGNMENT_COLORS[value];
+    this.dataset.tip = `${capitalize(value)} alignment. ${t("Click to change")}`;
+  } else {
+    delete culture.alignment;
+    this.style.color = "";
+    this.dataset.tip = t("Click to set alignment");
+  }
 }
 
 function cultureChangeType(this: HTMLSelectElement): void {

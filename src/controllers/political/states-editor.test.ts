@@ -75,6 +75,7 @@ describe("StatesEditor", () => {
           color: "#ff0000",
           capital: 1,
           culture: 1,
+          alignment: "lawful",
           cells: 10,
           area: 100,
           burgs: 1,
@@ -218,5 +219,21 @@ describe("StatesEditor", () => {
     const dialog = document.querySelector("#stateCitiesDialog");
     expect(dialog).not.toBeNull();
     expect(dialog?.innerHTML).toContain("Valoria");
+  });
+
+  it("renders an alignment dropdown and updates the state's alignment on change", () => {
+    StatesEditor.open();
+
+    const valoriaRow = document.querySelector('#statesBodySection .states[data-id="1"]') as HTMLElement;
+    const select = valoriaRow.querySelector<HTMLSelectElement>('select.stateAlignment[data-col="alignment"]');
+    expect(select).not.toBeNull();
+    expect(select!.value).toBe("lawful");
+
+    select!.value = "chaotic";
+    select!.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect((pack.states[1] as { alignment?: string }).alignment).toBe("chaotic");
+    expect(valoriaRow.dataset.alignment).toBe("chaotic");
+    expect(select!.style.color).toBeTruthy();
   });
 });

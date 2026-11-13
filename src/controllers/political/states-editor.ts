@@ -1,5 +1,6 @@
 import { type HierarchyCircularNode, max, pack as packLayout, select, stratify } from "d3";
 import { Controllers } from "@/controllers";
+import { ALIGNMENT_COLORS, ALIGNMENTS, type Alignment, alignmentRank } from "@/data/culture-traits";
 import { EXPENSES } from "@/data/expenses";
 import { CULTURE_TYPE_LABELS, EXPENSE_LABELS } from "@/data/id-labels";
 import { getRosterOptions } from "@/data/roster-store";
@@ -55,7 +56,7 @@ import { getAdjective } from "@/utils/language-utils";
 import { applyOption, ensureEl, findEl, getPointer } from "@/utils/node-utils";
 import { rn, si } from "@/utils/number-utils";
 import { rand } from "@/utils/probability-utils";
-import { errorText, escapeHtml } from "@/utils/string-utils";
+import { capitalize, errorText, escapeHtml } from "@/utils/string-utils";
 import { openStateCitiesDialog } from "./state-cities-dialog";
 
 const dialogId = "statesEditor" as const;
@@ -109,6 +110,13 @@ const columns: EditorColumn<State>[] = [
     mobileHidden: true,
     sortBy: s => (s.i ? pack.cultures[s.culture]?.name || "" : ""),
     sortType: "alpha"
+  },
+  {
+    key: "alignment",
+    label: t("Alignment"),
+    width: "6.5em",
+    mobileHidden: true,
+    sortBy: s => (s.i ? alignmentRank(s.alignment) : -1)
   },
   {
     key: "roster",
@@ -272,6 +280,7 @@ const CSV_COLUMNS = [
   "Color",
   "Capital",
   "Culture",
+  "Alignment",
   "Type",
   "Expansionism",
   "Cells",
@@ -447,6 +456,8 @@ function renderDialog(): void {
     if (!line) return;
     const state = +line.dataset.id!;
     if (classList.contains("stateCulture")) stateChangeCulture(state, line, $element.value);
+    else if (classList.contains("stateAlignment"))
+      stateChangeAlignment(state, line, $element as unknown as HTMLSelectElement);
     else if (classList.contains("stateRoster")) stateChangeRoster(state, line, $element.value);
     else if (classList.contains("cultureType")) stateChangeType(state, line, $element.value);
     else if (classList.contains("statePower")) stateChangeExpansionism(state, line, $element.value);
@@ -541,6 +552,7 @@ function renderStatesPage(view: TableView<State>): void {
         data-form=""
         data-capital=""
         data-culture=""
+        data-alignment=""
         data-type=""
         data-expansionism=""
         data-tags=""
@@ -556,6 +568,7 @@ function renderStatesPage(view: TableView<State>): void {
           <div class="stateCapital placeholder"></div>
         </div>
         <select class="stateCulture placeholder" data-col="culture">${getCultureOptions(0)}</select>
+        <select class="stateAlignment placeholder" data-col="alignment">${getAlignmentOptions()}</select>
         <select class="stateRoster placeholder" data-col="roster"></select>
         <div data-col="burgs">
           <span data-tip="${t("Click to overview neutral burgs")}" class="icon-dot-circled pointer" style="padding-right: 1px"></span>
@@ -623,6 +636,7 @@ function renderStatesPage(view: TableView<State>): void {
       data-product="${accounts?.product ?? ""}"
       data-wealth="${accounts?.wealth ?? ""}"
       data-culture=${pack.cultures[s.culture].name}
+      data-alignment="${s.alignment || ""}"
       data-type=${s.type}
       data-expansionism=${s.expansionism}
       data-tags="${Tags.format(s.tags)}"
@@ -638,6 +652,9 @@ function renderStatesPage(view: TableView<State>): void {
       <select data-tip="${sentences(t("Dominant culture"), t("Click to change"))}" class="stateCulture" data-col="culture">${getCultureOptions(
         s.culture
       )}</select>
+      <select data-tip="${sentences(t("State alignment"), t("Click to change"))}" class="stateAlignment" data-col="alignment" style="${
+        s.alignment ? `color:${ALIGNMENT_COLORS[s.alignment]}` : ""
+      }">${getAlignmentOptions(s.alignment)}</select>
       <select data-tip="${t("Military unit roster. Click to change")}" class="stateRoster" data-col="roster">${getRosterOptions(
         s.rosterId
       )}</select>
@@ -741,6 +758,14 @@ function getCultureOptions(culture: number): string {
     }
   });
   return options;
+}
+
+function getAlignmentOptions(alignment?: Alignment): string {
+  const placeholder = alignment ? "" : `<option value="" selected>—</option>`;
+  return (
+    placeholder +
+    ALIGNMENTS.map(a => `<option ${a === alignment ? "selected" : ""} value="${a}">${capitalize(a)}</option>`).join("")
+  );
 }
 
 function getTypeOptions(type: string | number): string {
@@ -1029,6 +1054,14 @@ function stateChangeCulture(state: number, line: HTMLElement, value: string): vo
   line.dataset.base = String(+value);
   const rosterSelect = line.querySelector<HTMLSelectElement>(".stateRoster");
   if (rosterSelect) rosterSelect.innerHTML = getRosterOptions(pack.states[state].rosterId);
+}
+
+function stateChangeAlignment(stateId: number, line: HTMLElement, select: HTMLSelectElement): void {
+  const alignment = select.value as Alignment;
+  if (!ALIGNMENTS.includes(alignment)) return;
+  States.setAlignment(stateId, alignment);
+  line.dataset.alignment = alignment;
+  select.style.color = ALIGNMENT_COLORS[alignment];
 }
 
 function stateChangeRoster(state: number, line: HTMLElement, value: string): void {
@@ -1555,6 +1588,7 @@ function downloadStatesCsv(): void {
       s.i ? s.color || "" : "",
       s.i ? pack.burgs[s.capital].name || "" : "",
       s.i ? pack.cultures[s.culture].name : "",
+      s.i ? s.alignment || "" : "",
       s.i ? s.type : "",
       s.i ? s.expansionism : "",
       s.cells || 0,
@@ -1604,6 +1638,11 @@ async function uploadStatesCsv(text: string): Promise<void> {
           "Culture",
           name => States.setCulture(id, Csv.byName(pack.cultures, name).i),
           pack.cultures[state.culture]?.name
+        );
+        row.apply(
+          "Alignment",
+          alignment => States.setAlignment(id, alignment.toLowerCase() as Alignment),
+          state.alignment
         );
         row.apply("Type", type => States.setType(id, type), state.type);
         row.apply("Expansionism", value => States.setExpansionism(id, +value), state.expansionism);
