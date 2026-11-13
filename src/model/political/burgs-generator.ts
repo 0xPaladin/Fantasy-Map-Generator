@@ -1814,6 +1814,7 @@ class BurgModule {
       return;
     }
     // march needs a journey; pick the first one when the burg has none yet
+    if (isSurfaceBurg(burg)) throw new Error("Only a mobile burg can ride a journey; a surface burg owns its cell");
     if (burg.journey === undefined) {
       const first = (pack.journeys ?? []).find(journey => journey.i);
       if (!first) throw new Error("No journeys exist; create one in the Journeys editor first");
@@ -1879,12 +1880,13 @@ class BurgModule {
 
   // --- Marching mechanics: a wandering burg rides a journey across the map; see docs/plans/mobile-burgs.md ---
 
-  /** Put a burg onto a journey; its place along the road is stamped from the lore year */
+  /** Put a burg onto a journey; its place along the road is stamped from the lore year. A surface-class burg cannot ride — its cell slot belongs to the land it stands on — a titan, horde, skyburg, hold or underwater city can */
   march(burgId: number, journeyId: number): void {
     const burg = this.living(burgId);
     const journey = this.requireJourney(journeyId);
     if (burg.capital) throw new Error("A capital cannot ride a journey");
     if (burg.lock) throw new Error("Unlock the burg first; a locked burg keeps its place");
+    if (isSurfaceBurg(burg)) throw new Error("Only a mobile burg can ride a journey; a surface burg owns its cell");
     delete burg.pausedAt;
     if (burg.departedYear === undefined) burg.departedYear = options.map.lore.calendar.year;
     burg.journey = journey.i;

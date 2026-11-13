@@ -1064,4 +1064,9 @@ describe("marching mobiles", () => {
     delete pack.burgs[t]!.destination;
     expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(false);
   });
+
+  it("a surface burg cannot ride a journey — its cell slot belongs to the land", () => {
+    expect(() => Burgs.march(0, JOURNEY.i)).toThrow(/surface burg/);
+    expect(() => Burgs.setMobility(0, "march")).toThrow(/surface burg/);
+  });
 });

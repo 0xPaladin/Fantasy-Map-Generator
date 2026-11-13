@@ -4155,6 +4155,35 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(burg.cell).not.toBe(1); // it swam
       expect(Math.max(...pack.cells.development)).toBe(50); // water has no footfall
     });
+
+    it("a surface wanderer takes and releases its cell slot as it walks", () => {
+      Living.init();
+      const surface = {
+        i: 5,
+        name: "Wandering Town",
+        cell: 1,
+        x: 10,
+        y: 10,
+        state: 1,
+        culture: 1,
+        population: 20,
+        capital: 0,
+        walls: 0,
+        plaza: 0,
+        temple: 0,
+        citadel: 0,
+        mobile: 1,
+        mobility: "live"
+      } as unknown as Burg;
+      pack.burgs.push(surface);
+      pack.cells.burg[1] = 5; // a surface burg's slot, handed down at founding
+
+      Living.tick(1);
+
+      expect(pack.burgs[5]!.cell).not.toBe(1); // it walked
+      expect(pack.cells.burg[1]).toBe(0); // the slot was released
+      expect(pack.cells.burg[pack.burgs[5]!.cell]).toBe(5); // and taken at the new cell
+    });
   });
 });
 
