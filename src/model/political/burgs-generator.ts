@@ -100,6 +100,8 @@ export interface Burg {
   departedYear?: number;
   heading?: number;
   pausedAt?: number;
+  /** where a live-wandering burg is heading; chosen or re-rolled each season */
+  destination?: number;
 }
 
 /** the vertical layer a burg belongs to; see docs/plans/multi-realm.md */
@@ -1616,8 +1618,8 @@ class BurgModule {
     }
   }
 
-  /** Move a burg to a free land cell at a map point; a capital stays inside its state or province. A port trades by the water at its new place, if any */
-  move(burgId: number, x: number, y: number): void {
+  /** Move a burg to a free land cell at a map point; a capital stays inside its state or province. A port trades by the water at its new place, if any. Pass `{ connect: false }` to skip the road-network connection (used by live wanderers, which connect on arrival only) */
+  move(burgId: number, x: number, y: number, options: { connect?: boolean } = {}): void {
     const burg = this.living(burgId);
     const { cells } = pack;
     const cell = Pack.requireCell(x, y);
@@ -1644,7 +1646,7 @@ class BurgModule {
     const centered = pack.markets?.find(market => market.centerBurgId === burgId);
     if (centered) cells.market[cell] = centered.i;
     if (burg.port) burg.port = this.getPortWater(cell); // a port moved inland stops being one
-    if (!Routes.isConnected(cell)) Routes.connect(cell); // off the network it cannot trade
+    if (options.connect !== false && !Routes.isConnected(cell)) Routes.connect(cell); // off the network it cannot trade
     if (burg.label) Object.assign(burg.label, { dx: 0, dy: 0, pathPoints: undefined }); // a custom path no longer fits
   }
 
@@ -1779,8 +1781,8 @@ class BurgModule {
     else delete burg.skyPort;
   }
 
-  /** Set how the burg travels; pinned = off, drift = wanders when the map is regenerated, march = rides a journey */
-  setMobility(burgId: number, mobility: "pinned" | "drift" | "march"): void {
+  /** Set how the burg travels; pinned = stays put, drift = wanders on regeneration, march = rides a journey, live = the Living World tick marches it one cell per season */
+  setMobility(burgId: number, mobility: "pinned" | "drift" | "march" | "live"): void {
     const burg = this.living(burgId);
     if (mobility === "pinned") {
       if (!burg.mobile) return;
@@ -1797,6 +1799,16 @@ class BurgModule {
       delete burg.pausedAt;
       burg.mobile = 1;
       burg.mobility = "drift";
+      return;
+    }
+    if (mobility === "live") {
+      // the Living World tick picks a far destination and marches one cell per season
+      delete burg.journey;
+      delete burg.departedYear;
+      delete burg.pausedAt;
+      delete burg.destination;
+      burg.mobile = 1;
+      burg.mobility = "live";
       return;
     }
     // march needs a journey; pick the first one when the burg has none yet

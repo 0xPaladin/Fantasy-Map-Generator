@@ -320,4 +320,15 @@ test("a mobile burg'''s icon turns with its heading, and marching burgs carry da
   )!;
   expect(marchIcon.getAttribute("transform")).toBe("rotate(270 10 10)");
   expect(marchIcon.getAttribute("data-mobility")).toBe("march");
+
+  globalThis.pack = {
+    burgs: [{}, { i: 1, group: "town", x: 10, y: 10, heading: 180, mobility: "live" }]
+  } as never;
+
+  await drawBurgIcons();
+
+  const liveIcon = document.querySelector<SVGUseElement>(
+    '#burgIcons > [data-group="town"] > [data-group="icons"] > #burg1'
+  )!;
+  expect(liveIcon.getAttribute("data-mobility")).toBe("live");
 });

@@ -9,14 +9,14 @@ Progress:
 - Phase 4 — Journey-linked march mode (year-driven): ✅ done (2026-11-12)
 - Phase 5 — Rendering: ✅ done (2026-11-12)
 - Phase 6 — Assistant operations & UI: ✅ done (2026-11-12)
-- Phase 7 — Autonomous mode (Living World tick + chronicle hooks): pending
+- Phase 7 — Autonomous mode (Living World tick + chronicle hooks): ✅ done (2026-11-12)
 - Phase 8 — Mover economy rules: pending
 - Phase 9 — Verification, tests & docs: pending
 
 Implementation notes:
 - Phase 1 delivered: `Burg.titan` / `Burg.horde` realm flags (mutually exclusive with the other realm flags, like `flying`/`underdark`/`underwater`), the new realm kinds entered into `BurgRealm`,
   `getBurgRealm`, `isSurfaceBurg`, `isBurgInRealm`, `groundSlotOnPlacement`, `Burgs.add` and `Burgs.setRealm` (realm allow-list + titan/horde water-rejection; demotion hands the surface slot back,
-  promotion back to surface validates the cell and the slot occupancy). Mobile fields on `Burg` (`mobile`, `mobility`, `journey`, `departedYear`, `heading`, `pausedAt` — additive, persisted in `.map`).
+  promotion back to surface validates the cell and the slot occupancy). Mobile fields on `Burg` (`mobile`, `mobility`, `journey`, `departedYear`, `heading`, `pausedAt`, `destination` — additive, persisted in `.map`).
   New burg groups `titan_capital`/`titan_hold` and `horde_capital`/`horde_hold` (resolved before surface groups; the minor holds gate on `zoomThreshold: 1.5`), matching label groups with
   `zoom.min = 1.5`, `default-styles.json` icon + label styles (titan = warm amber, horde = terracotta), `Options → Realm networks` checkboxes `Titan burgs` / `Horde burgs` (default on, schema + model +
   imperative bindings), `.map` backfill of the new groups unconditionally and idempotently in `auto-update.ts`. Assistant context regenerated (`BurgRealm` type now includes both).
@@ -30,6 +30,7 @@ Implementation notes:
   slider (0–5, default 2) bound imperatively with a lock icon; `population.wanderers` in schema/defaults. Roads connect titans/hordes via `sortBurgsByFeature` (the road network passes through them;
   they are `capital: 0`, never hub-adjacent anchors, never ports). Scenario test pins placement determinism per seed.
 - Phase 6 delivered: assistant ops exposed and layer-mapped (`march`, `unmarch`, `setMobility`, `setHeading`, `setDepartureYear`, `advanceMobile`, `pauseMobile`, `resumeMobile`); the `setMobility`/`march` pair on the model switches between pinned / drift / march (marching auto-picks a journey when none is assigned). Burg Editor: under the Hub row a Mobility row with Pinned/Drift/March icons (greyed when off, like other feature icons) plus a `Ride` select (populated from `pack.journeys`, shown only in march mode). Burgs Overview: Titan and Horde realm filter chips; the creator's realm selector gains Titan and Horde. Map commands `advanceMapYear`, `pauseAllMobiles`, `resumeAllMobiles` with aliases. Assistant `redraw.ts` redraws `burgIcons`/`labels` on any burg mobility field change and on `Lore` year changes.
+- Phase 7 delivered: `Burg.destination` (optional cell index the live wanderer walks toward; additive, persisted in `.map`, re-rolled each season until it lands). `Burgs.setMobility(id, "live")` clears journey/departedYear/pausedAt/destination and sets `mobile` + `mobility: "live"`. The Living World tick (`Living.tick`, 1 season = 1 tick) runs `stepMobileBurgs` after `stepRebellions`, before `stepEschaton`: no-op unless Living World mode is on. Each season a live burg whose realm can stand on `destination` is kept; otherwise one is picked from a seeded 48-cell shortlist (`rng("liveMobile", burgId)`; tick-seeded, so the pick is deterministic per season) — farthest standable cell wins (land for titans, hordes and underdark holds, waters for underwater, anywhere for sky). One greedy cell-graph hop per season toward it (neighbor with the smallest euclidean gap that also stands for the realm; hemmed-in burgs re-roll next season). Moves ride `Burgs.move` with a new `{ connect: false }` option so the map isn't littered with a fresh trail per cell; the road join happens once per wander, on arrival — like a marching burg docking. Arrival is chronicled (`deed` event with the burg as actor + `colonize` news entry, burg rests a season) and clears `destination`. All failures (blocked cell, no standable destination) swallowed to re-roll next season — the tick never dies. Burg Editor Mobility row gains a Live (`icon-compass`) toggle; icons carry `data-mobility="live"` with a green drop-shadow in `index.css`; `draw-burg-icons` emits the marker for `live`; `Burgs.setMobility` signature extended. 5 unit tests in `living-generator.test.ts` (one hop per season, realm ground rules, pinned/drift untouched, chronicled arrival + rest season, all-water titan no-op). Assistant context regenerated (`setMobility` type now `"pinned" | "drift" | "march" | "live"`).
 
 ## Goal
 
@@ -80,9 +81,10 @@ backfill — `VERSION` stays upstream-owned):
   - `march` — travels a stored journey, position from the lore year (`departedYear`);
   - `live` — autonomous roaming driven by the Living World tick (Phase 7).
 - `journey?: number` — id of the journey it rides (`march` only).
-- `departedYear?: number` — lore year it set out (`march`, `live`).
+- `departedYear?: number` — lore year it set out (`march` only).
 - `heading?: number` — degrees, for titan/horde icon rotation (degrees, 0 = up/north).
 - `pausedAt?: number` — lore year it halted (`march` stations the burg at a port like any other).
+- `destination?: number` — cell index a `live` wanderer walks toward (re-picked each season until it lands).
 
 Burg groups (new, zoom-gated like the realm minor holds):
 
@@ -129,18 +131,22 @@ A march burg rides a **Journey** with a mobile payload (`journey.burgs: number[]
 A marching burg renders on the Journeys layer glide (like trade animation), frozen between
 generators — position is recomputed from the lore year, never stored as a second source of truth.
 
-### Live (Phase 7, autonomous)
+### Live (Phase 7, autonomous) — shipped
 
-Living World tick (1 season = 1 tick, 4 ticks = 1 year): mobiles get a lightweight agenda —
-`migrate` — evaluated per season:
+Living World tick (1 season = 1 tick, 4 ticks = 1 year): each season a `mobility: "live"` burg takes one
+cell-graph hop toward a far destination:
 
-- wander a few cells toward a plausible destination picked from a seeded shortlist (richest biome
-  for a horde, most defensible coast for a war-isle, highest ground inland for a titan);
+- the destination is picked from a seeded shortlist (48 sampled cells, `rng("liveMobile", burgId)` per
+  season) — the farthest standable cell wins; land for titans/hordes/underdark holds, waters for
+  underwater, anywhere for sky (per-archetype weighting like biome richness is a refinement, not the
+  shipped behavior);
+- a hemmed-in burg (no improving hop) or a blocked move clears the destination and re-rolls next season;
 - no state expansion, no combat, no diplomacy — it's a migration, not an army;
-- chronicle records "the titan passed" / "the isle came to anchor" as history events;
-- a fast tick-rate avoids thrash: weight by "years since last move" like real-world breeding cycles.
+- arrival writes the chronicle (`deed`, burg actor) and a `colonize` news item, the burg rests a season,
+  and the road join happens once — on arrival, like a marching burg docking;
+- maps without Living World never evaluate any of this.
 
-Explicitly optional: maps without Living World don't pay for it.
+See "Phase 7 delivered" in the Implementation notes for the exact mechanics.
 
 ## Mechanics by system
 
@@ -273,9 +279,15 @@ are excluded from seating like realm burgs; `isSurfaceBurg` becomes
 - map commands: `advanceMapYear` (a millennium passes and every marching burg advances), `pauseAllMobiles`, `resumeAllMobiles`; omnibar-aliases for all three
 - see Phase 6 implementation notes
 
-### Phase 7 — Live mode (optional, Living World only)
-- season tick evaluation; `migrate` agenda behaviour; chronicle coupling
-- no-op when Living World is disabled
+### Phase 7 — Live mode (Living World only) ✅ done (2026-11-12)
+- `stepMobileBurgs` in `Living.tick`: one cell-graph hop per season toward a seeded far destination (shortlist roll per season, tick-seeded)
+- realm ground rules (land / waters / anywhere) enforced twice: by candidate filtering and by `Burgs.move` itself; blocked moves clear the destination and re-roll next season
+- `{ connect: false }` option on `Burgs.move` — the road join happens once per wander, on arrival, mirroring march's dock behavior
+- chronicle coupling: `deed` event with the burg as actor on arrival, plus a `colonize` news entry; the chronicle only records live wanderers when Living World mode is on
+- editor: Mobility row's fourth toggle (`icon-compass` "Live"); icons carry `data-mobility="live"` (green drop-shadow)
+- assistant: `setMobility` type extended with `"live"`; context regenerated
+- 5 unit tests (one hop per season, realm ground rules, pinned/drift untouched, chronicled arrival and rest season, all-water titan stays put)
+- no-op when Living World is disabled (the tick only runs under the Living World HUD)
 
 ### Phase 8 — Mover economy rules
 - titan trampling (optional: local development −10 on footfall cells, drama!)

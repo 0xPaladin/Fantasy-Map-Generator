@@ -135,10 +135,10 @@ function part(name: "icons" | "anchors", style: BurgPart, burgs: Burg[], bounds:
     const w = rn(boxWidth * scale, 4);
     const h = rn(boxHeight * scale, 4);
 
-    // a mobile burg faces along its heading, and marching burgs carry a marker for styling
+    // a mobile burg faces along its heading, and mobile burgs carry a marker for styling
     const rotation =
       burg.heading !== undefined ? ` transform="rotate(${rn(burg.heading, 1)} ${rn(x, 2)} ${rn(y, 2)})"` : "";
-    const mobility = burg.mobility === "march" ? ` data-mobility="march"` : "";
+    const mobility = burg.mobility === "march" || burg.mobility === "live" ? ` data-mobility="${burg.mobility}"` : "";
 
     markup.push(
       `<use id="burg${i}" data-id="${i}" href="${burgIcon}" x="${x}" y="${y}" width="${w}em" height="${h}em"${transformAttr}${rotation}${mobility}/>`

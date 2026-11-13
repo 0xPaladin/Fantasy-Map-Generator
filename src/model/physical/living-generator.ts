@@ -1353,6 +1353,7 @@ class LivingModel {
       this.stepStates(living);
       this.stepDiplomacy(living);
       this.stepRebellions(living);
+      this.stepMobileBurgs(living);
       this.stepEschaton(living);
     }
 
@@ -1968,6 +1969,108 @@ class LivingModel {
       snapshot: history.snapshots.length - 1
     });
     living.lastSnapshotTick = living.tick;
+  }
+
+  // -------------------------------------------------------------------------
+  // Mobile burgs: wanderers on mobility "live" migrate one cell per season
+  // toward a seeded far destination — a migration, never an army.
+  // -------------------------------------------------------------------------
+
+  /** One seasonal migration tick for every burg on mobility "live". */
+  private stepMobileBurgs(living: LivingWorldState): void {
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || burg.mobile !== 1 || burg.mobility !== "live") continue;
+      this.stepLiveBurg(living, burg);
+    }
+  }
+
+  /** Can this burg stand on `cell`? Each realm keeps its own ground. */
+  private mobileBurgCanStand(burg: Burg, cell: number): boolean {
+    const height = pack.cells.h?.[cell];
+    if (height === undefined) return false;
+    if (burg.underwater) return height < 20; // underwater settlements roam the waters
+    if (burg.flying) return true; // the sky roams wherever it pleases
+    return height >= 20; // titans, hordes and underdark holds stay on the land
+  }
+
+  /** Season tick for one live burg: pick a far destination, take one greedy hop, chronicle the arrival. */
+  private stepLiveBurg(living: LivingWorldState, burg: Burg): void {
+    const name = burg.name ?? "A wandering burg";
+    const [x, y] = pack.cells.p[burg.cell] ?? [0, 0];
+
+    // just arrived: chronicle the coming to anchor, then rest a season
+    if (burg.destination !== undefined && burg.cell === burg.destination) {
+      const text = burg.titan
+        ? `${name}, the titan, came to anchor`
+        : burg.horde
+          ? `${name}, the horde, came to rest`
+          : burg.underwater
+            ? `${name}, the walking isle, came to anchor`
+            : burg.flying
+              ? `${name}, the sky-wanderer, came to rest`
+              : burg.underdark
+                ? `${name}, the wandering hold, came to rest`
+                : `${name}, the wandering burg, came to anchor`;
+      this.pushNews(living, { kind: "colonize", text, cell: burg.cell, stateId: burg.state, burgId: burg.i });
+      this.pushHistory("deed", [{ kind: "burg", id: burg.i! }], burg.cell, text);
+      delete burg.destination;
+      return;
+    }
+
+    // pick a far plausible destination from a seeded shortlist when none stands
+    if (burg.destination === undefined || !this.mobileBurgCanStand(burg, burg.destination)) {
+      delete burg.destination;
+      const rng = this.rng("liveMobile", burg.i!);
+      let best = -1;
+      let bestDistance = 0;
+      for (let i = 0; i < 48; i++) {
+        const cell = rng.int(0, pack.cells.i.length - 1);
+        if (!this.mobileBurgCanStand(burg, cell)) continue;
+        const [cx, cy] = pack.cells.p[cell] ?? [0, 0];
+        const distance = (cx - x) ** 2 + (cy - y) ** 2;
+        if (distance > bestDistance) {
+          bestDistance = distance;
+          best = cell;
+        }
+      }
+      if (best === -1) return; // nowhere to go this season (all water, all mountain…)
+      burg.destination = best;
+    }
+
+    // take one greedy hop toward the destination; a hemmed-in burg re-rolls next season
+    const [dx, dy] = pack.cells.p[burg.destination] ?? [0, 0];
+    let hopCell = -1;
+    let hopDistance = (dx - x) ** 2 + (dy - y) ** 2;
+    for (const neighbor of pack.cells.c?.[burg.cell] ?? []) {
+      if (!this.mobileBurgCanStand(burg, neighbor)) continue;
+      const [nx, ny] = pack.cells.p[neighbor] ?? [0, 0];
+      const distance = (nx - dx) ** 2 + (ny - dy) ** 2;
+      if (distance < hopDistance) {
+        hopDistance = distance;
+        hopCell = neighbor;
+      }
+    }
+    if (hopCell === -1) {
+      delete burg.destination; // hemmed in; try a fresh destination next season
+      return;
+    }
+
+    // Burgs.move enforces the full move contract (no evicting a surface burg, no swims, no capitals leaving their state);
+    // the road join happens on arrival only, like a marching burg docking at the journey's end
+    try {
+      const [nx, ny] = pack.cells.p[hopCell] ?? [0, 0];
+      Burgs.move(burg.i!, nx, ny, { connect: false });
+    } catch {
+      delete burg.destination; // blocked (a taken cell); try again next season
+      return;
+    }
+    if (burg.cell === burg.destination && !Routes.isConnected(burg.cell)) {
+      try {
+        Routes.connect(burg.cell); // join the roads once, on arrival
+      } catch {
+        // a road-join failure must not abort the season; the burg stays connected on its next dock
+      }
+    }
   }
 
   // -------------------------------------------------------------------------

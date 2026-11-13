@@ -179,7 +179,7 @@ function renderDialog(): void {
                 class="burgFeature icon-key"
               ></span>
             </div>
-            <div data-tip="${t("How the burg moves: pinned burgs stay put, drifting burgs wander when the map is regenerated, marching burgs ride a journey and ride by the lore year")}">
+            <div data-tip="${t("How the burg moves: pinned burgs stay put, drifting burgs wander when the map is regenerated, marching burgs ride a journey and ride by the lore year, live burgs wander on their own under Living World ticks")}">
               <div class="label">${t("Mobility")}:</div>
               <span
                 id="burgPinned"
@@ -195,6 +195,11 @@ function renderDialog(): void {
                 id="burgMarch"
                 data-tip="${sentences(t("March: the burg rides a journey"), t("Click to toggle"))}"
                 class="burgFeature icon-person-walking"
+              ></span>
+              <span
+                id="burgLive"
+                data-tip="${sentences(t("Live: the burg wanders on its own under Living World ticks"), t("Click to toggle"))}"
+                class="burgFeature icon-compass"
               ></span>
             </div>
             <div id="burgMarchRow" data-tip="${t("The journey the marching burg rides")}" style="display: none">
@@ -375,7 +380,8 @@ function renderDialog(): void {
           "burgUnderdarkGate",
           "burgPinned",
           "burgDrift",
-          "burgMarch"
+          "burgMarch",
+          "burgLive"
         ].includes(el.id)
       )
         return;
@@ -389,6 +395,7 @@ function renderDialog(): void {
   ensureEl("burgPinned").addEventListener("click", () => changeMobility("pinned"));
   ensureEl("burgDrift").addEventListener("click", () => changeMobility("drift"));
   ensureEl("burgMarch").addEventListener("click", () => changeMobility("march"));
+  ensureEl("burgLive").addEventListener("click", () => changeMobility("live"));
   ensureEl("burgMarchJourney").addEventListener("change", changeMarchJourney);
   ensureEl("burgAltitudeEdit").addEventListener("click", editAltitude);
   ensureEl("burgLinkOpen").addEventListener("click", openBurgLink);
@@ -480,11 +487,12 @@ function updateBurgValues(): void {
   ensureEl("burgSkyPort").classList.toggle("disabled", !isSurface);
   ensureEl("burgUnderdarkGate").classList.toggle("disabled", !isSurface);
 
-  // mobility: pinned / drift / march
+  // mobility: pinned / drift / march / live
   const mobility = b.mobility ?? (b.mobile ? "drift" : "pinned");
   ensureEl("burgPinned").classList.toggle("inactive", mobility !== "pinned");
   ensureEl("burgDrift").classList.toggle("inactive", mobility !== "drift");
   ensureEl("burgMarch").classList.toggle("inactive", mobility !== "march");
+  ensureEl("burgLive").classList.toggle("inactive", mobility !== "live");
   const marching = mobility === "march";
   ensureEl("burgMarchRow").style.display = marching ? "" : "none";
   if (marching) {
@@ -688,7 +696,7 @@ function toggleSkyPort(): void {
   }
 }
 
-function changeMobility(mobility: "pinned" | "drift" | "march"): void {
+function changeMobility(mobility: "pinned" | "drift" | "march" | "live"): void {
   const id = getSelectedId();
   if (tryEdit(() => Burgs.setMobility(id, mobility))) {
     Layers.draw("burgIcons", "labels");
