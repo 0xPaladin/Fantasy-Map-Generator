@@ -29,7 +29,6 @@ export interface SystemOriginContext {
   population: number;
   isCapital: boolean;
   port: number;
-  worldType?: string;
   culture?: Culture;
   minorityCultures?: Culture[];
   state?: State;

@@ -89,9 +89,7 @@ export async function drawGoods(): Promise<void> {
 function buildScene(): void {
   const selected = new Set(options.map.goods.filter(good => good.visible).map(good => good.i));
   const shown = selected.size ? selected : new Set(options.map.goods.map(good => good.i));
-  if (Goods.isAstralCatalogue?.()) cellProduction = [];
-  // an astral catalogue has no cell production: the cells stay bare and icons carry the goods
-  else if (selected.size) buildCellProduction(selected);
+  if (selected.size) buildCellProduction(selected);
   else buildCellOverview();
   buildResourceIcons(shown);
   buildBurgCircles(shown);

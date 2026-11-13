@@ -26,18 +26,7 @@ import { si } from "@/utils/number-utils";
 
 const dialogId = "astralSystems" as const;
 const position = { my: "right top", at: "right-10 top+10", of: "svg", collision: "fit" };
-const CSV_COLUMNS = [
-  "Id",
-  "System",
-  "Class",
-  "World Type",
-  "State",
-  "Culture",
-  "Population",
-  "Capital",
-  "Port",
-  "Traits"
-];
+const CSV_COLUMNS = ["Id", "System", "Class", "State", "Culture", "Population", "Capital", "Port", "Traits"];
 const CLASS_RANK: Record<string, number> = { O: 0, B: 1, A: 2, F: 3, G: 4, K: 5, M: 6 };
 
 function featureSortKey(system: StarSystem): string {
@@ -66,14 +55,6 @@ const columns: EditorColumn<StarSystem>[] = [
     width: "5em",
     sortBy: system => CLASS_RANK[system.class] ?? 99,
     tip: t("Spectral class of the primary star")
-  },
-  {
-    key: "worldType",
-    label: t("World type"),
-    width: "10em",
-    mobileHidden: true,
-    sortBy: system => system.worldTypeName,
-    sortType: "alpha"
   },
   {
     key: "state",
@@ -233,14 +214,7 @@ function getFilteredSystems(): StarSystem[] {
     filtered = filtered.filter(system => {
       const state = pack.states[system.state]?.name || "";
       const culture = pack.cultures[system.culture]?.name || "";
-      return Tags.matches(searchText, system.name, system.traits, [
-        state,
-        culture,
-        system.class,
-        system.className,
-        system.worldType,
-        system.worldTypeName
-      ]);
+      return Tags.matches(searchText, system.name, system.traits, [state, culture, system.class, system.className]);
     });
   }
   if (filterState.stateId !== -1) filtered = filtered.filter(system => system.state === filterState.stateId);
@@ -270,7 +244,6 @@ function renderSystemRows(view: TableView<StarSystem>): void {
         data-id="${system.id}"
         data-name="${escapeHtml(system.name)}"
         data-class="${escapeHtml(system.class)}"
-        data-worldtype="${escapeHtml(system.worldTypeName)}"
         data-state="${escapeHtml(state)}"
         data-culture="${escapeHtml(culture)}"
         data-population="${system.population}"
@@ -280,7 +253,6 @@ function renderSystemRows(view: TableView<StarSystem>): void {
         <span data-tip="${t("Click to zoom")}" class="icon-dot-circled pointer" data-col="locate"></span>
         <input data-tip="${t("Name")}" class="astralName" value="${escapeHtml(system.name)}" data-col="name" disabled />
         <input data-tip="${t("Spectral class")}" value="${escapeHtml(system.class)}" data-col="class" disabled />
-        <input data-tip="${t("World type")}" value="${escapeHtml(system.worldTypeName)}" data-col="worldType" disabled />
         <input data-tip="${t("State")}" value="${escapeHtml(state)}" data-col="state" disabled />
         <input data-tip="${t("Dominant culture")}" value="${escapeHtml(culture)}" data-col="culture" disabled />
         <input data-tip="${t("Population")}" value="${population}" data-col="population" disabled />
@@ -351,7 +323,6 @@ function downloadSystemsData(): void {
       system.id,
       system.name,
       `${system.class} ${system.className}`,
-      system.worldTypeName,
       state,
       culture,
       system.population,

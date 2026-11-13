@@ -42,7 +42,6 @@ export function extractSystemOriginContext(pack: PackedGraph, burgId: number): S
     population: burg.population || 0,
     isCapital: Boolean(burg.capital),
     port: burg.port || 0,
-    worldType: (burg as { worldType?: string }).worldType,
     culture,
     minorityCultures,
     state,

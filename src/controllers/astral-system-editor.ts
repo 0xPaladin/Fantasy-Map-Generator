@@ -4,18 +4,8 @@
 // see docs/plans/astral-system-dialog.md and docs/plans/astral-system-details.md
 import { select } from "d3";
 import { Controllers } from "@/controllers";
-import { ASTRAL_WORLD_TYPE_KEYS, type AstralWorldType } from "@/data/astral-goods";
-import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
-import { Production } from "@/model/economy/production-generator";
-import {
-  isCoreOrCapital,
-  peopleOf,
-  setWorldTypeFor,
-  starClassFor,
-  tradeGoodsFor,
-  worldTypeFor
-} from "@/model/physical/astral-naming";
+import { isCoreOrCapital, peopleOf, starClassFor } from "@/model/physical/astral-naming";
 import { type SystemDetails, systemDetailsFor } from "@/model/physical/astral-system";
 import { starTypeData } from "@/model/physical/astral-system/astrophysics";
 import { Burgs } from "@/model/political/burgs-generator";
@@ -127,14 +117,6 @@ function renderDialog(): void {
               </span>
             </div>
             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.8em">
-              <span data-tip="System World Type and trade specialization" style="display: inline-flex; align-items: center; gap: 0.2em">
-                <span class="label">World:</span>
-                <select id="systemWorldType" style="width: 7.5em"></select>
-              </span>
-              <span id="systemTradeGoodsLine" data-tip="Primary commodities traded in this system" style="display: inline-flex; align-items: center; gap: 0.2em">
-                <span class="label">Trade:</span>
-                <span id="systemTradeGoods"></span>
-              </span>
               <span data-tip="The installations that make the system what it is. Click one to toggle" style="display: inline-flex; align-items: center; gap: 0.25em">
                 <span class="label">Installations:</span>
                 <span id="systemCapital" data-tip="Empire capital. Click to toggle" data-feature="capital" class="burgFeature icon-star"></span>
@@ -223,7 +205,6 @@ function renderDialog(): void {
   ensureEl("systemNameReCulture").addEventListener("click", generateNameCulture);
   ensureEl("systemPeople").addEventListener("change", changePeople);
   ensureEl("systemPopulation").addEventListener("change", changePopulation);
-  ensureEl("systemWorldType").addEventListener("change", changeWorldType);
   ensureEl("astralSystemBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
     .forEach(el => void el.addEventListener("click", toggleFeature));
@@ -283,20 +264,6 @@ function updateSystemValues(): void {
   ensureEl("systemWaystationActive").classList.toggle("inactive", !isWsActive);
   ensureEl("systemWaystationDerelict").classList.toggle("inactive", !isWsDerelict);
   ensureEl("systemPrecursorLine").style.display = isGate || isWsActive || isWsDerelict ? "inline-flex" : "none";
-
-  const worldTypeSelect = ensureEl<HTMLSelectElement>("systemWorldType");
-  worldTypeSelect.options.length = 0;
-  const currentWorldType = worldTypeFor(burg);
-  for (const wt of ASTRAL_WORLD_TYPE_KEYS) {
-    worldTypeSelect.options.add(new Option(wt, wt, false, wt === currentWorldType));
-  }
-
-  const [goodAId, goodBId] = tradeGoodsFor(burg);
-  const goodA = Goods.get(goodAId);
-  const goodB = Goods.get(goodBId);
-  const goodAName = goodA ? goodA.name : `#${goodAId}`;
-  const goodBName = goodB ? goodB.name : `#${goodBId}`;
-  ensureEl("systemTradeGoods").innerHTML = `${escapeHtml(goodAName)}, ${escapeHtml(goodBName)}`;
 
   updateStar();
   updateLockIcon();
@@ -440,21 +407,6 @@ function generateNameCulture(): void {
 
 function changePeople(this: HTMLSelectElement): void {
   if (tryEdit(() => Burgs.setCulture(getSelectedId(), +this.value))) updateSystemValues();
-}
-
-function changeWorldType(this: HTMLSelectElement): void {
-  const burgId = getSelectedId();
-  const burg = pack.burgs[burgId];
-  if (!burg) return;
-  const newType = this.value as AstralWorldType;
-  setWorldTypeFor(burg, newType);
-  if (Goods.isAstralCatalogue()) {
-    const [primaryGoodId] = tradeGoodsFor(burg);
-    pack.cells.good[burg.cell] = primaryGoodId;
-    Production.regenerate();
-    Layers.draw("goods", "markets");
-  }
-  updateSystemValues();
 }
 
 function changePopulation(): void {

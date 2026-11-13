@@ -554,8 +554,8 @@ function toggleAstralGoodsMode() {
   const isAstral = Goods.isAstralCatalogue();
   const title = isAstral ? t("Restore Fantasy Goods") : t("Switch to Astral Goods");
   const message = isAstral
-    ? `${t("Restore standard fantasy goods catalogue and cell-level resource placement?")}<br>${t("This will regenerate goods and recompute the economy.")}`
-    : `${t("Switch to Astral sci-fi commodities and system-level trade tables?")}<br>${t("This will place resources at star systems and recompute the economy.")}`;
+    ? `${t("Restore standard fantasy goods catalogue?")}<br>${t("This will regenerate goods and recompute the economy.")}`
+    : `${t("Switch to Astral sci-fi goods catalogue?")}<br>${t("This will regenerate goods and recompute the economy.")}`;
 
   Dialog.confirm({
     title,
@@ -613,11 +613,7 @@ function enterResourceAssignMode(this: HTMLElement) {
 
   Dialog.update(dialogId, { position });
 
-  if (Goods.isAstralCatalogue()) {
-    tip(t("Select commodity in editor, click on a star system to add or remove its specialty resource"), true);
-  } else {
-    tip(t("Select good line in editor, click on cells to remove or add a bonus resource"), true);
-  }
+  tip(t("Select good line in editor, click on cells to remove or add a bonus resource"), true);
   select<SVGElement, unknown>("#viewbox").on("click", changeResourceOnCellClick);
 }
 
@@ -631,16 +627,8 @@ function selectResourceOnLineClick(this: HTMLElement) {
 function changeResourceOnCellClick(this: SVGElement, event: MouseEvent) {
   const body = ensureEl("goodsBody");
   const point = getPointer(event, this);
-  let cellId = Pack.findCell(...point);
+  const cellId = Pack.findCell(...point);
   if (cellId === undefined) return;
-
-  if (Goods.isAstralCatalogue()) {
-    const burg =
-      (pack.cells.burg[cellId] && pack.burgs[pack.cells.burg[cellId]]) ||
-      pack.burgs.find(b => b?.i && !b.removed && Math.hypot(b.x - point[0], b.y - point[1]) < 20);
-    if (!burg || burg.removed) return;
-    cellId = burg.cell;
-  }
 
   const selected = body.querySelector<HTMLElement>("div.selected");
   if (!selected) return;

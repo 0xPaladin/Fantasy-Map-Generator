@@ -74,13 +74,11 @@ The installations become the system's own: a port is a **shipyard**, a citadel a
 
 ### Astral Goods & Trade
 
-The economy and commodities model aligns with the *Stars Without Number: Suns of Gold* interstellar trade rules:
+The optional **Astral Goods** catalogue swaps the standard fantasy goods table for 34 sci-fi commodities while running on the stock FMG economy (`Goods`, `Output`, `Markets`, `Production`, `Trade`, and `Accounts`):
 
-- **System-level resources**: Interstellar commodities are situated and produced at the **star system** level (`burg.cell`), eliminating scattered rural land deposits and empty-space biome harvesting. Empty space cells produce zero goods.
-- **8 World Types**: Every system has one of 8 World Types (`Agricultural`, `Alien`, `Cosmopolitan`, `Decadent`, `Industrial`, `Primitive`, `Savage`, `Tyrannical`), deterministically derived from system traits and spectral class, and customizable in the System Editor via `world-<type>` tags.
-- **1d10 Trade Tables**: Each World Type features a 10-commodity trade table governing local export supply bonuses and import demands. Systems roll twice on their trade table to establish their primary and secondary export specialties.
-- **34 Standard Commodities**: Measured in metric tons (`ton`), spanning raw planetary resources (`Metawheat`, `Common Metal Ingots`, `Rare Alloys`, `Raw Drugs`, `Pretech Junk`) and manufactured technologies (`Fusion Plants`, `Postech Building Materials`, `Medical Supplies`, `Starship Maintenance Parts`, `Immortality Tech`).
-- **On-demand toggle**: The Goods Editor includes an on-demand button to switch between the standard fantasy catalogue and the Astral sci-fi catalogue, recalculating markets and trade lanes without breaking map serialization.
+- **34 Standard Commodities**: Measured in metric tons (`ton`), spanning raw planetary resources (`Metawheat`, `Metal Ingots, Common`, `Metal Ingots, Rare Alloys`, `Drugs, Raw Materials`, `Pretech Junk`) and manufactured technologies (`Fusion Plants`, `Postech Building Material`, `Medical Supplies, Postech`, `Parts, Starship Maintenance`, `Ghoul Immortality Tech`).
+- **Stock Economy Simulation**: Cell deposits, biome production, manufacturing recipes, market pricing, trade routes, and burg production overviews all use the standard FMG economy rules and are fully editable in the Goods Editor.
+- **On-demand & View Mode Toggle**: Entering Astral view switches to the Astral Goods catalogue (and exiting restores the previous fantasy catalogue), and the Goods Editor includes a toggle button to switch catalogues on demand without breaking map serialization.
 
 ### The Star Systems overview
 
