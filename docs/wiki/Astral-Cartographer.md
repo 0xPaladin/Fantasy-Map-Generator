@@ -74,11 +74,21 @@ The installations become the system's own: a port is a **shipyard**, a citadel a
 
 ### Astral Goods & Trade
 
-The optional **Astral Goods** catalogue swaps the standard fantasy goods table for 34 sci-fi commodities while running on the stock FMG economy (`Goods`, `Output`, `Markets`, `Production`, `Trade`, and `Accounts`):
+The optional **Astral Goods** catalogue swaps the standard fantasy goods table for 36 sci-fi & post-scarcity commodities while running on the stock FMG economy (`Goods`, `Output`, `Markets`, `Production`, `Trade`, and `Accounts`):
 
-- **34 Standard Commodities**: Measured in metric tons (`ton`), spanning raw planetary resources (`Metawheat`, `Metal Ingots, Common`, `Metal Ingots, Rare Alloys`, `Drugs, Raw Materials`, `Pretech Junk`) and manufactured technologies (`Fusion Plants`, `Postech Building Material`, `Medical Supplies, Postech`, `Parts, Starship Maintenance`, `Ghoul Immortality Tech`).
+- **36 Sci-Fi & Post-Scarcity Commodities**: Measured in metric tons (`ton`), spanning raw planetary resources (`Metawheat`, `Metal Ingots, Common`, `Metal Ingots, Rare Alloys`, `Drugs, Raw Materials`, `Pretech Junk`), manufactured postech (`Fusion Plants`, `Postech Building Material`, `Medical Supplies, Postech`, `Parts, Starship Maintenance`), and transhuman `TL5+` artifacts (`Matter Compiler Matrix`, `Esoteric Circuitry & VI Cores`, `Ghoul Immortality Tech`).
+- **Tech-Level Gating & Energy-to-Matter Synthesis**: Commodities are gated by `TL1`–`TL5+` development thresholds (`6`, `24`, `34`, `54`, `78`, `90`). Post-scarcity systems (`development >= 90`) can synthesize basic supplies, materials, tools, and medicine directly from `Fusion Plants` without biological or mining inputs, supported by an automated drone-workforce floor and a replicator prosperity floor (`needs = 1.0`).
 - **Stock Economy Simulation**: Cell deposits, biome production, manufacturing recipes, market pricing, trade routes, and burg production overviews all use the standard FMG economy rules and are fully editable in the Goods Editor.
 - **On-demand & View Mode Toggle**: Entering Astral view switches to the Astral Goods catalogue (and exiting restores the previous fantasy catalogue), and the Goods Editor includes a toggle button to switch catalogues on demand without breaking map serialization.
+
+### Sci-Fi Development Spread & Post-Scarcity Regimes
+
+Entering **Astral** view automatically swaps `options.map.eras` to the 11-tier Tech Level scale (`TL0 Neolithic` at `1` through `TL5 Galactic Pretech` at `78`, `TL5+ Post-Scarcity Transhuman` at `90`, and `TL6 Singularity Architect` at `97`) and applies a node-based interstellar development spread (`Development.generateAstral()`). Leaving Astral view restores the previous eras, culture baselines, and development map.
+
+- **Post-Scarcity & Havens (`VRARC`, `VRSOL`, `VRACN`, `VRELY`, `VRCEL`, `TRKSY`, `TRKCO`)**: Celestial and transhuman cultures anchor at `90–100` (`TL5+ / TL6`), uplifting secondary systems and Haven enclaves with a high technological floor (`80–98`) and `2×` seasonal Living World uplift for liberated worlds.
+- **Verse Ancient Bimodal Suppression (`VRHEG`, `VRMIG`, `VRHUI`, `VRGRY`)**: Primary Ancient systems stand at `TL5` (`78–92`), managed Thrall hubs at `TL4` (`54–65`), and subjugated panhuman worlds follow the canonical suppression distribution (`20% TL0`, `70% TL1`, `10% TL2`), with rural subject cells capped at `TL2` (`32`) during Living World diffusion.
+- **Feral & Unclaimed Space**: Unclaimed systems roll against the Feral Settlement table (`20% TL0`, `50% TL1`, `10% TL2`, `10% TL3`, `8% TL4`, `2% TL4+/TL5`).
+- **Standard Interstellar (`astralTrek`, `grimdark`, Independents, converted fantasy maps)**: Development scales by system role (Capital/Core, Shipyard/Conduit, Bastion/Civic Core, or isolated Fringe).
 
 ### The Star Systems overview
 

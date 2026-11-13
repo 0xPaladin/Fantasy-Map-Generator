@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ASTRAL_GOODS_DATA, isAstralGoodsCatalogue } from "@/data/astral-goods";
 
 describe("astral goods data", () => {
-  it("defines exactly 34 standard commodities with valid properties, deposits, and recipes", () => {
-    expect(ASTRAL_GOODS_DATA).toHaveLength(34);
+  it("defines 36 sci-fi & post-scarcity commodities with valid properties, deposits, TL gating, and recipes", () => {
+    expect(ASTRAL_GOODS_DATA).toHaveLength(36);
 
     for (let i = 0; i < ASTRAL_GOODS_DATA.length; i++) {
       const good = ASTRAL_GOODS_DATA[i];
@@ -23,7 +23,7 @@ describe("astral goods data", () => {
           expect(ingredientIds.length).toBeGreaterThan(0);
           for (const ingId of ingredientIds) {
             expect(ingId).toBeGreaterThanOrEqual(1);
-            expect(ingId).toBeLessThanOrEqual(34);
+            expect(ingId).toBeLessThanOrEqual(36);
             expect(recipe[ingId]).toBeGreaterThan(0);
           }
         }
@@ -32,6 +32,14 @@ describe("astral goods data", () => {
         expect(good.distribution).toBeTruthy();
       }
     }
+
+    const compiler = ASTRAL_GOODS_DATA.find(g => g.name === "Matter Compiler Matrix");
+    expect(compiler?.development).toBe(90);
+    expect(compiler?.tags).toContain("post-scarcity");
+
+    const colonialSupplies = ASTRAL_GOODS_DATA.find(g => g.name === "Colonial Supplies");
+    expect(colonialSupplies?.development).toBe(54);
+    expect(colonialSupplies?.recipes?.length).toBe(2); // biological + fusion synthesis
   });
 
   it("identifies astral goods catalogue", () => {

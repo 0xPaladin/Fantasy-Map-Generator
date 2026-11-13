@@ -191,7 +191,18 @@ export const ERA_LABELS: Record<string, string> = {
   "Industrial Revolution": t("Industrial Revolution"),
   "Machine Age": t("Machine Age"),
   "Space Age": t("Space Age"),
-  "Post-human": t("Post-human")
+  "Post-human": t("Post-human"),
+  "Neolithic (TL0)": t("Neolithic (TL0)"),
+  "Feudal Agrarian (TL1)": t("Feudal Agrarian (TL1)"),
+  "Late Feudal (TL1+)": t("Late Feudal (TL1+)"),
+  "Early Industrial (TL2)": t("Early Industrial (TL2)"),
+  "Fission & Orbital (TL3)": t("Fission & Orbital (TL3)"),
+  "Interplanetary (TL3+)": t("Interplanetary (TL3+)"),
+  "Interstellar Postech (TL4)": t("Interstellar Postech (TL4)"),
+  "Advanced Postech (TL4+)": t("Advanced Postech (TL4+)"),
+  "Galactic Pretech (TL5)": t("Galactic Pretech (TL5)"),
+  "Post-Scarcity Transhuman (TL5+)": t("Post-Scarcity Transhuman (TL5+)"),
+  "Singularity Architect (TL6)": t("Singularity Architect (TL6)")
 };
 
 /** the map's SVG filters, by element id */

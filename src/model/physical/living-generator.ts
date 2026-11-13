@@ -1,6 +1,7 @@
 // Living World seasonal simulation engine. See docs/plans/living-world.md
 
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
+import { ANCIENT_SUPPRESSED_CAP } from "@/data/development";
 import {
   CIV_BELIEF_BY_ID,
   CIV_ENHANCER_BELIEFS,
@@ -81,7 +82,7 @@ import {
 } from "@/model/political/military-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import { noFinance, type State, States } from "@/model/political/states-generator";
-import { Development } from "@/model/society/development-generator";
+import { type AstralTechRegime, classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { isAstralView } from "@/renderers/view-mode";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
@@ -1682,23 +1683,31 @@ class LivingModel {
     const { cells } = pack;
     const development = cells.development;
     if (!development || !cells.state) return;
-    const targets = new Map<number, number>();
+    const astral = Development.isAstralMode();
+    const targets = new Map<number, { target: number; regime: AstralTechRegime }>();
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
       const target = computePolityTechDevelopment(living.states[state.i]?.researchedTechs ?? []);
-      if (target > 0) targets.set(state.i, target);
+      if (target > 0) {
+        const regime = astral ? classifyAstralRegime(pack.cultures?.[state.culture ?? 0]) : "standardSciFi";
+        targets.set(state.i, { target, regime });
+      }
     }
     if (targets.size === 0) return;
 
     let changed = false;
     for (let cell = 0; cell < development.length; cell++) {
-      const target = targets.get(cells.state[cell]);
-      if (!target || !development[cell]) continue; // no polity or no people, no development
+      const entry = targets.get(cells.state[cell]);
+      if (!entry || !development[cell]) continue; // no polity or no people, no development
       if (cells.h[cell] < 20 || (!cells.pop[cell] && !cells.burg?.[cell])) continue;
 
-      const local = this.localDevelopmentTarget(cell, target);
+      let local = this.localDevelopmentTarget(cell, entry.target);
+      if (astral && (entry.regime === "ancientBimodal" || entry.regime === "xothianScourge") && !cells.burg?.[cell]) {
+        local = Math.min(local, ANCIENT_SUPPRESSED_CAP);
+      }
       if (development[cell] < local) {
-        development[cell] += 1;
+        const step = astral && entry.regime === "postScarcity" ? 2 : 1;
+        development[cell] = Math.min(local, development[cell] + step);
         changed = true;
       } else if (!cells.burg?.[cell] && development[cell] > local + DEVELOPMENT_DECAY_SLACK) {
         development[cell] -= 1; // the land cannot hold what its polity cannot work

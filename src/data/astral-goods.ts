@@ -160,7 +160,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-barrels",
     color: "#84cc16",
     demandCoverage: { food: 2, utilities: 2 },
-    recipes: [{ Metawheat: 1, "Livestock, Common": 0.5 }]
+    recipes: [{ Metawheat: 1, "Livestock, Common": 0.5 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Colonial Materials",
@@ -169,7 +169,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-sand",
     color: "#eab308",
     demandCoverage: { construction: 2, utilities: 1 },
-    recipes: [{ "Metal Ingots, Common": 1 }]
+    recipes: [{ "Metal Ingots, Common": 1 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Housewares, Basic",
@@ -187,7 +187,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-glass",
     color: "#06b6d4",
     demandCoverage: { utilities: 3, luxury: 1 },
-    recipes: [{ "Housewares, Basic": 1, "Parts, Basic Industry": 0.5 }]
+    recipes: [{ "Housewares, Basic": 1, "Parts, Basic Industry": 0.5 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Parts, Basic Industry",
@@ -241,7 +241,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-stone",
     color: "#475569",
     demandCoverage: { construction: 4 },
-    recipes: [{ "Colonial Materials": 1, "Metal Ingots, Common": 1 }]
+    recipes: [{ "Colonial Materials": 1, "Metal Ingots, Common": 1 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Small Arms, Energy",
@@ -259,7 +259,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-tools",
     color: "#0d9488",
     demandCoverage: { construction: 3, utilities: 2 },
-    recipes: [{ "Tools, Basic Hand Tools": 1, "Parts, Basic Industry": 1 }]
+    recipes: [{ "Tools, Basic Hand Tools": 1, "Parts, Basic Industry": 1 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Medical Supplies, Postech",
@@ -268,7 +268,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-saltpeter",
     color: "#10b981",
     demandCoverage: { utilities: 4 },
-    recipes: [{ "Drugs, Raw Materials": 2 }]
+    recipes: [{ "Drugs, Raw Materials": 2 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Parts, Starship Maintenance",
@@ -350,8 +350,46 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     color: "#4c1d95",
     demandCoverage: { luxury: 5, military: 2 },
     recipes: [{ "Medical Supplies, Pretech": 1, Slaves: 1 }]
+  },
+  {
+    name: "Matter Compiler Matrix",
+    tags: ["pretech", "post-scarcity", "tool", "compact", "tl5"],
+    value: 300,
+    carriage: 0.1,
+    development: 90,
+    icon: "goods-tools",
+    color: "#38bdf8",
+    demandCoverage: { construction: 5, utilities: 5, food: 4 },
+    recipes: [{ "Fusion Plants": 1 }]
+  },
+  {
+    name: "Esoteric Circuitry & VI Cores",
+    tags: ["pretech", "post-scarcity", "cybernetic", "compact", "tl5"],
+    value: 500,
+    carriage: 0.1,
+    development: 90,
+    icon: "goods-gemstones",
+    color: "#c084fc",
+    demandCoverage: { luxury: 5, utilities: 5, military: 4 },
+    recipes: [{ "Fusion Plants": 1, "Metal Ingots, Rare Alloys": 0.5 }]
   }
 ];
+
+const TL_DEVELOPMENT: Record<string, number> = {
+  tl1: 6,
+  tl2: 24,
+  tl3: 34,
+  tl4: 54,
+  tl5: 78
+};
+
+function inferAstralDevelopment(spec: AstralGoodRawSpec): number | undefined {
+  if (spec.development !== undefined) return spec.development;
+  for (const tag of spec.tags) {
+    if (tag in TL_DEVELOPMENT) return TL_DEVELOPMENT[tag];
+  }
+  return undefined;
+}
 
 export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, index): Good => {
   let recipes: Good["recipes"];
@@ -366,6 +404,7 @@ export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, ind
     });
   }
 
+  const development = inferAstralDevelopment(spec);
   return {
     i: index + 1,
     name: spec.name,
@@ -374,7 +413,7 @@ export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, ind
     carriage: spec.carriage ?? 1,
     ...(spec.deposits && { deposits: spec.deposits }),
     ...(spec.distribution && { distribution: spec.distribution }),
-    ...(spec.development && { development: spec.development }),
+    ...(development !== undefined && { development }),
     unit: "ton",
     icon: spec.icon,
     color: spec.color,

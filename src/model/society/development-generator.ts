@@ -1,11 +1,30 @@
 import {
+  ASTRAL_ERAS,
   CULTURE_TYPE_DEVELOPMENT,
   DEFAULT_DEVELOPMENT,
   DEFAULT_ERAS,
   type Era,
+  POST_SCARCITY_DEVELOPMENT,
   WILDLANDS_DEVELOPMENT
 } from "@/data/development";
 import type { Culture } from "./cultures-generator";
+
+export type AstralTechRegime = "postScarcity" | "ancientBimodal" | "xothianScourge" | "standardSciFi";
+
+const ASTRAL_CULTURE_SETS = new Set(["astralTrek", "grimdark", "verse"]);
+const POST_SCARCITY_BASES = new Set(["VRARC", "VRACN", "VRELY", "VRSOL", "VRCEL", "TRKSY"]);
+const ANCIENT_BIMODAL_BASES = new Set(["VRHEG", "VRMIG", "VRHUI", "VRGRY"]);
+
+export function classifyAstralRegime(culture?: Pick<Culture, "i" | "base" | "name" | "development">): AstralTechRegime {
+  if (!culture?.i) return "standardSciFi";
+  const base = culture.base ?? "";
+  if (POST_SCARCITY_BASES.has(base) || (culture.development ?? 0) >= POST_SCARCITY_DEVELOPMENT) return "postScarcity";
+  if (base === "VRXOT" && culture.name?.includes("Xothian")) return "xothianScourge";
+  if (ANCIENT_BIMODAL_BASES.has(base) || (base === "VRXOT" && culture.name?.includes("Thrall"))) {
+    return "ancientBimodal";
+  }
+  return "standardSciFi";
+}
 
 const SMOOTHING = 2; // passes averaging each land cell with its neighbors, before the noise
 const NOISE = 9; // the waves' amplitude, in points
@@ -23,8 +42,20 @@ class DevelopmentGenerator {
     return DEFAULT_ERAS.map(era => ({ ...era }));
   }
 
+  getAstralEras(): Era[] {
+    return ASTRAL_ERAS.map(era => ({ ...era }));
+  }
+
+  isAstralMode(): boolean {
+    return options?.map?.astral === true || ASTRAL_CULTURE_SETS.has(options?.map?.cultures?.set ?? "");
+  }
+
   /** Make development again from the cultures and land; custom levels are lost */
   generate(): void {
+    if (this.isAstralMode()) {
+      this.generateAstral();
+      return;
+    }
     const { cells, cultures, biomes } = pack;
     const n = cells.i.length;
     const levels = cultures.map(culture => (culture && !culture.removed ? this.ofCulture(culture) : 0));
@@ -44,6 +75,83 @@ class DevelopmentGenerator {
       if (cells.h[cell] < 20 || (!cells.pop[cell] && !cells.burg[cell])) continue; // no people, no development
       const least = cells.burg[cell] ? MIN_BURG : 1;
       development[cell] = Math.max(least, Math.min(100, Math.round(smooth[cell] + noise(cell))));
+    }
+    cells.development = development;
+  }
+
+  /** Sci-fi & Verse development spread: node-based, regime-aware (Post-Scarcity, Bimodal Ancient, Feral) */
+  generateAstral(): void {
+    const { cells, cultures, burgs, states } = pack;
+    const n = cells.i.length;
+    const development = new Uint8Array(n);
+    const seedPrefix = `${options?.map?.seed ?? ""}/astral/dev`;
+    const roll = (tag: string, id: number): number => hashString(`${seedPrefix}/${tag}/${id}`);
+
+    for (let cell = 0; cell < n; cell++) {
+      if (cells.h[cell] < 20 || (!cells.pop[cell] && !cells.burg[cell])) continue;
+      const burgId = cells.burg[cell] ?? 0;
+      const burg = burgId ? burgs?.[burgId] : undefined;
+      const cultureId = cells.culture?.[cell] ?? 0;
+      const stateId = cells.state?.[cell] ?? 0;
+      const culture = cultures?.[cultureId];
+      const state = states?.[stateId];
+      const h = roll(burgId ? "burg" : "cell", burgId || cell);
+      const frac = (h % 1000) / 1000;
+
+      if (!cultureId || !stateId || !culture || culture.removed) {
+        // Feral / Unclaimed systems roll: 20% TL0, 50% TL1, 10% TL2, 10% TL3, 8% TL4, 2% TL5
+        let level: number;
+        if (frac < 0.2) level = 3 + (h % 3);
+        else if (frac < 0.7) level = 8 + (h % 11);
+        else if (frac < 0.8) level = 24 + (h % 9);
+        else if (frac < 0.9) level = 35 + (h % 14);
+        else if (frac < 0.98) level = 54 + (h % 11);
+        else level = 68 + (h % 17);
+        development[cell] = Math.max(burg ? MIN_BURG : 1, Math.min(100, level));
+        continue;
+      }
+
+      const regime = classifyAstralRegime(culture);
+      const baseDev = this.ofCulture(culture);
+      const isCap = Boolean(burg && (burg.capital || state?.capital === burg.i));
+      const isCore = Boolean(burg && (isCap || (burg.population ?? 0) >= 100));
+
+      let level: number;
+      if (regime === "postScarcity") {
+        if (isCore) level = Math.max(92, Math.min(100, baseDev + (isCap ? 2 : 0)));
+        else if (burg) level = Math.max(85, Math.min(98, baseDev - 4 + (burg.port ? 2 : 0)));
+        else level = Math.max(80, Math.min(95, baseDev - 6));
+      } else if (regime === "ancientBimodal") {
+        if (isCap || (burg?.citadel && burg.port)) {
+          level = Math.max(78, Math.min(92, baseDev));
+        } else if (burg && (burg.citadel || burg.walls || burg.port)) {
+          level = 54 + (h % 12);
+        } else if (frac < 0.2) {
+          level = 3 + (h % 3);
+        } else if (frac < 0.9) {
+          level = 8 + (h % 13);
+        } else {
+          level = 24 + (h % 9);
+        }
+      } else if (regime === "xothianScourge") {
+        level = isCap ? Math.max(75, Math.min(86, baseDev)) : 4 + (h % 11);
+      } else {
+        level = baseDev;
+        if (burg) {
+          if (isCap) level += 6;
+          else if ((burg.population ?? 0) >= 100) level += 4;
+          if (burg.port) level += 3;
+          if (burg.citadel || burg.plaza) level += 2;
+          if (burg.shanty && !burg.plaza) level -= 4;
+          if (!cells.r?.[cell] && !burg.port && !isCap) level -= 6;
+        } else {
+          level = baseDev - 4 + (cells.r?.[cell] ? 2 : 0) + (cells.harbor?.[cell] ? 1 : 0);
+        }
+        level += (h % 5) - 2;
+      }
+
+      const least = burg ? MIN_BURG : 1;
+      development[cell] = Math.max(least, Math.min(100, Math.round(level)));
     }
     cells.development = development;
   }
