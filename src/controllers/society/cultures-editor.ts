@@ -926,7 +926,7 @@ function drawCultureCenters(): void {
     .attr("stroke", "#444444")
     .style("cursor", "move");
 
-  const data = pack.cultures.filter(c => c.i && !c.removed);
+  const data = pack.cultures.filter(c => c.i && !c.removed && c.center != null && pack.cells.p[c.center]);
   cultureCenters
     .selectAll("circle")
     .data(data)

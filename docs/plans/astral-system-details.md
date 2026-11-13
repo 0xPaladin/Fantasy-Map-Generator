@@ -1,7 +1,7 @@
 # Plan — The System Readout: generated stars and planets
 
 Updated: 2026-10-25. Inputs: [astral-system-dialog.md](astral-system-dialog.md) (the dialog this
-extends), [docs/astral/README.md](../astral/README.md),
+extends), [docs/wiki/Astral-Cartographer.md](../wiki/Astral-Cartographer.md),
 [data-model.md](../architecture/data-model.md), and the **astro half** of the feral-system
 generator (`code/VerseEras/game/js/world/generators/feral-system/astro/*`).
 
@@ -266,7 +266,7 @@ src/generators/astral-system/system.test.ts    determinism and field sanity for 
 ```
 src/controllers/astral-system-editor.ts  the readout block, tables and render call
 tests/e2e/astral-systems.spec.ts          readout, reopen stability, no-new-state guard
-docs/astral/README.md                     the System Editor section and a planned roadmap entry
+docs/wiki/Astral-Cartographer.md          the System Editor section and a planned roadmap entry
 docs/plans/astral-system-dialog.md        a follow-up link beside the "no generator changes" note
 MERGING.md                                the astro port and the editor touch-point
 ```

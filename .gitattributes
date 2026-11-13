@@ -1,0 +1,2 @@
+# Prevent git from normalizing CRLF line endings on FMG save files
+*.map binary

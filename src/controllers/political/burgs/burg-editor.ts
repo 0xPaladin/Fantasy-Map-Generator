@@ -206,6 +206,27 @@ function renderDialog(): void {
               <div class="label">${t("Ride")}:</div>
               <select id="burgMarchJourney" style="width: 9em"></select>
             </div>
+            <div id="burgPrecursorLine" data-tip="${t("Precursor infrastructure in this settlement")}" style="display: none">
+              <div class="label">${t("Precursor")}:</div>
+              <span
+                id="burgSpaceGate"
+                data-tip="${t("Great Space Gate: Precursor planar portal connecting major galactic domains")}"
+                class="burgFeature pointer"
+                style="font-size: 1.1em"
+              >🌌</span>
+              <span
+                id="burgWaystationActive"
+                data-tip="${t("Active Precursor Waystation: hyperlane conduit node powering regional lattice")}"
+                class="burgFeature pointer"
+                style="font-size: 1.1em"
+              >🛰️</span>
+              <span
+                id="burgWaystationDerelict"
+                data-tip="${t("Derelict Precursor Waystation: inert relic / planar hazard anomaly")}"
+                class="burgFeature pointer"
+                style="font-size: 1.1em"
+              >⚠️</span>
+            </div>
             <div>
               <div class="label">${t("Features", { context: "burg" })}:</div>
               <span
@@ -370,7 +391,7 @@ function renderDialog(): void {
   ensureEl("burgBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
     .forEach(el => {
-      // realm, hub and mobility toggles are handled by their own handlers, not the generic building toggles
+      // realm, hub, mobility and precursor toggles are handled by their own handlers, not the generic building toggles
       if (
         [
           "burgFlying",
@@ -381,12 +402,18 @@ function renderDialog(): void {
           "burgPinned",
           "burgDrift",
           "burgMarch",
-          "burgLive"
+          "burgLive",
+          "burgSpaceGate",
+          "burgWaystationActive",
+          "burgWaystationDerelict"
         ].includes(el.id)
       )
         return;
       void el.addEventListener("click", toggleFeature);
     });
+  ensureEl("burgSpaceGate").addEventListener("click", openBurgPrecursorNote);
+  ensureEl("burgWaystationActive").addEventListener("click", openBurgPrecursorNote);
+  ensureEl("burgWaystationDerelict").addEventListener("click", openBurgPrecursorNote);
   ensureEl("burgFlying").addEventListener("click", () => toggleRealm("sky"));
   ensureEl("burgUnderdark").addEventListener("click", () => toggleRealm("underdark"));
   ensureEl("burgUnderwater").addEventListener("click", () => toggleRealm("underwater"));
@@ -501,6 +528,14 @@ function updateBurgValues(): void {
     for (const journey of pack.journeys ?? []) journeySelect.options.add(new Option(journey.name, String(journey.i)));
     journeySelect.value = String(b.journey);
   }
+  const isGate = Boolean(b.spaceGate);
+  const isWsActive = b.waystation === 1;
+  const isWsDerelict = b.waystation === 2;
+  ensureEl("burgSpaceGate").classList.toggle("inactive", !isGate);
+  ensureEl("burgWaystationActive").classList.toggle("inactive", !isWsActive);
+  ensureEl("burgWaystationDerelict").classList.toggle("inactive", !isWsDerelict);
+  ensureEl("burgPrecursorLine").style.display =
+    isGate || isWsActive || isWsDerelict || options.map.astral ? "block" : "none";
 
   updateBurgLiving(id);
 
@@ -1030,6 +1065,20 @@ function relocateBurgOnClick(this: SVGGElement, event: MouseEvent): void {
 
 function editBurgLegend(): void {
   void Controllers.NotesEditor.open({ type: "burg", id: getSelectedId() });
+}
+
+function openBurgPrecursorNote(): void {
+  const burgId = getSelectedId();
+  const burg = pack.burgs[burgId];
+  if (!burg) return;
+  const marker = pack.markers?.find(
+    m => m.cell === burg.cell || (Math.abs(m.x - burg.x) < 2 && Math.abs(m.y - burg.y) < 2)
+  );
+  if (marker) {
+    void Controllers.NotesEditor.open({ type: "marker", id: marker.i });
+  } else {
+    void Controllers.NotesEditor.open({ type: "burg", id: burgId });
+  }
 }
 
 function showTemperatureGraph(): void {

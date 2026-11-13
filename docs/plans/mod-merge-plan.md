@@ -42,23 +42,23 @@ a checklist.
 
 ## Phase A — Astral content in core (bases + sets) ✅
 
-Delivered in `240ba81e`: 12 Astral name bases appended to `getDefaultNameBases()` (with the
-`groups` extension carrying the `polities` pools), the three sets added to `CULTURE_SETS` and
+Delivered in `240ba81e`: 8 Astral name bases appended to `getDefaultNameBases()` (with the
+`groups` extension carrying the `polities` pools), the two sets added to `CULTURE_SETS` and
 `CulturesGenerator.getDefault()`, the placement hints translated into the stock homeland scoring
 callbacks, and the content-rules test suite (`src/data/name-bases.test.ts`).
 
-The user-visible outcome: the Cultures set dropdown offers **AstralTrek, AstralJammer, Grimdark**,
+The user-visible outcome: the Cultures set dropdown offers **AstralTrek, Grimdark**,
 and generating with one produces the star-map peoples out of the box — no panel, no payload push,
 and (unlike the mod) **set pinning works**, because `cultureSetId` validates against ids the core
 knows.
 
-1. **Bases** (`src/data/name-bases.ts`): append the 12 Astral bases in FMG's own shape
+1. **Bases** (`src/data/name-bases.ts`): append the 8 Astral bases in FMG's own shape
    (`{name, min, max, d, m, b}`), `b` = the flattened `systems` pool (what burgs chain from).
    Extend the core `NameBase` type with optional `groups?: Record<string, string[]>` carrying the
    `polities` pools. Groups are **core data, not user data**: nothing is saved (a stock edit of
    `b` in the Namebase Editor changes only `b`), so the `.map` format needs no change.
-2. **Sets** (`cultures-generator.ts`): add `astralTrek / astralJammer / grimdark` to
-   `CULTURE_SETS` (max 8, modest probability), and three `getDefault()` branches returning each
+2. **Sets** (`cultures-generator.ts`): add `astralTrek / grimdark` to
+   `CULTURE_SETS` (max 8, modest probability), and two `getDefault()` branches returning each
    set's eight cultures — two per base, resolving `base` by name to the appended index.
 3. **Placement hints → sort functions**: the content says where a homeland goes in words
    (`temperate | harsh | remote | any`); the mod already turned hints into scoring functions. Port

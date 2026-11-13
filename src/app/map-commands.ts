@@ -517,6 +517,13 @@ export const MAP_COMMANDS: MapCommand[] = [
     }
   },
   {
+    id: "viewAstral",
+    name: t("Toggle Astral View"),
+    link: true,
+    aliases: "astral view mode star chart sci-fi systems",
+    run: () => Controllers.AstralMode.toggle()
+  },
+  {
     id: "showStatesChart",
     name: t("States bubble chart"),
     link: true,

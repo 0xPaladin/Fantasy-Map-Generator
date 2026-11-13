@@ -1,3 +1,8 @@
+import type { Province } from "@/model/political/provinces-generator";
+import type { State } from "@/model/political/states-generator";
+import type { Culture } from "@/model/society/cultures-generator";
+import type { Religion } from "@/model/society/religions-generator";
+
 // Surface archetypes bridging astral-system astrophysics (HI, hydrographics, atmosphere,
 // temperature) and FMG's physical generators (heightmap template, biomes, rivers, lakes).
 // The archetype lives on options.map.geography; when it is absent the map is terran and every
@@ -16,3 +21,18 @@ export const ARCHETYPE_HEIGHTMAP_TEMPLATES: Record<PlanetaryArchetype, string> =
   titan: "titanWorld",
   volcanic: "volcanicWorld"
 };
+
+/** Sector star system context binding a materialized world to its parent polity, culture and religion */
+export interface SystemOriginContext {
+  burgId: number;
+  burgName: string;
+  population: number;
+  isCapital: boolean;
+  port: number;
+  worldType?: string;
+  culture?: Culture;
+  minorityCultures?: Culture[];
+  state?: State;
+  province?: Province;
+  religion?: Religion;
+}

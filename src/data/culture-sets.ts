@@ -9,7 +9,7 @@ export const CULTURE_SETS: Record<string, { name: string; max: number; probabili
   darkFantasy: { name: "Dark Fantasy", max: 18, probability: 3 },
   random: { name: "Random", max: 100, probability: 1 },
   astralTrek: { name: "AstralTrek", max: 100, probability: 5 },
-  astralJammer: { name: "AstralJammer", max: 100, probability: 4 },
   grimdark: { name: "Grimdark", max: 100, probability: 3 },
+  verse: { name: "Verse", max: 100, probability: 5 },
   rpgFantasy: { name: "RPG Fantasy", max: 100, probability: 4 }
 };

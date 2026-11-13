@@ -89,6 +89,8 @@ export interface Burg {
   underwater?: 1;
   skyPort?: 1;
   underdarkGate?: 1;
+  spaceGate?: 1;
+  waystation?: 1 | 2; // 1 = Active Waystation, 2 = Derelict Waystation
   /** vertical offset in feet relative to the cell's surface: sky +50..+500, underdark -200..-3000, underwater -50..-2000 */
   altitude?: number;
   titan?: 1;
