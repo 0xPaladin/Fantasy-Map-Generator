@@ -30,8 +30,25 @@ export const DEFAULT_ERAS: readonly Era[] = [
   { level: 100, name: "Post-human" }
 ];
 
+/** Sci-fi & Verse eras (TL0–TL6), swapped into options.map.eras in Astral view */
+export const ASTRAL_ERAS: readonly Era[] = [
+  { level: 1, name: "Neolithic (TL0)" },
+  { level: 6, name: "Feudal Agrarian (TL1)" },
+  { level: 15, name: "Late Feudal (TL1+)" },
+  { level: 24, name: "Early Industrial (TL2)" },
+  { level: 34, name: "Fission & Orbital (TL3)" },
+  { level: 44, name: "Interplanetary (TL3+)" },
+  { level: 54, name: "Interstellar Postech (TL4)" },
+  { level: 66, name: "Advanced Postech (TL4+)" },
+  { level: 78, name: "Galactic Pretech (TL5)" },
+  { level: 90, name: "Post-Scarcity Transhuman (TL5+)" },
+  { level: 97, name: "Singularity Architect (TL6)" }
+];
+
 export const DEFAULT_DEVELOPMENT = 33; // a culture's level when none is set: Commercial Revolution
 export const WILDLANDS_DEVELOPMENT = 3; // foragers
+export const POST_SCARCITY_DEVELOPMENT = 90; // matter-from-energy threshold (TL5+)
+export const ANCIENT_SUPPRESSED_CAP = 32; // TL2 ceiling enforced on Ancient-subjugated panhumans
 
 /** How a way of life adds to its culture's development */
 export const CULTURE_TYPE_DEVELOPMENT: Record<CultureType, number> = {

@@ -29,7 +29,7 @@ const EDIT_MODES = [
 ] as const;
 
 /** the burg request at its maximum stands for "as many burgs as the land supports" */
-export const AUTO_BURG_LIMIT = 1000;
+export const AUTO_BURG_LIMIT = 5001;
 
 const LABEL_TYPES = ["state", "province", "burg", "river", "route", "added"] as const;
 const LABEL_MODES = ["auto", "short", "full"] as const;

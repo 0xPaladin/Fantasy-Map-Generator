@@ -3,6 +3,7 @@ import Alea from "alea";
 import { Controllers } from "@/controllers";
 import { ASTRAL_DEFAULT_PRESET, ASTRAL_PRESETS } from "@/data/astral-layers";
 import { ANOMALY_DIVIDER, astralLegend, MARKER_READINGS } from "@/data/astral-markers";
+import { ASTRAL_ERAS, DEFAULT_ERAS, type Era } from "@/data/development";
 import { isAstralBase } from "@/data/name-bases";
 import { Goods } from "@/model/economy/goods-generator";
 import { Production } from "@/model/economy/production-generator";
@@ -13,6 +14,7 @@ import { pickFor, sectorWordFor } from "@/model/physical/astral-naming";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { States, type TariffRule } from "@/model/political/states-generator";
+import { Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { Layers, type LayersState } from "@/renderers/layers";
 import { applyPerformanceSettings, setHaloOwnedByBorders } from "@/renderers/performance";
@@ -38,6 +40,37 @@ const POLITICAL_LAYERS = [
   "states",
   "vignette"
 ];
+
+const ASTRAL_BASE_DEVELOPMENT: Record<string, number> = {
+  VRARC: 98,
+  TRKSY: 94,
+  VRSOL: 94,
+  VRACN: 92,
+  VRELY: 91,
+  TRKCO: 88,
+  VRECH: 90,
+  VRCRY: 88,
+  TRKTE: 76,
+  VRHEG: 84,
+  GRMCH: 80,
+  VRMIG: 82,
+  VRGRY: 82,
+  VRHUI: 80,
+  VRXOT: 78,
+  TRKCN: 64,
+  VRFRN: 68,
+  GRMCO: 62,
+  GRMIR: 58,
+  GRMGO: 44
+};
+
+function isDefaultEraList(eras: readonly Era[] | undefined, reference: readonly Era[]): boolean {
+  if (!eras?.length) return true;
+  return (
+    eras.length === reference.length &&
+    eras.every((e, i) => e.level === reference[i].level && e.name === reference[i].name)
+  );
+}
 
 const ASTRAL_NAME_BASES = [
   "TRKCO",
@@ -106,6 +139,9 @@ interface Profile extends StoredProfile {
   goods?: Good[];
   cellsGood?: Uint16Array;
   markers?: MarkerSnapshot[];
+  eras?: Era[];
+  cellsDevelopment?: Uint8Array;
+  culturesDevelopment?: { i: number; development?: number }[];
 }
 
 let profile: Profile | null = null;
@@ -176,6 +212,24 @@ function applyAstralNames(): void {
   }
 
   Layers.draw("labels");
+}
+
+function applyAstralDevelopment(): void {
+  if (!pack?.cells) return;
+  if (isDefaultEraList(options.map.eras, DEFAULT_ERAS)) {
+    options.map.eras = Development.getAstralEras();
+  }
+  const astralSet = ["astralTrek", "grimdark", "verse"].includes(options.map.cultures?.set ?? "");
+  if (!astralSet && pack.cultures) {
+    for (const culture of pack.cultures) {
+      if (!culture?.i || culture.removed) continue;
+      if ((culture.development ?? 0) < 48) {
+        const baseId = getAstralBaseForCulture(culture.i);
+        culture.development = ASTRAL_BASE_DEVELOPMENT[baseId] ?? 64;
+      }
+    }
+  }
+  Development.generateAstral();
 }
 
 function applyAstralGoods(): void {
@@ -249,6 +303,23 @@ function reverseAstralState(previous: Profile | null): void {
     }
   }
   Layers.draw("labels");
+
+  if (previous?.eras) {
+    options.map.eras = structuredClone(previous.eras);
+  } else if (isDefaultEraList(options.map.eras, ASTRAL_ERAS)) {
+    options.map.eras = Development.getDefaultEras();
+  }
+
+  if (previous?.culturesDevelopment && pack.cultures) {
+    for (const entry of previous.culturesDevelopment) {
+      const culture = pack.cultures[entry.i];
+      if (culture) culture.development = entry.development;
+    }
+  }
+
+  if (previous?.cellsDevelopment && pack.cells) {
+    pack.cells.development = new Uint8Array(previous.cellsDevelopment);
+  }
 
   if (previous?.goods && previous?.cellsGood) {
     options.map.goods = structuredClone(previous.goods);
@@ -366,6 +437,9 @@ async function enter(): Promise<void> {
 
   const goodsSnapshot = options.map.goods ? structuredClone(options.map.goods) : undefined;
   const cellsGoodSnapshot = pack.cells?.good ? new Uint16Array(pack.cells.good) : undefined;
+  const erasSnapshot = options.map.eras ? structuredClone(options.map.eras) : undefined;
+  const cellsDevSnapshot = pack.cells?.development ? new Uint8Array(pack.cells.development) : undefined;
+  const culturesDevSnapshot = (pack.cultures ?? []).map(c => ({ i: c.i, development: c.development }));
 
   const markersSnapshot: MarkerSnapshot[] = (pack.markers ?? []).map(m => ({
     i: m.i,
@@ -385,7 +459,10 @@ async function enter(): Promise<void> {
     provinces: provincesSnapshot,
     goods: goodsSnapshot,
     cellsGood: cellsGoodSnapshot,
-    markers: markersSnapshot
+    markers: markersSnapshot,
+    eras: erasSnapshot,
+    cellsDevelopment: cellsDevSnapshot,
+    culturesDevelopment: culturesDevSnapshot
   };
   profile = next;
   saveProfile({ stylePreset: next.stylePreset, styled: next.styled, layers: next.layers });
@@ -401,6 +478,7 @@ async function enter(): Promise<void> {
   applyLayers(ASTRAL_PRESETS[ASTRAL_DEFAULT_PRESET].layers);
 
   applyAstralNames();
+  applyAstralDevelopment();
   applyAstralGoods();
   applyAstralMarkers();
   refreshEditors();

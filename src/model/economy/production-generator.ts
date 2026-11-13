@@ -1,6 +1,8 @@
 import { sum } from "d3";
+import { POST_SCARCITY_DEVELOPMENT } from "@/data/development";
 import { noExpenses } from "@/data/expenses";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
+import { Development } from "@/model/society/development-generator";
 import type { DealKind, Good, Market, Transaction } from "@/types/economy";
 import { log } from "@/utils/logger";
 import { rn } from "@/utils/number-utils";
@@ -28,6 +30,7 @@ import { MIN_LOCAL_STOCK, type Outlet, type SourceOption, type SourceQuote, Trad
 export const MAX_DEPOSIT_VALUE = 200; // most base value a burg's deposit yields a day, so a large burg cannot grind a gemstone mine
 export const DEPOSIT_OUTPUT = 2; // units a worker gets a day from the burg's own deposit, before multipliers
 const MAX_WORKERS = 300;
+const POST_SCARCITY_MIN_WORKERS = 30; // automated drone-fabricator floor for low-population Celestial sanctums
 export const WORKFORCE_SHARE = 0.32; // townspeople working in trades; the rest serve, build, farm or are too young or old
 
 // Living World city buildings multiply the burg's manufactures (docs/plans/upstream-economy-alignment.md §3.1)
@@ -395,7 +398,15 @@ export class ProductionModule {
   }
 
   getWorkers(burg: Burg): number {
-    return Math.min(rn((burg.population || 0) * WORKFORCE_SHARE, 2), MAX_WORKERS);
+    let workers = (burg.population || 0) * WORKFORCE_SHARE;
+    if (Goods.isAstralCatalogue() && burg.cell !== undefined) {
+      const dev = Development.ofCell(burg.cell);
+      if (dev >= POST_SCARCITY_DEVELOPMENT) {
+        const automation = 1 + (dev - (POST_SCARCITY_DEVELOPMENT - 1)) / 5;
+        workers = Math.max(workers * automation, POST_SCARCITY_MIN_WORKERS);
+      }
+    }
+    return Math.min(rn(workers, 2), MAX_WORKERS);
   }
 
   private createBurgDay(index: ProductionIndex, burg: Burg, market: Market, recording = false): BurgDay {

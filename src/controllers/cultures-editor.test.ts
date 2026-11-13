@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALIGNMENTS, alignmentRank } from "@/data/culture-traits";
 import { Options } from "@/model/options/options-model";
@@ -101,20 +101,33 @@ const shownNames = () =>
 const fixture = (name: string) => pack.cultures.find(culture => culture.name === name)!;
 
 describe("the Cultures editor's trait columns", () => {
-  it("shows the alignment as a colored badge and the values as a pair", () => {
+  it("shows the alignment as a colored dropdown and the values as a pair", () => {
     CulturesEditor.open();
 
-    const badge = row(2).querySelector<HTMLElement>('[data-col="alignment"] .cultureAlignment')!;
-    expect(badge.textContent).toBe("good");
-    expect(badge.getAttribute("style")).toContain("#2a9d4a");
+    const select = row(2).querySelector<HTMLSelectElement>('[data-col="alignment"] .cultureAlignment')!;
+    expect(select.value).toBe("good");
+    expect(select.getAttribute("style")).toContain("#2a9d4a");
     expect(row(2).querySelector('[data-col="values"]')!.textContent).toBe("cooperation · trust");
+  });
+
+  it("allows changing a culture's alignment from the dropdown", () => {
+    CulturesEditor.open();
+
+    const select = row(2).querySelector<HTMLSelectElement>('[data-col="alignment"] .cultureAlignment')!;
+    select.value = "evil";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(fixture("Velic").alignment).toBe("evil");
+    expect(select.style.color).toBeTruthy();
   });
 
   it("emphasizes a dominant value and marks an untyped culture with an em dash", () => {
     CulturesEditor.open();
 
     expect(row(1).querySelector('[data-col="values"] b')!.textContent).toBe("passion above all");
-    expect(row(3).querySelector('[data-col="alignment"]')!.textContent).toBe("—");
+    const untypedSelect = row(3).querySelector<HTMLSelectElement>('[data-col="alignment"] .cultureAlignment')!;
+    expect(untypedSelect.value).toBe("");
+    expect(untypedSelect.selectedOptions[0].textContent).toBe("—");
     expect(row(3).querySelector('[data-col="values"]')!.textContent).toBe("—");
   });
 

@@ -154,3 +154,68 @@ it("holds peoples back in harsh biomes", () => {
   Development.generate();
   expect(pack.cells.development![0]).toBe(forest - 8);
 });
+
+it("generates post-scarcity TL5+/TL6 development for Celestial cultures in Astral mode", () => {
+  stubMap();
+  options.map.astral = true;
+  options.map.cultures.set = "verse";
+  pack.cells.state = new Uint16Array([1, 1, 1, 1, 1, 1, 0]);
+  pack.cells.burg = new Uint16Array([1, 2, 0, 0, 0, 0, 0]);
+  pack.cultures = [
+    { i: 0, name: "Wildlands", base: "VRFRN", type: "Generic", shield: "heater" },
+    {
+      i: 1,
+      name: "Archilects (Celestial)",
+      base: "VRARC",
+      type: "Generic",
+      shield: "hexagon",
+      center: 0,
+      development: 98
+    }
+  ];
+  pack.states = [{ i: 0 }, { i: 1, capital: 1 }] as unknown as typeof pack.states;
+  pack.burgs = [
+    { i: 0, cell: 0, x: 0, y: 0 },
+    { i: 1, cell: 0, x: 10, y: 10, capital: 1, population: 120 },
+    { i: 2, cell: 1, x: 20, y: 20, capital: 0, population: 20, port: 1 }
+  ];
+
+  Development.generate();
+  expect(pack.cells.development![0]).toBeGreaterThanOrEqual(92);
+  expect(pack.cells.development![1]).toBeGreaterThanOrEqual(85);
+  expect(pack.cells.development![2]).toBeGreaterThanOrEqual(80);
+});
+
+it("enforces bimodal TL5/TL4/TL0-2 tech suppression for Verse Ancient cultures", () => {
+  stubMap();
+  options.map.astral = true;
+  options.map.cultures.set = "verse";
+  pack.cells.state = new Uint16Array([1, 1, 1, 1, 1, 1, 0]);
+  pack.cells.burg = new Uint16Array([1, 2, 3, 0, 0, 0, 0]);
+  pack.cultures = [
+    { i: 0, name: "Wildlands", base: "VRFRN", type: "Generic", shield: "heater" },
+    {
+      i: 1,
+      name: "Hegemony (Ancient)",
+      base: "VRHEG",
+      type: "Generic",
+      shield: "oldFrench",
+      center: 0,
+      development: 84
+    }
+  ];
+  pack.states = [{ i: 0 }, { i: 1, capital: 1 }] as unknown as typeof pack.states;
+  pack.burgs = [
+    { i: 0, cell: 0, x: 0, y: 0 },
+    { i: 1, cell: 0, x: 10, y: 10, capital: 1, population: 150 },
+    { i: 2, cell: 1, x: 20, y: 20, capital: 0, citadel: 1, population: 40 },
+    { i: 3, cell: 2, x: 30, y: 30, capital: 0, population: 15 }
+  ];
+
+  Development.generate();
+  expect(pack.cells.development![0]).toBeGreaterThanOrEqual(78); // Primary TL5
+  expect(pack.cells.development![1]).toBeGreaterThanOrEqual(54); // Thrall Hub TL4
+  expect(pack.cells.development![1]).toBeLessThanOrEqual(65);
+  expect(pack.cells.development![2]).toBeLessThanOrEqual(32); // Suppressed subject TL0-TL2
+  expect(pack.cells.development![3]).toBeLessThanOrEqual(32); // Suppressed rural TL0-TL2
+});

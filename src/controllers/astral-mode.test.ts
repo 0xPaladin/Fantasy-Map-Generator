@@ -202,6 +202,7 @@ describe("AstralMode automatic transition and reversal", () => {
     // 2. Goods switched to Astral sci-fi commodities
     expect(Goods.isAstralCatalogue()).toBe(true);
     expect(options.map.goods.some(g => g.name === "Metawheat")).toBe(true);
+    expect(options.map.eras.some(e => e.name === "Post-Scarcity Transhuman (TL5+)")).toBe(true);
 
     // 3. Markers converted to Astral anomalies
     expect(pack.markers[0].name).toBe("Nova remnants");
@@ -240,10 +241,11 @@ describe("AstralMode automatic transition and reversal", () => {
     expect(pack.states[1].fullName).toBe(originalStateFullName);
     expect(pack.provinces[1].fullName).toBe(originalProvinceFullName);
 
-    // 2. Goods reversed back to standard FMG
+    // 2. Goods & Eras reversed back to standard FMG
     expect(Goods.isAstralCatalogue()).toBe(false);
     expect(options.map.goods.some(g => g.name === "Wheat")).toBe(true);
     expect(options.map.goods.some(g => g.name === "Metawheat")).toBe(false);
+    expect(options.map.eras.some(e => e.name === "Post-Scarcity Transhuman (TL5+)")).toBe(false);
 
     // 3. Markers reversed back to standard FMG
     expect(pack.markers[0].name).toBe(originalMarker1Name);

@@ -249,7 +249,7 @@ test("viewport rendering leaves a disabled layer empty", async () => {
   expect(document.querySelectorAll("#goodsCells polygon")).toHaveLength(1);
 });
 
-test("astral goods mode skips cell production polygons and anchors icons to burgs", async () => {
+test("astral goods mode renders cell production polygons and anchors burg deposit icons to burgs", async () => {
   pack.cells.burg = new Uint16Array([1, 0]);
   pack.cells.good = new Uint16Array([1, 0]);
   pack.burgs = [
@@ -259,7 +259,7 @@ test("astral goods mode skips cell production polygons and anchors icons to burg
   Object.assign(Goods, { isAstralCatalogue: () => true });
 
   await drawGoods();
-  expect(document.querySelectorAll("#goodsCells polygon")).toHaveLength(0);
+  expect(document.querySelectorAll("#goodsCells polygon")).toHaveLength(1);
   expect(document.querySelectorAll("#goodsIcons > g")).toHaveLength(1);
   expect(document.querySelector("#goodsIcons circle")?.getAttribute("cx")).toBe("55");
   expect(document.querySelector("#goodsIcons circle")?.getAttribute("cy")).toBe("65");

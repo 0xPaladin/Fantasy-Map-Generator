@@ -13,6 +13,7 @@ const ASTRAL_SETS = {
     "Verse Archon",
     "Verse Elysian",
     "Verse Solari",
+    "Verse Celestial Accord",
     "Verse Hegemony",
     "Verse Mi-Go",
     "Verse Huijhoh",
@@ -27,17 +28,17 @@ const ASTRAL_SETS = {
 const ALL_ASTRAL_BASE_NAMES = Object.values(ASTRAL_SETS).flat();
 
 const RPG_BASES = [
-  { name: "Halfling", id: "HALFL", i: 63, min: 5, max: 12, d: "lnst" },
-  { name: "Fey", id: "FEYFO", i: 64, min: 5, max: 13, d: "lrnm" },
-  { name: "Infernal", id: "INFER", i: 65, min: 5, max: 13, d: "rxz" },
-  { name: "Celestial", id: "CELES", i: 66, min: 5, max: 12, d: "ln" },
-  { name: "Grave", id: "GRAVE", i: 67, min: 5, max: 13, d: "rn" },
-  { name: "Merfolk", id: "MERFO", i: 68, min: 5, max: 12, d: "lrnm" },
-  { name: "Beastfolk", id: "BEAST", i: 69, min: 4, max: 11, d: "rk" },
-  { name: "Elemental", id: "ELEME", i: 70, min: 5, max: 12, d: "lnr" },
-  { name: "Construct", id: "CONST", i: 71, min: 5, max: 12, d: "rn" },
-  { name: "Eldritch", id: "ELDRI", i: 72, min: 4, max: 13, d: "rl" },
-  { name: "Tribal", id: "TRIBA", i: 73, min: 4, max: 9, d: "nk" }
+  { name: "Halfling", id: "HALFL", i: 64, min: 5, max: 12, d: "lnst" },
+  { name: "Fey", id: "FEYFO", i: 65, min: 5, max: 13, d: "lrnm" },
+  { name: "Infernal", id: "INFER", i: 66, min: 5, max: 13, d: "rxz" },
+  { name: "Celestial", id: "CELES", i: 67, min: 5, max: 12, d: "ln" },
+  { name: "Grave", id: "GRAVE", i: 68, min: 5, max: 13, d: "rn" },
+  { name: "Merfolk", id: "MERFO", i: 69, min: 5, max: 12, d: "lrnm" },
+  { name: "Beastfolk", id: "BEAST", i: 70, min: 4, max: 11, d: "rk" },
+  { name: "Elemental", id: "ELEME", i: 71, min: 5, max: 12, d: "lnr" },
+  { name: "Construct", id: "CONST", i: 72, min: 5, max: 12, d: "rn" },
+  { name: "Eldritch", id: "ELDRI", i: 73, min: 4, max: 13, d: "rl" },
+  { name: "Tribal", id: "TRIBA", i: 74, min: 4, max: 9, d: "nk" }
 ] as const;
 
 const ALL_RPG_BASE_NAMES = RPG_BASES.map(b => b.name);
@@ -64,9 +65,9 @@ function politiesOf(base: NameBase): string[] {
 }
 
 describe("Astral name bases content rules", () => {
-  it("ships all 20 Astral name bases in getDefaultNameBases()", () => {
+  it("ships all 21 Astral name bases in getDefaultNameBases()", () => {
     const bases = getAstralBases();
-    expect(bases).toHaveLength(20);
+    expect(bases).toHaveLength(21);
     expect(bases.map(b => b.name)).toEqual(ALL_ASTRAL_BASE_NAMES);
   });
 
@@ -76,10 +77,10 @@ describe("Astral name bases content rules", () => {
     expect(new Set(indices).size).toBe(all.length);
     expect(indices).toEqual(all.map((_, i) => i));
 
-    // Stock bases 0..42, Astral bases 43..62
+    // Stock bases 0..42, Astral bases 43..63
     const astral = getAstralBases();
     expect(astral[0].i).toBe(43);
-    expect(astral[astral.length - 1].i).toBe(62);
+    expect(astral[astral.length - 1].i).toBe(63);
   });
 
   it("gives every base a unique five-letter id", () => {
@@ -157,10 +158,10 @@ describe("RPG Fantasy name bases content rules", () => {
     expect(new Set(indices).size).toBe(all.length);
     expect(indices).toEqual(all.map((_, i) => i));
 
-    // Stock bases 0..42, Astral bases 43..62, RPG bases 63..73
+    // Stock bases 0..42, Astral bases 43..63, RPG bases 64..74
     const rpg = getRpgBases();
-    expect(rpg[0].i).toBe(63);
-    expect(rpg[rpg.length - 1].i).toBe(73);
+    expect(rpg[0].i).toBe(64);
+    expect(rpg[rpg.length - 1].i).toBe(74);
   });
 
   it("assigns each RPG base its reserved stable five-letter id", () => {

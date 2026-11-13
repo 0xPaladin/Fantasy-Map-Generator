@@ -1,4 +1,6 @@
+import { POST_SCARCITY_DEVELOPMENT } from "@/data/development";
 import { Pack } from "@/model/graph/pack-generator";
+import { Development } from "@/model/society/development-generator";
 import type { Good } from "@/types/economy";
 import { Corruption, type ProvinceCorruption } from "./corruption";
 import { DEAL_KINDS } from "./deals";
@@ -40,6 +42,7 @@ type Consumption = {
   needsMet?: number;
   comfortTop?: number;
   varietyTop?: number;
+  postScarcity?: boolean;
 };
 /** A cell's rural people: share of rural earnings and purchases, units lived on by good id */
 type RuralCell = { people: number; earned: number; bought: number[]; goods: number[]; living: Living };
@@ -94,6 +97,7 @@ class ProsperityModule {
       goods[goodId] = (goods[goodId] || 0) + units;
       this.consumed.set(burgId, goods);
     }
+    const astral = Goods.isAstralCatalogue();
     for (const burg of pack.burgs) {
       if (!burg.i || burg.removed || !burg.population || !pack.cells.market[burg.cell]) continue;
       const goods = this.consumed.get(burg.i) ?? [];
@@ -103,7 +107,8 @@ class ProsperityModule {
           people: burg.population,
           goods,
           needsCost,
-          infrastructure: infrastructure(burg.cell)
+          infrastructure: infrastructure(burg.cell),
+          postScarcity: astral && Development.ofCell(burg.cell) >= POST_SCARCITY_DEVELOPMENT
         })
       );
     }
@@ -130,6 +135,7 @@ class ProsperityModule {
       byMarket.set(marketId, cells);
     }
 
+    const astral = Goods.isAstralCatalogue();
     for (const market of pack.markets) {
       const cells = byMarket.get(market.i);
       if (!market.i || !market.rural || !cells) continue;
@@ -154,7 +160,8 @@ class ProsperityModule {
           infrastructure: infrastructure(cellId),
           needsMet: 1,
           comfortTop: RURAL_COMFORT_TOP,
-          varietyTop: RURAL_VARIETY_TOP
+          varietyTop: RURAL_VARIETY_TOP,
+          postScarcity: astral && Development.ofCell(cellId) >= POST_SCARCITY_DEVELOPMENT
         });
         const earnings = market.rural.earned * share * Output.getSimEarningsMultiplier(cellId);
         this.rural.set(cellId, { people, earned: earnings, bought, goods, living });
@@ -207,7 +214,8 @@ class ProsperityModule {
     infrastructure,
     needsMet,
     comfortTop = COMFORT_TOP,
-    varietyTop = VARIETY_TOP
+    varietyTop = VARIETY_TOP,
+    postScarcity = false
   }: Consumption): Living {
     const bare = people * needsCost;
     const covered = DEMAND_PRIORITY.map(() => 0);
@@ -222,7 +230,7 @@ class ProsperityModule {
       });
     });
 
-    const needs = needsMet ?? this.getNeedsMet(people, covered);
+    const needs = postScarcity ? 1 : (needsMet ?? this.getNeedsMet(people, covered));
     const total = values.reduce((sum, value) => sum + value, 0);
     const comfort = bare ? total / bare : 0;
     const entropy = values.reduce(
@@ -231,8 +239,12 @@ class ProsperityModule {
     );
     const variety = total ? Math.exp(entropy) : 0;
 
-    const comfortScore = comfort > 1 ? Math.min(1, Math.log(comfort) / Math.log(comfortTop)) : 0;
-    const varietyScore = variety > 1 ? Math.min(1, (variety - 1) / (varietyTop - 1)) : 0;
+    let comfortScore = comfort > 1 ? Math.min(1, Math.log(comfort) / Math.log(comfortTop)) : 0;
+    let varietyScore = variety > 1 ? Math.min(1, (variety - 1) / (varietyTop - 1)) : 0;
+    if (postScarcity) {
+      comfortScore = Math.max(comfortScore, 0.85);
+      varietyScore = Math.max(varietyScore, 0.85);
+    }
     const living = needs * (NEEDS_SHARE + COMFORT_SHARE * comfortScore + VARIETY_SHARE * varietyScore);
     const prosperity = (1 - INFRASTRUCTURE_SHARE) * living + INFRASTRUCTURE_SHARE * infrastructure;
     return { needs, comfort, variety, infrastructure, prosperity };

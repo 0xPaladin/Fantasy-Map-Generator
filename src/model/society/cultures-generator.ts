@@ -948,14 +948,23 @@ class CulturesGenerator {
       return [
         {
           name: "Terran (Human)",
+          development: 86,
           base: "TRKTE",
           odd: 1,
           sort: (i: number) => n(i) / td(i, 12),
           shield: "heater"
         },
-        { name: "Colonial (Human)", base: "TRKTE", odd: 0.8, sort: (i: number) => n(i), shield: "kite" },
+        {
+          name: "Colonial (Human)",
+          development: 58,
+          base: "TRKTE",
+          odd: 0.8,
+          sort: (i: number) => n(i),
+          shield: "kite"
+        },
         {
           name: "Continental (Human)",
+          development: 68,
           base: "TRKCN",
           odd: 0.9,
           sort: (i: number) => n(i) / td(i, 12),
@@ -963,6 +972,7 @@ class CulturesGenerator {
         },
         {
           name: "Highlander (Human)",
+          development: 46,
           base: "TRKCN",
           odd: 0.6,
           sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
@@ -970,6 +980,7 @@ class CulturesGenerator {
         },
         {
           name: "Synthetic (Machine)",
+          development: 92,
           base: "TRKSY",
           odd: 0.7,
           sort: (i: number) => n(i),
@@ -977,6 +988,7 @@ class CulturesGenerator {
         },
         {
           name: "Posthuman (Machine)",
+          development: 96,
           base: "TRKSY",
           odd: 0.5,
           sort: (i: number) => 1 / (n(i) + 1),
@@ -984,6 +996,7 @@ class CulturesGenerator {
         },
         {
           name: "Core Worlds (Mixed)",
+          development: 90,
           base: "TRKCO",
           odd: 0.8,
           sort: (i: number) => n(i),
@@ -991,6 +1004,7 @@ class CulturesGenerator {
         },
         {
           name: "Inner Reach (Mixed)",
+          development: 76,
           base: "TRKCO",
           odd: 0.6,
           sort: (i: number) => 1 / (n(i) + 1),
@@ -1003,6 +1017,7 @@ class CulturesGenerator {
       return [
         {
           name: "Gothic (Darkling)",
+          development: 48,
           base: "GRMGO",
           odd: 1,
           sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
@@ -1010,6 +1025,7 @@ class CulturesGenerator {
         },
         {
           name: "Northerners (Darkling)",
+          development: 36,
           base: "GRMGO",
           odd: 0.8,
           sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
@@ -1017,6 +1033,7 @@ class CulturesGenerator {
         },
         {
           name: "Iron (Foundrymen)",
+          development: 62,
           base: "GRMIR",
           odd: 0.9,
           sort: (i: number) => n(i),
@@ -1024,6 +1041,7 @@ class CulturesGenerator {
         },
         {
           name: "Yard Companies (Foundrymen)",
+          development: 56,
           base: "GRMIR",
           odd: 0.7,
           sort: (i: number) => n(i),
@@ -1031,6 +1049,7 @@ class CulturesGenerator {
         },
         {
           name: "Machine (Cold)",
+          development: 78,
           base: "GRMCH",
           odd: 0.7,
           sort: (i: number) => 1 / (n(i) + 1),
@@ -1038,6 +1057,7 @@ class CulturesGenerator {
         },
         {
           name: "Calculators (Cold)",
+          development: 84,
           base: "GRMCH",
           odd: 0.5,
           sort: (i: number) => n(i),
@@ -1045,6 +1065,7 @@ class CulturesGenerator {
         },
         {
           name: "Core Holds (Mixed)",
+          development: 68,
           base: "GRMCO",
           odd: 0.8,
           sort: (i: number) => n(i),
@@ -1052,6 +1073,7 @@ class CulturesGenerator {
         },
         {
           name: "Rust Kingdoms (Mixed)",
+          development: 24,
           base: "GRMCO",
           odd: 0.6,
           sort: (i: number) => 1 / (n(i) + 1),
@@ -1063,10 +1085,25 @@ class CulturesGenerator {
     if (set === "verse") {
       return [
         // Celestials
-        { name: "Archilects (Celestial)", base: "VRARC", odd: 1, sort: (i: number) => n(i), shield: "hexagon" },
-        { name: "Archons (Celestial)", base: "VRACN", odd: 1, sort: (i: number) => n(i) + h[i], shield: "heater" },
+        {
+          name: "Archilects (Celestial)",
+          development: 98,
+          base: "VRARC",
+          odd: 1,
+          sort: (i: number) => n(i),
+          shield: "hexagon"
+        },
+        {
+          name: "Archons (Celestial)",
+          development: 92,
+          base: "VRACN",
+          odd: 1,
+          sort: (i: number) => n(i) + h[i],
+          shield: "heater"
+        },
         {
           name: "Elysians (Celestial)",
+          development: 91,
           base: "VRELY",
           odd: 0.9,
           sort: (i: number) => n(i) / bd(i, [6, 7, 8, 9], 10),
@@ -1074,23 +1111,33 @@ class CulturesGenerator {
         },
         {
           name: "Solari (Celestial)",
+          development: 94,
           base: "VRSOL",
           odd: 1,
           sort: (i: number) => n(i) / td(i, 14),
           shield: "boeotian"
         },
         {
-          name: "Guardians (Celestial)",
-          base: "VRSOL",
+          name: "Celestial Accord (Celestial)",
+          development: 92,
+          base: "VRCEL",
           odd: 0.75,
           sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
           shield: "kite"
         },
 
         // Ancients
-        { name: "Hegemony (Ancient)", base: "VRHEG", odd: 1, sort: (i: number) => n(i), shield: "oldFrench" },
+        {
+          name: "Hegemony (Ancient)",
+          development: 84,
+          base: "VRHEG",
+          odd: 1,
+          sort: (i: number) => n(i),
+          shield: "oldFrench"
+        },
         {
           name: "Mi-Go Primacy (Ancient)",
+          development: 82,
           base: "VRMIG",
           odd: 1,
           sort: (i: number) => n(i) / bd(i, [6, 7, 8, 9], 10),
@@ -1098,6 +1145,7 @@ class CulturesGenerator {
         },
         {
           name: "Huijhoh Sovereignty (Ancient)",
+          development: 80,
           base: "VRHUI",
           odd: 0.95,
           sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
@@ -1105,6 +1153,7 @@ class CulturesGenerator {
         },
         {
           name: "Crysik Expanse (Ancient)",
+          development: 88,
           base: "VRCRY",
           odd: 0.85,
           sort: (i: number) => n(i) / td(i, -10),
@@ -1112,14 +1161,23 @@ class CulturesGenerator {
         },
         {
           name: "Echani Reach (Ancient)",
+          development: 90,
           base: "VRECH",
           odd: 0.7,
           sort: (i: number) => 1 / (n(i) + 1),
           shield: "pavise"
         },
-        { name: "Gray Syndicate (Ancient)", base: "VRGRY", odd: 0.85, sort: (i: number) => n(i), shield: "targe" },
+        {
+          name: "Gray Syndicate (Ancient)",
+          development: 82,
+          base: "VRGRY",
+          odd: 0.85,
+          sort: (i: number) => n(i),
+          shield: "targe"
+        },
         {
           name: "Xothians (Ancient)",
+          development: 78,
           base: "VRXOT",
           odd: 0.9,
           sort: (i: number) => (n(i) / td(i, 0)) * (h[i] || 1),
@@ -1129,6 +1187,7 @@ class CulturesGenerator {
         // Independents & Thralls
         {
           name: "The One (Nexus)",
+          development: 90,
           base: "VRFRN",
           odd: 0.8,
           sort: (i: number) => n(i) / td(i, -10),
@@ -1136,6 +1195,7 @@ class CulturesGenerator {
         },
         {
           name: "Ascendancy (Independent)",
+          development: 70,
           base: "VRFRN",
           odd: 0.85,
           sort: (i: number) => n(i) + h[i],
@@ -1143,6 +1203,7 @@ class CulturesGenerator {
         },
         {
           name: "Collective (Independent)",
+          development: 68,
           base: "VRFRN",
           odd: 0.85,
           sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
@@ -1150,6 +1211,7 @@ class CulturesGenerator {
         },
         {
           name: "Venar (Independent)",
+          development: 74,
           base: "VRFRN",
           odd: 0.75,
           sort: (i: number) => 1 / (n(i) + 1),
@@ -1157,6 +1219,7 @@ class CulturesGenerator {
         },
         {
           name: "Mazani (Independent)",
+          development: 60,
           base: "VRFRN",
           odd: 0.7,
           sort: (i: number) => n(i) + h[i],
@@ -1164,15 +1227,31 @@ class CulturesGenerator {
         },
         {
           name: "Crimson Concord (Independent)",
+          development: 58,
           base: "VRFRN",
           odd: 0.75,
           sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
           shield: "banner"
         },
-        { name: "Wanderers (Confluence)", base: "VRFRN", odd: 0.7, sort: (i: number) => n(i), shield: "gonfalon" },
-        { name: "Data Conclave (Independent)", base: "VRFRN", odd: 0.6, sort: (i: number) => n(i), shield: "oval" },
+        {
+          name: "Wanderers (Confluence)",
+          development: 56,
+          base: "VRFRN",
+          odd: 0.7,
+          sort: (i: number) => n(i),
+          shield: "gonfalon"
+        },
+        {
+          name: "Data Conclave (Independent)",
+          development: 74,
+          base: "VRFRN",
+          odd: 0.6,
+          sort: (i: number) => n(i),
+          shield: "oval"
+        },
         {
           name: "Gemeli (Independent)",
+          development: 84,
           base: "VRFRN",
           odd: 0.6,
           sort: (i: number) => n(i) + h[i],
@@ -1180,6 +1259,7 @@ class CulturesGenerator {
         },
         {
           name: "Cthyre & Thralls (Thrall)",
+          development: 56,
           base: "VRXOT",
           odd: 0.65,
           sort: (i: number) => n(i) / td(i, 20) + (sMax - h[i]),

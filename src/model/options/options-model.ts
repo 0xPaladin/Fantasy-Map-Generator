@@ -119,7 +119,7 @@ class OptionsModel {
         states: { limit: 18, sizeVariety: 4, growthRate: 1, freeBurgs: 0 },
         provinces: { ratio: 20 },
         religions: { limit: 6 },
-        burgs: { limit: 1000 }
+        burgs: { limit: AUTO_BURG_LIMIT }
       },
       app: {
         mode: null,

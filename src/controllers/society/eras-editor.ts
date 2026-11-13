@@ -3,6 +3,7 @@ import type { Era } from "@/data/development";
 import { Options } from "@/model/options/options-model";
 import { Development } from "@/model/society/development-generator";
 import { getEraColor } from "@/renderers/overlays/development-overlay";
+import { isAstralView } from "@/renderers/view-mode";
 import { eraName } from "@/ui/development-view";
 import { Dialog } from "@/ui/dialog/dialog";
 import { type EditorColumn, getRowId, initColumnVisibility, renderEditorHeader } from "@/ui/dialog/table";
@@ -91,7 +92,7 @@ function confirmRestore(): void {
     message: t("Restore the default era names? Your names will be lost"),
     confirm: t("Restore"),
     onConfirm: () => {
-      options.map.eras = Development.getDefaultEras();
+      options.map.eras = isAstralView() ? Development.getAstralEras() : Development.getDefaultEras();
       saved();
       renderEras();
     }

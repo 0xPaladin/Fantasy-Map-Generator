@@ -1,8 +1,6 @@
 // The Astral mapping: FMG's world read as a star map. Polities, sectors and star systems.
 // The content (the name bases and their groups) lives in src/data/name-bases.ts; this module
 // only reads it and applies it. See docs/wiki/Astral-Cartographer.md
-import { ASTRAL_WORLD_TYPE_KEYS, ASTRAL_WORLD_TYPES, type AstralWorldType } from "@/data/astral-goods";
-import { Tags } from "@/model/tags";
 import { createRng } from "./astral-system/rng";
 import { generateStar, SPECTRAL_TABLE } from "./astral-system/stars";
 import { pickWeighted } from "./astral-system/util";
@@ -135,131 +133,6 @@ export function systemTraits(burg: {
   return traits;
 }
 
-export interface StarSystemBurgLike {
-  i: number;
-  population?: number;
-  tags?: string[];
-  port?: number;
-  citadel?: number;
-  plaza?: number;
-  shanty?: number;
-  temple?: number;
-  walls?: number;
-  capital?: number;
-}
-
-/**
- * World Type of a star system: derived deterministically or read from burg.tags (`world-<type>`).
- */
-export function worldTypeFor(burg: StarSystemBurgLike): AstralWorldType {
-  if (burg.tags?.length) {
-    for (const tag of burg.tags) {
-      const match = tag.match(/^world[-:_ ](.+)$/i);
-      if (match) {
-        const candidate = match[1].trim().toLowerCase();
-        const found = ASTRAL_WORLD_TYPE_KEYS.find(k => k.toLowerCase() === candidate);
-        if (found) return found;
-      }
-    }
-  }
-
-  const rng = createRng(`${options.map.seed}/astral/world/${burg.i}`);
-  const weights: Record<AstralWorldType, number> = {
-    Agricultural: 15,
-    Alien: 6,
-    Cosmopolitan: 10,
-    Decadent: 6,
-    Industrial: 15,
-    Primitive: 15,
-    Savage: 10,
-    Tyrannical: 10
-  };
-
-  if (burg.capital) {
-    weights.Cosmopolitan += 20;
-    weights.Industrial += 10;
-    weights.Tyrannical += 5;
-    weights.Primitive -= 10;
-    weights.Savage -= 10;
-  }
-  if (burg.port) {
-    weights.Industrial += 15;
-    weights.Cosmopolitan += 10;
-  }
-  if (burg.citadel) {
-    weights.Tyrannical += 15;
-    weights.Industrial += 10;
-  }
-  if (burg.plaza) {
-    weights.Cosmopolitan += 15;
-    weights.Decadent += 10;
-  }
-  if (burg.walls) {
-    weights.Industrial += 10;
-    weights.Tyrannical += 10;
-  }
-  if (burg.shanty) {
-    weights.Savage += 15;
-    weights.Primitive += 10;
-  }
-  if (burg.temple) {
-    weights.Alien += 10;
-    weights.Primitive += 10;
-    weights.Decadent += 5;
-  }
-
-  const star = starClassFor(burg).class;
-  if (star === "O" || star === "B") {
-    weights.Alien += 15;
-    weights.Industrial += 10;
-  } else if (star === "M") {
-    weights.Primitive += 10;
-    weights.Savage += 10;
-  } else if (star === "G" || star === "F" || star === "K") {
-    weights.Agricultural += 15;
-    weights.Cosmopolitan += 10;
-  }
-
-  const pop = peopleOf(burg);
-  if (pop >= 20_000) {
-    weights.Cosmopolitan += 15;
-    weights.Industrial += 15;
-    weights.Primitive -= 10;
-  } else if (pop < 5_000) {
-    weights.Primitive += 15;
-    weights.Savage += 10;
-    weights.Cosmopolitan -= 10;
-  }
-
-  return pickWeighted(
-    rng,
-    ASTRAL_WORLD_TYPE_KEYS,
-    ASTRAL_WORLD_TYPE_KEYS.map(k => Math.max(1, weights[k]))
-  );
-}
-
-/** Set or clear the World Type tag on a burg (`world-<type>`) */
-export function setWorldTypeFor(burg: { tags?: string[] }, worldType: AstralWorldType | null): void {
-  const existing = (burg.tags ?? []).filter(tag => /^world[-:_ ]/i.test(tag));
-  if (existing.length) Tags.remove(burg, ...existing);
-  if (worldType) {
-    Tags.add(burg, `world-${worldType.toLowerCase()}`);
-  }
-}
-
-/** Roll 1d10 twice on a system's World Type trade table to get its two primary commodities */
-export function tradeGoodsFor(burg: StarSystemBurgLike): [number, number] {
-  const worldType = worldTypeFor(burg);
-  const spec = ASTRAL_WORLD_TYPES[worldType];
-  const rng = createRng(`${options.map.seed}/astral/trade/${burg.i}`);
-  const slot1 = rng.d(spec.tradeTable.length) - 1;
-  let slot2 = rng.d(spec.tradeTable.length) - 1;
-  if (slot2 === slot1) {
-    slot2 = (slot1 + 1) % spec.tradeTable.length;
-  }
-  return [spec.tradeTable[slot1], spec.tradeTable[slot2]];
-}
-
 export interface StarSystem {
   id: number;
   name: string;
@@ -278,19 +151,12 @@ export interface StarSystem {
   culture: number;
   capital: boolean;
   port: boolean;
-  /** the system's world type from Suns of Gold trade rules */
-  worldType: AstralWorldType;
-  /** display label, e.g. 'Industrial World' */
-  worldTypeName: string;
-  /** two 1d10 commodities rolled on the world trade table */
-  tradeGoods: [number, number];
 }
 
 /** One system, read from one burg */
 export function toSystem(burg: (typeof pack.burgs)[number]): StarSystem {
   const population = peopleOf(burg);
   const { class: starType, name: className } = starClassFor(burg);
-  const worldType = worldTypeFor(burg);
   return {
     id: burg.i,
     name: burg.name ?? "",
@@ -303,10 +169,7 @@ export function toSystem(burg: (typeof pack.burgs)[number]): StarSystem {
     state: burg.state ?? 0,
     culture: burg.culture ?? 0,
     capital: !!burg.capital,
-    port: !!burg.port,
-    worldType,
-    worldTypeName: `${worldType} World`,
-    tradeGoods: tradeGoodsFor(burg)
+    port: !!burg.port
   };
 }
 

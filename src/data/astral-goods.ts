@@ -1,153 +1,15 @@
 import type { DemandCategory, Good } from "@/types/economy";
 
-export type AstralWorldType =
-  | "Agricultural"
-  | "Alien"
-  | "Cosmopolitan"
-  | "Decadent"
-  | "Industrial"
-  | "Primitive"
-  | "Savage"
-  | "Tyrannical";
-
-export interface AstralWorldTypeSpec {
-  name: AstralWorldType;
-  summary: string;
-  modifiers: Record<string, number>;
-  troubleChance: number;
-  troubles: string[];
-  tradeTable: number[];
-}
-
-export const ASTRAL_WORLD_TYPES: Record<AstralWorldType, AstralWorldTypeSpec> = {
-  Agricultural: {
-    name: "Agricultural",
-    summary: "Vast robotic farmworlds and fertile breadbaskets feeding entire sectors.",
-    modifiers: { agricultural: -2, livestock: -1, biotech: 1, tool: 2 },
-    troubleChance: 2,
-    troubles: [
-      "Cargo infested with mold, 1d4 x 10% of goods sold are ruined",
-      "Farmer's union forces a discount; add 1d4 Friction to this deal",
-      "Harvest going on and labor is scarce; stuck 1d4 weeks before deal is completed",
-      "Local grower's customs make this deal harder; stuck for one week and add 1 Friction",
-      "Natives have allergic reaction to goods, add 2 Friction to this deal",
-      "Ship quarantine for plant disease check; stuck there for 1d6+1 weeks"
-    ],
-    tradeTable: [12, 4, 20, 15, 3, 6, 9, 1, 7, 19]
-  },
-  Alien: {
-    name: "Alien",
-    summary: "Inhabited by non-human species or drastically gengineered variant human strains.",
-    modifiers: { alien: -2, medical: -1, biotech: 1, cultural: 2 },
-    troubleChance: 4,
-    troubles: [
-      "Ignorant handling or use wrecks 1d4 x 10% of the goods",
-      "Local pest ruins 1d4 x 10% of the goods",
-      "Local rituals add 2 weeks to finishing the deal",
-      "Product has unwanted side-effects on alien biology, add 1d4+1 Friction",
-      "Product is mistrusted or hard to get from local retailers, add 1d6+1 weeks until trade",
-      "Unexpected alien custom adds 1d4 Friction"
-    ],
-    tradeTable: [12, 4, 16, 3, 6, 1, 7, 11, 23, 24]
-  },
-  Cosmopolitan: {
-    name: "Cosmopolitan",
-    summary: "Bustling interstellar hubs with established trade lanes and sophisticated markets.",
-    modifiers: { cultural: -2, military: -1, luxury: 1, pretech: 2 },
-    troubleChance: 1,
-    troubles: [
-      "A functionary finds a number of unpaid tariffs; add 1d4 Friction to the deal",
-      "A local bureaucrat has been annoyed by the PCs; add 1 Friction to the deal",
-      "Administrative confusion locks the deal down for 1d4 weeks",
-      "Another merchant just flooded/emptied the market for the goods; add 2 Friction",
-      "Another merchant takes 1d4 x 10% of the goods through fraud",
-      "The goods or payment are only partially the genuine article; add 1d4 Friction"
-    ],
-    tradeTable: [12, 13, 28, 8, 16, 25, 17, 23, 18, 20]
-  },
-  Decadent: {
-    name: "Decadent",
-    summary: "Ancient, morally exhausted worlds devoted to luxury, vices, and jaded pleasures.",
-    modifiers: { sapient: -2, biotech: -1, maltech: 1, luxury: 2 },
-    troubleChance: 4,
-    troubles: [
-      "An addict official skims for his habit; add 2 Friction",
-      "Local merchants can't be bothered to finish the deal; add 1d4+1 weeks",
-      "Local potentate casually takes half the goods because he can",
-      "Local workers are drugged or indolent, add 1d6+1 weeks to finish deal",
-      "Strange local customs coincidentally add 1d4 Friction",
-      "Thrill-seeking thieves steal 1d4 x 10% of the goods"
-    ],
-    tradeTable: [12, 4, 28, 8, 20, 6, 9, 25, 10, 30]
-  },
-  Industrial: {
-    name: "Industrial",
-    summary: "Forges, refineries, and robotic foundries hungry for raw mineral and agricultural inputs.",
-    modifiers: { consumer: -2, tool: -1, agricultural: 1, mineral: 2 },
-    troubleChance: 3,
-    troubles: [
-      "An unfriendly oligopolist arranges for accidents that destroy 1d6 x 10% of the goods",
-      "Industrial accident destroys 1d4 x 10% of the goods in this deal",
-      "Labor unrest adds 1d4 Friction to the deal",
-      "Monopolists push back on this intrusion, adding 1d6 Friction to the deal",
-      "The factories are backlogged; the deal is stalled for 1d4 weeks",
-      "The supplier or buyer is retooling, delaying the deal by 1d6+1 weeks"
-    ],
-    tradeTable: [13, 21, 16, 7, 17, 22, 23, 18, 19, 24]
-  },
-  Primitive: {
-    name: "Primitive",
-    summary: "Low-tech worlds cut off from interstellar industry, living in fragile equilibrium.",
-    modifiers: { agricultural: -2, livestock: -1, tool: 1, postech: 2 },
-    troubleChance: 3,
-    troubles: [
-      "Local rulers argue over who gets to collect the tariffs for 1d6+1 weeks",
-      "Locals have been upset or frightened by the traders; add 1d4 Friction to the deal",
-      "Priests require 1d4 Friction worth of inducements to bless the deal",
-      "Sickness has struck down many workers, delaying the deal by 1d4 weeks",
-      "Vicious beasts or raiders have ruined or stolen 1d4 x 10% of the goods",
-      "Weather bogs all transport; add 1d4 weeks to the deal"
-    ],
-    tradeTable: [12, 4, 15, 3, 2, 5, 1, 7, 10, 19]
-  },
-  Savage: {
-    name: "Savage",
-    summary: "War-torn badlands and collapsed civilizations ruled by warlords and plunder.",
-    modifiers: { agricultural: -2, sapient: -1, tool: 1, military: 2 },
-    troubleChance: 4,
-    troubles: [
-      "An aspiring local warlord wants recognition and taxes; add 1d6 Friction to the deal",
-      "Arson or collateral combat damage ruins 1d6 x 10% of the good",
-      "Bandit attacks prevent the goods from moving for 1d4 weeks",
-      "Desperate locals steal 1d4 x 10% of the goods for survival's sake",
-      "Local strongman wants a bigger taste, adding 2 points of Friction to the deal",
-      "Looters plunder 1d4 x 10% of the goods"
-    ],
-    tradeTable: [4, 15, 3, 1, 7, 11, 10, 18, 19, 20]
-  },
-  Tyrannical: {
-    name: "Tyrannical",
-    summary: "Authoritarian regimes, closed hab-domes, and secret police enforcing arbitrary decree.",
-    modifiers: { mineral: -2, sapient: -1, military: 1, medical: 2 },
-    troubleChance: 4,
-    troubles: [
-      "A bureaucrat squeezes the PCs for 1d4+1 Friction on the deal",
-      "A security official confiscates 1d6 x 10% of the goods for the State",
-      "Local rebels or common thieves stole 1d4 x 10% of the goods",
-      "Secret police suspect the PCs of wrong-doing; add 1d6 Friction to the deal",
-      "The local ruler levies a fresh tariff for 1d6 more Friction on the deal",
-      "The PCs are suspected as spies or rebels; add 1d4+1 Friction"
-    ],
-    tradeTable: [4, 15, 2, 5, 17, 22, 10, 23, 18, 24]
-  }
-};
-
-export const ASTRAL_WORLD_TYPE_KEYS = Object.keys(ASTRAL_WORLD_TYPES) as AstralWorldType[];
-
 type AstralGoodRawSpec = {
   name: string;
   tags: string[];
   value: number;
+  carriage?: number;
+  deposits?: [number, number];
+  distribution?: string;
+  development?: number;
+  biomeOutput?: Partial<Record<number, number>>;
+  multipliers?: Good["multipliers"];
   icon: string;
   color: string;
   demandCoverage: Partial<Record<DemandCategory, number>>;
@@ -159,6 +21,10 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Metawheat",
     tags: ["common", "agricultural", "bulky", "tl0"],
     value: 1,
+    carriage: 0.5,
+    deposits: [4, 7],
+    distribution: "biome(4, 6) && (river() || random(30))",
+    biomeOutput: { 4: 0.06, 6: 0.06 },
     icon: "goods-grain",
     color: "#c8ad55",
     demandCoverage: { food: 3 }
@@ -167,6 +33,10 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Metal Ingots, Common",
     tags: ["common", "mineral", "bulky", "tl1"],
     value: 2,
+    carriage: 0.7,
+    deposits: [4, 8],
+    distribution: "minHeight(45) || (biome(12) && nth(5))",
+    biomeOutput: { 12: 0.04 },
     icon: "goods-iron",
     color: "#707982",
     demandCoverage: { construction: 2 }
@@ -175,6 +45,10 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Livestock, Common",
     tags: ["common", "livestock", "tl0"],
     value: 4,
+    carriage: 0.4,
+    deposits: [3, 5],
+    distribution: "(biome(3, 4) && !elevation()) || (biome(6) && random(70))",
+    biomeOutput: { 3: 0.03, 4: 0.04 },
     icon: "goods-cattle",
     color: "#8c6747",
     demandCoverage: { food: 2, utilities: 1 }
@@ -183,6 +57,10 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Drugs, Raw Materials",
     tags: ["agricultural", "biotech", "bulky", "tl0"],
     value: 4,
+    carriage: 0.5,
+    deposits: [3, 5],
+    distribution: "biome(5, 7, 8, 12)",
+    biomeOutput: { 5: 0.02, 7: 0.03, 8: 0.02 },
     icon: "goods-tobacco",
     color: "#3e7d58",
     demandCoverage: { utilities: 1 }
@@ -191,6 +69,10 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Metal Ingots, Rare Alloys",
     tags: ["mineral", "bulky", "rare", "tl3"],
     value: 10,
+    carriage: 0.8,
+    deposits: [2, 4],
+    distribution: "minHeight(60) || (minHeight(30) && elevation())",
+    development: 15,
     icon: "goods-bronze",
     color: "#c5832b",
     demandCoverage: { construction: 3 }
@@ -199,6 +81,10 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Livestock, Gengineered",
     tags: ["livestock", "biotech", "tl0"],
     value: 20,
+    carriage: 0.6,
+    deposits: [2, 4],
+    distribution: "biome(4, 5, 6, 8) && minHabitability(40)",
+    development: 20,
     icon: "goods-horses",
     color: "#3aa598",
     demandCoverage: { food: 3, luxury: 1 }
@@ -207,6 +93,9 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Native Artwork",
     tags: ["cultural", "luxury", "tl0"],
     value: 20,
+    carriage: 0.5,
+    deposits: [2, 4],
+    distribution: "minHabitability(30) && (shore(1, 2) || river())",
     icon: "goods-amber",
     color: "#b75388",
     demandCoverage: { luxury: 3 }
@@ -215,6 +104,9 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Exotic Jewels",
     tags: ["rare", "mineral", "luxury", "compact", "tl0"],
     value: 50,
+    carriage: 0.5,
+    deposits: [1, 3],
+    distribution: "minHeight(65) || (biome(1, 7) && random(25))",
     icon: "goods-gemstones",
     color: "#38bdf8",
     demandCoverage: { luxury: 4 }
@@ -223,6 +115,9 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Livestock, Luxury Pets",
     tags: ["livestock", "luxury", "tl0"],
     value: 50,
+    carriage: 0.6,
+    deposits: [1, 3],
+    distribution: "biome(5, 7, 8, 9)",
     icon: "goods-elephants",
     color: "#a855f7",
     demandCoverage: { luxury: 3 }
@@ -231,6 +126,9 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Slaves",
     tags: ["sapient", "tl0"],
     value: 50,
+    carriage: 0.5,
+    deposits: [1, 3],
+    distribution: "minHabitability(20) && random(20)",
     icon: "goods-slaves",
     color: "#78716c",
     demandCoverage: { utilities: 2, construction: 1 }
@@ -239,6 +137,9 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     name: "Pretech Junk",
     tags: ["pretech", "rare", "tl0"],
     value: 100,
+    carriage: 1,
+    deposits: [2, 4],
+    distribution: "(biome(1, 2, 10) && random(20)) || (minHeight(55) && nth(7))",
     icon: "goods-unknown",
     color: "#f59e0b",
     demandCoverage: { construction: 2, luxury: 2 }
@@ -259,7 +160,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-barrels",
     color: "#84cc16",
     demandCoverage: { food: 2, utilities: 2 },
-    recipes: [{ Metawheat: 1, "Livestock, Common": 0.5 }]
+    recipes: [{ Metawheat: 1, "Livestock, Common": 0.5 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Colonial Materials",
@@ -268,7 +169,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-sand",
     color: "#eab308",
     demandCoverage: { construction: 2, utilities: 1 },
-    recipes: [{ "Metal Ingots, Common": 1 }]
+    recipes: [{ "Metal Ingots, Common": 1 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Housewares, Basic",
@@ -286,7 +187,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-glass",
     color: "#06b6d4",
     demandCoverage: { utilities: 3, luxury: 1 },
-    recipes: [{ "Housewares, Basic": 1, "Parts, Basic Industry": 0.5 }]
+    recipes: [{ "Housewares, Basic": 1, "Parts, Basic Industry": 0.5 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Parts, Basic Industry",
@@ -340,7 +241,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-stone",
     color: "#475569",
     demandCoverage: { construction: 4 },
-    recipes: [{ "Colonial Materials": 1, "Metal Ingots, Common": 1 }]
+    recipes: [{ "Colonial Materials": 1, "Metal Ingots, Common": 1 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Small Arms, Energy",
@@ -358,7 +259,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-tools",
     color: "#0d9488",
     demandCoverage: { construction: 3, utilities: 2 },
-    recipes: [{ "Tools, Basic Hand Tools": 1, "Parts, Basic Industry": 1 }]
+    recipes: [{ "Tools, Basic Hand Tools": 1, "Parts, Basic Industry": 1 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Medical Supplies, Postech",
@@ -367,7 +268,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     icon: "goods-saltpeter",
     color: "#10b981",
     demandCoverage: { utilities: 4 },
-    recipes: [{ "Drugs, Raw Materials": 2 }]
+    recipes: [{ "Drugs, Raw Materials": 2 }, { "Fusion Plants": 0.5 }]
   },
   {
     name: "Parts, Starship Maintenance",
@@ -449,8 +350,46 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     color: "#4c1d95",
     demandCoverage: { luxury: 5, military: 2 },
     recipes: [{ "Medical Supplies, Pretech": 1, Slaves: 1 }]
+  },
+  {
+    name: "Matter Compiler Matrix",
+    tags: ["pretech", "post-scarcity", "tool", "compact", "tl5"],
+    value: 300,
+    carriage: 0.1,
+    development: 90,
+    icon: "goods-tools",
+    color: "#38bdf8",
+    demandCoverage: { construction: 5, utilities: 5, food: 4 },
+    recipes: [{ "Fusion Plants": 1 }]
+  },
+  {
+    name: "Esoteric Circuitry & VI Cores",
+    tags: ["pretech", "post-scarcity", "cybernetic", "compact", "tl5"],
+    value: 500,
+    carriage: 0.1,
+    development: 90,
+    icon: "goods-gemstones",
+    color: "#c084fc",
+    demandCoverage: { luxury: 5, utilities: 5, military: 4 },
+    recipes: [{ "Fusion Plants": 1, "Metal Ingots, Rare Alloys": 0.5 }]
   }
 ];
+
+const TL_DEVELOPMENT: Record<string, number> = {
+  tl1: 6,
+  tl2: 24,
+  tl3: 34,
+  tl4: 54,
+  tl5: 78
+};
+
+function inferAstralDevelopment(spec: AstralGoodRawSpec): number | undefined {
+  if (spec.development !== undefined) return spec.development;
+  for (const tag of spec.tags) {
+    if (tag in TL_DEVELOPMENT) return TL_DEVELOPMENT[tag];
+  }
+  return undefined;
+}
 
 export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, index): Good => {
   let recipes: Good["recipes"];
@@ -465,16 +404,21 @@ export const ASTRAL_GOODS_DATA: Good[] = ASTRAL_COMMODITIES_SPECS.map((spec, ind
     });
   }
 
+  const development = inferAstralDevelopment(spec);
   return {
     i: index + 1,
     name: spec.name,
     tags: [...spec.tags],
     value: spec.value,
-    carriage: 1,
+    carriage: spec.carriage ?? 1,
+    ...(spec.deposits && { deposits: spec.deposits }),
+    ...(spec.distribution && { distribution: spec.distribution }),
+    ...(development !== undefined && { development }),
     unit: "ton",
     icon: spec.icon,
     color: spec.color,
-    biomeOutput: {},
+    biomeOutput: spec.biomeOutput ?? {},
+    ...(spec.multipliers && { multipliers: spec.multipliers }),
     demandCoverage: spec.demandCoverage,
     ...(recipes && { recipes })
   };

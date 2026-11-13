@@ -2337,6 +2337,11 @@ async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacyS
     "horde_hold"
   ];
 
+  for (const state of pack.states ?? []) {
+    if (!state?.i || state.removed || state.alignment) continue;
+    state.alignment = States.rollAlignment(state.i, state.culture);
+  }
+
   for (const group of Burgs.getDefaultGroups()) {
     if (!realmGroupNames.includes(group.name)) continue;
     if (options.map.burgs.groups.some(existing => existing.name === group.name)) continue;

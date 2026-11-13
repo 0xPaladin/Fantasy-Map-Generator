@@ -1,7 +1,5 @@
 import { sum } from "d3";
-import { ASTRAL_WORLD_TYPES } from "@/data/astral-goods";
 import { DEFAULT_CULTURE_TYPE } from "@/data/culture-types";
-import { worldTypeFor } from "@/model/physical/astral-naming";
 import type { Zone } from "@/model/political/zones-generator";
 import { Development } from "@/model/society/development-generator";
 import type { Good } from "@/types/economy";
@@ -140,7 +138,6 @@ class OutputModule {
 
   /** Multipliers and development on the good at the cell; 0 beyond its technology */
   private getBaseModifiers(good: Good, cellId: number): number {
-    if (Goods.isAstralCatalogue()) return this.getAstralModifiers(good, cellId);
     const development = Development.ofCell(cellId);
     if (good.development && development < good.development) return 0; // beyond the cell's technology
     const productivity = Math.max(1, development / PRODUCTIVITY_START);
@@ -172,57 +169,6 @@ class OutputModule {
     }
 
     return modifier * productivity;
-  }
-
-  /** The astral catalogue trades by world type at burgs, not by development or biome */
-  private getAstralModifiers(good: Good, cellId: number): number {
-    let modifier = 1;
-    const burgId = pack.cells.burg[cellId];
-    if (burgId && pack.burgs[burgId]) {
-      const burg = pack.burgs[burgId];
-      const worldType = worldTypeFor(burg);
-      const spec = ASTRAL_WORLD_TYPES[worldType];
-
-      for (const [tag, modValue] of Object.entries(spec.modifiers)) {
-        if (good.tags?.includes(tag)) {
-          if (modValue === -2) modifier *= 1.6;
-          else if (modValue === -1) modifier *= 1.3;
-          else if (modValue === 1) modifier *= 0.85;
-          else if (modValue === 2) modifier *= 0.7;
-        }
-      }
-
-      if (spec.tradeTable.includes(good.i)) modifier *= 1.35;
-
-      if ((worldType === "Primitive" || worldType === "Savage") && good.name !== "Pretech Junk") {
-        if (
-          good.tags?.includes("postech") ||
-          good.tags?.includes("tl4") ||
-          good.tags?.includes("pretech") ||
-          good.tags?.includes("tl5")
-        ) {
-          modifier *= 0.25;
-        }
-      }
-    }
-
-    const mult = good.multipliers;
-    if (!mult) return rn(modifier, 2);
-
-    const biomeId = pack.cells.biome[cellId];
-    const cultureId = pack.cells.culture[cellId];
-    const stateId = pack.cells.state[cellId];
-    const religionId = pack.cells.religion[cellId];
-    const cultureType = (burgId ? pack.burgs[burgId]?.type : pack.cultures[cultureId]?.type) ?? DEFAULT_CULTURE_TYPE;
-
-    modifier *=
-      (mult.cultureType?.[cultureType] ?? 1) *
-      (mult.culture?.[cultureId] ?? 1) *
-      (mult.state?.[stateId] ?? 1) *
-      (mult.religion?.[religionId] ?? 1) *
-      (mult.biome?.[biomeId] ?? 1);
-
-    return rn(modifier, 2);
   }
 
   private getZoneCellSets(): Map<number, Set<number>> {

@@ -229,7 +229,7 @@ Cosmic science-fiction setting featuring twenty-two cultures across three tiers:
 - Archons (Celestial): Psionic warrior-priests and dimensional lords of fortress-worlds. Namesbase: Verse Archon.
 - Elysians (Celestial): Bio-sculpted immortals of living garden worlds and spires. Namesbase: Verse Elysian.
 - Solari (Celestial): Radiant star-forgers and stellar architects. Namesbase: Verse Solari.
-- Guardians (Celestial): Ancient sentinel orders and shield-worlds along celestial borders. Namesbase: Verse Solari.
+- Celestial Accord (Celestial): Ancient sentinel orders, concordat fleets, and shield-worlds along celestial borders. Namesbase: Verse Celestial Accord.
 
 **Ancients**
 

@@ -5,7 +5,6 @@ import { CULTURE_TYPES } from "@/data/culture-types";
 import { type ENTITY_MULTIPLIERS, GOODS_DATA, GOODS_ICON_SET } from "@/data/goods";
 import { Icons } from "@/model/icons";
 import { Options } from "@/model/options/options-model";
-import { tradeGoodsFor } from "@/model/physical/astral-naming";
 import { Tags } from "@/model/tags";
 import type { Good } from "@/types/economy";
 import { requireColor } from "@/utils/color-utils";
@@ -43,16 +42,6 @@ export class GoodsModule {
     if (!options.map.goods.length) this.restoreDefaults();
 
     pack.cells.good = new Uint16Array(pack.cells.i.length);
-    if (this.isAstralCatalogue()) {
-      // the astral catalogue trades at burgs, not in land deposits
-      for (const burg of pack.burgs) {
-        if (!burg?.i || burg.removed) continue;
-        const [primaryGoodId] = tradeGoodsFor(burg);
-        pack.cells.good[burg.cell] = primaryGoodId;
-      }
-      this.sync();
-      return;
-    }
     for (const good of shuffler(() => Math.random())([...options.map.goods])) {
       this.placeDeposits(good, this.getDepositCount(good));
     }
@@ -125,11 +114,17 @@ export class GoodsModule {
   }
 
   getDefaultDeposits(name: string): [number, number] | undefined {
-    return this.defaultGoods.find(good => good.name === name)?.deposits;
+    return (
+      this.defaultGoods.find(good => good.name === name)?.deposits ??
+      ASTRAL_GOODS_DATA.find(good => good.name === name)?.deposits
+    );
   }
 
   getDefaultDevelopment(name: string): number | undefined {
-    return this.defaultGoods.find(good => good.name === name)?.development;
+    return (
+      this.defaultGoods.find(good => good.name === name)?.development ??
+      ASTRAL_GOODS_DATA.find(good => good.name === name)?.development
+    );
   }
 
   restoreDefaults() {
@@ -239,7 +234,11 @@ export class GoodsModule {
 
   /** The default good's carriage price by name, otherwise a tenth of the good's value */
   getDefaultCarriage(good: Pick<Good, "name" | "value">): number {
-    return GOODS_DATA.find(({ name }) => name === good.name)?.carriage ?? rn(good.value / 10, 1);
+    return (
+      GOODS_DATA.find(({ name }) => name === good.name)?.carriage ??
+      ASTRAL_GOODS_DATA.find(({ name }) => name === good.name)?.carriage ??
+      rn(good.value / 10, 1)
+    );
   }
 
   /** Set the unit a good is counted in, such as "barrel"; empty for none */
