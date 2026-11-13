@@ -92,7 +92,14 @@ class OptionsModel {
         astral: false,
         extents: "whole",
         burgs: { groups: Burgs.getDefaultGroups() },
-        population: { skyBurgs: true, underdarkBurgs: true, underwaterBurgs: true },
+        population: {
+          skyBurgs: true,
+          underdarkBurgs: true,
+          underwaterBurgs: true,
+          titanBurgs: true,
+          hordeBurgs: true,
+          wanderers: 2
+        },
         labels: { groups: Labels.getDefaultGroups() },
         military: { units: getDefaultMilitaryUnits() },
         transports: Transports.getDefaults(),

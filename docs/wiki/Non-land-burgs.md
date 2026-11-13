@@ -45,3 +45,6 @@ The realm networks are baked into generation, so they only affect the **next** m
 
 ### Map files and old maps
 Realm settlements existed before the current `VERSION`, and they are not gated on it: when a map from before the realm networks was generated, the missing realm burg groups, burg label groups and route/icon/label styles are backfilled into the map on load, in place. It is a no-op for maps the fork generated itself.
+
+### Related
+- [Mobile burgs](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Mobile-burgs) — the same settlements on the move: drifting, marching and living wanderers

@@ -14,10 +14,13 @@ import type { Province } from "@/model/political/provinces-generator";
 import { Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { Population } from "@/model/society/population-generator";
+import { Journeys } from "@/model/story/journeys/journeys-generator";
+import { Transports } from "@/model/story/journeys/transports-generator";
 import type { BurgGroup } from "@/types/burg-groups";
 import type { BurgProduction } from "@/types/economy";
 import type { Emblem } from "@/types/emblems";
 import type { IconSet } from "@/types/icons";
+import type { Journey } from "@/types/journey";
 import { log } from "@/utils/logger";
 import { minmax, normalize, rn } from "@/utils/number-utils";
 import { each, gauss, P, ra, rand } from "@/utils/probability-utils";
@@ -90,25 +93,45 @@ export interface Burg {
   waystation?: 1 | 2; // 1 = Active Waystation, 2 = Derelict Waystation
   /** vertical offset in feet relative to the cell's surface: sky +50..+500, underdark -200..-3000, underwater -50..-2000 */
   altitude?: number;
+  titan?: 1;
+  horde?: 1;
+  /** a mobile burg's in-flight state; see docs/plans/mobile-burgs.md */
+  mobile?: 1;
+  mobility?: "drift" | "march" | "live";
+  journey?: number;
+  departedYear?: number;
+  heading?: number;
+  pausedAt?: number;
+  /** where a live-wandering burg is heading; chosen or re-rolled each season */
+  destination?: number;
+  /** goods a mobile burg bought at the dock it left and hauls to the halt it reaches; set at the first full economy run after departure, cleared at halt */
+  carried?: Record<number, number>;
 }
 
 /** the vertical layer a burg belongs to; see docs/plans/multi-realm.md */
-export type BurgRealm = "surface" | "sky" | "underdark" | "underwater";
+export type BurgRealm = "surface" | "sky" | "underdark" | "underwater" | "titan" | "horde";
+export type NonSurfaceRealm = Exclude<BurgRealm, "surface">;
 
-export function getBurgRealm(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): BurgRealm {
+export function getBurgRealm(
+  b: Pick<Burg, "flying" | "underdark" | "underwater" | "titan" | "horde"> | undefined
+): BurgRealm {
   if (!b) return "surface";
   if (b.flying) return "sky";
   if (b.underdark) return "underdark";
   if (b.underwater) return "underwater";
+  if (b.titan) return "titan";
+  if (b.horde) return "horde";
   return "surface";
 }
 
-export function isSurfaceBurg(b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined): boolean {
+export function isSurfaceBurg(
+  b: Pick<Burg, "flying" | "underdark" | "underwater" | "titan" | "horde"> | undefined
+): boolean {
   return getBurgRealm(b) === "surface";
 }
 
 export function isBurgInRealm(
-  b: Pick<Burg, "flying" | "underdark" | "underwater"> | undefined,
+  b: Pick<Burg, "flying" | "underdark" | "underwater" | "titan" | "horde"> | undefined,
   realm: BurgRealm
 ): boolean {
   return getBurgRealm(b) === realm;
@@ -118,7 +141,7 @@ export function isBurgInRealm(
  * reserved for the primary surface burg, so non-surface burgs never claim it */
 export function groundSlotOnPlacement(
   currentSlot: number,
-  burg: Pick<Burg, "i" | "flying" | "underdark" | "underwater">
+  burg: Pick<Burg, "i" | "flying" | "underdark" | "underwater" | "titan" | "horde">
 ): number {
   return isSurfaceBurg(burg) ? burg.i : currentSlot;
 }
@@ -248,9 +271,22 @@ class BurgModule {
     const realmTree = quadtree<[number, number]>();
 
     const realmFlagOf = (
-      realm: "sky" | "underdark" | "underwater"
-    ): Pick<Burg, "flying"> | Pick<Burg, "underdark"> | Pick<Burg, "underwater"> =>
-      realm === "sky" ? { flying: 1 } : realm === "underdark" ? { underdark: 1 } : { underwater: 1 };
+      realm: NonSurfaceRealm
+    ):
+      | Pick<Burg, "flying">
+      | Pick<Burg, "underdark">
+      | Pick<Burg, "underwater">
+      | Pick<Burg, "titan">
+      | Pick<Burg, "horde"> =>
+      realm === "sky"
+        ? { flying: 1 }
+        : realm === "underdark"
+          ? { underdark: 1 }
+          : realm === "underwater"
+            ? { underwater: 1 }
+            : realm === "titan"
+              ? { titan: 1 }
+              : { horde: 1 };
 
     const addRealmBurg = (
       cell: number,
@@ -383,6 +419,96 @@ class BurgModule {
       );
     };
 
+    /** wandering settlements: drifting sky-cities, living islands, walking titans and roving hordes */
+    const generateMobileBurgs = () => {
+      const wanderers = options.map.population.wanderers;
+      if (!wanderers) return;
+      const span = options.map.graph.width + options.map.graph.height;
+      const landCells = cells.i.filter(cell => cells.h[cell] >= 20);
+      const waterCells = cells.i.filter(cell => cells.h[cell] < 20);
+      const enabled: NonSurfaceRealm[] = [];
+      if (options.map.population.skyBurgs) enabled.push("sky");
+      if (options.map.population.underdarkBurgs && landCells.length) enabled.push("underdark");
+      if (options.map.population.underwaterBurgs && waterCells.length) enabled.push("underwater");
+      if (options.map.population.titanBurgs && landCells.length) enabled.push("titan");
+      if (options.map.population.hordeBurgs && landCells.length) enabled.push("horde");
+      if (!enabled.length) return;
+
+      const specOf = (realm: NonSurfaceRealm) => {
+        switch (realm) {
+          case "sky":
+            return { candidates: cells.i, weightOf: () => 1, altitudeOf: () => rand(5, 50) * 10 };
+          case "underdark":
+            return {
+              candidates: landCells,
+              weightOf: (cell: number) => (cells.h[cell] >= 70 ? 5 : cells.h[cell] >= 50 ? 3 : 1),
+              altitudeOf: () => -rand(20, 300) * 10
+            };
+          case "underwater":
+            return {
+              candidates: waterCells,
+              weightOf: (cell: number) =>
+                (cells.t[cell] === -1 || cells.t[cell] === -2 ? 3 : 1) *
+                (grid.cells.temp[cells.g[cell]] >= 5 ? 1.5 : grid.cells.temp[cells.g[cell]] <= 0 ? 0.5 : 1),
+              altitudeOf: () => -rand(5, 200) * 10
+            };
+          case "titan":
+            // open plains; the highest peaks are no place to stride
+            return {
+              candidates: landCells,
+              weightOf: (cell: number) => (cells.h[cell] < 50 ? 3 : cells.h[cell] >= 70 ? 0.4 : 1),
+              altitudeOf: () => 0
+            };
+          default: {
+            // savanna and grassland; mountains are too steep to march a host through
+            const weightOf = (cell: number) => {
+              const biome = cells.biome[cell];
+              let weight = 1;
+              if (biome === 3) weight *= 3;
+              else if (biome === 4) weight *= 2.5;
+              if (cells.h[cell] >= 50) weight *= 0.3;
+              return weight;
+            };
+            return { candidates: landCells, weightOf, altitudeOf: () => 0 };
+          }
+        }
+      };
+
+      const originalRandom = Math.random;
+      Math.random = Alea(`${options.map.seed}:mobile`);
+      try {
+        for (let index = 0; index < wanderers; index++) {
+          const realm = enabled[index % enabled.length];
+          const { candidates, weightOf, altitudeOf } = specOf(realm);
+          const cell = pickWeightedSpaced(candidates, weightOf, span / 20);
+          if (cell === undefined) continue;
+          const cultureId = cells.culture[cell];
+          const [x, y] = cells.p[cell];
+          const burgId = burgs.length;
+          burgs.push({
+            cell,
+            x,
+            y,
+            i: burgId,
+            state: 0,
+            culture: cultureId,
+            name: Names.getCulture(cultureId),
+            feature: cells.f[cell],
+            capital: 0,
+            tags: [],
+            ...realmFlagOf(realm),
+            mobile: 1,
+            mobility: "drift",
+            altitude: altitudeOf(),
+            heading: rn(Math.random() * 360)
+          });
+          realmTree.add([x, y]);
+        }
+      } finally {
+        Math.random = originalRandom;
+      }
+    };
+
     // realm burgs roll on their own seeded stream: the surface map's rolls stay untouched
     const originalRandom = Math.random;
     Math.random = Alea(`${options.map.seed}:realms`);
@@ -393,6 +519,7 @@ class BurgModule {
     } finally {
       Math.random = originalRandom;
     }
+    generateMobileBurgs();
 
     pack.burgs = burgs;
     this.assignPorts();
@@ -745,6 +872,32 @@ class BurgModule {
         active: true,
         features: { underwater: true, capital: false },
         order: 10,
+        zoomThreshold: 1.5
+      },
+      {
+        name: "titan_capital",
+        active: true,
+        features: { titan: true, capital: true },
+        order: 11
+      },
+      {
+        name: "titan_hold",
+        active: true,
+        features: { titan: true, capital: false },
+        order: 12,
+        zoomThreshold: 1.5
+      },
+      {
+        name: "horde_capital",
+        active: true,
+        features: { horde: true, capital: true },
+        order: 13
+      },
+      {
+        name: "horde_hold",
+        active: true,
+        features: { horde: true, capital: false },
+        order: 14,
         zoomThreshold: 1.5
       },
       {
@@ -1187,11 +1340,13 @@ class BurgModule {
   add(x: number, y: number, realm: BurgRealm = "surface"): number {
     const { cells } = pack;
     const cellId = Pack.requireCell(x, y);
-    if (!["surface", "sky", "underdark", "underwater"].includes(realm))
-      throw new Error(`Unknown realm: ${realm}. Expected surface, sky, underdark or underwater`);
+    if (!["surface", "sky", "underdark", "underwater", "titan", "horde"].includes(realm))
+      throw new Error(`Unknown realm: ${realm}. Expected surface, sky, underdark, underwater, titan or horde`);
     if (realm === "underwater" && cells.h[cellId] >= 20) throw new Error("An underwater burg cannot be placed on land");
     if (realm === "surface" && cells.h[cellId] < 20) throw new Error("A burg cannot be placed in the water");
     if (realm === "underdark" && cells.h[cellId] < 20) throw new Error("An underdark burg must tunnel under land");
+    if ((realm === "titan" || realm === "horde") && cells.h[cellId] < 20)
+      throw new Error(`A ${realm} cannot cross the sea; move it to land first`);
     // a realm burg never takes the surface cell's slot
     if (realm === "surface" && cells.burg[cellId])
       throw new Error(`Cell ${cellId} already has burg ${cells.burg[cellId]}`);
@@ -1216,7 +1371,11 @@ class BurgModule {
           ? { underdark: 1 }
           : realm === "underwater"
             ? { underwater: 1 }
-            : {})
+            : realm === "titan"
+              ? { titan: 1 }
+              : realm === "horde"
+                ? { horde: 1 }
+                : {})
     };
     this.definePopulation(burg);
     this.defineEmblem(burg);
@@ -1463,8 +1622,8 @@ class BurgModule {
     }
   }
 
-  /** Move a burg to a free land cell at a map point; a capital stays inside its state or province. A port trades by the water at its new place, if any */
-  move(burgId: number, x: number, y: number): void {
+  /** Move a burg to a free land cell at a map point; a capital stays inside its state or province. A port trades by the water at its new place, if any. Pass `{ connect: false }` to skip the road-network connection (used by live wanderers, which connect on arrival only) */
+  move(burgId: number, x: number, y: number, options: { connect?: boolean } = {}): void {
     const burg = this.living(burgId);
     const { cells } = pack;
     const cell = Pack.requireCell(x, y);
@@ -1491,7 +1650,7 @@ class BurgModule {
     const centered = pack.markets?.find(market => market.centerBurgId === burgId);
     if (centered) cells.market[cell] = centered.i;
     if (burg.port) burg.port = this.getPortWater(cell); // a port moved inland stops being one
-    if (!Routes.isConnected(cell)) Routes.connect(cell); // off the network it cannot trade
+    if (options.connect !== false && !Routes.isConnected(cell)) Routes.connect(cell); // off the network it cannot trade
     if (burg.label) Object.assign(burg.label, { dx: 0, dy: 0, pathPoints: undefined }); // a custom path no longer fits
   }
 
@@ -1563,16 +1722,20 @@ class BurgModule {
   /** Set a burg's realm. A capital cannot change realm */
   setRealm(burgId: number, realm: string): void {
     const burg = this.living(burgId);
-    const next = requireOneOf(realm, ["surface", "sky", "underdark", "underwater"], "The realm") as BurgRealm;
+    const next = requireOneOf(
+      realm,
+      ["surface", "sky", "underdark", "underwater", "titan", "horde"],
+      "The realm"
+    ) as BurgRealm;
     if (burg.capital) throw new Error("A capital cannot change realm; make another burg the capital first");
     const previous = getBurgRealm(burg);
     if (next === previous) return;
 
     const { cells } = pack;
-    if ((next === "surface" || next === "underdark") && cells.h[burg.cell] < 20)
-      throw new Error(
-        `${next === "surface" ? "A surface" : "An underdark"} burg cannot be placed in the water; move it to land first`
-      );
+    if (["surface", "underdark", "titan", "horde"].includes(next) && cells.h[burg.cell] < 20) {
+      const article = next === "underdark" ? "An underdark" : `A ${next}`;
+      throw new Error(`${article} burg cannot be placed in the water; move it to land first`);
+    }
     if (next === "underwater" && cells.h[burg.cell] >= 20) throw new Error("An underwater burg must live in the water");
 
     if (next === "surface") {
@@ -1583,6 +1746,8 @@ class BurgModule {
       delete burg.flying;
       delete burg.underdark;
       delete burg.underwater;
+      delete burg.titan;
+      delete burg.horde;
       delete burg.altitude; // the surface has no vertical offset
       burg.state = cells.state[burg.cell];
       cells.burg[burg.cell] = burg.i;
@@ -1594,7 +1759,19 @@ class BurgModule {
       delete burg.flying;
       delete burg.underdark;
       delete burg.underwater;
-      burg[next === "sky" ? "flying" : next === "underdark" ? "underdark" : "underwater"] = 1;
+      delete burg.titan;
+      delete burg.horde;
+      burg[
+        next === "sky"
+          ? "flying"
+          : next === "underdark"
+            ? "underdark"
+            : next === "titan"
+              ? "titan"
+              : next === "horde"
+                ? "horde"
+                : "underwater"
+      ] = 1;
       this.assignToRealmState(burg);
     }
     this.changeGroup(burg, null);
@@ -1606,6 +1783,82 @@ class BurgModule {
     if (!isSurfaceBurg(burg)) throw new Error("Only a surface burg can be a skyport");
     if (port) burg.skyPort = 1;
     else delete burg.skyPort;
+  }
+
+  /** Set how the burg travels; pinned = stays put, drift = wanders on regeneration, march = rides a journey, live = the Living World tick marches it one cell per season */
+  setMobility(burgId: number, mobility: "pinned" | "drift" | "march" | "live"): void {
+    const burg = this.living(burgId);
+    if (mobility === "pinned") {
+      if (!burg.mobile) return;
+      delete burg.mobile;
+      delete burg.mobility;
+      delete burg.journey;
+      delete burg.departedYear;
+      delete burg.pausedAt;
+      return;
+    }
+    if (mobility === "drift") {
+      delete burg.journey;
+      delete burg.departedYear;
+      delete burg.pausedAt;
+      burg.mobile = 1;
+      burg.mobility = "drift";
+      return;
+    }
+    if (mobility === "live") {
+      // the Living World tick picks a far destination and marches one cell per season
+      delete burg.journey;
+      delete burg.departedYear;
+      delete burg.pausedAt;
+      delete burg.destination;
+      burg.mobile = 1;
+      burg.mobility = "live";
+      return;
+    }
+    // march needs a journey; pick the first one when the burg has none yet
+    if (isSurfaceBurg(burg)) throw new Error("Only a mobile burg can ride a journey; a surface burg owns its cell");
+    if (burg.journey === undefined) {
+      const first = (pack.journeys ?? []).find(journey => journey.i);
+      if (!first) throw new Error("No journeys exist; create one in the Journeys editor first");
+      burg.journey = first.i;
+    }
+    if (burg.departedYear === undefined) burg.departedYear = options.map.lore.calendar.year;
+    burg.mobile = 1;
+    burg.mobility = "march";
+    this.applyMobile(burgId);
+  }
+
+  /** Set the burg's single heading in degrees; 0 clears it */
+  setHeading(burgId: number, heading?: number): void {
+    const burg = this.living(burgId);
+    if (heading === undefined) {
+      delete burg.heading;
+      return;
+    }
+    if (typeof heading !== "number" || !Number.isFinite(heading))
+      throw new Error("The heading must be a number of degrees");
+    burg.heading = rn(heading, 1);
+  }
+
+  /** Set the year the burg set out; null re-stamps it to the current year */
+  setDepartureYear(burgId: number, year: number | null): void {
+    const burg = this.living(burgId);
+    if (year === null) {
+      delete burg.departedYear;
+      return;
+    }
+    if (typeof year !== "number" || !Number.isFinite(year)) throw new Error("The departure year must be a number");
+    burg.departedYear = Math.round(year);
+    this.applyMobile(burgId);
+  }
+
+  /** Jump a riding burg ahead (or back) by a number of years along its journey */
+  advanceMobile(burgId: number, years: number): void {
+    const burg = this.living(burgId);
+    if (typeof years !== "number" || !Number.isFinite(years))
+      throw new Error("The years to advance by must be a number");
+    burg.departedYear = (burg.departedYear ?? options.map.lore.calendar.year) - years;
+    this.applyMobile(burgId);
   }
 
   /** Set a surface burg as an underdark entrance hub */
@@ -1625,6 +1878,158 @@ class BurgModule {
     }
     if (typeof altitude !== "number" || !Number.isFinite(altitude)) throw new Error("The altitude must be a number");
     burg.altitude = rn(altitude, 1);
+  }
+
+  // --- Marching mechanics: a wandering burg rides a journey across the map; see docs/plans/mobile-burgs.md ---
+
+  /** Put a burg onto a journey; its place along the road is stamped from the lore year. A surface-class burg cannot ride — its cell slot belongs to the land it stands on — a titan, horde, skyburg, hold or underwater city can */
+  march(burgId: number, journeyId: number): void {
+    const burg = this.living(burgId);
+    const journey = this.requireJourney(journeyId);
+    if (burg.capital) throw new Error("A capital cannot ride a journey");
+    if (burg.lock) throw new Error("Unlock the burg first; a locked burg keeps its place");
+    if (isSurfaceBurg(burg)) throw new Error("Only a mobile burg can ride a journey; a surface burg owns its cell");
+    delete burg.pausedAt;
+    if (burg.departedYear === undefined) burg.departedYear = options.map.lore.calendar.year;
+    burg.journey = journey.i;
+    burg.mobility = "march";
+    burg.mobile = 1;
+    this.applyMobile(burgId);
+  }
+
+  /** Take a burg off its journey; it stays wherever it stands */
+  unmarch(burgId: number): void {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) throw new Error("The burg is not on a journey");
+    delete burg.journey;
+    delete burg.departedYear;
+    delete burg.pausedAt;
+    burg.mobility = "drift";
+    this.applyMobile(burgId);
+  }
+
+  /** Whether a burg is currently riding a journey */
+  isMarching(burg: Burg): boolean {
+    return burg.mobility === "march" && burg.journey !== undefined;
+  }
+
+  /** Whether a mobile burg is on the road (outside the market grid): riding a journey not yet finished, or a live wanderer mid-hop. Halted marchers and resting live burgs count as halted — they trade as any burg */
+  isOnTheRoad(burg: Burg): boolean {
+    if (burg.mobile !== 1) return false;
+    if (burg.mobility === "march") {
+      if (burg.pausedAt !== undefined || burg.journey === undefined) return false;
+      const journey = (pack.journeys ?? []).find(journey => journey.i === burg.journey);
+      if (!journey) return false;
+      return this.distanceWalked(burg) < Journeys.getTotals(journey).totalDistance;
+    }
+    if (burg.mobility === "live") return burg.destination !== undefined;
+    return false;
+  }
+
+  /** Halt the march in place; the burg sits wherever it stood until resumed */
+  pauseMobile(burgId: number): void {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) throw new Error("The burg is not on a journey");
+    burg.pausedAt = options.map.lore.calendar.year;
+  }
+
+  /** Resume a paused march; the burg picks up the road where it stopped */
+  resumeMobile(burgId: number): void {
+    const burg = this.living(burgId);
+    delete burg.pausedAt;
+  }
+
+  /** Hours of the journey yet to travel at the current lore year, and how many years that lasts */
+  marchEta(burgId: number): { hoursRemaining: number; yearsRemaining: number; done: boolean } {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) throw new Error("The burg is not on a journey");
+    const journey = this.requireJourney(burg.journey!);
+    const totals = Journeys.getTotals(journey);
+    const walked = this.distanceWalked(burg);
+    const remainingDistance = Math.max(0, totals.totalDistance - walked);
+    const averageSpeed = Math.max(totals.avgSpeed, 0.001);
+    const hoursRemaining = remainingDistance / averageSpeed;
+    return {
+      hoursRemaining,
+      yearsRemaining: this.avgHoursPerDay(journey) > 0 ? hoursRemaining / this.avgHoursPerDay(journey) : 0,
+      done: remainingDistance <= 0
+    };
+  }
+
+  /** Re-stamp every marching burg's cell and position for the current lore year */
+  applyMobileAll(): void {
+    for (const burg of pack.burgs) {
+      if (burg.i && !burg.removed && this.isMarching(burg)) this.applyMobile(burg.i);
+    }
+  }
+
+  /** Stamp the marching burg's cell, position and feature for the current lore year */
+  applyMobile(burgId: number): void {
+    const burg = this.living(burgId);
+    if (!this.isMarching(burg)) return;
+    const journey = this.requireJourney(burg.journey!);
+    const totals = Journeys.getTotals(journey);
+    const walked = this.distanceWalked(burg);
+    const [x, y] = this.pointAlong(journey, walked);
+    const cell = Pack.findCell(x, y) ?? burg.cell;
+    Object.assign(burg, { x: rn(x, 2), y: rn(y, 2), cell, feature: pack.cells.f[cell] });
+    // a walker that has arrived joins the roads like any fresh burg beside the road
+    if (walked >= totals.totalDistance && !Routes.isConnected(cell)) Routes.connect(cell);
+  }
+
+  /** Map units the burg has marched since it set out, frozen at a pause if any */
+  private distanceWalked(burg: Burg): number {
+    const journey = this.requireJourney(burg.journey!);
+    const totals = Journeys.getTotals(journey);
+    if (burg.departedYear === undefined) return 0;
+    const endYear =
+      burg.pausedAt !== undefined
+        ? Math.min(burg.pausedAt, options.map.lore.calendar.year)
+        : options.map.lore.calendar.year;
+    const elapsed = Math.max(0, endYear - burg.departedYear);
+    return Math.min(elapsed * this.avgHoursPerDay(journey) * totals.avgSpeed, totals.totalDistance);
+  }
+
+  /** Where along the journey's polyline a burg is after covering `along` units */
+  private pointAlong(journey: Journey, along: number): [number, number] {
+    let remaining = Math.max(0, along);
+    let last: [number, number] | undefined;
+    for (const segment of journey.segments) {
+      if (segment.visible === false) continue;
+      for (const point of segment.points) {
+        if (!last) {
+          last = [point[0], point[1]];
+          continue;
+        }
+        const leg = Math.hypot(point[0] - last[0], point[1] - last[1]);
+        if (remaining <= leg) {
+          const t = leg > 0 ? remaining / leg : 0;
+          return [last[0] + (point[0] - last[0]) * t, last[1] + (point[1] - last[1]) * t];
+        }
+        remaining -= leg;
+        last = [point[0], point[1]];
+      }
+    }
+    return last ?? [0, 0];
+  }
+
+  /** Journey average daily travel hours over the moving segments; one year = a day of marching */
+  private avgHoursPerDay(journey: Journey): number {
+    let sum = 0;
+    let count = 0;
+    for (const segment of journey.segments) {
+      if (segment.visible === false) continue;
+      if (Transports.getDomain(segment.transport) === "stay") continue;
+      sum += Transports.getHoursPerDay(segment.transport);
+      count += 1;
+    }
+    return count ? sum / count : 1;
+  }
+
+  private requireJourney(journeyId: number): Journey {
+    const journey = (pack.journeys ?? []).find(journey => journey.i === journeyId);
+    if (!journey) throw new Error(`Journey ${journeyId} does not exist`);
+    return journey;
   }
 }
 

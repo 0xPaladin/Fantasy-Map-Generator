@@ -335,6 +335,12 @@ class RoutesModule {
         addBurg(burgsByFeature, feature, burg);
         if (capital) addBurg(capitalsByFeature, feature, burg);
         if (port) addBurg(portsByFeature, port, burg);
+      } else if (burg.i && !burg.removed && (burg.titan || burg.horde)) {
+        // titans and hordes walk on land: the road network passes through them
+        const { feature, capital } = burg;
+        if (feature === undefined) continue;
+        addBurg(burgsByFeature, feature, burg);
+        if (capital) addBurg(capitalsByFeature, feature, burg);
       }
     }
 

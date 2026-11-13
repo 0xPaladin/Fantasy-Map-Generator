@@ -295,3 +295,40 @@ test("state capitals render with a larger circled star icon and province capital
   expect(regular.getAttribute("href")).toBe("#burgs-atlas-circle");
   expect(regular.getAttribute("width")).toBe("1em");
 });
+
+test("a mobile burg'''s icon turns with its heading, and marching burgs carry data-mobility", async () => {
+  globalThis.pack = {
+    burgs: [{}, { i: 1, group: "town", x: 10, y: 10, heading: 90 }]
+  } as never;
+
+  await drawBurgIcons();
+
+  const icon = document.querySelector<SVGUseElement>(
+    '#burgIcons > [data-group="town"] > [data-group="icons"] > #burg1'
+  )!;
+  expect(icon.getAttribute("transform")).toBe("rotate(90 10 10)");
+  expect(icon.getAttribute("data-mobility")).toBeNull();
+
+  globalThis.pack = {
+    burgs: [{}, { i: 1, group: "town", x: 10, y: 10, heading: 270, mobility: "march" }]
+  } as never;
+
+  await drawBurgIcons();
+
+  const marchIcon = document.querySelector<SVGUseElement>(
+    '#burgIcons > [data-group="town"] > [data-group="icons"] > #burg1'
+  )!;
+  expect(marchIcon.getAttribute("transform")).toBe("rotate(270 10 10)");
+  expect(marchIcon.getAttribute("data-mobility")).toBe("march");
+
+  globalThis.pack = {
+    burgs: [{}, { i: 1, group: "town", x: 10, y: 10, heading: 180, mobility: "live" }]
+  } as never;
+
+  await drawBurgIcons();
+
+  const liveIcon = document.querySelector<SVGUseElement>(
+    '#burgIcons > [data-group="town"] > [data-group="icons"] > #burg1'
+  )!;
+  expect(liveIcon.getAttribute("data-mobility")).toBe("live");
+});

@@ -137,6 +137,13 @@ const OPTION_BINDINGS: Record<string, OptionBinding> = {
     parse: Number,
     pin: "freeBurgs"
   }),
+  wanderers: option({
+    read: o => o.map.population.wanderers,
+    write: (o, value) => (o.map.population.wanderers = value),
+    parse: value => minmax(Math.round(+value || 0), 0, 5),
+    pin: "wanderers",
+    effect: () => syncRealmOptions()
+  }),
   provincesRatio: option({
     read: o => o.generation.provinces.ratio,
     write: (o, value) => (o.generation.provinces.ratio = value),
@@ -418,7 +425,7 @@ ${Object.entries(CULTURE_SETS)
         ></slider-input>
       </td>
     </tr>
-    <tr data-tip="${t("Generate floating settlements (skyburgs), subterranean holds and benthic cities on the map. They hold zero surface territory and get their own states, routes and economy")}">
+    <tr data-tip="${t("Generate floating settlements (skyburgs), subterranean holds, benthic cities, titans and roving hordes on the map. They hold zero surface territory and get their own states, routes and economy")}">
       <td></td>
       <td>${t("Realm networks")}</td>
       <td colspan="2">
@@ -435,7 +442,24 @@ ${Object.entries(CULTURE_SETS)
             <input id="underwaterBurgs" class="checkbox" type="checkbox" />
             <span class="checkbox-label">${t("Underwater burgs")}</span>
           </label>
+          <label for="titanBurgs" data-tip="${t("Give the map titanic settlements borne on walking titans; the titans roam the land")}">
+            <input id="titanBurgs" class="checkbox" type="checkbox" />
+            <span class="checkbox-label">${t("Titan burgs")}</span>
+          </label>
+          <label for="hordeBurgs" data-tip="${t("Give the map roving nomad hordes that pick up everything and move on")}">
+            <input id="hordeBurgs" class="checkbox" type="checkbox" />
+            <span class="checkbox-label">${t("Horde burgs")}</span>
+          </label>
         </div>
+      </td>
+    </tr>
+    <tr data-tip="${t("How many drifting settlements to place: wandering sky-cities, living islands, walking titans and roving hordes. They hold no fixed land and always live on the road")}">
+      <td>
+        <i data-locked="0" id="lock_wanderers" class="icon-lock-open"></i>
+      </td>
+      <td>${t("Mobile wanderers")}</td>
+      <td colspan="2">
+        <slider-input id="wanderers" data-option="wanderers" min="0" max="5" step="1"></slider-input>
       </td>
     </tr>
   </table>
@@ -636,7 +660,7 @@ function addListeners(): void {
   ensureEl("optionsContent").addEventListener("click", onClick);
   ensureEl(ADVANCED_OPTIONS_ID).addEventListener("click", onClick);
   ensureEl(ADVANCED_OPTIONS_ID).addEventListener("change", onDebugChange);
-  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs"] as const) {
+  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs", "titanBurgs", "hordeBurgs"] as const) {
     ensureEl<HTMLInputElement>(key).addEventListener("change", (event: Event) => {
       const target = event.target as HTMLInputElement;
       Options.set(o => {
@@ -774,7 +798,7 @@ function onOptionInput(event: Event): void {
 }
 
 function syncRealmOptions(): void {
-  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs"] as const) {
+  for (const key of ["skyBurgs", "underdarkBurgs", "underwaterBurgs", "titanBurgs", "hordeBurgs"] as const) {
     const input = document.querySelector<HTMLInputElement>(`#${key}`);
     if (input) input.checked = options.map.population[key];
   }

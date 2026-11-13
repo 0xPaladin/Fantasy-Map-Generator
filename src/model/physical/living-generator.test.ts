@@ -4011,6 +4011,180 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       });
     });
   });
+
+  describe("live mobile burgs (Living World wandering)", () => {
+    /** pin a walking titan to cell 1; overrides customize per case */
+    function addTitan(i = 5, overrides: Record<string, unknown> = {}): Burg {
+      const burg = {
+        i,
+        name: `Wandering Titan ${i}`,
+        cell: 1,
+        x: 10,
+        y: 10,
+        state: 0,
+        culture: 1,
+        population: 2,
+        capital: 0,
+        walls: 0,
+        plaza: 0,
+        temple: 0,
+        citadel: 0,
+        titan: 1,
+        mobile: 1,
+        mobility: "live",
+        ...overrides
+      } as unknown as Burg;
+      pack.burgs.push(burg);
+      return burg;
+    }
+
+    beforeEach(() => {
+      pack.cells.h = Uint8Array.from([25, 25, 25, 25, 25, 25]);
+      pack.cells.biome = Uint8Array.from([4, 4, 4, 4, 4, 4]);
+      pack.cells.f = new Uint16Array(6);
+      pack.cells.burg = new Uint16Array(6);
+      pack.cells.development = new Uint8Array(6);
+      pack.cells.harbor = new Uint8Array(6);
+      pack.cells.routes = {};
+      pack.journeys = [];
+      (options.map as { graph?: unknown }).graph = { width: 100, height: 100, points: 100 };
+    });
+
+    it("takes one step per season along the cell graph and picks a far destination", () => {
+      Living.init();
+      const burg = addTitan(5);
+
+      Living.tick(1);
+
+      const next = pack.burgs[5]!.cell;
+      expect(next).not.toBe(1);
+      expect([...pack.cells.c[1]]).toContain(next);
+      expect(pack.burgs[5]!.destination).toBeDefined();
+      // it steps onto the cell's own point, and the save remembers where it is going
+      expect(burg.x).toBe(pack.cells.p[burg.cell]![0]);
+      expect(burg.y).toBe(pack.cells.p[burg.cell]![1]);
+    });
+
+    it("keeps pinned and drift burgs in place", () => {
+      Living.init();
+      addTitan(5, { name: "Pinned Hold", mobile: undefined, mobility: undefined });
+      addTitan(6, { name: "Drifting Hold", mobility: "drift" });
+      addTitan(7, { name: "Walking Titan" });
+
+      Living.tick(2);
+
+      expect(pack.burgs[5]!.cell).toBe(1);
+      expect(pack.burgs[6]!.cell).toBe(1);
+      expect(pack.burgs[7]!.cell).not.toBe(1);
+    });
+
+    it("chronicles the arrival and rests a season before wandering again", () => {
+      Living.init();
+      const burg = addTitan(5);
+
+      let arrivedYear: number | undefined;
+      for (let i = 0; i < 40 && arrivedYear === undefined; i++) {
+        Living.tick(1);
+        const event = pack.history?.events?.find(
+          e => e.type === "deed" && e.actors.some(a => a.kind === "burg" && a.id === 5)
+        );
+        if (event) arrivedYear = event.year;
+      }
+
+      expect(arrivedYear).toBe(options.map.lore.calendar.year);
+      const event = pack.history!.events!.find(
+        e => e.type === "deed" && e.actors.some(a => a.kind === "burg" && a.id === 5)
+      );
+      expect(event?.text).toContain("Wandering Titan 5");
+      expect(pack.cells.h[burg.cell]).toBeGreaterThanOrEqual(20);
+      const news = Living.getState().recentNews.find(n => n.kind === "colonize" && n.burgId === 5);
+      expect(news).toBeDefined();
+      // the destination is cleared, so the next wander picks a fresh far cell
+      expect(burg.destination).toBeUndefined();
+    });
+
+    it("an underwater wanderer holds to the waters", () => {
+      Living.init();
+      pack.cells.h = Uint8Array.from([10, 10, 10, 10, 10, 10]);
+      const burg = addTitan(5, { titan: undefined, underwater: 1 });
+
+      Living.tick(2);
+
+      expect(pack.cells.h[burg.cell]).toBeLessThan(20);
+      expect(burg.cell).not.toBe(1);
+    });
+
+    it("a land-born titan on an all-water world stays put and the tick survives", () => {
+      Living.init();
+      pack.cells.h = Uint8Array.from([10, 10, 10, 10, 10, 10]);
+      const burg = addTitan(5);
+
+      expect(() => Living.tick(2)).not.toThrow();
+      expect(burg.cell).toBe(1);
+    });
+
+    it("a titan's footfall scours the land it sets down on", () => {
+      Living.init();
+      // block re-seeding (an empty progress object would be re-seeded from development 50 mid-tick)
+      for (const state of Object.values(Living.getState().states ?? {})) {
+        state.researchedTechs = [];
+        state.researchedProgress = { seedguard: 1 };
+        state.currentTechId = null;
+        state.researchQueue = [];
+      }
+      pack.cells.development = Uint8Array.from([50, 50, 50, 50, 50, 50]);
+      const burg = addTitan(5);
+
+      Living.tick(1);
+
+      const landed = burg.cell;
+      expect(landed).not.toBe(1); // it walked
+      expect(pack.cells.development[landed]).toBe(40); // the footfall took ten
+      expect(pack.cells.development[1]).toBe(50); // where it stood is not yet a footfall
+      expect([...pack.cells.development.keys()].filter(cell => pack.cells.development[cell] !== 50)).toEqual([landed]);
+    });
+
+    it("an underwater wanderer swims without trampling", () => {
+      Living.init();
+      pack.cells.h = Uint8Array.from([10, 10, 10, 10, 10, 10]);
+      pack.cells.development = Uint8Array.from([50, 50, 50, 50, 50, 50]);
+      const burg = addTitan(5, { titan: undefined, underwater: 1 });
+
+      Living.tick(2);
+
+      expect(burg.cell).not.toBe(1); // it swam
+      expect(Math.max(...pack.cells.development)).toBe(50); // water has no footfall
+    });
+
+    it("a surface wanderer takes and releases its cell slot as it walks", () => {
+      Living.init();
+      const surface = {
+        i: 5,
+        name: "Wandering Town",
+        cell: 1,
+        x: 10,
+        y: 10,
+        state: 1,
+        culture: 1,
+        population: 20,
+        capital: 0,
+        walls: 0,
+        plaza: 0,
+        temple: 0,
+        citadel: 0,
+        mobile: 1,
+        mobility: "live"
+      } as unknown as Burg;
+      pack.burgs.push(surface);
+      pack.cells.burg[1] = 5; // a surface burg's slot, handed down at founding
+
+      Living.tick(1);
+
+      expect(pack.burgs[5]!.cell).not.toBe(1); // it walked
+      expect(pack.cells.burg[1]).toBe(0); // the slot was released
+      expect(pack.cells.burg[pack.burgs[5]!.cell]).toBe(5); // and taken at the new cell
+    });
+  });
 });
 
 describe("Unified Figures slice 1: specialist commanders", () => {

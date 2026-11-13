@@ -5,6 +5,7 @@ import { Options } from "@/model/options/options-model";
 import { Pins } from "@/model/options/pins";
 import { Names } from "@/model/society/names-generator";
 import { Lore } from "@/model/story/lore";
+import { Layers } from "@/renderers/layers";
 import type { HistoryMode } from "@/types/history";
 import { Dialog } from "@/ui/dialog/dialog";
 
@@ -223,6 +224,7 @@ function onLoreChange(event: Event): void {
       if (!value || Number.isNaN(+value)) return;
       Lore.setYear(+value);
       Pins.set("year", lore.calendar.year);
+      Layers.draw("burgIcons", "labels"); // a marching burg walks with the year
       break;
 
     case "loreEra":

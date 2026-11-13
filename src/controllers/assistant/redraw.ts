@@ -24,7 +24,13 @@ const ENTITY_LAYERS: Record<string, Record<string, readonly LayerId[]>> = {
     underwater: ["burgIcons", "labels"],
     skyPort: ["burgIcons"],
     underdarkGate: ["burgIcons"],
-    altitude: ["burgIcons"]
+    altitude: ["burgIcons"],
+    mobile: ["burgIcons", "labels"],
+    mobility: ["burgIcons", "labels"],
+    journey: ["burgIcons", "labels"],
+    departedYear: ["burgIcons", "labels"],
+    pausedAt: ["burgIcons", "labels"],
+    heading: ["burgIcons"]
   },
   state: { "": TERRITORY, ...NAMES, color: ["states", "military"], military: ["military"] },
   province: { "": PROVINCES, ...NAMES, name: ["provinces", "labels"], color: ["provinces"], center: ["emblems"] },
@@ -45,6 +51,7 @@ const ENTITY_LAYERS: Record<string, Record<string, readonly LayerId[]>> = {
   marker: { "*": ["markers"] },
   addedLabel: { "*": ["labels"] },
   journey: { "*": ["journeys"] },
+  lore: { "*": ["burgIcons", "labels"] },
   good: { icon: ["goods"], color: ["goods"] },
   market: { "*": ["markets"] }
 };

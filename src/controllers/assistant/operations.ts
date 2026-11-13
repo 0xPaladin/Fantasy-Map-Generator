@@ -70,7 +70,15 @@ export const METHODS = {
     "setRealm",
     "setSkyPort",
     "setUnderdarkGate",
-    "setAltitude"
+    "setAltitude",
+    "setMobility",
+    "setHeading",
+    "setDepartureYear",
+    "advanceMobile",
+    "pauseMobile",
+    "resumeMobile",
+    "march",
+    "unmarch"
   ],
   States: [
     "rename",

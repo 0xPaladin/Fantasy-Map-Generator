@@ -18,7 +18,9 @@ const TIP: Record<BurgRealm, string> = {
   surface: t("Click on map to place a surface burg"),
   sky: t("Click on map to place a skyburg"),
   underdark: t("Click on map to place an underdark hold"),
-  underwater: t("Click on map to place an underwater settlement")
+  underwater: t("Click on map to place an underwater settlement"),
+  titan: t("Click on map to place a titan holding"),
+  horde: t("Click on map to place a horde hostsite")
 };
 
 function toggle(realm?: BurgRealm): void {
