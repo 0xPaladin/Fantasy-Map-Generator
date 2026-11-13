@@ -53,6 +53,7 @@ export const ASTRAL_BASE_IDS = new Set([
   "VRACN",
   "VRELY",
   "VRSOL",
+  "VRCEL",
   "VRHEG",
   "VRMIG",
   "VRHUI",
@@ -1001,9 +1002,43 @@ export function getDefaultNameBases(): NameBase[] {
       }
     },
     {
+      name: "Verse Celestial Accord",
+      id: "VRCEL",
+      i: 55,
+      min: 5,
+      max: 16,
+      d: "lnrs",
+      m: 0,
+      b: "Concordia Prime,Shield-World Aegis,Accordant Reach,Sentinel Spire,Vanguard Meridian,Concordat Prime,Haven's Shield,Bastion Accord,Star-Watch Alpha,Lightkeeper's Post,Border Sanctuary,Astral Bulwark,Pax Celestia,Wardens' Rest,Beacon of Unity,Covenant Orbit,Seraphim Gate,Pact-World Alpha,Vigilant Haven,Harmony Citadel,Aegis Frontier,Luminous Accord,Archon-Solari Keep,Celestial Concord,Unity Anchor,Sovereign Shield,Dawn Pact,Threshold Keep,Starlight Covenant,Sanctum Sentinel,Valiant Beacon,Radiant Frontier,Oath-Star Alpha,Horizon Shield,Peacekeeper Spire,Pact-Gate Meridian,Protectorate Core,High Accord,Silver Bastion,Golden Covenant,Emerald Watch,Azure Sanctuary,Beacon of Concord,Star-Wardens' Keep,Frontier Citadel,Alliance Spire,Celestial Rampart,Haven's Sentinel,Bastion of Grace,Watchful Meridian,Accord Station,Vigilance Orbit,Unity Spire,Shield of Dawn,Light's Covenant",
+      groups: {
+        polities: [
+          "The Celestial Accord",
+          "The Accordant Host",
+          "The Sentinel Order",
+          "The Shield-Worlds",
+          "The Haven Vanguard",
+          "The Border Wardens",
+          "The Concordat of Light",
+          "The Pact of the Havens",
+          "The Radiant Protectorate",
+          "The Seraphim Watch",
+          "The Sovereign Covenant",
+          "The Starlight Alliance",
+          "The Aegis Directorate",
+          "The Luminous Concord",
+          "The High Protectorate",
+          "The Dawn Pact",
+          "The Horizon Sentinels",
+          "The Sanctum Guard",
+          "The Alliance of the Havens",
+          "The Frontier Wardens"
+        ]
+      }
+    },
+    {
       name: "Verse Hegemony",
       id: "VRHEG",
-      i: 55,
+      i: 56,
       min: 4,
       max: 14,
       d: "rkltn",
@@ -1042,7 +1077,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Verse Mi-Go",
       id: "VRMIG",
-      i: 56,
+      i: 57,
       min: 4,
       max: 14,
       d: "glnr",
@@ -1078,7 +1113,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Verse Huijhoh",
       id: "VRHUI",
-      i: 57,
+      i: 58,
       min: 4,
       max: 14,
       d: "hlru",
@@ -1114,7 +1149,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Verse Crysik",
       id: "VRCRY",
-      i: 58,
+      i: 59,
       min: 4,
       max: 14,
       d: "ckrst",
@@ -1150,7 +1185,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Verse Echani",
       id: "VRECH",
-      i: 59,
+      i: 60,
       min: 4,
       max: 14,
       d: "chlnr",
@@ -1186,7 +1221,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Verse Syndicate",
       id: "VRGRY",
-      i: 60,
+      i: 61,
       min: 4,
       max: 14,
       d: "xzrs",
@@ -1222,7 +1257,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Verse Xothian",
       id: "VRXOT",
-      i: 61,
+      i: 62,
       min: 4,
       max: 14,
       d: "rxzk",
@@ -1260,7 +1295,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Verse Frontier",
       id: "VRFRN",
-      i: 62,
+      i: 63,
       min: 4,
       max: 14,
       d: "lnrst",
@@ -1300,7 +1335,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Halfling",
       id: "HALFL",
-      i: 63,
+      i: 64,
       min: 5,
       max: 12,
       d: "lnst",
@@ -1329,7 +1364,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Fey",
       id: "FEYFO",
-      i: 64,
+      i: 65,
       min: 5,
       max: 13,
       d: "lrnm",
@@ -1356,7 +1391,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Infernal",
       id: "INFER",
-      i: 65,
+      i: 66,
       min: 5,
       max: 13,
       d: "rxz",
@@ -1383,7 +1418,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Celestial",
       id: "CELES",
-      i: 66,
+      i: 67,
       min: 5,
       max: 12,
       d: "ln",
@@ -1409,7 +1444,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Grave",
       id: "GRAVE",
-      i: 67,
+      i: 68,
       min: 5,
       max: 13,
       d: "rn",
@@ -1435,7 +1470,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Merfolk",
       id: "MERFO",
-      i: 68,
+      i: 69,
       min: 5,
       max: 12,
       d: "lrnm",
@@ -1459,7 +1494,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Beastfolk",
       id: "BEAST",
-      i: 69,
+      i: 70,
       min: 4,
       max: 11,
       d: "rk",
@@ -1485,7 +1520,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Elemental",
       id: "ELEME",
-      i: 70,
+      i: 71,
       min: 5,
       max: 12,
       d: "lnr",
@@ -1510,7 +1545,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Construct",
       id: "CONST",
-      i: 71,
+      i: 72,
       min: 5,
       max: 12,
       d: "rn",
@@ -1535,7 +1570,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Eldritch",
       id: "ELDRI",
-      i: 72,
+      i: 73,
       min: 4,
       max: 13,
       d: "rl",
@@ -1560,7 +1595,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Tribal",
       id: "TRIBA",
-      i: 73,
+      i: 74,
       min: 4,
       max: 9,
       d: "nk",

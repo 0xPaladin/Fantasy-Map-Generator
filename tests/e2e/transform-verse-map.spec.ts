@@ -175,7 +175,7 @@ test.describe("Verse Map Topography Transformation", () => {
         { name: "Archons (Celestial)", i: 2, base: "VRACN", shield: "heater", color: "#4682b4", type: "Generic" },
         { name: "Elysians (Celestial)", i: 3, base: "VRELY", shield: "vesicaPiscis", color: "#00ced1", type: "Generic" },
         { name: "Solari (Celestial)", i: 4, base: "VRSOL", shield: "boeotian", color: "#ffd700", type: "Generic" },
-        { name: "Guardians (Celestial)", i: 5, base: "VRSOL", shield: "kite", color: "#ff8c00", type: "Generic" },
+        { name: "Celestial Accord (Celestial)", i: 5, base: "VRCEL", shield: "kite", color: "#ff8c00", type: "Generic" },
         // Ancients
         { name: "Hegemony (Ancient)", i: 6, base: "VRHEG", shield: "oldFrench", color: "#b22222", type: "Generic" },
         { name: "Mi-Go Primacy (Ancient)", i: 7, base: "VRMIG", shield: "diamond", color: "#6a0dad", type: "Generic" },

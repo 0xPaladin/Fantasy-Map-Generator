@@ -1080,8 +1080,8 @@ class CulturesGenerator {
           shield: "boeotian"
         },
         {
-          name: "Guardians (Celestial)",
-          base: "VRSOL",
+          name: "Celestial Accord (Celestial)",
+          base: "VRCEL",
           odd: 0.75,
           sort: (i: number) => n(i) * (cells.haven[i] ? 1 : 0.2),
           shield: "kite"
