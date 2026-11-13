@@ -4122,6 +4122,39 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(() => Living.tick(2)).not.toThrow();
       expect(burg.cell).toBe(1);
     });
+
+    it("a titan's footfall scours the land it sets down on", () => {
+      Living.init();
+      // block re-seeding (an empty progress object would be re-seeded from development 50 mid-tick)
+      for (const state of Object.values(Living.getState().states ?? {})) {
+        state.researchedTechs = [];
+        state.researchedProgress = { seedguard: 1 };
+        state.currentTechId = null;
+        state.researchQueue = [];
+      }
+      pack.cells.development = Uint8Array.from([50, 50, 50, 50, 50, 50]);
+      const burg = addTitan(5);
+
+      Living.tick(1);
+
+      const landed = burg.cell;
+      expect(landed).not.toBe(1); // it walked
+      expect(pack.cells.development[landed]).toBe(40); // the footfall took ten
+      expect(pack.cells.development[1]).toBe(50); // where it stood is not yet a footfall
+      expect([...pack.cells.development.keys()].filter(cell => pack.cells.development[cell] !== 50)).toEqual([landed]);
+    });
+
+    it("an underwater wanderer swims without trampling", () => {
+      Living.init();
+      pack.cells.h = Uint8Array.from([10, 10, 10, 10, 10, 10]);
+      pack.cells.development = Uint8Array.from([50, 50, 50, 50, 50, 50]);
+      const burg = addTitan(5, { titan: undefined, underwater: 1 });
+
+      Living.tick(2);
+
+      expect(burg.cell).not.toBe(1); // it swam
+      expect(Math.max(...pack.cells.development)).toBe(50); // water has no footfall
+    });
   });
 });
 

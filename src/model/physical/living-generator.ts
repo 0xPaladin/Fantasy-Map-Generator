@@ -2064,6 +2064,12 @@ class LivingModel {
       delete burg.destination; // blocked (a taken cell); try again next season
       return;
     }
+    // a titan's footfall scours the cell it sets down on; the road-bound wanderers leave the land scarred
+    if (burg.titan === 1) {
+      const development = pack.cells.development?.[burg.cell];
+      if (development !== undefined && development > 0)
+        pack.cells.development[burg.cell] = Math.max(0, development - 10);
+    }
     if (burg.cell === burg.destination && !Routes.isConnected(burg.cell)) {
       try {
         Routes.connect(burg.cell); // join the roads once, on arrival

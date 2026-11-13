@@ -916,3 +916,114 @@ describe("realm burg economies", () => {
     expect(production["isRealmExcluded"](realms.sky, fish)).toBe(false);
   });
 });
+
+describe("carried stock (a mobile burg on the road)", () => {
+  /** quotes without route costs: buy at 110%, sell at 90% of the good's base value */
+  function spyQuotes(): void {
+    vi.spyOn(Trade, "quoteMarket").mockImplementation((_market: Market, goodId: number) => {
+      const good = catalogue[goodId - 1]!;
+      const row = (_market as Market).goods[goodId] ?? { stock: 0, price: good.value };
+      return {
+        stock: row.stock,
+        buyPrice: rn(good.value * 1.1, 2),
+        sellPrice: rn(good.value * 0.9, 2),
+        carriage: 0
+      };
+    });
+  }
+
+  const roadBurg = (overrides: Partial<Burg> = {}): Burg => {
+    const road = { ...burg, mobile: 1, mobility: "live", population: 100, treasury: 100, ...overrides };
+    Object.assign(burg, road);
+    return burg;
+  };
+
+  it("loads the pack at the dock it leaves, cheapest goods first, spending its treasury", () => {
+    spyQuotes();
+    catalogue[1]!.value = 5; // tools are dearer than oil
+    catalogue[2]!.value = 9; // steel dearer still
+    market.goods[1]!.stock = 10;
+    market.goods[2]!.stock = 10;
+    market.goods[3]!.stock = 10;
+    roadBurg();
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["tradeCarried"](burg, market, true);
+
+    expect(burg.carried).toBeDefined();
+    expect(burg.carried![1]).toBeCloseTo(10, 5); // oil fills the pack first
+    expect(burg.carried![2]).toBeCloseTo(10, 5); // then the tools
+    expect(burg.carried![3]).toBeCloseTo(34 / 9.9, 1); // steel only the change buys
+    expect(burg.treasury).toBeCloseTo(0, 2); // the whole hoard rides
+    expect(market.goods[1]!.stock).toBe(0);
+    expect(market.goods[2]!.stock).toBe(0);
+    expect(market.goods[3]!.stock).toBeCloseTo(10 - 34 / 9.9, 2);
+  });
+
+  it("loads nothing a second time while it is on the road", () => {
+    spyQuotes();
+    market.goods[1]!.stock = 10;
+    market.goods[2]!.stock = 10;
+    roadBurg();
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["tradeCarried"](burg, market, true);
+    const stockAfterLoad = [market.goods[1]!.stock, market.goods[2]!.stock];
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["tradeCarried"](burg, market, true);
+    expect(market.goods[1]!.stock).toBe(stockAfterLoad[0]);
+    expect(market.goods[2]!.stock).toBe(stockAfterLoad[1]);
+  });
+
+  it("loads nothing without a treasury, and stays ready for a richer stall", () => {
+    spyQuotes();
+    roadBurg({ treasury: 0 }); // a pauper horde rides with no pack; a later stall can still fill it
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["tradeCarried"](burg, market, true);
+
+    expect(burg.carried).toBeUndefined();
+    expect(market.goods[1]!.stock).toBe(10000); // untouched
+  });
+
+  it("discharges the pack at the halt and credits the treasury", () => {
+    spyQuotes();
+    market.goods[1]!.stock = 0;
+    market.goods[2]!.stock = 0;
+    roadBurg({ treasury: 5, carried: { 1: 10, 2: 4 }, mobile: 1 });
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["tradeCarried"](burg, market, false);
+
+    expect(burg.carried).toBeUndefined();
+    expect(burg.treasury).toBeCloseTo(5 + 10 * 0.9 + 4 * 0.9, 2); // oil and tools alike at 90%
+    expect(market.goods[1]!.stock).toBe(10);
+    expect(market.goods[2]!.stock).toBe(4);
+  });
+
+  it("a wilderness halt keeps the pack until a market opens", () => {
+    spyQuotes();
+    roadBurg({ carried: { 1: 3 } });
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["tradeCarried"](burg, undefined, false);
+
+    expect(burg.carried).toEqual({ 1: 3 });
+    expect(burg.treasury).toBe(100);
+  });
+
+  it("the pack discharges even after the burg is pinned mid-wander", () => {
+    spyQuotes();
+    delete (burg as { mobile?: number }).mobile; // pinned: the mobile flag is gone
+    burg.mobility = undefined;
+    burg.carried = { 1: 2 };
+    burg.treasury = 0;
+
+    // biome-ignore lint/complexity/useLiteralKeys: private test access
+    production["tradeCarried"](burg, market, false);
+
+    expect(burg.carried).toBeUndefined();
+    expect(burg.treasury).toBeCloseTo(2 * 0.9, 2);
+  });
+});

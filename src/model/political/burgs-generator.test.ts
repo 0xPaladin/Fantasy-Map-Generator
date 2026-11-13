@@ -1034,4 +1034,34 @@ describe("marching mobiles", () => {
     expect(t2Eta.done).toBe(false);
     expect(t2Eta.yearsRemaining).toBeCloseTo(200 / (10 * 12), 1);
   });
+
+  it("isOnTheRoad: a rider on the road is out of the market grid until the journey is walked", () => {
+    const t = addTitan();
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(false); // not even mobile
+    Burgs.march(t, JOURNEY.i);
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(true);
+
+    options.map.lore.calendar.year = YEAR + 2;
+    Burgs.applyMobileAll(); // docks at the end of the road
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(false);
+  });
+
+  it("isOnTheRoad: a paused rider halts; resumed, it is on the road again", () => {
+    const t = addTitan();
+    Burgs.march(t, JOURNEY.i);
+    Burgs.pauseMobile(t);
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(false);
+    Burgs.resumeMobile(t);
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(true);
+  });
+
+  it("isOnTheRoad: a live burg is on the road mid-wander and halted at rest", () => {
+    const t = addTitan();
+    Burgs.setMobility(t, "live");
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(false); // resting after the pick
+    pack.burgs[t]!.destination = 2;
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(true);
+    delete pack.burgs[t]!.destination;
+    expect(Burgs.isOnTheRoad(pack.burgs[t]!)).toBe(false);
+  });
 });

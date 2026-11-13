@@ -1,6 +1,6 @@
 import { sum } from "d3";
 import { noExpenses } from "@/data/expenses";
-import type { Burg } from "@/model/political/burgs-generator";
+import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import type { DealKind, Good, Market, Transaction } from "@/types/economy";
 import { log } from "@/utils/logger";
 import { rn } from "@/utils/number-utils";
@@ -256,9 +256,12 @@ export class ProductionModule {
     const days: BurgDay[] = [];
     for (const burg of sortedBurgs) {
       const market = Markets.ofBurg(burg);
-      burg.pollTaxPaid = market ? rn(Taxes.getPollTaxDue(burg.state || 0, burg.population || 0), 2) : 0;
+      // a mobile burg on the road is outside the market grid: it carries stock and buys nothing until it docks
+      const onTheRoad = Burgs.isOnTheRoad(burg);
+      burg.pollTaxPaid = !onTheRoad && market ? rn(Taxes.getPollTaxDue(burg.state || 0, burg.population || 0), 2) : 0;
       burg.treasury = sum(burg.adjustments ?? [], line => line.value) - burg.pollTaxPaid;
-      if (market) days.push(this.createBurgDay(index, burg, market, recording));
+      this.tradeCarried(burg, market, onTheRoad);
+      if (market && !onTheRoad) days.push(this.createBurgDay(index, burg, market, recording));
       else {
         burg.product = 0; // out of every market: nothing made
         burg.production = [];
@@ -269,7 +272,6 @@ export class ProductionModule {
       index.marketWorkforce[market.i] = (index.marketWorkforce[market.i] || 0) + workers;
       index.worldWorkforce += workers;
     }
-
     // a few workers a turn, so the first in line cannot drain a market alone
     let working = days;
     while (working.length) {
@@ -314,6 +316,54 @@ export class ProductionModule {
       burg.production = produced.flatMap((units, goodId) => (units ? [[goodId, rn(units, 2)]] : []));
       if (log) EconomyDebug.set(burg.i!, log);
     }
+  }
+
+  /**
+   * The carried-stock caravan rule: a mobile burg on the road loads its pack at the dock it left
+   * (buys whatever the market stocks most cheaply, spending its treasury) and discharges it at the
+   * halt it reaches (sells back at door prices). Buying happens once per departure — remembered in
+   * `carried` — selling once per halt. A marketless halt keeps the pack. No centre margin changes
+   * hands: nomads haggle at the gate.
+   */
+  private tradeCarried(burg: Burg, market: Market | undefined, onTheRoad: boolean): void {
+    // a halted burg discharges its pack wherever it stands, even after being pinned mid-wander
+    const discharge = !onTheRoad && burg.carried !== undefined;
+    const load = onTheRoad && burg.mobile === 1 && burg.carried === undefined;
+    if (!discharge && !load) return;
+    if (discharge) {
+      if (!market) return; // a wilderness halt keeps the pack until a market opens
+      let gained = 0;
+      for (const [id, units] of Object.entries(burg.carried!)) {
+        const goodId = Number(id);
+        if (units < 0.01) continue;
+        const quote = Trade.quoteMarket(market, goodId, burg); // creates a missing row at the good's base value
+        const row = market.goods[goodId]!;
+        row.stock = rn(row.stock + units, 2);
+        gained += units * Math.max(0, quote.sellPrice);
+      }
+      burg.treasury = rn((burg.treasury || 0) + gained, 2);
+      delete burg.carried;
+      return;
+    }
+    // the road: load the pack at the dock it left, cheapest goods first
+    if (!market || (burg.treasury || 0) <= 0.01) return; // nothing to load with; try again at the next stall
+    const budget = burg.treasury || 0;
+    const offers = Object.entries(market.goods ?? {})
+      .map(([id, row]) => ({ id: Number(id), stock: row.stock, quote: Trade.quoteMarket(market, Number(id), burg) }))
+      .filter(({ stock, quote }) => stock > 0.01 && quote.buyPrice > 0.01)
+      .sort((a, b) => a.quote.buyPrice - b.quote.buyPrice);
+    let spent = 0;
+    const carried: Record<number, number> = {};
+    for (const { id, stock, quote } of offers) {
+      const units = Math.min(stock, (budget - spent) / quote.buyPrice);
+      if (units < 0.01) continue;
+      const row = market.goods[id]!;
+      row.stock = rn(row.stock - units, 2);
+      carried[id] = rn((carried[id] ?? 0) + units, 2);
+      spent += units * quote.buyPrice;
+    }
+    burg.treasury = rn(budget - spent, 2);
+    burg.carried = carried; // marked even when the pack is empty — no re-buy mid-wander
   }
 
   getTurnOrder(burgs: Burg[]): Burg[] {

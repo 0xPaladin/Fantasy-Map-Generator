@@ -102,6 +102,8 @@ export interface Burg {
   pausedAt?: number;
   /** where a live-wandering burg is heading; chosen or re-rolled each season */
   destination?: number;
+  /** goods a mobile burg bought at the dock it left and hauls to the halt it reaches; set at the first full economy run after departure, cleared at halt */
+  carried?: Record<number, number>;
 }
 
 /** the vertical layer a burg belongs to; see docs/plans/multi-realm.md */
@@ -1905,6 +1907,19 @@ class BurgModule {
   /** Whether a burg is currently riding a journey */
   isMarching(burg: Burg): boolean {
     return burg.mobility === "march" && burg.journey !== undefined;
+  }
+
+  /** Whether a mobile burg is on the road (outside the market grid): riding a journey not yet finished, or a live wanderer mid-hop. Halted marchers and resting live burgs count as halted — they trade as any burg */
+  isOnTheRoad(burg: Burg): boolean {
+    if (burg.mobile !== 1) return false;
+    if (burg.mobility === "march") {
+      if (burg.pausedAt !== undefined || burg.journey === undefined) return false;
+      const journey = (pack.journeys ?? []).find(journey => journey.i === burg.journey);
+      if (!journey) return false;
+      return this.distanceWalked(burg) < Journeys.getTotals(journey).totalDistance;
+    }
+    if (burg.mobility === "live") return burg.destination !== undefined;
+    return false;
   }
 
   /** Halt the march in place; the burg sits wherever it stood until resumed */

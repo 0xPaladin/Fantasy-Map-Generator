@@ -10,13 +10,13 @@ Progress:
 - Phase 5 — Rendering: ✅ done (2026-11-12)
 - Phase 6 — Assistant operations & UI: ✅ done (2026-11-12)
 - Phase 7 — Autonomous mode (Living World tick + chronicle hooks): ✅ done (2026-11-12)
-- Phase 8 — Mover economy rules: pending
+- Phase 8 — Mover economy rules: ✅ done (2026-11-12)
 - Phase 9 — Verification, tests & docs: pending
 
 Implementation notes:
 - Phase 1 delivered: `Burg.titan` / `Burg.horde` realm flags (mutually exclusive with the other realm flags, like `flying`/`underdark`/`underwater`), the new realm kinds entered into `BurgRealm`,
   `getBurgRealm`, `isSurfaceBurg`, `isBurgInRealm`, `groundSlotOnPlacement`, `Burgs.add` and `Burgs.setRealm` (realm allow-list + titan/horde water-rejection; demotion hands the surface slot back,
-  promotion back to surface validates the cell and the slot occupancy). Mobile fields on `Burg` (`mobile`, `mobility`, `journey`, `departedYear`, `heading`, `pausedAt`, `destination` — additive, persisted in `.map`).
+  promotion back to surface validates the cell and the slot occupancy). Mobile fields on `Burg` (`mobile`, `mobility`, `journey`, `departedYear`, `heading`, `pausedAt`, `destination`, `carried` — additive, persisted in `.map`).
   New burg groups `titan_capital`/`titan_hold` and `horde_capital`/`horde_hold` (resolved before surface groups; the minor holds gate on `zoomThreshold: 1.5`), matching label groups with
   `zoom.min = 1.5`, `default-styles.json` icon + label styles (titan = warm amber, horde = terracotta), `Options → Realm networks` checkboxes `Titan burgs` / `Horde burgs` (default on, schema + model +
   imperative bindings), `.map` backfill of the new groups unconditionally and idempotently in `auto-update.ts`. Assistant context regenerated (`BurgRealm` type now includes both).
@@ -31,6 +31,7 @@ Implementation notes:
   they are `capital: 0`, never hub-adjacent anchors, never ports). Scenario test pins placement determinism per seed.
 - Phase 6 delivered: assistant ops exposed and layer-mapped (`march`, `unmarch`, `setMobility`, `setHeading`, `setDepartureYear`, `advanceMobile`, `pauseMobile`, `resumeMobile`); the `setMobility`/`march` pair on the model switches between pinned / drift / march (marching auto-picks a journey when none is assigned). Burg Editor: under the Hub row a Mobility row with Pinned/Drift/March icons (greyed when off, like other feature icons) plus a `Ride` select (populated from `pack.journeys`, shown only in march mode). Burgs Overview: Titan and Horde realm filter chips; the creator's realm selector gains Titan and Horde. Map commands `advanceMapYear`, `pauseAllMobiles`, `resumeAllMobiles` with aliases. Assistant `redraw.ts` redraws `burgIcons`/`labels` on any burg mobility field change and on `Lore` year changes.
 - Phase 7 delivered: `Burg.destination` (optional cell index the live wanderer walks toward; additive, persisted in `.map`, re-rolled each season until it lands). `Burgs.setMobility(id, "live")` clears journey/departedYear/pausedAt/destination and sets `mobile` + `mobility: "live"`. The Living World tick (`Living.tick`, 1 season = 1 tick) runs `stepMobileBurgs` after `stepRebellions`, before `stepEschaton`: no-op unless Living World mode is on. Each season a live burg whose realm can stand on `destination` is kept; otherwise one is picked from a seeded 48-cell shortlist (`rng("liveMobile", burgId)`; tick-seeded, so the pick is deterministic per season) — farthest standable cell wins (land for titans, hordes and underdark holds, waters for underwater, anywhere for sky). One greedy cell-graph hop per season toward it (neighbor with the smallest euclidean gap that also stands for the realm; hemmed-in burgs re-roll next season). Moves ride `Burgs.move` with a new `{ connect: false }` option so the map isn't littered with a fresh trail per cell; the road join happens once per wander, on arrival — like a marching burg docking. Arrival is chronicled (`deed` event with the burg as actor + `colonize` news entry, burg rests a season) and clears `destination`. All failures (blocked cell, no standable destination) swallowed to re-roll next season — the tick never dies. Burg Editor Mobility row gains a Live (`icon-compass`) toggle; icons carry `data-mobility="live"` with a green drop-shadow in `index.css`; `draw-burg-icons` emits the marker for `live`; `Burgs.setMobility` signature extended. 5 unit tests in `living-generator.test.ts` (one hop per season, realm ground rules, pinned/drift untouched, chronicled arrival + rest season, all-water titan no-op). Assistant context regenerated (`setMobility` type now `"pinned" | "drift" | "march" | "live"`).
+- Phase 8 delivered: titan trampling — the live-hop footfall cell loses 10 development (`max(0, dev-10)`), diffusion kept inert in tests (seeded research emptied and re-seeding blocked); march/drift titans don't trample (positions are derived; scrubbing years must not grind the land). The **halt** contract: `Burgs.isOnTheRoad(burg)` — true only while a march rides an unfinished journey (paused counts as halted, docked as halted) or a live burg has a live `destination` (resting/re-rolling counts as halted); pinned and drift always halted. The production turn (`produce()`) keys off it: no poll tax and no market day for a burg on the road, `product`/`production` zeroed; a halted burg is an ordinary burg again. **Carried stock** (`Burg.carried?: Record<goodId, units>`): at the first full economy run after departure the burg loads the pack — cheapest stocked staples first at `quoteMarket` door prices, spending its treasury (marked even when it can't load, so no re-buy mid-wander; an empty pack still sets `carried`); at the first run after the halt it discharges — sells at 90% door, leaving the goods in the market at no centre margin, gaining the revenue back. A marketless halt keeps the pack; pinning mid-wander discharges like any halt (the pin can't strand the goods). "Sells what it makes on the road" approximates to the departure load only — a wanderer makes nothing mid-road; the sheet shows it as `Carried stock` in the Burg Economy Overview. The horde's halt rule falls out for free: a halted horde is an ordinary burg (trades normally, pays poll tax), and on the road it sells nothing. Not shipped: the war-isle preferential arms/food buy (no war-isle realm exists). Assistant context unchanged (no signature change). 14 new tests across the three suites: 3 `isOnTheRoad`, titan footfall and underwater-swim, and 6 carried-stock cases (cheapest-first load, one load per departure, pauper rides empty, halt discharge, wilderness halt keeps the pack, pinned mid-wander discharges).
 
 ## Goal
 
@@ -85,6 +86,7 @@ backfill — `VERSION` stays upstream-owned):
 - `heading?: number` — degrees, for titan/horde icon rotation (degrees, 0 = up/north).
 - `pausedAt?: number` — lore year it halted (`march` stations the burg at a port like any other).
 - `destination?: number` — cell index a `live` wanderer walks toward (re-picked each season until it lands).
+- `carried?: Record<number, number>` — goods the mobile burg bought at the dock it left and discharges at the halt it reaches (set at the first economy run after departure; cleared at halt).
 
 Burg groups (new, zoom-gated like the realm minor holds):
 
@@ -180,10 +182,11 @@ are excluded from seating like realm burgs; `isSurfaceBurg` becomes
 
 ### Markets, trade & tax
 
-- A **docked** mobile burg trades at its cell's market and pays poll tax; it is ordinary in
+- A **halted** mobile burg trades at its cell's market and pays poll tax; it is ordinary in
   every way (markets never found *at* it, realm rules apply for non-surface classes);
-- A **moving** burg is outside the market grid: no `cells.market` membership, no poll tax, no
-  production sold; it carries stock and buys nothing until it docks;
+- A **moving** burg is outside the market grid: no poll tax, no production sold; it carries stock
+  (`Burg.carried` — bought cheapest-first at the dock it left) and buys nothing until docked;
+- `Burgs.isOnTheRoad(burg)` is the shipped halt test (march paused or docked, live at rest; pinned/drift always halted);
 - An island wharf (surface-class, at a port) docks and trades like a surface burg.
 
 ### Routes & integrity
@@ -289,10 +292,12 @@ are excluded from seating like realm burgs; `isSurfaceBurg` becomes
 - 5 unit tests (one hop per season, realm ground rules, pinned/drift untouched, chronicled arrival and rest season, all-water titan stays put)
 - no-op when Living World is disabled (the tick only runs under the Living World HUD)
 
-### Phase 8 — Mover economy rules
-- titan trampling (optional: local development −10 on footfall cells, drama!)
-- horde sells at markets on halt only; war-isle buys arms/food preferentially
-- carried stock model (buys supplies at departure, sells what it makes on the road)
+### Phase 8 — Mover economy rules ✅ done (2026-11-12)
+- titan trampling: the live-hop footfall cell scours 10 development (`max(0, dev − 10)`); march/drift don't trample (derived positions, scrub-unsafe)
+- a burg on the road (`Burgs.isOnTheRoad`) is outside the market grid: no poll tax, no production sold, `product`/`production` zeroed — a halted burg (paused, docked or resting) is ordinary in every way, which IS the horde's halt rule
+- carried stock (`Burg.carried`): bought cheapest-first at the dock it left (treasury spent through `quoteMarket` door prices), discharged at the halt (sells at the 90% door, no centre margin; a marketless halt keeps the pack)
+- the war-isle preferential arms/food buy: not shipped — no war-isle realm exists
+- trade carried through regeneration: `.map` persists `carried`; no backfill needed
 
 ### Phase 9 — Verification, tests & docs
 - unit suite: drift determinism, slot discipline, dock transitions, integrity, ETA math

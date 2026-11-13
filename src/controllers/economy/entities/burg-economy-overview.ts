@@ -636,6 +636,7 @@ function renderStats(burg: Burg): void {
       <span data-tip="${EconomyTerms.wealth()}"><b>${t("Wealth")}:</b> <span class="positive">${formatPrice(wealth)}</span></span>
     </div>
     <div data-tip="${t("Production: goods the burg made today, units a day")}"><b>${t("Production")}:</b> ${renderGoods(burg.production ?? []) || t("None")}</div>
+    ${renderCarriedStock(burg)}
     <div data-tip="${t("Consumption: goods the people bought or kept")}"><b>${t("Consumption")}:</b> ${renderGoods(consumption.flatMap((units, goodId) => (units ? [[goodId, units] as [number, number]] : []))) || t("None")}</div>
     ${living ? `<div class="oneLine" data-tip="${prosperityTip(living.prosperity)}"><b>${t("Prosperity")}:</b> ${renderProsperity(living.prosperity)}, ${renderProsperityParts(living)}</div>` : ""}
     <div class="columns">
@@ -721,6 +722,31 @@ function renderDemand(covered: number[], targets: number[]): string {
 }
 
 const SHOWN_GOODS = 8; // the rest are listed on hover
+
+/** The horde's hoard, listed like production but without the "per day" framing */
+function renderCarriedStock(burg: Burg): string {
+  const sorted = Object.entries(burg.carried ?? {})
+    .flatMap(([id, units]) => {
+      const good = Goods.get(+id);
+      return good && units >= 0.01 ? [{ good, amount: rn(units, 2) }] : [];
+    })
+    .sort((a, b) => b.amount * b.good.value - a.amount * a.good.value);
+  if (!sorted.length) return "";
+  const shown = sorted
+    .slice(0, SHOWN_GOODS)
+    .map(item => {
+      const describe = t("{{good}}: {{amount}} {{unit}}", {
+        good: item.good.name,
+        amount: item.amount,
+        unit: unitFor(item.amount, item.good.unit)
+      });
+      return `<span class="productionGood" data-tip="${describe}"><svg width="1.6em" height="1.6em">${goodBadge(item.good)}</svg>${item.amount}</span>`;
+    })
+    .join(" ");
+  const rest = sorted.slice(SHOWN_GOODS);
+  const listing = rest.length ? `${shown} +${t("{{count}} more", { count: rest.length })}` : shown;
+  return `<div data-tip="${t("Carried stock: goods the burg loaded when it set out; it discharges them wherever it halts")}"><b>${t("Carried stock")}:</b> ${listing}</div>`;
+}
 
 /** Goods as the goods layer's badges with units a day, the most valuable first */
 function renderGoods(goods: [goodId: number, units: number][]): string {
