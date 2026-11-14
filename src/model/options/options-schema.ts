@@ -1,6 +1,7 @@
 // All app configuration options, options.map saved to `.map` file as settings; docs/architecture/configuration.md
 
 import { z } from "zod";
+import { NETWORK_KINDS } from "@/data/astral-networks";
 import { CULTURE_SETS } from "@/data/culture-sets";
 import { MAX_DENSITY, MIN_DENSITY } from "@/data/graph-density";
 import { LANGUAGE_CODES } from "@/data/languages";
@@ -125,6 +126,41 @@ const eras = z.preprocess(
   z.array(z.strictObject({ level: z.number().int().min(1).max(100), name: z.string().min(1) }))
 );
 
+const networkNode = z.strictObject({
+  cell: count,
+  x: z.number(),
+  y: z.number(),
+  burg: count.optional()
+});
+
+const networkScope = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("any") }),
+  z.strictObject({ kind: z.literal("land") }),
+  z.strictObject({ kind: z.literal("burgs") }),
+  z.strictObject({ kind: z.literal("culture"), culture: count }),
+  z.strictObject({ kind: z.literal("state"), state: count })
+]);
+
+const network = z.strictObject({
+  i: count,
+  name: z.string().min(1),
+  kind: z.enum(NETWORK_KINDS),
+  scope: networkScope,
+  seed: z.string(),
+  target: count.min(1),
+  nodes: z.array(networkNode),
+  connect: z.boolean(),
+  trade: z.strictObject({ enabled: z.boolean(), friction: nonNegative })
+});
+
+/** a broken network is dropped on its own, so it never costs the map its other networks */
+const networks = z.preprocess(value => {
+  if (!Array.isArray(value)) return [];
+  const valid = value.filter(item => network.safeParse(item).success);
+  if (valid.length < value.length) log.warn(`Dropped ${value.length - valid.length} invalid network(s)`);
+  return valid;
+}, z.array(network));
+
 /** read at render time to build every feature outline */
 const coastlineSettings = z.strictObject({
   enabled: z.boolean(),
@@ -237,6 +273,7 @@ export const mapSchema = z.strictObject({
   military: z.strictObject({ units: z.array(militaryUnit) }),
   transports: z.array(transport),
   eras,
+  networks,
   customIcons,
   goods,
   coastline: coastlineSettings,
