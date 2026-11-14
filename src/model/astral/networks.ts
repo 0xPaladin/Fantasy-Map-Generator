@@ -88,7 +88,10 @@ class NetworksModule {
     // sample before touching the record, so a placement with no candidates changes nothing
     const nodes = nodesChanged ? this.sampleNodes({ ...network, scope, target, seed }) : network.nodes;
 
-    if (patch.name !== undefined) network.name = requireName(patch.name);
+    if (patch.name !== undefined) {
+      network.name = requireName(patch.name);
+      for (const route of this.routesOf(network.i)) route.name = network.name;
+    }
     if (patch.kind !== undefined) network.kind = requireOneOf(patch.kind, NETWORK_KINDS, "The network kind");
     if (patch.trade !== undefined) network.trade = tradeOf(patch.trade);
 

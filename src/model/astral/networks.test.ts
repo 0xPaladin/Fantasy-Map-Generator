@@ -183,6 +183,21 @@ describe("Networks.update", () => {
     expect(second.nodes).toEqual(secondNodes);
   });
 
+  test("renaming the network renames its links", () => {
+    const network = Networks.create({
+      name: "Old name",
+      kind: "relay",
+      scope: { kind: "land" },
+      target: 6,
+      connect: true,
+      seed: "seed-12"
+    });
+
+    Networks.update(network.i, { name: "New name" });
+
+    expect(Networks.routesOf(network.i).every(route => route.name === "New name")).toBe(true);
+  });
+
   test("a placement with no candidates throws and leaves the network alone", () => {
     const network = Networks.create({
       name: "Kept",

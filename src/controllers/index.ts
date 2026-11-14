@@ -7,6 +7,7 @@ export const Controllers = createRegistry(
     AstralMarkers: () => import("@/controllers/astral-markers").then(m => m.AstralMarkers),
     AstralMode: () => import("@/controllers/astral-mode").then(m => m.AstralMode),
     AstralNames: () => import("@/controllers/astral-names").then(m => m.AstralNames),
+    AstralNetworks: () => import("@/controllers/astral-networks").then(m => m.AstralNetworks),
     AstralSystemEditor: () => import("@/controllers/astral-system-editor").then(m => m.AstralSystemEditor),
     AstralSystems: () => import("@/controllers/astral-systems").then(m => m.AstralSystems),
     BattleScreen: () => import("@/controllers/political/military/battle-screen").then(m => m.BattleScreen),
