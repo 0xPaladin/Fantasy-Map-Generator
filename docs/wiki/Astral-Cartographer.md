@@ -279,6 +279,26 @@ the sector register and sets its anomaly icon in the record. The original text i
 divider, authored names survive, and applying it twice changes nothing the second time. It is
 one-way — the converted icon lives in the marker, so Standard view shows it too.
 
+### The networks
+
+**Networks** are the chart's other layer of infrastructure: wormhole mouths, hyperspace lanes and
+communication relays. They are not generated with the world — you place them: _Options_ → _Tools_ →
+**Network** opens the Networks tool.
+
+- Pick a **kind** (Wormhole, Hyperspace lane, Communication relay), a **name**, and a **placement**:
+  anywhere, land only, star systems only, or the cells of a chosen culture or state.
+- Ask for a **node count**. The tool spreads that many nodes evenly with Poisson-disc spacing over the
+  chosen region, so a network is never a random scatter.
+- **Connect with direct routes** builds a mesh between the nodes and adds every link to the Routes store.
+  A network's links are locked and drawn on the **Networks** layer, apart from ordinary hyperlanes.
+- **Trade** is per network: turn its links out of the economy, or set a **friction** multiplier on their
+  travel cost — a wormhole at `0.2` is a shortcut, a relay at `2` is a backwater.
+
+A node or link on the map opens the network editor; the manager lists every network with its kind,
+placement, node count and link count, and can locate, edit, regenerate or remove one. Removing a network
+removes its links from the Routes store too. Networks are saved in the `.map` settings block and the
+Networks button on the Layers tab toggles the whole overlay.
+
 ## Astral Military Forces
 
 Entering Astral view swaps `options.map.military.units`, polity tactical rosters, and generated regiments to a fleet-centric sci-fi military model (and restores the previous fantasy units, rosters, and regiments on exit):
@@ -292,7 +312,7 @@ Entering Astral view swaps `options.map.military.units`, polity tactical rosters
 
 _Options_ → _Layers_ → **View mode** → **Astral** turns the map into a star chart of one chosen
 sector. The fantasy layer buttons are replaced by the Astral list — Sector Dust, Nebulae, Star
-Density, Systems, Empires, Sectors, Borders, Hyperlanes, Anomalies and Labels — and the map takes the
+Density, Systems, Empires, Sectors, Borders, Hyperlanes, Networks, Anomalies and Labels — and the map takes the
 Astral style: the void becomes deep space, the land becomes a starry dust sheet, nebulae and a
 stellar-density heatmap appear, and every burg is drawn as a class-coloured star. There is no
 galactic core or spiral arm. Leaving the mode restores the previous layers and style.
@@ -329,6 +349,10 @@ As detailed in [`docs/plans/mod-merge-plan.md`](../plans/mod-merge-plan.md):
   concerns — with anomaly icons and a conversion action that rewrites legends and icons in state,
   keeping the original text. The design is in
   [`docs/plans/astral-anomalies.md`](../plans/astral-anomalies.md).
+- **Shipped (networks)**: the Networks tool places wormhole, hyperspace-lane and relay networks by
+  Poisson-disc spacing over land, systems, cultures or states, with optional direct routes in the
+  Routes store, per-network trade friction, and its own chart layer. The design is in
+  [`docs/plans/astral-networks.md`](../plans/astral-networks.md).
 - **Shipped (colonized solar system)**: the Crater primitive and the five planetary heightmap
   templates, the planetary archetypes with climate sync and the 13..27 exo-biomes, the
   `SolarSystem` multi-body registry with `switchBody` and the Sol preset, and the 3D orrery —

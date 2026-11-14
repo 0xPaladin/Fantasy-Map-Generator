@@ -1,3 +1,4 @@
+import type { NetworkTrade } from "@/data/astral-networks";
 import type { Point } from "@/model/graph/voronoi";
 import { FlatQueue } from "@/utils/flat-queue";
 
@@ -88,6 +89,17 @@ export class TradeRoutesModule {
     const isWaterRoute: boolean[] = [];
     for (const route of routes) isWaterRoute[route.i] = route.group === "searoutes";
 
+    // network trade is read once per graph: a disabled network is not in the economy at all
+    const networks = new Map(
+      (typeof options === "undefined" ? [] : (options.map?.networks ?? [])).map(network => [network.i, network.trade])
+    );
+    const networkTrade = new Map<number, NetworkTrade>();
+    for (const route of routes) {
+      if (route.networkId === undefined) continue;
+      const trade = networks.get(route.networkId);
+      if (trade) networkTrade.set(route.i, trade);
+    }
+
     const cellCount = cells.h.length;
     const offsets = new Int32Array(cellCount + 1);
     const targets: number[] = [];
@@ -99,10 +111,14 @@ export class TradeRoutesModule {
       if (!links) continue;
       const [x1, y1] = this.getCellPoint(cell);
       for (const next in links) {
-        const isWater = isWaterRoute[links[+next]] ?? false;
+        const routeId = links[+next];
+        const trade = networkTrade.get(routeId);
+        if (trade && !trade.enabled) continue;
+
+        const isWater = isWaterRoute[routeId] ?? false;
         const [x2, y2] = this.getCellPoint(+next);
         targets.push(+next);
-        costs.push(Math.hypot(x2 - x1, y2 - y1) * (isWater ? WATER_COST : 1));
+        costs.push(Math.hypot(x2 - x1, y2 - y1) * (isWater ? WATER_COST : 1) * (trade?.friction ?? 1));
         water.push(isWater ? 1 : 0);
       }
     }

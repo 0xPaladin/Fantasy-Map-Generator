@@ -26,6 +26,7 @@ class MapRepairService {
       ...this.repairCapitals(),
       ...this.repairProvinces(),
       ...this.repairRoutes(),
+      ...this.repairNetworks(),
       ...this.repairMarkers(),
       ...this.findMissingTransports()
     ];
@@ -225,6 +226,35 @@ class MapRepairService {
         repairs.push(`Route ${links[+to]} from ${from} to ${to} is missing. Removing the link`);
         delete links[+to];
       }
+    }
+
+    return repairs;
+  }
+
+  /** Drop nodes whose cell or burg is gone, and detach links whose network no longer exists */
+  private repairNetworks(): string[] {
+    const networks = typeof options === "undefined" ? undefined : options.map?.networks;
+    if (!networks?.length) return [];
+
+    const repairs: string[] = [];
+    const networkIds = new Set(networks.map(network => network.i));
+    const burgIds = new Set(pack.burgs.filter(burg => burg?.i && !burg.removed).map(burg => burg.i));
+
+    for (const network of networks) {
+      const nodes = network.nodes.filter(node => {
+        const validCell = node.cell >= 0 && node.cell < pack.cells.i.length;
+        const validBurg = node.burg === undefined || burgIds.has(node.burg);
+        if (validCell && validBurg) return true;
+        repairs.push(`Network ${network.i} node on cell ${node.cell} is invalid. Removing the node`);
+        return false;
+      });
+      network.nodes = nodes;
+    }
+
+    for (const route of pack.routes) {
+      if (route.networkId === undefined || networkIds.has(route.networkId)) continue;
+      repairs.push(`Route ${route.i} belongs to missing network ${route.networkId}. Making it an ordinary route`);
+      delete route.networkId;
     }
 
     return repairs;

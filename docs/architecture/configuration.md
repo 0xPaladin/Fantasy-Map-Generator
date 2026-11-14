@@ -155,6 +155,11 @@ They also keep old tuning across releases until the user restores the defaults. 
 in record 41, which `load.ts` moves to `options.map.goods`. Goods may be empty until `Goods.generate` restores the
 defaults.
 
+`options.map.networks` is the exception that is map state rather than a definition set: the placed network
+nodes describe this map, so `Options.randomize()` starts a new map with none. It travels in the settings block
+because the record layout has no free slot; the network's links are ordinary `pack.routes` entries carrying
+`networkId`. See [data-model.md](./data-model.md#networks).
+
 ### Locks
 
 A lock pins a value so a new map does not re-roll it. It stores **the value**, in a store of its

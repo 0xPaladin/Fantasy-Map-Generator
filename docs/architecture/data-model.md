@@ -459,6 +459,33 @@ Routes data is stored as an unordered array of objects (so element id is _not_ t
 - `name`: `string` - route name. Optional
 - `lock`: `boolean` - `true` if route is locked (not affected by regeneration). Optional
 - `note`: `string` - optional. The user's note (legend) about the route, as html. Removed with it
+- `networkId`: `number` - optional. The astral network the route belongs to; such a route draws on the
+  `networks` layer instead of the `routes` layer
+
+## Networks
+
+Astral networks are map state stored in `options.map.networks` (the settings block of the `.map` file),
+not in a record of their own. The placed nodes belong to the map, so a new map starts with an empty list.
+Where the trade rule of a network is on, its links are ordinary `pack.routes` entries and the economy reads
+them through `pack.cells.routes`.
+
+A network object has:
+
+- `i`: `number` - network id, 1 and up; removed ids are not reused in the session
+- `name`: `string` - the network's name, also copied onto its links
+- `kind`: `wormhole | hyperlane | relay` - the node glyph and the default style group
+- `scope`: the placement rule: `{ kind: "any" }`, `{ kind: "land" }`, `{ kind: "burgs" }`,
+  `{ kind: "culture", culture }` or `{ kind: "state", state }`
+- `seed`: `string` - the seed the nodes were sampled from
+- `target`: `number` - the requested node count; the actual count is `nodes.length`
+- `nodes`: `{ cell, x, y, burg? }[]` - the placed nodes; `burg` is set for burgs-only networks
+- `connect`: `boolean` - whether the network created direct routes
+- `trade`: `{ enabled: boolean, friction: number }` - whether its links join the economy, and the multiplier
+  on each link's travel cost (`1` is a normal route of the same length)
+
+Links are not referenced by id. `Route.networkId` is the link, so `Routes.regenerate` can renumber routes
+without breaking a network. Nodes are evenly spread by Poisson-disc selection over the scope's cells or
+burgs; see [astral-networks.md](../plans/astral-networks.md).
 
 ## Zones
 

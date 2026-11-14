@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TradeRoutesModule } from "./trade-routes";
 
 // five cells on a line, 10 units apart; cell 4 is a market center's burg
@@ -69,6 +69,31 @@ describe("TradeRoutes.search", () => {
     globalThis.pack = line({ 0: { 1: 0 }, 1: { 0: 0 } }, ["roads"]) as any;
     expect(tradeRoutes.search(0, 3).endState).toBe(-1);
   });
+
+  it("leaves a network out of the graph when its trade is off", () => {
+    globalThis.pack = line({ 0: { 1: 0 }, 1: { 0: 0, 2: 0 }, 2: { 1: 0 } }, ["roads"]) as any;
+    globalThis.pack.routes[0].networkId = 1;
+    globalThis.options = {
+      map: { networks: [{ i: 1, trade: { enabled: false, friction: 1 } }] }
+    } as never;
+
+    expect(tradeRoutes.search(0, 2).endState).toBe(-1);
+  });
+
+  it("multiplies a network link's cost by its friction", () => {
+    globalThis.pack = line({ 0: { 1: 0 }, 1: { 0: 0, 2: 0 }, 2: { 1: 0 } }, ["roads"]) as any;
+    globalThis.pack.routes[0].networkId = 1;
+    globalThis.options = {
+      map: { networks: [{ i: 1, trade: { enabled: true, friction: 0.5 } }] }
+    } as never;
+
+    const { search, endState } = tradeRoutes.search(0, 2);
+    expect(search.cost[endState]).toBe(10); // two 10-unit links at half cost
+  });
+});
+
+afterEach(() => {
+  delete (globalThis as { options?: unknown }).options;
 });
 
 describe("TradeRoutes.measure", () => {

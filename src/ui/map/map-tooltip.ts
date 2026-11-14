@@ -201,7 +201,7 @@ function getElementTip({ group, target, event, path, cellId }: TipContext): stri
     if (!network) return withHint();
     const kind = NETWORK_KIND_DEFINITIONS[network.kind].label;
     const label = target.closest(".links") ? t("{{kind}} link", { kind }) : t("{{kind}} network", { kind });
-    const nodes = t("{{count}} nodes", { count: network.nodes.length });
+    const nodes = t("{{nodes}} nodes", { nodes: network.nodes.length });
     return withHint(sentences(escapeHtml(network.name), label, nodes));
   }
 
