@@ -927,6 +927,49 @@ export const stylesSchema = z.strictObject({
       z.strictObject({ attrs: z.strictObject({ opacity, ...strokeGroup, filter, mask: clip }) })
     )
   }),
+  networks: z.strictObject({
+    groups: z.record(
+      z.string(),
+      z.strictObject({
+        attrs: z.strictObject({ opacity, ...fillGroup, ...strokeGroup, filter }),
+        options: z.strictObject({
+          size: number({
+            label: t("Node size"),
+            range: [0.2, 4],
+            step: 0.05,
+            effect: "draw",
+            tip: t("Set the network node size")
+          }),
+          linkColor: variant(solidColor(), {
+            label: t("Link color"),
+            group: t("Link"),
+            effect: "draw",
+            tip: t("Set the network link color")
+          }),
+          linkWidth: number({
+            label: t("Link width"),
+            range: [0, 5],
+            step: 0.05,
+            group: t("Link"),
+            effect: "draw",
+            tip: t("Set the network link width")
+          }),
+          linkOpacity: variant(opacity, {
+            label: t("Link opacity"),
+            group: t("Link"),
+            effect: "draw",
+            tip: t("Set the network link opacity")
+          }),
+          linkDash: variant(strokeDasharray, {
+            label: t("Link dash"),
+            group: t("Link"),
+            effect: "draw",
+            tip: t("Set the network link dash array, e.g. 5 2")
+          })
+        })
+      })
+    )
+  }),
   rulers: z.strictObject({
     attrs: meta(
       z.strictObject({

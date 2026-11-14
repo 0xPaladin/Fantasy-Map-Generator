@@ -117,6 +117,15 @@ export function openEditor(element: Element): boolean {
     return true;
   }
 
+  const network = target.closest<SVGElement>("#networks [data-network]");
+  if (network) {
+    const id = Number(network.dataset.network);
+    if (Number.isInteger(id)) {
+      Controllers.AstralNetworks.openEditor(id);
+      return true;
+    }
+  }
+
   const open = PARENT_EDITORS[parent.id] || GRAND_EDITORS[grand.id] || GREAT_EDITORS[great.id];
   open?.(target, parent);
   return Boolean(open);

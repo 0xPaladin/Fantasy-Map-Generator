@@ -1,5 +1,6 @@
 // Global layers registry: owns layers list, order, and svg skeleton
 import { drawDustDensity } from "@/renderers/astral/draw-dust-density";
+import { drawNetworks, removeNetworks } from "@/renderers/astral/draw-networks";
 import { drawStarDensity } from "@/renderers/astral/draw-star-density";
 import { drawSystems } from "@/renderers/astral/draw-systems";
 import { drawBiomes } from "@/renderers/draw-biomes";
@@ -394,6 +395,12 @@ const mapLayers = [
     parent: "viewbox",
     draw: drawRoutes,
     erase: removeRoutes
+  }),
+  new Layer({
+    id: "networks",
+    parent: "viewbox",
+    draw: drawNetworks,
+    erase: removeNetworks
   }),
   new Layer({ id: "temperature", parent: "viewbox", draw: drawTemperature }),
   new Layer({

@@ -12,6 +12,7 @@ export const ASTRAL_LAYER_TOGGLES = new Map<LayerId, LayerButton>([
   ["borders", { label: "<u>B</u>orders", shortcut: "KeyB" }],
   ["zones", { label: "<u>Z</u>ones", shortcut: "KeyZ" }],
   ["routes", { label: "<u>H</u>yperlanes", shortcut: "KeyH" }],
+  ["networks", { label: "Netw<u>o</u>rks", shortcut: "KeyO" }],
   ["goods", { label: "Cargo" }],
   ["markets", { label: "<u>M</u>arkets", shortcut: "KeyM" }],
   ["trade", { label: "<u>T</u>rade", shortcut: "KeyT" }],

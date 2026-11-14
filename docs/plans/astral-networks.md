@@ -211,22 +211,24 @@ Changing name or kind saves without resampling. Changing placement or node targe
 does it. The editor is positioned like the Route Editor (`left+10 top+10 of #map`) and shows the Networks
 layer.
 
-Clicking a node or a link on the map opens the same editor for that network through the generic click seam
-(`GREAT_EDITORS.networks`, resolving the id with `target.closest("[data-network]")` so the links/nodes
-nesting does not matter). The tooltip reads `name. Kind. N nodes. Click to edit` for nodes and
-`name. Kind link. Click to edit` for links.
+Clicking a node or a link on the map opens the same editor for that network: `openEditor` in
+`viewbox-events.ts` checks `target.closest("#networks [data-network]")` before its generic ancestor
+lookup, so the links/nodes nesting does not matter. The tooltip reads `name. Kind. N nodes. Click to edit`
+for nodes and `name. Kind link. Click to edit` for links.
 
 ## Layer and renderer
 
 New renderer `src/renderers/astral/draw-networks.ts`:
 
 - `ViewportLayers.register({ id: "networks", render })`, like the systems layer.
-- For every network, emit `<g id="network<i>" data-network="<i>">` with a links group then a nodes group.
+- For every network, emit `<g id="network<i>" data-network="<i>">` with one `data-group="<kind>"` wrapper
+  holding the links then the nodes, so the style store addresses a kind directly.
 - A link is `<path id="route<id>" d="<Routes.getPath(route)>">` plus a transparent wide hit path, drawn
-  from routes where `networkId === network.i`; it uses `styles.networks.groups[kind].links`.
-- A node is `<g data-node="<index>" data-cell="<cell>">`, with a ring and a glyph `<use>`; it uses
-  `styles.networks.groups[kind].nodes` and the kind glyph. Nodes are culled against the viewport bounds;
-  links are culled by their point bounds.
+  from routes where `networkId === network.i`; it uses the kind's `linkColor`, `linkWidth`, `linkOpacity`
+  and `linkDash` options.
+- A node is `<g data-node="<index>" data-cell="<cell>">`, with a ring and a glyph `<use>`; it uses the
+  kind's `attrs` and `size`. Nodes are culled against the viewport bounds; links are culled by their
+  point bounds.
 - `removeNetworks` clears the group. The layer's `font-size` follows a new `networks` zoom curve, modelled
   on `systems` (near natural), so glyph size tracks the chart.
 
@@ -237,20 +239,22 @@ Layer wiring:
 - `src/data/astral-layers.ts`: add `networks` to the `astral` and `systems` presets.
 - `src/data/astral-layer-labels.ts`: add `networks` with the label **Networks** and shortcut `KeyO`.
   Standard `LAYER_TOGGLES` is unchanged.
-- `src/model/styles/styles-schema.ts` + `default-styles.json` + `public/styles/astral.json` +
-  `public/styles/astralSchematic.json`: add a `networks` section:
+- `src/model/styles/styles-schema.ts` + `default-styles.json` + every `public/styles/*.json` preset:
+  add a `networks` section. One group per kind, flat, because the style store writes group `attrs`
+  directly onto the matching `[data-group]` element:
 
   ```ts
   networks: z.strictObject({
     groups: z.record(
       z.string(),
       z.strictObject({
-        nodes: z.strictObject({
-          attrs: z.strictObject({ opacity, ...fillGroup, ...strokeGroup, filter }),
-          options: z.strictObject({ size: number({ label: t("Size"), range: [0.2, 3], step: 0.05 }) })
-        }),
-        links: z.strictObject({
-          attrs: z.strictObject({ opacity, ...strokeGroup, filter })
+        attrs: z.strictObject({ opacity, ...fillGroup, ...strokeGroup, filter }),
+        options: z.strictObject({
+          size: number({ ... }),
+          linkColor: variant(solidColor(), { ... }),
+          linkWidth: number({ ... }),
+          linkOpacity: variant(opacity, { ... }),
+          linkDash: variant(strokeDasharray, { ... })
         })
       })
     )
@@ -261,9 +265,9 @@ Layer wiring:
 - `src/controllers/style/elements.ts`: add a `networks` group source, so the style editor lists the kinds and
   their counts.
 
-The `networks` route group in `styles.routes.groups` is a neutral dashed line, added to the defaults. Old
-maps get it through `Networks.ensureRouteGroup()` cloning `airroutes` (or the first route group), because
-`Routes.create` requires a known group.
+The `networks` route group in `styles.routes.groups` is a neutral dashed line, added to the defaults and
+every preset. Old maps get it through `Networks.ensureRouteGroup()` cloning `airroutes` (or the first route
+group), because `Routes.create` requires a known group.
 
 ## Routes integration
 
@@ -321,14 +325,13 @@ src/renderers/layers.ts                      networks layer
 src/renderers/viewport/viewport.ts           networks zoom curve
 src/model/styles/styles-schema.ts            networks style section
 src/model/styles/default-styles.json         networks defaults + routes.groups.networks
-public/styles/astral.json                    networks section
-public/styles/astralSchematic.json           networks section
+public/styles/*.json                        networks section
 src/data/astral-layers.ts                    astral/systems presets
 src/data/astral-layer-labels.ts              Networks button
 src/app/chrome/tabs/tools-tab.ts             Add → Networks
 src/app/map-commands.ts                      addNetwork command
 src/controllers/index.ts                     AstralNetworks registry entry
-src/ui/map/viewbox-events.ts                 GREAT_EDITORS.networks
+src/ui/map/viewbox-events.ts                 network click seam
 src/ui/map/map-tooltip.ts                    network node/link tip
 src/controllers/economy/routes/route-editor.ts    redirect network routes
 src/controllers/economy/routes/routes-overview.ts redraw networks on removal

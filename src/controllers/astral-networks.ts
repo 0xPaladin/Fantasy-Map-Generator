@@ -75,7 +75,7 @@ const networksTable = initEditorTable<Network>({
 function open(): void {
   if (options.app.mode) return;
   Dialog.closeAll(`#${dialogId}, .stable`);
-  Layers.show("routes");
+  Layers.show("networks", "routes");
 
   renderDialog();
   networksTable.reset();
@@ -211,7 +211,7 @@ function openEditor(id?: number): void {
 
   editingId = id ?? null;
   Dialog.closeAll(`#${editorId}`);
-  Layers.show("routes");
+  Layers.show("networks", "routes");
 
   renderEditor();
   Dialog.open(editorId, {
