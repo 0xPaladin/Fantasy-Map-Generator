@@ -1,4 +1,5 @@
 import { quadtree, sum } from "d3";
+import { POST_SCARCITY_DEVELOPMENT } from "@/data/development";
 import type { ResolvedRoster, UnitType } from "@/data/roster-content";
 import { currentContent } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
@@ -6,6 +7,7 @@ import { Goods } from "@/model/economy/goods-generator";
 import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import { stateEconomyModifiers } from "@/model/physical/living-rulers";
+import { classifyAstralRegime } from "@/model/society/development-generator";
 import type { ArmyBlock } from "@/types/battle";
 import type { MilitaryUnit } from "@/types/military";
 import { nth } from "@/utils/language-utils";
@@ -13,6 +15,7 @@ import { minmax, rn, si } from "@/utils/number-utils";
 import { gauss, ra, rand } from "@/utils/probability-utils";
 import { findAllInQuadtree } from "@/utils/quadtree";
 import { requireName } from "@/utils/validation-utils";
+import { ASTRAL_FLEET_UNIT_NAMES, isAstralMilitaryUnits } from "./military-units";
 import { levies, type State } from "./states-generator";
 
 export const UPKEEP_COST = 20; // military spending a day that keeps troops of power 1, a population point's worth
@@ -158,7 +161,35 @@ export function reconcileRegimentBlocks(regiment: Regiment, unitTypes: Record<st
   syncRegimentTotals(regiment, unitTypes);
 }
 
-type RosterUnitCategory = "melee" | "ranged" | "mounted" | "machinery" | "naval" | "spellcaster" | "monster";
+type RosterUnitCategory =
+  | "melee"
+  | "ranged"
+  | "mounted"
+  | "machinery"
+  | "armored"
+  | "naval"
+  | "spellcaster"
+  | "monster";
+
+function astralTechPowerMultiplier(dev: number): number {
+  if (dev >= POST_SCARCITY_DEVELOPMENT) return 2.0;
+  if (dev >= 78) return 1.5;
+  if (dev >= 54) return 1.25;
+  if (dev >= 34) return 1.0;
+  if (dev >= 24) return 0.85;
+  return 0.6;
+}
+
+function isAstralUnitAllowed(unit: MilitaryUnit, dev: number, isBurg: boolean, isCapitalOrPort: boolean): boolean {
+  if (ASTRAL_FLEET_UNIT_NAMES.has(unit.name) || unit.type === "naval") {
+    if (dev < 34) return false;
+    if (unit.name === "strike_wings") return true;
+    if (dev < 54) return false;
+    if (unit.name === "capital_ships") return dev >= 78 || (isBurg && isCapitalOrPort);
+    return true;
+  }
+  return true;
+}
 
 function selectRosterUnitForCategory(
   category: RosterUnitCategory,
@@ -166,7 +197,8 @@ function selectRosterUnitForCategory(
   isUrban: boolean,
   isCapital: boolean,
   walls = 0,
-  hasTemple = false
+  hasTemple = false,
+  options?: { isThrall?: boolean; astralHighTech?: boolean }
 ): string {
   if (category === "naval") return "fleet";
   if (!roster) {
@@ -174,9 +206,15 @@ function selectRosterUnitForCategory(
     if (category === "ranged") return "archers";
     if (category === "mounted") return "cavalry";
     if (category === "machinery") return "artillery";
+    if (category === "armored") return "infantry";
     if (category === "spellcaster") return "archers";
     if (category === "monster") return "infantry";
     return "infantry";
+  }
+
+  if (options?.isThrall) {
+    if (category === "melee" && roster.garrison?.melee) return roster.garrison.melee;
+    if (category === "ranged" && roster.garrison?.ranged) return roster.garrison.ranged;
   }
 
   const map = roster.regimentMap;
@@ -190,10 +228,10 @@ function selectRosterUnitForCategory(
     if (caster) return caster.id;
     return coreRanged;
   }
-  if (category === "monster") {
+  if (category === "monster" || category === "armored") {
     const monster = Object.values(roster.units).find(u => u.category === "monster");
     if (monster) return monster.id;
-    return coreMelee;
+    return category === "armored" ? coreArtillery : coreMelee;
   }
 
   if (!isUrban) {
@@ -204,6 +242,7 @@ function selectRosterUnitForCategory(
   }
 
   // In burgs: allow elite / secondary / spellcaster / monster units
+  const specialistChance = options?.astralHighTech ? 0.45 : 0.25;
   if (category === "melee") {
     if (roster.id === "commonBase" && isCapital && walls >= 2 && roster.units.balbenGuard) return "balbenGuard";
     if (roster.id === "dwarfBase" && walls >= 2 && roster.units.dwarf_slayer && Math.random() < 0.4)
@@ -215,11 +254,11 @@ function selectRosterUnitForCategory(
     // Capitals and temple burgs can spawn spellcasters or monsters if available in roster
     if (isCapital || hasTemple) {
       const caster = Object.values(roster.units).find(u => u.category === "spellcaster");
-      if (caster && Math.random() < 0.25) return caster.id;
+      if (caster && Math.random() < specialistChance) return caster.id;
     }
     if (isCapital || walls >= 2) {
       const monster = Object.values(roster.units).find(u => u.category === "monster");
-      if (monster && Math.random() < 0.25) return monster.id;
+      if (monster && Math.random() < specialistChance) return monster.id;
     }
     return coreMelee;
   }
@@ -227,7 +266,7 @@ function selectRosterUnitForCategory(
   if (category === "ranged") {
     if (isCapital || hasTemple) {
       const caster = Object.values(roster.units).find(u => u.category === "spellcaster");
-      if (caster && Math.random() < 0.2) return caster.id;
+      if (caster && Math.random() < (options?.astralHighTech ? 0.35 : 0.2)) return caster.id;
     }
     return coreRanged;
   }
@@ -409,16 +448,23 @@ class MilitaryModule {
       }
     };
 
+    const astralMode = isAstralMilitaryUnits(options.map.military?.units);
     // per state: the unit modifiers and the platoons that merge into its regiments
     const drafts = new Map<
       number,
-      { modifiers: Record<string, number>; platoons: Platoon[]; roster: ResolvedRoster | undefined }
+      {
+        modifiers: Record<string, number>;
+        platoons: Platoon[];
+        roster: ResolvedRoster | undefined;
+        regime: string | null;
+      }
     >();
     valid.forEach(s => {
       const draft = {
         modifiers: {} as Record<string, number>,
         platoons: [] as Platoon[],
-        roster: this.getRoster(s)
+        roster: this.getRoster(s),
+        regime: astralMode ? classifyAstralRegime(pack.cultures?.[s.culture ?? 0]) : null
       };
       drafts.set(s.i, draft);
       const d = s.diplomacy!;
@@ -485,12 +531,23 @@ class MilitaryModule {
       if (cells.f[i] !== cells.f[stateObj.center])
         modifier = stateObj.type === "Naval" ? modifier / 1.2 : modifier / 1.8; // different landmass
       const type = getType(i);
+      const cellDev = cells.development?.[i] ?? 0;
+      const isThrallCell =
+        astralMode && (draft.regime === "ancientBimodal" || draft.regime === "xothianScourge") && cellDev <= 32;
+      if (astralMode) {
+        if (isThrallCell) modifier *= 1.3;
+        else if (draft.regime === "postScarcity" || cellDev >= POST_SCARCITY_DEVELOPMENT) modifier *= 0.65;
+      }
 
       for (const unit of options.map.military.units) {
         const perc = +unit.rural;
         if (Number.isNaN(perc) || perc <= 0 || !draft.modifiers[unit.name]) continue;
         if (!passUnitLimits(unit, biome, state, culture, religion)) continue;
-        if (unit.type === "naval" && !cells.haven[i]) continue; // only near-ocean cells create naval units
+        if (astralMode) {
+          if (!isAstralUnitAllowed(unit, cellDev, false, false)) continue;
+        } else if (unit.type === "naval" && !cells.haven[i]) {
+          continue; // only near-ocean cells create naval units in standard mode
+        }
 
         const cellTypeMod =
           type === "generic"
@@ -505,10 +562,11 @@ class MilitaryModule {
         let [x, y] = p[i];
         let n = 0;
 
-        // place naval units to sea
-        if (unit.type === "naval") {
+        // place naval/fleet units to sea or orbital anchorage
+        const isFleet = unit.type === "naval" || (astralMode && ASTRAL_FLEET_UNIT_NAMES.has(unit.name));
+        if (isFleet) {
           const haven = cells.haven[i];
-          [x, y] = p[haven];
+          if (unit.type === "naval" && haven) [x, y] = p[haven];
           n = 1;
         }
 
@@ -517,7 +575,9 @@ class MilitaryModule {
           draft.roster,
           false,
           false,
-          0
+          0,
+          false,
+          { isThrall: isThrallCell }
         );
 
         draft.platoons.push({
@@ -553,12 +613,20 @@ class MilitaryModule {
       if (religion !== cells.religion[stateObj.center]) m = stateObj.form === "Theocracy" ? m / 2.2 : m / 1.4; // non-dominant religion
       if (cells.f[b.cell] !== cells.f[stateObj.center]) m = stateObj.type === "Naval" ? m / 1.2 : m / 1.8; // different landmass
       const type = getType(b.cell);
+      const cellDev = cells.development?.[b.cell] ?? 0;
+      if (astralMode && (draft.regime === "postScarcity" || cellDev >= POST_SCARCITY_DEVELOPMENT)) {
+        m *= 0.65;
+      }
 
       for (const unit of options.map.military.units) {
         const perc = +unit.urban;
         if (Number.isNaN(perc) || perc <= 0 || !draft.modifiers[unit.name]) continue;
         if (!passUnitLimits(unit, biome, state, culture!, religion)) continue;
-        if (unit.type === "naval" && (!b.port || !cells.haven[b.cell])) continue; // only ports create naval units
+        if (astralMode) {
+          if (!isAstralUnitAllowed(unit, cellDev, true, Boolean(b.capital || b.port))) continue;
+        } else if (unit.type === "naval" && (!b.port || !cells.haven[b.cell])) {
+          continue; // only ports create naval units in standard mode
+        }
 
         const mod =
           type === "generic"
@@ -573,10 +641,11 @@ class MilitaryModule {
         let [x, y] = p[b.cell];
         let n = 0;
 
-        // place naval to sea
-        if (unit.type === "naval") {
+        // place naval/fleet units to sea or orbital anchorage
+        const isFleet = unit.type === "naval" || (astralMode && ASTRAL_FLEET_UNIT_NAMES.has(unit.name));
+        if (isFleet) {
           const haven = cells.haven[b.cell];
-          [x, y] = p[haven];
+          if (unit.type === "naval" && haven) [x, y] = p[haven];
           n = 1;
         }
 
@@ -586,7 +655,8 @@ class MilitaryModule {
           true,
           Boolean(b.capital),
           b.walls || 0,
-          Boolean(b.temple)
+          Boolean(b.temple),
+          { astralHighTech: astralMode && cellDev >= 78 }
         );
 
         draft.platoons.push({
@@ -695,6 +765,7 @@ class MilitaryModule {
 
       const surviving = nodes.filter(n => n.t).sort((a, b) => b.t - a.t);
       const landCount = surviving.filter(n => !n.n).length;
+      const fleetCount = surviving.filter(n => n.n).length;
       let landIdx = 0;
       let fleetIdx = 0;
 
@@ -726,17 +797,20 @@ class MilitaryModule {
             );
             if (portBurg) havenCell = cells.haven[portBurg.cell];
           }
-          if (havenCell) {
+          if (havenCell && u.fleet) {
             regCell = havenCell;
             regBx = p[havenCell][0];
             regBy = p[havenCell][1];
+            regX = rn(regBx + fleetIdx * 6, 2);
+            regY = rn(regBy + fleetIdx * 6, 2);
           } else {
             regCell = r.cell;
             regBx = r.x;
             regBy = r.y;
+            const angle = (fleetIdx * (2 * Math.PI)) / Math.max(fleetCount, 1);
+            regX = rn(regBx + Math.cos(angle) * 10, 2);
+            regY = rn(regBy + Math.sin(angle) * 10, 2);
           }
-          regX = rn(regBx + fleetIdx * 6, 2);
-          regY = rn(regBy + fleetIdx * 6, 2);
           fleetIdx++;
         }
 
@@ -909,7 +983,24 @@ class MilitaryModule {
         reg => reg.n === r.n && (reg.province ?? cells.province?.[reg.cell] ?? 0) === provId && reg.i < r.i
       ).length + 1
     );
-    const form = r.n ? "Fleet" : "Regiment";
+    let form = r.n ? "Fleet" : "Regiment";
+    if (isAstralMilitaryUnits(options.map.military?.units)) {
+      if (r.n) {
+        const sorted = Object.entries(r.u ?? {}).sort((a, b) => b[1] - a[1]);
+        const mainCat = sorted.length ? this.getCategory(sorted[0][0]) : "naval";
+        if (mainCat === "monster") form = "Capital Armada";
+        else if (mainCat === "artillery") form = "Cruiser Squadron";
+        else if (mainCat === "cavalry") form = "Strike Flotilla";
+        else form = "Void Fleet";
+      } else {
+        const state = pack.states?.[r.state];
+        const regime = state ? classifyAstralRegime(pack.cultures?.[state.culture ?? 0]) : "standardSciFi";
+        if (regime === "postScarcity") form = "Sentinel Cohort";
+        else if (regime === "ancientBimodal") form = "Thrall Legion";
+        else if (regime === "xothianScourge") form = "Brood-Host";
+        else form = "Defense Garrison";
+      }
+    }
     return `${number}${proper ? ` (${proper}) ` : ` `}${form}`;
   }
 
@@ -921,6 +1012,12 @@ class MilitaryModule {
   /** Share of each unit's conscripts what the state consumes of its goods equips; 1 with no goods or before the run */
   getEquipped(stateId: number, demand: Record<string, number>): Record<string, number> {
     const units = options.map.military.units;
+    const state = pack.states?.[stateId];
+    const isPostScarcity =
+      isAstralMilitaryUnits(units) &&
+      state &&
+      ((pack.cells?.development?.[state.center] ?? 0) >= POST_SCARCITY_DEVELOPMENT ||
+        classifyAstralRegime(pack.cultures?.[state.culture ?? 0]) === "postScarcity");
     const consumed = Accounts.getConsumption(stateId);
     const goodsOf = (unit: MilitaryUnit) => (unit.goods ?? []).flatMap(goodId => Goods.get(goodId) ?? []);
     const needing = (goodId: number) => sum(units, unit => (unit.goods?.includes(goodId) ? demand[unit.name] || 0 : 0));
@@ -929,7 +1026,7 @@ class MilitaryModule {
     for (const unit of units) {
       const troops = demand[unit.name] || 0;
       const goods = goodsOf(unit);
-      if (!troops || !goods.length || !pack.deals?.length) {
+      if (isPostScarcity || !troops || !goods.length || !pack.deals?.length) {
         equipped[unit.name] = 1;
         continue;
       }
@@ -1006,7 +1103,32 @@ class MilitaryModule {
   /** Unit power over the regiment's headcount, read as population points the way the budget counts */
   private getTroopsPower(regiment: Regiment): number {
     const scale = options.map.units.population.scale || 1;
-    return sum(options.map.military.units, unit => ((regiment.u[unit.name] || 0) / scale) * (+unit.power || 0));
+    const units = options.map.military.units;
+    const astralMode = isAstralMilitaryUnits(units);
+    const techMult = astralMode ? astralTechPowerMultiplier(pack.cells?.development?.[regiment.cell] ?? 54) : 1;
+
+    return (
+      sum(Object.entries(regiment.u ?? {}), ([unitKey, count]) => {
+        if (!count) return 0;
+        let matched = units.find(u => u.name === unitKey);
+        if (!matched) {
+          const cat = this.getCategory(unitKey);
+          matched = units.find(u => {
+            if (cat === "spellcaster")
+              return u.type === "magical" || u.name === "spellcasters" || u.type === "ranged" || u.name === "archers";
+            if (cat === "monster")
+              return u.type === "armored" || u.name === "monsters" || u.type === "melee" || u.name === "infantry";
+            if (cat === "melee") return u.type === "melee" || u.name === "infantry";
+            if (cat === "ranged") return u.type === "ranged" || u.name === "archers";
+            if (cat === "cavalry") return u.type === "mounted" || u.name === "cavalry";
+            if (cat === "artillery") return u.type === "machinery" || u.name === "artillery";
+            if (cat === "naval") return u.type === "naval" || u.name === "fleet";
+            return false;
+          });
+        }
+        return (count / scale) * (+(matched?.power ?? 1) || 0);
+      }) * techMult
+    );
   }
 
   // utilize si function to make regiment total text fit regiment box
@@ -1026,23 +1148,24 @@ class MilitaryModule {
           : prov
             ? prov.fullName
             : null;
-    const station = base ? `${r.name} is ${r.n ? "based" : "stationed"} in ${base}. ` : "";
+    const isAstral = isAstralMilitaryUnits(options.map.military?.units);
+    const station = base ? `${r.name} is ${r.n ? (isAstral ? "docked at" : "based") : "stationed"} in ${base}. ` : "";
 
     const composition = r.a
       ? Object.keys(r.u)
           .map(t => `— ${t}: ${r.u[t as keyof typeof r.u]}`)
           .join("\r\n")
       : null;
-    const troops = composition
-      ? `\r\n\r\nRegiment composition in ${options.map.lore.calendar.year} ${options.map.lore.calendar.eraShort}:\r\n${composition}.`
-      : "";
+    const cal = options.map.lore?.calendar ?? { year: 1000, era: "AE", eraShort: "AE" };
+    const label = isAstral && r.n ? "Fleet" : "Regiment";
+    const troops = composition ? `\r\n\r\n${label} composition in ${cal.year} ${cal.eraShort}:\r\n${composition}.` : "";
 
     const campaign = s.campaigns ? ra(s.campaigns) : null;
     const year = campaign
-      ? rand(campaign.start, campaign.end || options.map.lore.calendar.year)
-      : gauss(options.map.lore.calendar.year - 100, 150, 1, options.map.lore.calendar.year - 6);
+      ? rand(campaign.start, campaign.end || cal.year)
+      : gauss(cal.year - 100, 150, 1, cal.year - 6);
     const conflict = campaign ? ` during the ${campaign.name}` : "";
-    r.note = `Regiment was formed in ${year} ${options.map.lore.calendar.era}${conflict}. ${station}${troops}`;
+    r.note = `${label} was ${isAstral && r.n ? "commissioned" : "formed"} in ${year} ${cal.era}${conflict}. ${station}${troops}`;
   }
 
   /** Rename a regiment, addressed by its state and its own id */
@@ -1228,6 +1351,7 @@ class MilitaryModule {
   // get default regiment emblem
   getEmblem(r: Regiment) {
     if (!r.n && !Object.values(r.u).length) return Icons.glyph("🔰"); // "Newbie" regiment without troops
+    const astralMode = isAstralMilitaryUnits(options.map.military?.units);
     if (
       !r.n &&
       pack.states[r.state]?.form === "Monarchy" &&
@@ -1237,10 +1361,16 @@ class MilitaryModule {
       return Icons.glyph("👑"); // "Royal" regiment based in capital
     const sorted = Object.entries(r.u).sort((a, b) => b[1] - a[1]);
     const mainUnit = sorted.length > 0 ? sorted[0][0] : undefined;
-    if (!mainUnit) return Icons.glyph(r.n ? "🌊" : "⚔️");
+    if (!mainUnit) return Icons.glyph(r.n ? (astralMode ? "🚀" : "🌊") : "⚔️");
     const unit = options.map.military.units.find((u: { name: string; icon: string }) => u.name === mainUnit);
     if (unit) return unit.icon;
     const cat = this.getCategory(mainUnit);
+    if (astralMode && r.n) {
+      if (cat === "monster") return Icons.glyph("🪐");
+      if (cat === "artillery") return Icons.glyph("🛰️");
+      if (cat === "cavalry") return Icons.glyph("🛸");
+      return Icons.glyph("🚀");
+    }
     if (cat === "spellcaster") return Icons.glyph("🔮");
     if (cat === "monster") return Icons.glyph("🐉");
     if (cat === "cavalry") return Icons.glyph("🐴");

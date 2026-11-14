@@ -134,4 +134,39 @@ describe("CharactersEditor", () => {
     expect(rows[0]).toHaveLength(CHARACTER_CSV_COLUMNS.length);
     expect(rows[0]?.[1]).toBe("Bran the Bold");
   });
+
+  it("regenerates virtues and vices from the selected alignment", () => {
+    const character = Characters.add({
+      name: "Bran",
+      culture: 1,
+      birth: 950,
+      alignment: "lawful",
+      virtues: ["just"],
+      vices: ["proud"],
+      manual: true
+    });
+    openCharacterDetails(character.i);
+
+    const alignmentSelect = document.querySelector<HTMLSelectElement>("#characterAlignment")!;
+    alignmentSelect.value = "good";
+    document.querySelector<HTMLButtonElement>("#regenerateCharacterTraitsButton")!.click();
+
+    const virtues = document
+      .querySelector<HTMLInputElement>("#characterVirtues")!
+      .value.split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+    const vices = document
+      .querySelector<HTMLInputElement>("#characterVices")!
+      .value.split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+    expect(virtues).toHaveLength(3);
+    expect(vices).toHaveLength(0);
+
+    alignmentSelect.value = "";
+    document.querySelector<HTMLButtonElement>("#regenerateCharacterTraitsButton")!.click();
+    expect(document.querySelector<HTMLInputElement>("#characterVirtues")!.value).toBe("");
+    expect(document.querySelector<HTMLInputElement>("#characterVices")!.value).toBe("");
+  });
 });

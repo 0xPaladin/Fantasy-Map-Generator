@@ -1,0 +1,131 @@
+{
+  "id": "scifiFederationBase",
+  "name": "Starfleet & Collective Accord",
+  "roster": {
+    "id": "scifiFederationBase",
+    "units": {
+      "boarding_marines": {
+        "name": "Zero-G Boarding Marines",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 10,
+        "defense": 12,
+        "charge": 5,
+        "missile": 0,
+        "cost": 16,
+        "upkeep": 0.13,
+        "capacityCost": { "m": 2, "w": 2, "s": 0, "c": 0 }
+      },
+      "tidal_guard": {
+        "name": "Ghatakara Hydro-Rifle & Peacekeeper Guard",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 5,
+        "defense": 10,
+        "charge": 2,
+        "missile": 15,
+        "cost": 18,
+        "upkeep": 0.14,
+        "capacityCost": { "m": 2, "w": 2, "s": 1, "c": 0 }
+      },
+      "crimson_corvettes": {
+        "name": "Crimson Concord Strike Corvettes",
+        "category": "cavalry",
+        "quantity": 24,
+        "attack": 12,
+        "defense": 11,
+        "charge": 14,
+        "missile": 10,
+        "cost": 30,
+        "upkeep": 0.24,
+        "capacityCost": { "m": 2, "w": 3, "s": 1, "c": 0 }
+      },
+      "explorer_cruisers": {
+        "name": "Collective Peacekeeper Cruisers",
+        "category": "artillery",
+        "quantity": 12,
+        "attack": 8,
+        "defense": 12,
+        "charge": 2,
+        "missile": 18,
+        "cost": 40,
+        "upkeep": 0.32,
+        "capacityCost": { "m": 2, "w": 4, "s": 1, "c": 0 },
+        "powers": { "ward": 0.08 }
+      },
+      "concord_fleet_bastion": {
+        "name": "Concordia Diplomatic Carrier Bastion",
+        "category": "monster",
+        "quantity": 4,
+        "attack": 14,
+        "defense": 18,
+        "charge": 6,
+        "missile": 16,
+        "cost": 56,
+        "upkeep": 0.45,
+        "capacityCost": { "m": 3, "w": 5, "s": 2, "c": 0 },
+        "powers": { "ward": 0.12, "heal": 8 }
+      },
+      "khemari_psionic_web": {
+        "name": "Khemari Psionic Web Navigators",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 4,
+        "defense": 8,
+        "charge": 1,
+        "missile": 14,
+        "cost": 36,
+        "upkeep": 0.29,
+        "capacityCost": { "m": 1, "w": 2, "s": 4, "c": 1 },
+        "powers": { "ward": 0.1, "heal": 10 }
+      },
+      "planetary_sec": {
+        "name": "Planetary Security Enforcers",
+        "category": "melee",
+        "quantity": 140,
+        "attack": 5,
+        "defense": 8,
+        "charge": 2,
+        "missile": 0,
+        "cost": 6,
+        "upkeep": 0.04,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      },
+      "peacekeeper_carbines": {
+        "name": "Collective Stun-Carbine Peacekeepers",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 3,
+        "defense": 5,
+        "charge": 1,
+        "missile": 9,
+        "cost": 6,
+        "upkeep": 0.04,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      }
+    },
+    "recruitable": [
+      "boarding_marines",
+      "tidal_guard",
+      "crimson_corvettes",
+      "explorer_cruisers",
+      "concord_fleet_bastion",
+      "khemari_psionic_web"
+    ],
+    "garrison": { "melee": "planetary_sec", "ranged": "peacekeeper_carbines" },
+    "regimentMap": {
+      "infantry": "boarding_marines",
+      "archers": "tidal_guard",
+      "cavalry": "crimson_corvettes",
+      "artillery": "explorer_cruisers"
+    },
+    "caps": {
+      "crimson_corvettes": 4,
+      "explorer_cruisers": 3,
+      "concord_fleet_bastion": 2,
+      "khemari_psionic_web": 2
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

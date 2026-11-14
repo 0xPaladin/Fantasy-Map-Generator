@@ -1,0 +1,137 @@
+{
+  "id": "verseCelestialBase",
+  "name": "Celestial Accord & Capital Armada",
+  "roster": {
+    "id": "verseCelestialBase",
+    "units": {
+      "aurumite_archons": {
+        "name": "Archon of the Sword Aurumite Phalanx",
+        "category": "melee",
+        "quantity": 80,
+        "attack": 16,
+        "defense": 18,
+        "charge": 9,
+        "missile": 0,
+        "cost": 30,
+        "upkeep": 0.24,
+        "capacityCost": { "m": 2, "w": 3, "s": 2, "c": 0 },
+        "powers": { "ward": 0.1 },
+        "resistArcane": 0.25
+      },
+      "solari_phase_guard": {
+        "name": "Solari Phase-Lance & Singularity Cohort",
+        "category": "ranged",
+        "quantity": 80,
+        "attack": 8,
+        "defense": 14,
+        "charge": 3,
+        "missile": 18,
+        "cost": 28,
+        "upkeep": 0.22,
+        "capacityCost": { "m": 2, "w": 3, "s": 2, "c": 0 },
+        "powers": { "ward": 0.08 }
+      },
+      "elysian_storm_corsairs": {
+        "name": "Elysian Storm-Corsairs & Archon War Skiffs",
+        "category": "cavalry",
+        "quantity": 20,
+        "attack": 15,
+        "defense": 13,
+        "charge": 17,
+        "missile": 14,
+        "cost": 36,
+        "upkeep": 0.29,
+        "capacityCost": { "m": 2, "w": 3, "s": 2, "c": 0 },
+        "powers": { "ward": 0.08 }
+      },
+      "solari_luminary_cruisers": {
+        "name": "Solari Luminary Peacekeeper Cruisers",
+        "category": "artillery",
+        "quantity": 10,
+        "attack": 12,
+        "defense": 16,
+        "charge": 4,
+        "missile": 20,
+        "cost": 48,
+        "upkeep": 0.38,
+        "capacityCost": { "m": 2, "w": 4, "s": 3, "c": 0 },
+        "powers": { "ward": 0.12, "arcaneSiege": 1 }
+      },
+      "celestial_capital_hull": {
+        "name": "Archon Crusade Bastion & Solari Dawn-Citadel",
+        "category": "monster",
+        "quantity": 2,
+        "attack": 20,
+        "defense": 22,
+        "charge": 12,
+        "missile": 20,
+        "cost": 72,
+        "upkeep": 0.58,
+        "capacityCost": { "m": 3, "w": 5, "s": 4, "c": 0 },
+        "powers": { "ward": 0.16, "heal": 10, "terror": 0.08 },
+        "resistArcane": 0.3
+      },
+      "archilect_shipminds": {
+        "name": "Archilect Master Shipminds & Domain Weavers",
+        "category": "spellcaster",
+        "quantity": 12,
+        "attack": 6,
+        "defense": 12,
+        "charge": 2,
+        "missile": 18,
+        "cost": 46,
+        "upkeep": 0.37,
+        "capacityCost": { "m": 1, "w": 2, "s": 5, "c": 1 },
+        "powers": { "ward": 0.16, "heal": 14, "hex": 0.06 },
+        "resistArcane": 0.25
+      },
+      "sentinel_drones": {
+        "name": "Autonomous Haven Sentinel Drones",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 7,
+        "defense": 10,
+        "charge": 3,
+        "missile": 0,
+        "cost": 7,
+        "upkeep": 0.05,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      },
+      "harmonic_arrays": {
+        "name": "Harmonic Stasis Perimeter Arrays",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 4,
+        "defense": 7,
+        "charge": 1,
+        "missile": 11,
+        "cost": 7,
+        "upkeep": 0.05,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      }
+    },
+    "recruitable": [
+      "aurumite_archons",
+      "solari_phase_guard",
+      "elysian_storm_corsairs",
+      "solari_luminary_cruisers",
+      "celestial_capital_hull",
+      "archilect_shipminds"
+    ],
+    "garrison": { "melee": "sentinel_drones", "ranged": "harmonic_arrays" },
+    "regimentMap": {
+      "infantry": "aurumite_archons",
+      "archers": "solari_phase_guard",
+      "cavalry": "elysian_storm_corsairs",
+      "artillery": "solari_luminary_cruisers"
+    },
+    "caps": {
+      "elysian_storm_corsairs": 4,
+      "solari_luminary_cruisers": 3,
+      "celestial_capital_hull": 2,
+      "archilect_shipminds": 2
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

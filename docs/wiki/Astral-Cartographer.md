@@ -279,6 +279,15 @@ the sector register and sets its anomaly icon in the record. The original text i
 divider, authored names survive, and applying it twice changes nothing the second time. It is
 one-way — the converted icon lives in the marker, so Standard view shows it too.
 
+## Astral Military Forces
+
+Entering Astral view swaps `options.map.military.units`, polity tactical rosters, and generated regiments to a fleet-centric sci-fi military model (and restores the previous fantasy units, rosters, and regiments on exit):
+
+- **Fleet-First Unit Branches (7 Tiers)** — Three ground tiers (`militia`, `marines`, `garrison`) and a four-tier orbital/void hierarchy (`strike_wings`, `cruiser_squadrons`, `capital_ships`, `void_fleets`) where void fleets and starship hulls account for ~75–85% of total combat power.
+- **Tech-Gated Void Capability** — Pre-space systems (TL0–TL2) field ground forces only; TL3+ systems unlock `strike_wings`, TL4 unlocks `cruiser_squadrons`, `void_fleets`, and capital/starport `capital_ships`, and TL5 unlocks full access across any star system regardless of ocean coastlines.
+- **Six Sci-Fi & Verse Rosters** — Polities automatically adopt culture-matched tactical rosters (`scifiFederationBase`, `scifiImperialBase`, `verseCelestialBase`, `verseHegemonyBase`, `verseTechnocratBase`, `verseXothianBase`) featuring starfighter wings, corvettes, cruisers, dreadnoughts, dropships, and walkers.
+- **Regime & Post-Scarcity Scaling** — Post-scarcity polities (TL5+, `development >= 100`) eliminate equipment shortfalls and shift toward elite automated hulls, while authoritarian/thrall regimes field larger conscript militias; `getTroopsPower()` scales unit strength from `0.6x` (TL0–1) to `2.0x` (TL5+).
+
 ## The Astral view
 
 _Options_ → _Layers_ → **View mode** → **Astral** turns the map into a star chart of one chosen
@@ -336,6 +345,11 @@ As detailed in [`docs/plans/mod-merge-plan.md`](../plans/mod-merge-plan.md):
   administrations with 100% province coverage as the primary surface layer. Worlds generate full 2:1
   globes (`mapSize = 100`, `latT = 180`, `lonT = 360`, `extents = "whole"`), planetary templates carry
   whole-world chance 1, and distance scales reflect normalized astronomical radii ($\pi R_{\text{km}}$).
+- **Shipped (fleet-centric astral military)**: entering Astral view switches military units to the
+  7-branch fleet-first hierarchy (`strike_wings`, `cruiser_squadrons`, `capital_ships`, `void_fleets`),
+  assigns the 6 Sci-Fi & Verse tactical rosters (`scifiFederationBase`, `scifiImperialBase`, and the
+  four Verse rosters), gates fleet generation by TL3+ rather than ocean ports, scales power by
+  technology (`0.6x`–`2.0x`) and post-scarcity logistics, and restores fantasy forces on exit.
 
 ---
 *For upstream merge tracking, see [MERGING.md](../../MERGING.md).*

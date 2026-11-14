@@ -1,0 +1,132 @@
+{
+  "id": "verseTechnocratBase",
+  "name": "Gray Syndicate, Mi-Go & Huijhoh Void-Fleets",
+  "roster": {
+    "id": "verseTechnocratBase",
+    "units": {
+      "synth_enforcers": {
+        "name": "Cybernetic Enforcer Phalanx",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 11,
+        "defense": 14,
+        "charge": 5,
+        "missile": 0,
+        "cost": 20,
+        "upkeep": 0.16,
+        "capacityCost": { "m": 2, "w": 2, "s": 1, "c": 0 },
+        "resistArcane": 0.2
+      },
+      "gray_graviton_corps": {
+        "name": "Conclave Graviton & Mind-Lash Corps",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 5,
+        "defense": 10,
+        "charge": 2,
+        "missile": 17,
+        "cost": 24,
+        "upkeep": 0.19,
+        "capacityCost": { "m": 2, "w": 3, "s": 1, "c": 0 }
+      },
+      "migo_void_raiders": {
+        "name": "Mi-Go Void-Skiffs & Cloaked Interceptors",
+        "category": "cavalry",
+        "quantity": 24,
+        "attack": 13,
+        "defense": 12,
+        "charge": 15,
+        "missile": 13,
+        "cost": 32,
+        "upkeep": 0.26,
+        "capacityCost": { "m": 2, "w": 3, "s": 2, "c": 0 }
+      },
+      "shadow_galleons": {
+        "name": "Syndicate Shadow-Galleons & Hive-Carriers",
+        "category": "artillery",
+        "quantity": 10,
+        "attack": 10,
+        "defense": 14,
+        "charge": 3,
+        "missile": 19,
+        "cost": 44,
+        "upkeep": 0.35,
+        "capacityCost": { "m": 2, "w": 4, "s": 2, "c": 0 },
+        "powers": { "hex": 0.05 }
+      },
+      "huijhoh_abyssal_whale": {
+        "name": "Huijhoh Abyssal Bio-Leviathan Whale",
+        "category": "monster",
+        "quantity": 2,
+        "attack": 19,
+        "defense": 20,
+        "charge": 12,
+        "missile": 16,
+        "cost": 68,
+        "upkeep": 0.54,
+        "capacityCost": { "m": 3, "w": 4, "s": 4, "c": 0 },
+        "powers": { "heal": 8, "terror": 0.09 }
+      },
+      "neuro_savant_cores": {
+        "name": "Telepathic Matriarch & Brain-Cylinder Cores",
+        "category": "spellcaster",
+        "quantity": 16,
+        "attack": 4,
+        "defense": 9,
+        "charge": 1,
+        "missile": 17,
+        "cost": 40,
+        "upkeep": 0.32,
+        "capacityCost": { "m": 1, "w": 2, "s": 4, "c": 1 },
+        "powers": { "hex": 0.07, "ward": 0.08 }
+      },
+      "cyber_thralls": {
+        "name": "Lobotomized Servitor Thralls",
+        "category": "melee",
+        "quantity": 160,
+        "attack": 5,
+        "defense": 7,
+        "charge": 2,
+        "missile": 0,
+        "cost": 5,
+        "upkeep": 0.03,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      },
+      "pulse_sentries": {
+        "name": "Automated Pulse-Turret Sentries",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 3,
+        "defense": 6,
+        "charge": 1,
+        "missile": 9,
+        "cost": 5,
+        "upkeep": 0.03,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      }
+    },
+    "recruitable": [
+      "synth_enforcers",
+      "gray_graviton_corps",
+      "migo_void_raiders",
+      "shadow_galleons",
+      "huijhoh_abyssal_whale",
+      "neuro_savant_cores"
+    ],
+    "garrison": { "melee": "cyber_thralls", "ranged": "pulse_sentries" },
+    "regimentMap": {
+      "infantry": "synth_enforcers",
+      "archers": "gray_graviton_corps",
+      "cavalry": "migo_void_raiders",
+      "artillery": "shadow_galleons"
+    },
+    "caps": {
+      "migo_void_raiders": 4,
+      "shadow_galleons": 3,
+      "huijhoh_abyssal_whale": 2,
+      "neuro_savant_cores": 2
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

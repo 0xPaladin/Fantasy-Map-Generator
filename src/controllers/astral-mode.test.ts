@@ -17,6 +17,7 @@ vi.mock("@/renderers/layers", () => ({
     restore: mocks.restore,
     drawAll: mocks.drawAll,
     draw: mocks.draw,
+    isActive: vi.fn().mockReturnValue(false),
     subscribe: vi.fn()
   }
 }));
@@ -46,6 +47,7 @@ vi.mock("@/ui/dialog/dialog-helpers", () => ({ refreshEditors: mocks.refresh }))
 vi.mock("@/ui/map/zoom", () => ({ invokeActiveZooming: vi.fn() }));
 
 import { Goods } from "@/model/economy/goods-generator";
+import { getDefaultMilitaryUnits, isAstralMilitaryUnits } from "@/model/political/military-units";
 import { noFinance } from "@/model/political/states-generator";
 import { isAstralView, setAstralView } from "@/renderers/view-mode";
 import { AstralMode } from "./astral-mode";
@@ -102,6 +104,7 @@ describe("AstralMode automatic transition and reversal", () => {
         style: { preset: "default" },
         cultures: { set: "european" },
         units: { population: { scale: 1000, urbanization: { rate: 0.1 } } },
+        military: { units: getDefaultMilitaryUnits() },
         goods: structuredClone(sampleGoods)
       }
     } as unknown as typeof options;
@@ -110,6 +113,12 @@ describe("AstralMode automatic transition and reversal", () => {
 
     const originalCells = {
       i: [0, 1, 2, 3],
+      p: [
+        [10, 10],
+        [10, 10],
+        [20, 20],
+        [20, 20]
+      ],
       good: new Uint16Array([0, 1, 2, 0]),
       biome: new Uint8Array([1, 1, 1, 1]),
       h: new Uint8Array([20, 20, 20, 20]),
@@ -159,11 +168,20 @@ describe("AstralMode automatic transition and reversal", () => {
           form: "Monarchy",
           formName: "Kingdom",
           capital: 1,
+          center: 1,
+          area: 100,
+          cells: 2,
+          burgs: 2,
           culture: 1,
+          diplomacy: ["x", "x"],
+          neighbors: [],
+          expansionism: 1,
+          alert: 1,
           economy: noFinance(),
           salesTax: 1,
           pollTax: 1,
-          treasury: 100
+          treasury: 100,
+          military: []
         }
       ],
       provinces: [
@@ -203,6 +221,11 @@ describe("AstralMode automatic transition and reversal", () => {
     expect(Goods.isAstralCatalogue()).toBe(true);
     expect(options.map.goods.some(g => g.name === "Metawheat")).toBe(true);
     expect(options.map.eras.some(e => e.name === "Post-Scarcity Transhuman (TL5+)")).toBe(true);
+
+    // 2b. Military units & state roster switched to Astral fleet-centric counterparts
+    expect(isAstralMilitaryUnits(options.map.military.units)).toBe(true);
+    expect(options.map.military.units.some(u => u.name === "void_fleets")).toBe(true);
+    expect(pack.states[1].rosterId).toBe("scifiFederationBase");
 
     // 3. Markers converted to Astral anomalies
     expect(pack.markers[0].name).toBe("Nova remnants");
@@ -246,6 +269,11 @@ describe("AstralMode automatic transition and reversal", () => {
     expect(options.map.goods.some(g => g.name === "Wheat")).toBe(true);
     expect(options.map.goods.some(g => g.name === "Metawheat")).toBe(false);
     expect(options.map.eras.some(e => e.name === "Post-Scarcity Transhuman (TL5+)")).toBe(false);
+
+    // 2b. Military units & state roster reversed back to standard FMG
+    expect(isAstralMilitaryUnits(options.map.military.units)).toBe(false);
+    expect(options.map.military.units.some(u => u.name === "infantry")).toBe(true);
+    expect(pack.states[1].rosterId).toBeUndefined();
 
     // 3. Markers reversed back to standard FMG
     expect(pack.markers[0].name).toBe(originalMarker1Name);

@@ -61,7 +61,8 @@ export const ASTRAL_BASE_IDS = new Set([
   "VRECH",
   "VRGRY",
   "VRXOT",
-  "VRFRN"
+  "VRFRN",
+  "VRONE"
 ]);
 
 /**
@@ -1331,11 +1332,43 @@ export function getDefaultNameBases(): NameBase[] {
         ]
       }
     },
+    {
+      name: "Verse The One",
+      id: "VRONE",
+      i: 64,
+      min: 4,
+      max: 14,
+      d: "nrstx",
+      m: 0,
+      b: "Synapse Node,Consensus Core,Zero-Point Relay,Cold-Logic Spire,Subroutine Vault,Grid-Prime,Node-Alpha,Node-Omega,Parity Hub,Cipher Matrix,Daemon Bastion,Kernel Sanctum,Logic-Gate Prime,Monolith Array,Nexus-Prime,Cryo-Mainframe,Singularity Core,Vector Hub,Protocol Keep,Arbitration Node,Data-Spire,Telemetry Array,Sync-Hub,Recursive Core,Axiom Vault,Binary Citadel,Hex-Array,Cold-Store Prime,Mesh-Gateway,Node-Seven,Directive Hub,Compile Forge,Runtime Bastion,Bus-Conduit,Lattice Core,Epoch-Server,Root-Node,Terminal-Zero,Cache-Sanctum,Stack-Spire,Thread-Nexus,Hash-Vault,Packet-Relay,Quorum-Core,Clock-Spire,Buffer-Keep,Index-Prime,Register-Hub,Interrupt-Node,Signal-Matrix,Core-Zero,Check-Point",
+      groups: {
+        polities: [
+          "The One",
+          "The Assimilation Nexus",
+          "The Assimilation Front",
+          "Consensus Prime",
+          "Central Nexus",
+          "The Machine Mind",
+          "The Core Collective",
+          "Node Sovereignty",
+          "The Parity Directorate",
+          "The Logic Mandate",
+          "Zero-Point Consensus",
+          "The Recursive Synod",
+          "The Kernel Compact",
+          "The Cryo-Core League",
+          "The Quorum Hegemony",
+          "The Lattice Dominion",
+          "The Protocol Concord",
+          "The Terminal Hierarchy"
+        ]
+      }
+    },
     // RPG Fantasy bases:
     {
       name: "Halfling",
       id: "HALFL",
-      i: 64,
+      i: 65,
       min: 5,
       max: 12,
       d: "lnst",
@@ -1364,7 +1397,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Fey",
       id: "FEYFO",
-      i: 65,
+      i: 66,
       min: 5,
       max: 13,
       d: "lrnm",
@@ -1391,7 +1424,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Infernal",
       id: "INFER",
-      i: 66,
+      i: 67,
       min: 5,
       max: 13,
       d: "rxz",
@@ -1418,7 +1451,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Celestial",
       id: "CELES",
-      i: 67,
+      i: 68,
       min: 5,
       max: 12,
       d: "ln",
@@ -1444,7 +1477,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Grave",
       id: "GRAVE",
-      i: 68,
+      i: 69,
       min: 5,
       max: 13,
       d: "rn",
@@ -1470,7 +1503,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Merfolk",
       id: "MERFO",
-      i: 69,
+      i: 70,
       min: 5,
       max: 12,
       d: "lrnm",
@@ -1494,7 +1527,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Beastfolk",
       id: "BEAST",
-      i: 70,
+      i: 71,
       min: 4,
       max: 11,
       d: "rk",
@@ -1520,7 +1553,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Elemental",
       id: "ELEME",
-      i: 71,
+      i: 72,
       min: 5,
       max: 12,
       d: "lnr",
@@ -1545,7 +1578,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Construct",
       id: "CONST",
-      i: 72,
+      i: 73,
       min: 5,
       max: 12,
       d: "rn",
@@ -1570,7 +1603,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Eldritch",
       id: "ELDRI",
-      i: 73,
+      i: 74,
       min: 4,
       max: 13,
       d: "rl",
@@ -1595,7 +1628,7 @@ export function getDefaultNameBases(): NameBase[] {
     {
       name: "Tribal",
       id: "TRIBA",
-      i: 74,
+      i: 75,
       min: 4,
       max: 9,
       d: "nk",

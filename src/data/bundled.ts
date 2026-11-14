@@ -46,11 +46,17 @@ import rosterOgre from "./rosters/ogre.json" with { type: "json" };
 import rosterorc from "./rosters/orc.json" with { type: "json" };
 import rosterOttoman from "./rosters/ottoman.json" with { type: "json" };
 import rosterRenaissance from "./rosters/renaissance.json" with { type: "json" };
+import rosterScifiFederation from "./rosters/scifi_federation.json" with { type: "json" };
+import rosterScifiImperial from "./rosters/scifi_imperial.json" with { type: "json" };
 import rosterSkaven from "./rosters/skaven.json" with { type: "json" };
 import rostersteppe from "./rosters/steppe.json" with { type: "json" };
 import rosterTombKings from "./rosters/tomb_kings.json" with { type: "json" };
 import rosterTribal from "./rosters/tribal.json" with { type: "json" };
 import rosterVampire from "./rosters/vampire.json" with { type: "json" };
+import rosterVerseCelestial from "./rosters/verse_celestial.json" with { type: "json" };
+import rosterVerseHegemony from "./rosters/verse_hegemony.json" with { type: "json" };
+import rosterVerseTechnocrat from "./rosters/verse_technocrat.json" with { type: "json" };
+import rosterVerseXothian from "./rosters/verse_xothian.json" with { type: "json" };
 import rosterWoodElf from "./rosters/wood_elf.json" with { type: "json" };
 
 /** The shipped ruleset, as raw docs — the input to `validateAndResolve`. */
@@ -87,7 +93,13 @@ export const BUNDLED_DOCS: RawContentDocs = {
     { file: "rosters/construct.json", doc: rosterConstruct },
     { file: "rosters/eldritch.json", doc: rosterEldritch },
     { file: "rosters/tribal.json", doc: rosterTribal },
-    { file: "rosters/arachnid.json", doc: rosterArachnid }
+    { file: "rosters/arachnid.json", doc: rosterArachnid },
+    { file: "rosters/scifi_federation.json", doc: rosterScifiFederation },
+    { file: "rosters/scifi_imperial.json", doc: rosterScifiImperial },
+    { file: "rosters/verse_celestial.json", doc: rosterVerseCelestial },
+    { file: "rosters/verse_hegemony.json", doc: rosterVerseHegemony },
+    { file: "rosters/verse_technocrat.json", doc: rosterVerseTechnocrat },
+    { file: "rosters/verse_xothian.json", doc: rosterVerseXothian }
   ],
   culturesDocs: [],
   factionDocs: [],

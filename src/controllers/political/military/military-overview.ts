@@ -5,7 +5,11 @@ import { Goods } from "@/model/economy/goods-generator";
 import { Icons } from "@/model/icons";
 import { Options } from "@/model/options/options-model";
 import { Military } from "@/model/political/military-generator";
-import { getDefaultMilitaryUnits } from "@/model/political/military-units";
+import {
+  getAstralMilitaryUnits,
+  getDefaultMilitaryUnits,
+  isAstralMilitaryUnits
+} from "@/model/political/military-units";
 import type { State } from "@/model/political/states-generator";
 import { goodBadge } from "@/renderers/draw-goods";
 import { drawRegiment } from "@/renderers/draw-military";
@@ -290,7 +294,9 @@ function getMilitaryData(): MilitaryRow[] {
               return false;
             });
           }
-          const colName = matchedUnit ? matchedUnit.name : "infantry";
+          const colName = matchedUnit
+            ? matchedUnit.name
+            : (options.map.military.units.find(u => u.type === "melee")?.name ?? "infantry");
           forces[colName] = (forces[colName] || 0) + count;
           breakdowns[colName][uId] = (breakdowns[colName][uId] || 0) + count;
         }
@@ -594,7 +600,10 @@ function militaryCustomize(): void {
 
   function restoreDefaultUnits(): void {
     removeUnitLines();
-    getDefaultMilitaryUnits().map((unit: MilitaryUnit) => addUnitLine(unit));
+    const units = isAstralMilitaryUnits(options.map.military.units)
+      ? getAstralMilitaryUnits()
+      : getDefaultMilitaryUnits();
+    units.map((unit: MilitaryUnit) => addUnitLine(unit));
   }
 
   function getGoodsTitle(goods?: number[]): string {

@@ -169,4 +169,17 @@ describe("the Cultures editor's trait columns", () => {
     expect(tip).toHaveBeenCalledWith(expect.stringContaining("Culture traits are off"), false, "error");
     expect({ alignment: fixture("Aeloran").alignment, values: fixture("Aeloran").values }).toEqual(before);
   });
+
+  it("regenerates a culture's values from its alignment via the row regenerate button", () => {
+    CulturesEditor.open();
+
+    const select = row(2).querySelector<HTMLSelectElement>('[data-col="alignment"] .cultureAlignment')!;
+    select.value = "evil";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    row(2).querySelector<HTMLElement>(".cultureRegenerateValues")!.click();
+
+    expect(fixture("Velic").values?.length).toBeGreaterThanOrEqual(1);
+    expect(fixture("Velic").values).not.toEqual(["cooperation", "trust"]);
+  });
 });

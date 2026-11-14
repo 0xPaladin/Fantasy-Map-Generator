@@ -1757,8 +1757,23 @@ export const DEFAULT_ROSTER_MAP: Record<string, boolean> = {
   constructBase: true,
   eldritchBase: true,
   tribalBase: true,
-  arachnidBase: true
+  arachnidBase: true,
+  scifiFederationBase: true,
+  scifiImperialBase: true,
+  verseCelestialBase: true,
+  verseHegemonyBase: true,
+  verseTechnocratBase: true,
+  verseXothianBase: true
 };
+
+export const ASTRAL_ROSTER_IDS = new Set([
+  "scifiFederationBase",
+  "scifiImperialBase",
+  "verseCelestialBase",
+  "verseHegemonyBase",
+  "verseTechnocratBase",
+  "verseXothianBase"
+]);
 
 /**
  * Infer the roster for an active map culture based on its name or race tag
@@ -1779,6 +1794,32 @@ export function inferRosterForCulture(
 
   for (const id of Object.keys(rosters)) {
     if (name?.includes(id.toLowerCase())) return id;
+  }
+
+  // 0. Sci-Fi & Verse factions (check before fantasy archetypes so Orkoid/Aeldari/Celestial Accord map cleanly)
+  if (matches(/(archilect|archon|elysian|solari|celestial accord|vulcan|aeldari)/i) && rosters.verseCelestialBase) {
+    return "verseCelestialBase";
+  }
+  if (matches(/(hegemony|fleshforger|\bechani\b|drukhari|orion)/i) && rosters.verseHegemonyBase) {
+    return "verseHegemonyBase";
+  }
+  if (
+    matches(/(conclave of the gray|mi-go|huijhoh|borg|mechanicus|necrontyr|t'au|tholian|ferengi)/i) &&
+    rosters.verseTechnocratBase
+  ) {
+    return "verseTechnocratBase";
+  }
+  if (matches(/(xothian|tyranid|orkoid)/i) && rosters.verseXothianBase) {
+    return "verseXothianBase";
+  }
+  if (
+    matches(/(ascendancy|mazani|high gothic|low imperial|klingon|romulan|cardassian|andorian|votann|gorn)/i) &&
+    rosters.scifiImperialBase
+  ) {
+    return "scifiImperialBase";
+  }
+  if (matches(/(collective|terran|bajoran)/i) && rosters.scifiFederationBase) {
+    return "scifiFederationBase";
   }
 
   // 1. Undead factions (Tomb Kings / Lich before Vampire)
@@ -1912,6 +1953,70 @@ export function assignStateRoster(
   const cultureName = culture?.name;
   const cultureType = culture?.type;
   return inferRosterForCulture(cultureName, rosters, defaultRoster, cultureType, state.type);
+}
+
+/**
+ * Determine a state's sci-fi / Verse roster when Astral Cartographer mode is active.
+ * Preserves an already-assigned Astral roster, matches known sci-fi/Verse cultures,
+ * or maps fantasy/generic polities by development, alignment, and prior roster.
+ */
+export function assignAstralStateRoster(
+  state: { rosterId?: string; culture?: number; type?: string; alignment?: string },
+  cultures?: Array<{ i?: number; name?: string; base?: string; type?: string; development?: number } | undefined>,
+  rosters: Record<string, unknown> = DEFAULT_ROSTER_MAP
+): string {
+  if (state.rosterId && ASTRAL_ROSTER_IDS.has(state.rosterId) && rosters[state.rosterId]) {
+    return state.rosterId;
+  }
+  const culture = state.culture && cultures ? cultures[state.culture] : undefined;
+  const baseMap: Record<string, string> = {
+    VRCEL: "verseCelestialBase",
+    VRHEG: "verseHegemonyBase",
+    VRTEC: "verseTechnocratBase",
+    VRXOT: "verseXothianBase",
+    VRIMP: "scifiImperialBase",
+    WHIMP: "scifiImperialBase",
+    STFED: "scifiFederationBase"
+  };
+  if (culture?.base && baseMap[culture.base] && rosters[baseMap[culture.base]]) {
+    return baseMap[culture.base];
+  }
+  const inferred = inferRosterForCulture(culture?.name, rosters, "", culture?.type, state.type);
+  if (inferred && ASTRAL_ROSTER_IDS.has(inferred)) return inferred;
+
+  if ((culture?.development ?? 0) >= 90 || state.rosterId === "celestialBase") {
+    return rosters.verseCelestialBase ? "verseCelestialBase" : "scifiFederationBase";
+  }
+  if (
+    state.rosterId === "arachnidBase" ||
+    state.rosterId === "orcBase" ||
+    state.rosterId === "skavenBase" ||
+    state.rosterId === "chaosBase" ||
+    state.rosterId === "demonBase"
+  ) {
+    return rosters.verseXothianBase ? "verseXothianBase" : "scifiImperialBase";
+  }
+  if (
+    state.rosterId === "vampireBase" ||
+    state.rosterId === "darkElfBase" ||
+    state.rosterId === "infernalDwarfBase" ||
+    state.rosterId === "tombKingsBase" ||
+    state.alignment === "evil"
+  ) {
+    return rosters.verseHegemonyBase ? "verseHegemonyBase" : "scifiImperialBase";
+  }
+  if (state.rosterId === "constructBase" || state.rosterId === "eldritchBase" || state.rosterId === "dwarfBase") {
+    return rosters.verseTechnocratBase ? "verseTechnocratBase" : "scifiImperialBase";
+  }
+  if (
+    state.rosterId === "empireBase" ||
+    state.rosterId === "chivalricBase" ||
+    state.rosterId === "renaissanceBase" ||
+    state.alignment === "lawful"
+  ) {
+    return rosters.scifiImperialBase ? "scifiImperialBase" : "scifiFederationBase";
+  }
+  return rosters.scifiFederationBase ? "scifiFederationBase" : "commonBase";
 }
 
 export function resolveForPack(

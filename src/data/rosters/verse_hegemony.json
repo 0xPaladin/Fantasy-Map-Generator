@@ -1,0 +1,131 @@
+{
+  "id": "verseHegemonyBase",
+  "name": "Ancient Hegemony & Bio-Dreadnought Armada",
+  "roster": {
+    "id": "verseHegemonyBase",
+    "units": {
+      "gengineered_shock": {
+        "name": "Gengineered Thrall Shock Troopers",
+        "category": "melee",
+        "quantity": 160,
+        "attack": 11,
+        "defense": 10,
+        "charge": 8,
+        "missile": 0,
+        "cost": 16,
+        "upkeep": 0.12,
+        "capacityCost": { "m": 3, "w": 1, "s": 0, "c": 0 }
+      },
+      "echani_infiltrators": {
+        "name": "Echani Shadow-Blade & Needler Operatives",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 8,
+        "defense": 11,
+        "charge": 4,
+        "missile": 16,
+        "cost": 24,
+        "upkeep": 0.19,
+        "capacityCost": { "m": 2, "w": 2, "s": 1, "c": 0 }
+      },
+      "spore_boarding_launches": {
+        "name": "Fleshforged Spore-Pod Boarding Cutters",
+        "category": "cavalry",
+        "quantity": 24,
+        "attack": 13,
+        "defense": 10,
+        "charge": 15,
+        "missile": 10,
+        "cost": 28,
+        "upkeep": 0.22,
+        "capacityCost": { "m": 3, "w": 2, "s": 1, "c": 0 }
+      },
+      "obelisk_cruisers": {
+        "name": "Midnight Council Obelisk Siege Cruisers",
+        "category": "artillery",
+        "quantity": 10,
+        "attack": 10,
+        "defense": 14,
+        "charge": 3,
+        "missile": 20,
+        "cost": 46,
+        "upkeep": 0.37,
+        "capacityCost": { "m": 2, "w": 4, "s": 2, "c": 0 },
+        "powers": { "terror": 0.05, "arcaneSiege": 1 }
+      },
+      "devourer_superdreadnought": {
+        "name": "Hegemony Devourer Maw Superdreadnought",
+        "category": "monster",
+        "quantity": 3,
+        "attack": 20,
+        "defense": 18,
+        "charge": 14,
+        "missile": 15,
+        "cost": 64,
+        "upkeep": 0.51,
+        "capacityCost": { "m": 4, "w": 4, "s": 3, "c": 0 },
+        "powers": { "terror": 0.1, "heal": 6 }
+      },
+      "brainjack_hierophants": {
+        "name": "Ancient Brainjack Couch Hierophants",
+        "category": "spellcaster",
+        "quantity": 16,
+        "attack": 5,
+        "defense": 9,
+        "charge": 1,
+        "missile": 17,
+        "cost": 42,
+        "upkeep": 0.34,
+        "capacityCost": { "m": 1, "w": 2, "s": 4, "c": 1 },
+        "powers": { "hex": 0.08, "terror": 0.06 }
+      },
+      "thrall_conscripts": {
+        "name": "Collared Thrall Spear & Shock Levy",
+        "category": "melee",
+        "quantity": 200,
+        "attack": 4,
+        "defense": 5,
+        "charge": 2,
+        "missile": 0,
+        "cost": 4,
+        "upkeep": 0.025,
+        "capacityCost": { "m": 1, "w": 0, "s": 0, "c": 0 }
+      },
+      "thrall_sluggers": {
+        "name": "Subjugated Thrall Rifle Rabble",
+        "category": "ranged",
+        "quantity": 150,
+        "attack": 2,
+        "defense": 4,
+        "charge": 1,
+        "missile": 7,
+        "cost": 4,
+        "upkeep": 0.025,
+        "capacityCost": { "m": 1, "w": 0, "s": 0, "c": 0 }
+      }
+    },
+    "recruitable": [
+      "gengineered_shock",
+      "echani_infiltrators",
+      "spore_boarding_launches",
+      "obelisk_cruisers",
+      "devourer_superdreadnought",
+      "brainjack_hierophants"
+    ],
+    "garrison": { "melee": "thrall_conscripts", "ranged": "thrall_sluggers" },
+    "regimentMap": {
+      "infantry": "gengineered_shock",
+      "archers": "echani_infiltrators",
+      "cavalry": "spore_boarding_launches",
+      "artillery": "obelisk_cruisers"
+    },
+    "caps": {
+      "spore_boarding_launches": 4,
+      "obelisk_cruisers": 3,
+      "devourer_superdreadnought": 2,
+      "brainjack_hierophants": 2
+    }
+  },
+  "tech": [],
+  "buildings": []
+}
