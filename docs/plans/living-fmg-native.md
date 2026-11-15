@@ -1,6 +1,6 @@
 # Plan — Living World on FMG Rails (OpenCiv removal & native dynamism)
 
-**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), Phase 3 done (rulers govern the purse), **Phase 4 done** (public works: a 13-work catalog funded by treasury and real market goods, paying daily `simAdjustments` lines and raising flags, development, markets and roads).
+**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), Phase 3 done (rulers govern the purse), Phase 4 done (public works), **Phase 5 done** (trouble economics: hazards and hostile factions drain the treasury through negative lines, spawn on fragile stock rails, and pay a small treasure when cleared).
 **Companions:** [upstream-economy-alignment.md](upstream-economy-alignment.md) (the bridge this plan builds on), [living-world.md](living-world.md) (original vision), [living-openciv.md](living-openciv.md) (superseded), [living-openciv-armies.md](living-openciv-armies.md) (partially superseded), [factions-civ-engine.md](factions-civ-engine.md) (partially superseded), [remove-living-guild.md](remove-living-guild.md)
 
 ## Execution policy
@@ -221,7 +221,7 @@ Factions lose their node economies, keep their soul:
 | 2 | **Era ladder**: delete `CIV_TECHS`; era from `Development.getAverages`; roster/project gates switched; save migration | old saves load, era shown ✅ |
 | 3 | **Fiscal policy**: profiles from traits, spring drift through `setBudget`/`setCorruption`, event re-targets, news, God-mode locks; replace transient corruption modifier | two seeded states diverge measurably ✅ |
 | 4 | **Projects**: catalog, funding via orders + treasury, effects into `simAdjustments`/flags/development/output seams, Projects tab UI; Royal Road draws real route links and Market Charter converts a burg into a market center. | a granary consumes real stone and shows as a line ✅ |
-| 5 | **Trouble economics**: hazard → negative lines, clearing paths wired, ruins rewards | a hazard drains a treasury and is cleared |
+| 5 | **Trouble economics**: hazard → negative lines, clearing paths wired, ruins rewards | a hazard drains a treasury and is cleared ✅ |
 | 6 | **Factions re-anchored**: delete node loop; income/forces/raids/suppression/ascension on rails; faction project lines | faction sheet shows income & lines, no city fields |
 | 7 | **Religious drift**: unitless conversions, chronicle, holy-site pressure | province flips over ~decades on a test map |
 | 8 | **Polish & docs**: HUD/card rebuild final pass, wiki/data-model/economy docs, test refresh, save compat sweep, delete superseded plan docs | full suite green, docs current |
@@ -235,6 +235,16 @@ Each phase lands independently buildable with its completion record appended her
 - **KPI drift**: hazard drains and project income shift economy KPIs 11/14 (states' cut, treasury concentration) — re-measure with the tuner after phases 4–5.
 - **Mobile burgs**: verified in Phase 1 — live wandering reads `pack.cells`/`Burgs.move`/`Routes`, never the stripped fields.
 - **Astral mode**: post-scarcity hooks read development/prosperity, not OpenCiv fields — audited in Phase 2: the astral regime still shapes diffusion caps (`ANCIENT_SUPPRESSED_CAP`) and `Output`/`Prosperity` read development unchanged.
+
+### Phase 5 completion record (done)
+
+**Shipped:** `src/model/physical/living-generator.ts` (hazard line sync, spawn modifiers, administrative decay, rewards), `src/model/physical/living-threats.ts` (the clear reward hook), `src/controllers/living-hud.ts` (drain shown on trouble rows), `src/model/political/stability.ts` (read only). `tsc` clean, Biome clean, **3,720 tests passing** (four new trouble-economics tests), Vite build green.
+
+- **Hazard lines**: `syncTroubleLines` rebuilds, before each season's economy run, one negative `simAdjustments` line per troubled province — `Trouble: <name> in <province>` at `-(round(level × 0.8) + 1)` a day — and one per hostile/clandestine faction holding a province — `Raiders: <faction> in <province>` at `-(2 + seasonsActive/3)`, capped at −6. Only these prefixed lines are replaced, so project lines and the user's own lines survive untouched. A change marks the economy dirty.
+- **The loop closes on stock rails**: a hazard's drain reduces the state's collected taxes, so its banked treasury grows slower, military upkeep (`Military.getUpkeep`) falls, armies fight worse, stability and order slide, and more hazards spawn — exactly the intended neglect spiral, with no parallel economy.
+- **Spawning leans on the rails**: the seasonal spawn roll already counted low order, unravel and garrisons; it now also adds +5% when the upstream stability is below 0.4 and +3% when stored corruption is 25% or more, on top of burg unrest lowering order.
+- **Clearing pays**: a funded administration (≥15% budget, treasury not negative) grinds a hazard down 25% of seasons, resetting its unchecked clock and awarding order; a cleared hazard drops `20 + 5 × level` gold into the state's treasury. `quellTrouble` (magistrate, hero or God mode) now also pays the clearer, and a caretaker faction clearing a hazard banks `15 + 3 × level`. Ruins and suppression/assault/adventurer paths are unchanged.
+- **UI**: the state card's trouble rows show the daily drain next to the hazard level (`Province, Brigands [4] · -4/day`).
 
 ### Phase 4 completion record (done)
 

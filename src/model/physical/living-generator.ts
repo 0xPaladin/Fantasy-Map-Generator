@@ -76,6 +76,7 @@ import {
   syncRegimentTotals
 } from "@/model/political/military-generator";
 import type { Province } from "@/model/political/provinces-generator";
+import { Stability } from "@/model/political/stability";
 import { noFinance, type State, States } from "@/model/political/states-generator";
 import { type AstralTechRegime, classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
@@ -886,6 +887,7 @@ class LivingModel {
       this.syncWorld();
       this.stepFactionEmpire(living);
       this.stepDevelopmentDiffusion(living);
+      this.syncTroubleLines(living);
       this.stepEconomy(living);
       this.stepTactical(living);
       this.stepBurgUnrest(living);
@@ -6601,6 +6603,49 @@ class LivingModel {
     return true;
   }
 
+  /** Hazards and hostile factions drain the purse: one negative line per troubled province. */
+  private syncTroubleLines(living: LivingWorldState): void {
+    const prefixes = ["Trouble: ", "Raiders: "];
+    const isOurs = (name: string) => prefixes.some(prefix => name.startsWith(prefix));
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const current = state.economy.simAdjustments ?? [];
+      const kept = current.filter(line => !isOurs(line.name));
+      const lines: { name: string; value: number }[] = [];
+
+      for (const province of this.ownedProvinces(state.i)) {
+        const pSim = living.provinces[province.i];
+        if (!pSim?.trouble) continue;
+        const value = -Math.max(1, Math.round(pSim.trouble.level * 0.8 + 1));
+        lines.push({ name: `Trouble: ${pSim.trouble.name} in ${province.name ?? "the province"}`, value });
+      }
+
+      for (const faction of Factions.active()) {
+        if (faction.allegiance !== "hostile" && faction.allegiance !== "clandestine") continue;
+        const provinceId = this.factionProvinceId(faction);
+        const province = provinceId ? pack.provinces?.[provinceId] : undefined;
+        if (!province?.i || province.state !== state.i) continue;
+        const value = -Math.min(6, 2 + Math.floor((faction.seasonsActive ?? 0) / 3));
+        lines.push({ name: `Raiders: ${faction.name} in ${province.name ?? "the province"}`, value });
+      }
+
+      const next = [...kept, ...lines];
+      if (JSON.stringify(next) === JSON.stringify(current)) continue;
+      state.economy.simAdjustments = next;
+      living.economyDirty = true;
+    }
+  }
+
+  /** A cleared hazard drops a small treasure into the clearer's treasury; returns it. */
+  rewardTroubleClear(provinceId: number, level = 5): number {
+    const state = pack.states[pack.provinces?.[provinceId]?.state ?? 0];
+    if (!state?.i || state.removed) return 0;
+    const loot = 20 + level * 5;
+    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) + loot) * 100) / 100;
+    return loot;
+  }
+
   /** Each season: advance a public work, or commission the next one the ruler favours. */
   private stepProjects(living: LivingWorldState): void {
     living.projects ??= [];
@@ -7137,6 +7182,29 @@ class LivingModel {
             pSim.trouble = null;
           }
         }
+
+        // A funded administration grinds a hazard down before it festers; a cleared
+        // hazard leaves a small treasure for the state that paid to end it.
+        if (pSim.trouble) {
+          const administration = pack.states[province.state]?.economy.budget.administration ?? 0;
+          const adminFunded = administration >= 15 && Number(pack.states[province.state]?.economy.treasury ?? 0) >= 0;
+          if (adminFunded && this.rng("trouble:admin", province.i, living.tick).chance(0.25)) {
+            const levelBefore = pSim.trouble.level;
+            pSim.trouble.level -= 1;
+            pSim.trouble.seasonsUnchecked = 0;
+            pSim.order = Math.min(100, pSim.order + 2);
+            if (pSim.trouble.level <= 0) {
+              pSim.trouble = null;
+              const loot = this.rewardTroubleClear(province.i, Math.max(2, levelBefore));
+              this.pushNews(living, {
+                kind: "trouble",
+                text: `${province.name ?? "The province"}'s courts cleared its troubles and recovered ${loot} gold.`,
+                cell: province.center,
+                stateId: province.state
+              });
+            }
+          }
+        }
       }
 
       const hostiles = Factions.active().filter(
@@ -7173,6 +7241,10 @@ class LivingModel {
         if (pSim.order < 25) spawnChance += 0.05;
         if (sSim && sSim.unravel > 50) spawnChance += 0.05;
         if (this.isProvinceGarrisoned(province.state, province.i)) spawnChance -= 0.05;
+        // Stock rails feed the roll: a fragile, corrupt, unprosperous land breeds trouble.
+        const stability = Stability.get(province.state)?.stability ?? null;
+        if (stability !== null && stability < 0.4) spawnChance += 0.05;
+        if ((pack.states[province.state]?.economy.budget.corruption ?? 0) >= 25) spawnChance += 0.03;
         spawnChance = minmax(spawnChance, 0.03, 0.4);
 
         if (rng.chance(spawnChance)) {
@@ -7240,9 +7312,11 @@ class LivingModel {
       if (agenda.progress >= agenda.required) {
         const troubleName = pSim.trouble.name;
         const province = pack.provinces?.[provinceId];
+        const clearedLevel = pSim.trouble.level;
         pSim.trouble = null;
         pSim.order = Math.min(100, pSim.order + 10);
         pSim.stability += 1;
+        faction.treasury = Math.round((Number(faction.treasury ?? 0) + 15 + clearedLevel * 3) * 100) / 100;
         const hostStateId = province?.state ?? 0;
         const before = hostStateId ? (faction.stateRelations[hostStateId] ?? "Neutral") : undefined;
         if (hostStateId) this.improveFactionRelation(faction, hostStateId);

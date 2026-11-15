@@ -48,6 +48,8 @@ export interface ThreatHost {
   addBattleMarker?(burgOrCell: Burg | number, label?: string): void;
   fieldArmy?(state: State): Regiment | null;
   applyArmySurvivors?(state: State, regiment: Regiment, units: ArmyUnit[]): void;
+  /** a cleared hazard drops a small treasure into the clearer's treasury */
+  rewardTroubleClear?(provinceId: number, level?: number): number;
   provinceCells?(provinceId: number): number[];
   recordGrudge?(stateId: number, burg: Burg, kind: string, reason: string, otherId?: number): void;
   findFigure?(figureId: number): HistoricalFigure | undefined;
@@ -565,10 +567,11 @@ export function quellTrouble(provinceId: number): boolean {
   const pSim = living.provinces[provinceId];
   if (!pSim?.trouble) return false;
 
+  const loot = host.rewardTroubleClear?.(provinceId, pSim.trouble.level) ?? 0;
   pSim.trouble = null;
   pushNews(living, {
     kind: "trouble",
-    text: `Trouble in ${province.name} was quelled.`,
+    text: `Trouble in ${province.name} was quelled${loot ? `, and ${loot} gold recovered` : ""}.`,
     cell: province.center ?? 0,
     stateId: province.state
   });

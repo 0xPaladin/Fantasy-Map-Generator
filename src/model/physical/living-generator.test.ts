@@ -4041,4 +4041,88 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(state.economy.treasury).toBeLessThan(500);
     });
   });
+
+  describe("Trouble economics (living-fmg-native Phase 5)", () => {
+    it("writes a negative daily line for a hazard, scaled by level", () => {
+      const living = Living.init();
+      const trouble = {
+        id: "brigands",
+        name: "Brigands",
+        theme: "burg" as const,
+        pool: "m" as const,
+        save: "disorder" as const,
+        requiredRole: "guardsmen" as const,
+        level: 4,
+        seasonsUnchecked: 0,
+        cell: 1
+      };
+      living.provinces[1].trouble = trouble;
+
+      Living.tick(1);
+      const line = pack.states[1].economy.simAdjustments?.find(entry => entry.name.startsWith("Trouble: "));
+      expect(line?.value).toBe(-4); // round(4 × 0.8 + 1)
+      expect(line?.name).toContain("Brigands");
+    });
+
+    it("keeps project lines when it rebuilds hazard lines", () => {
+      const living = Living.init();
+      pack.states[1].economy.simAdjustments = [{ name: "Mint of Aeloria", value: 4 }];
+      living.provinces[1].trouble = {
+        id: "brigands",
+        name: "Brigands",
+        theme: "burg",
+        pool: "m",
+        save: "disorder",
+        requiredRole: "guardsmen",
+        level: 2,
+        seasonsUnchecked: 0,
+        cell: 1
+      };
+
+      Living.tick(1);
+      expect(pack.states[1].economy.simAdjustments).toEqual(
+        expect.arrayContaining([
+          { name: "Mint of Aeloria", value: 4 },
+          expect.objectContaining({ name: expect.stringContaining("Trouble:"), value: -3 })
+        ])
+      );
+    });
+
+    it("drains the purse for hostile factions in the realm's provinces", () => {
+      Living.init();
+      const faction = Living.spawnDangerousFaction(1);
+      expect(faction).not.toBeNull();
+
+      Living.tick(1);
+      const line = pack.states[1].economy.simAdjustments?.find(entry => entry.name.startsWith("Raiders: "));
+      expect(line).toBeDefined();
+      expect(line!.value).toBeLessThan(0);
+    });
+
+    it("rewards the clearer and drops the line once quelled", () => {
+      const living = Living.init();
+      pack.states[1].economy.treasury = 0;
+      living.provinces[1].trouble = {
+        id: "brigands",
+        name: "Brigands",
+        theme: "burg",
+        pool: "m",
+        save: "disorder",
+        requiredRole: "guardsmen",
+        level: 4,
+        seasonsUnchecked: 0,
+        cell: 1
+      };
+      Living.tick(1);
+
+      const before = Number(pack.states[1].economy.treasury);
+      expect(Living.quellTrouble(1)).toBe(true);
+      expect(Number(pack.states[1].economy.treasury)).toBeCloseTo(before + 20 + 4 * 5, 2);
+
+      const spawn = vi.spyOn(Living, "spawnTrouble").mockReturnValue(null);
+      Living.tick(1);
+      spawn.mockRestore();
+      expect(pack.states[1].economy.simAdjustments?.some(entry => entry.name.startsWith("Trouble: "))).toBe(false);
+    });
+  });
 });

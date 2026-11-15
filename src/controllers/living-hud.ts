@@ -1206,6 +1206,8 @@ function renderProvinceCard(provinceId: number): string {
 
 function renderProvincesTroubles(stateId: number): string {
   const living = Living.getState();
+  const state = pack.states[stateId];
+  const lines = (state?.economy?.simAdjustments ?? []).filter(line => line.name.startsWith("Trouble: "));
   const ownedProvinces = (pack.provinces ?? []).filter(p => p?.i && !p.removed && p.state === stateId);
   const troubled = ownedProvinces
     .map(p => ({ province: p, pSim: living.provinces?.[p.i] }))
@@ -1221,7 +1223,8 @@ function renderProvincesTroubles(stateId: number): string {
       const def = getTroubleDef(t.id);
       const name = t.name || def.name;
       const cell = t.cell || province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
-      const text = `${province.name ?? "Province"}, ${name} [${t.level}]`;
+      const drain = lines.find(line => line.name.includes(province.name ?? ""))?.value;
+      const text = `${province.name ?? "Province"}, ${name} [${t.level}]${drain ? ` · ${drain}/day` : ""}`;
       const burgAttr = t.burgId ? ` data-zoom-burg="${t.burgId}"` : "";
       return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}"${burgAttr} title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button></li>`;
     })
