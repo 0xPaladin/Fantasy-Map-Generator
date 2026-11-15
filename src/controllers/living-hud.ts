@@ -7,11 +7,7 @@ import { figureArchetype, figureDisciplines, HERO_ARCHETYPES, pendingPathLevel }
 import { activeAspects } from "@/data/hero-aspects";
 import { HERO_DISCIPLINES } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
-import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
 import { CIV_IMPROVEMENT_BY_ID } from "@/data/living-civ-improvements";
-import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
-import { resolveCivTechName } from "@/data/living-civ-themes";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
@@ -20,13 +16,7 @@ import { Output } from "@/model/economy/output";
 import { Prosperity } from "@/model/economy/prosperity";
 import { Pack } from "@/model/graph/pack-generator";
 import { canReadUpstreamEconomy } from "@/model/physical/living-faction-economy";
-import {
-  activeCivThemeId,
-  factionSuppressionProductionCost,
-  figureLevel,
-  getCellYields,
-  Living
-} from "@/model/physical/living-generator";
+import { figureLevel, Living } from "@/model/physical/living-generator";
 import { ensureHeroSheet } from "@/model/physical/living-heroes";
 import { Factions } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
@@ -43,8 +33,7 @@ import {
   type MissionTag,
   type ProvinceSimState,
   SEASON_NAMES,
-  type StatePolitySim,
-  type YieldValues
+  type StatePolitySim
 } from "@/types/living";
 import { dialogState } from "@/ui/dialog/state";
 import { zoomTo } from "@/ui/map/zoom";
@@ -752,12 +741,11 @@ function renderStateCard(stateId: number): string {
   return /* html */ `
     <button type="button" class="livingInspectorTitle" data-open="states" data-id="${stateId}" title="States editor">${escapeHtml(state.fullName ?? state.name ?? "State")}</button>
     ${renderRuler(ruler, age)}
-    ${renderCivState(sSim, stateId)}
     ${renderUpstreamState(stateId)}
     ${renderStateProvinces(stateId)}
-    ${renderEconomy(sSim, stateId)}
     ${renderAgenda(sSim, living)}
     ${renderSuppressionTargets(stateId, sSim)}
+    ${renderStateNav(stateId)}
     <div class="livingSection">
       <div class="livingSectionTitle">Stability</div>
       ${renderMeter("Unravel", sSim.unravel, true)}
@@ -809,58 +797,6 @@ function renderRuler(ruler: HistoricalFigure | undefined, _age?: number): string
     </div>`;
 }
 
-const CIV_YIELD_CHIPS: readonly [keyof YieldValues, string, string][] = [
-  ["food", "🌾", "Food"],
-  ["production", "🔨", "Production"],
-  ["gold", "🪙", "Gold"],
-  ["science", "🔬", "Science"],
-  ["culture", "🎭", "Culture"],
-  ["faith", "✨", "Faith"]
-];
-
-function yieldChips(yields: YieldValues | undefined): string {
-  if (!yields) return "";
-  return CIV_YIELD_CHIPS.map(
-    ([key, icon, label]) =>
-      `<span class="livingCivChip" title="${label}">${icon} ${Math.round(yields[key] ?? 0)}</span>`
-  ).join("");
-}
-
-/** The OpenCiv empire panel: yields, research, happiness and treasury. */
-function renderCivState(sSim: StatePolitySim, stateId: number): string {
-  const yields = sSim.yieldsPerTurn;
-  if (!yields && sSim.happiness === undefined && sSim.faith === undefined) return "";
-
-  const happinessIcon = (sSim.happiness ?? 0) >= 0 ? "🙂" : "☹️";
-  const happinessChip = `<span class="livingCivChip" title="Empire Happiness">${happinessIcon} ${Math.round(
-    sSim.happiness ?? 0
-  )}</span>`;
-  const treasuryChip = `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net gold: open the state budget">🪙 ${Math.round(
-    pack.states[stateId]?.economy?.treasury ?? 0
-  )} (${Math.round(yields?.gold ?? 0) >= 0 ? "+" : ""}${Math.round(yields?.gold ?? 0)})</button>`;
-
-  const tech = sSim.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
-  const techName = tech ? resolveCivTechName(activeCivThemeId(), tech) : "No research";
-  const banked = tech ? Math.round(sSim.researchedProgress?.[tech.id] ?? 0) : 0;
-  const techProgress = tech
-    ? `<div class="livingBar"><i style="width:${Math.min(
-        100,
-        Math.round((banked / Math.max(1, tech.cost)) * 100)
-      )}%"></i></div>
-       <div class="livingMuted">${escapeHtml(techName)}: ${banked} / ${tech.cost} science · ${
-         sSim.researchedTechs?.length ?? 0
-       } technologies known</div>`
-    : `<div class="livingMuted">No technology selected</div>`;
-
-  const list = `<div class="livingPoolVitals">${yieldChips(yields)}${happinessChip}${treasuryChip}</div>`;
-
-  return `<div class="livingSection">
-    <div class="livingSectionTitle">Empire</div>
-    ${list}
-    ${techProgress}
-  </div>`;
-}
-
 const percent = (value: number | null | undefined): string => (value == null ? "—" : `${Math.round(value * 100)}%`);
 
 /** The era a development level falls in, as the upstream schema names it */
@@ -881,6 +817,7 @@ function renderUpstreamState(stateId: number): string {
   const era = development == null ? "" : eraOf(development);
 
   const chips = [
+    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net gold: open the state budget">🪙 ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`,
     prosperity == null
       ? ""
       : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,
@@ -945,7 +882,6 @@ function renderCellCard(cellId: number): string {
   const improvement = cellSim?.improvement
     ? (CIV_IMPROVEMENT_BY_ID[cellSim.improvement]?.name ?? cellSim.improvement)
     : undefined;
-  const yields = getCellYields(cellId, stateId, living);
 
   let output = "";
   if (canReadUpstreamEconomy() && pack.cells.development) {
@@ -972,7 +908,6 @@ function renderCellCard(cellId: number): string {
     <div class="livingInspectorTitle">Cell ${cellId}</div>
     <div class="livingMuted">${escapeHtml(biome ?? "Unclaimed land")}${state?.i ? ` · ${escapeHtml(state.name ?? "")}` : " · wildlands"}</div>
     <div class="livingSection">
-      <div class="livingPoolVitals">${yieldChips(yields)}</div>
       <div class="livingMuted">
         ${level == null ? "No development" : `${Math.round(level)} development${eraOf(level) ? ` · ${escapeHtml(eraOf(level))}` : ""}`}
         ${prosperity == null ? "" : ` · ${prosperity}% prosperity`}
@@ -1012,31 +947,14 @@ function renderStateProvinces(stateId: number): string {
   return `<div class="livingSection"><div class="livingSectionTitle">Provinces</div>${rows}</div>`;
 }
 
-function renderEconomy(sSim: StatePolitySim, stateId: number): string {
-  const yields = sSim.yieldsPerTurn;
-  if (!yields) return "";
-
-  const list = [
-    ["Gold", `${Math.round(pack.states[stateId]?.economy?.treasury ?? 0)}g`],
-    ["Science", `${Math.round(yields.science ?? 0)}`],
-    ["Faith", `${Math.round(sSim.faith ?? 0)}`]
-  ]
-    .map(
-      ([label, value]) =>
-        `<div class="livingMeterRow"><span class="livingCapacityLabel">${escapeHtml(label)}</span><span class="livingMuted">${escapeHtml(value)}</span></div>`
-    )
-    .join("");
-
-  const buttons = stateId
-    ? `<div class="livingButtons" style="margin-top: 0.35em;">
-        <button type="button" data-open="cities" data-id="${stateId}">Cities &amp; Yields</button>
-        <button type="button" data-open="provinces" data-id="${stateId}">Provinces</button>
-        <button type="button" data-open="burgs" data-id="${stateId}">Burgs</button>
-        <button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>
-      </div>`
-    : "";
-
-  return `<div class="livingSection"><div class="livingSectionTitle">Economy</div>${list}${buttons}</div>`;
+function renderStateNav(stateId: number): string {
+  return `<div class="livingSection"><div class="livingSectionTitle">Manage</div>
+    <div class="livingButtons" style="margin-top: 0.35em;">
+      <button type="button" data-open="cities" data-id="${stateId}">Cities &amp; Economy</button>
+      <button type="button" data-open="provinces" data-id="${stateId}">Provinces</button>
+      <button type="button" data-open="burgs" data-id="${stateId}">Burgs</button>
+      <button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>
+    </div></div>`;
 }
 
 function renderAgenda(sSim: StatePolitySim, living?: ReturnType<typeof Living.getState>): string {
@@ -1290,7 +1208,6 @@ function renderBurgCard(burgId: number): string {
       <div class="livingSectionTitle">Unrest</div>
       ${renderMeter("Unrest", bSim.unrest, true)}
     </div>
-    ${renderCivCity(bSim, burgId)}
     ${renderUpstreamBurg(burgId)}
     <div class="livingSection">
       <div class="livingSectionTitle">Asset</div>
@@ -1345,66 +1262,6 @@ function renderBurgCard(burgId: number): string {
             : ""
       }
     </div>`;
-}
-
-interface CitySimView {
-  citizens?: number;
-  cityYields?: YieldValues;
-  foodStored?: number;
-  cultureStored?: number;
-  tilesAcquired?: number;
-  productionQueue?: {
-    kind: "unit" | "building" | "wonder" | "trouble" | "operation";
-    id: string;
-    targetFactionId?: number;
-    targetNodeKey?: string;
-  }[];
-  productionProgress?: Record<string, number>;
-  hp?: number;
-  maxHp?: number;
-  religionPressure?: Record<number, number>;
-  civBuildings?: string[];
-}
-
-/** The OpenCiv city panel: yields, growth buckets, queue, HP and religious pressure. */
-function renderCivCity(bSim: CitySimView, burgId: number): string {
-  if (bSim.cityYields === undefined && bSim.citizens === undefined) return "";
-
-  const queue = (bSim.productionQueue ?? [])
-    .slice(0, 4)
-    .map(item => {
-      if (item.kind === "operation" && item.id === "faction-suppression") {
-        const factionName = pack.factions?.[item.targetFactionId ?? 0]?.name ?? "faction";
-        const cost = factionSuppressionProductionCost({ tier: 2 });
-        const progress = Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
-        return `<li>Suppressing ${escapeHtml(factionName)} <span class="livingGuildChipStatus">${progress} / ${cost}</span></li>`;
-      }
-      const def =
-        item.kind === "unit"
-          ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
-          : CIV_BUILDING_BY_ID[item.id];
-      const cost = Math.max(1, Math.round(def?.cost ?? 1));
-      const progress = Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
-      const name = def?.name ?? item.id;
-      const icon = item.kind === "unit" ? "⚔️" : "🏛️";
-      return `<li>${icon} ${escapeHtml(name)} <span class="livingGuildChipStatus">${progress} / ${cost}</span></li>`;
-    })
-    .join("");
-
-  const pressure = Object.entries(bSim.religionPressure ?? {})
-    .sort((a, b) => Number(b[1]) - Number(a[1]))
-    .slice(0, 3)
-    .map(([id, value]) => `${pack.religions?.[Number(id)]?.name ?? id}: ${Math.round(Number(value))}`)
-    .join(" · ");
-
-  return `<div class="livingSection">
-    <div class="livingSectionTitle">City</div>
-    <div class="livingPoolVitals">${yieldChips(bSim.cityYields)}</div>
-    <div class="livingMuted">${bSim.citizens ?? 1} citizens · ${bSim.foodStored ?? 0} food · ${bSim.cultureStored ?? 0} culture</div>
-    ${queue ? `<ul class="livingQueue">${queue}</ul>` : ""}
-    ${pressure ? `<div class="livingMuted">${escapeHtml(pressure)}</div>` : ""}
-    <button type="button" data-open="burg" data-id="${burgId}">Burg Editor</button>
-  </div>`;
 }
 
 function currentBuildingName(buildingId: string): string {

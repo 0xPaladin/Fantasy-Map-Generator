@@ -1,14 +1,11 @@
 import { type Selection, select } from "d3";
 import { Controllers } from "@/controllers";
-import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
+import { currentContent } from "@/data/roster-store";
 import { Markets } from "@/model/economy/markets-generator";
 import { Prosperity } from "@/model/economy/prosperity";
-import { majorityReligion } from "@/model/physical/living-generator";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
-import { Military } from "@/model/political/military-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
 import { convertTemperature, getHeight, getTemperatureLikeness } from "@/model/units";
@@ -549,7 +546,7 @@ function updateBurgValues(): void {
   updateBurgPreview(b);
 }
 
-/** Summarise the OpenCiv city state (if the Living World simulates this burg). */
+/** Summarise the Living World state of this burg (if the simulation runs it). */
 function updateBurgLiving(burgId: number): void {
   const section = ensureEl("burgLivingSection");
   const bSim = pack.history?.living?.burgs?.[burgId];
@@ -560,31 +557,18 @@ function updateBurgLiving(burgId: number): void {
   }
 
   section.style.display = "block";
-  const yields = bSim.cityYields;
-  const yieldLine = yields
-    ? `🌾 ${Math.round(yields.food)} · 🔨 ${Math.round(yields.production)} · 🪙 ${Math.round(
-        yields.gold
-      )} · 🔬 ${Math.round(yields.science)} · 🎭 ${Math.round(yields.culture)} · ✨ ${Math.round(yields.faith)}`
-    : "";
+  const burg = pack.burgs[burgId];
   const hpLine =
     bSim.hp !== undefined && bSim.maxHp !== undefined ? ` · HP ${Math.round(bSim.hp)}/${Math.round(bSim.maxHp)}` : "";
-  const citizensLine = `${bSim.citizens ?? bSim.baseTier} citizens${yieldLine ? ` · ${yieldLine}` : ""}${hpLine}`;
-
-  const religionId = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
+  const unrestLine = `Unrest ${Math.round(bSim.unrest ?? 0)}%${hpLine}`;
+  const religionId = burg?.cell !== undefined ? (pack.cells.religion?.[burg.cell] ?? 0) : 0;
   const religion = religionId ? pack.religions?.[religionId]?.name : undefined;
   const religionLine = religion ? `<div>${t("Faith")}: ${escapeHtml(religion)}</div>` : "";
-
-  const item = bSim.productionQueue?.[0];
-  const itemDef = item
-    ? item.kind === "unit"
-      ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
-      : CIV_BUILDING_BY_ID[item.id]
+  const construction = bSim.construction
+    ? currentContent().content.buildings.find(entry => entry.id === bSim.construction?.buildingId)
     : undefined;
-  const itemProgress = item ? Math.round(bSim.productionProgress?.[`${item.kind}:${item.id}`] ?? 0) : 0;
-  const queueLine = item
-    ? `<div>${t("Production")}: ${escapeHtml(itemDef?.name ?? item.id)} · ${itemProgress} / ${Math.round(
-        itemDef?.cost ?? 0
-      )}</div>`
+  const buildLine = bSim.construction
+    ? `<div>${t("Building")}: ${escapeHtml(construction?.name ?? bSim.construction.buildingId)} · ${bSim.construction.turnsLeft} ${t("seasons left")}</div>`
     : "";
 
   const outposts = Factions.atBurg(getSelectedId());
@@ -593,28 +577,15 @@ function updateBurgLiving(burgId: number): void {
         .map(f => {
           const isHq = f.hq.burgId === selectedId;
           const op = f.outposts.find(o => o.burgId === selectedId);
-          const sim = isHq ? f.hq.sim : op?.sim;
-          const yields = sim?.cityYields;
-          const yieldText = yields
-            ? `🌾 ${Math.round(yields.food)} · 🔨 ${Math.round(yields.production)} · 🪙 ${Math.round(yields.gold)} · 🔬 ${Math.round(yields.science)} · 🎭 ${Math.round(yields.culture)} · ✨ ${Math.round(yields.faith)}`
-            : "—";
-          const queue = (sim?.productionQueue ?? [])
-            .map(item => {
-              const def =
-                item.kind === "unit"
-                  ? (CIV_CIVILIAN_BY_ID[item.id] ?? Military.getUnitTypes()[item.id])
-                  : CIV_BUILDING_BY_ID[item.id];
-              const progress = Math.round(sim?.productionProgress?.[`${item.kind}:${item.id}`] ?? 0);
-              return `${def?.name ?? item.id} ${progress}/${Math.round(def?.cost ?? 0)}`;
-            })
-            .join(", ");
+          const node = isHq ? f.hq : op;
           const tier = isHq ? null : op?.tier;
-          return `<div style="color: ${f.color || "#38bdf8"}; font-weight: 500;">${escapeHtml(f.name)}${tier !== null && tier !== undefined ? ` (T${tier})` : ""}</div><div style="font-size: 0.85em; opacity: 0.85;">${isHq ? "HQ" : "Outpost"} · ${sim?.citizens ?? 0} citizens · ${sim?.workedCells?.length ?? 0} worked cells · ${escapeHtml(yieldText)}${queue ? ` · Queue: ${escapeHtml(queue)}` : ""}</div>`;
+          const influence = node?.influence;
+          return `<div style="color: ${f.color || "#38bdf8"}; font-weight: 500;">${escapeHtml(f.name)}${tier !== null && tier !== undefined ? ` (T${tier})` : ""}</div><div style="font-size: 0.85em; opacity: 0.85;">${isHq ? "HQ" : "Outpost"}${influence !== undefined ? ` · Influence ${Math.round(influence)}%` : ""}</div>`;
         })
         .join("")}`
     : "";
 
-  ensureEl("burgLiving").innerHTML = `<div>${escapeHtml(citizensLine)}</div>${religionLine}${queueLine}${outpostsLine}`;
+  ensureEl("burgLiving").innerHTML = `<div>${escapeHtml(unrestLine)}</div>${religionLine}${buildLine}${outpostsLine}`;
 }
 
 function changeName(): void {

@@ -1,7 +1,7 @@
 import type { Alignment } from "@/data/culture-traits";
 import type { Regiment } from "@/model/political/military-generator";
 import type { Emblem } from "@/types/emblems";
-import type { BurgSimState, HappinessBreakdown, YieldValues } from "@/types/living";
+import type { BurgSimState } from "@/types/living";
 
 export type FactionCategory = "commercial" | "adventuring" | "underworld" | "religious" | "political" | "martial";
 
@@ -105,9 +105,6 @@ export interface Faction {
   researchedTechs: string[];
   researchedProgress: Record<string, number>;
   freeTechs?: number;
-  yieldsPerTurn?: YieldValues;
-  happiness?: number;
-  happinessBreakdown?: HappinessBreakdown;
 
   // Economy, Diplomacy & Military
   treasury: number;
@@ -181,12 +178,6 @@ export interface FactionArchetypeDef {
 export interface FactionNodeYieldBreakdown {
   node: FactionHq | FactionOutpost;
   isHq: boolean;
-  yields: YieldValues;
-  grossGold: number;
-  maintenance: number;
-  science: number;
-  citizens: number;
-  workedCells: number;
   /** upstream economy gold of the node's season, already net of the charter tithe */
   upstreamGold: number;
   /** what the node pays its patron state of its upstream gold */
@@ -194,11 +185,6 @@ export interface FactionNodeYieldBreakdown {
 }
 
 export interface FactionYieldBreakdown {
-  total: YieldValues;
-  totalCitizens: number;
-  totalWorkedCells: number;
-  upkeep: number;
-  maintenance: number;
   nodes: FactionNodeYieldBreakdown[];
   hq: FactionNodeYieldBreakdown | null;
   outposts: FactionNodeYieldBreakdown[];

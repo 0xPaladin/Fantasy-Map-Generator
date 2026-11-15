@@ -1,6 +1,6 @@
 // Transient on-map juice for the Living HUD: army/raid vectors and floating
 // outcome badges. See docs/plans/living-world.md (slice 5).
-import { Living, UNIT_MAX_HP } from "@/model/physical/living-generator";
+import { Living } from "@/model/physical/living-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { viewport } from "@/renderers/viewport/viewport";
 import type { LivingNewsItem, LivingWorldState } from "@/types/living";
@@ -171,21 +171,7 @@ export function collectLivingBadges(living: LivingWorldState): LivingBadge[] {
     color: NEWS_COLORS[item.kind] ?? "#5e4fa2"
   }));
 
-  // Tactical status: wounded 1UPT regiments and besieged cities.
-  for (const state of pack.states ?? []) {
-    if (!state?.i || state.removed) continue;
-    for (const regiment of state.military ?? []) {
-      const unit = living.units?.[`${state.i}-${regiment.i}`];
-      if (!unit || unit.hp >= UNIT_MAX_HP) continue;
-      badges.push({
-        id: `unit-${state.i}-${regiment.i}`,
-        cell: regiment.cell,
-        text: `❤️ ${Math.round(unit.hp)} HP`,
-        color: unit.hp <= 30 ? "#a33d3d" : "#5e4fa2"
-      });
-    }
-  }
-
+  // Tactical status: besieged cities.
   for (const burg of pack.burgs ?? []) {
     if (!burg?.i || burg.removed) continue;
     const bSim = living.burgs?.[burg.i];

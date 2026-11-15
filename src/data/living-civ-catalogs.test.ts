@@ -1,14 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  CIV_BELIEF_BY_ID,
-  CIV_ENHANCER_BELIEFS,
-  CIV_FOLLOWER_BELIEFS,
-  CIV_FOUNDER_BELIEFS,
-  CIV_PANTHEONS,
-  CIV_RELIGION_NAMES
-} from "./living-civ-beliefs";
 import { CIV_BUILDING_BY_ID, CIV_BUILDINGS, civBuildingCapacity, getCivBuilding } from "./living-civ-buildings";
-import { CIV_CIVILIAN_BY_ID, CIV_CIVILIANS, getCivCivilian } from "./living-civ-civilians";
 import {
   CIV_IMPROVEMENT_BY_ID,
   CIV_IMPROVEMENTS,
@@ -26,7 +17,6 @@ import {
   resolveCivEraName,
   resolveCivImprovementName,
   resolveCivTechName,
-  resolveCivUnitName,
   selectCivTheme
 } from "./living-civ-themes";
 
@@ -162,87 +152,6 @@ describe("living-civ catalogs (Slice 1)", () => {
     });
   });
 
-  describe("civilians", () => {
-    it("keeps only the eight utility units the Civ mechanics still need", () => {
-      expect(CIV_CIVILIANS).toHaveLength(8);
-      expectUniqueIds(CIV_CIVILIANS, "civilian");
-
-      const ids = new Set(CIV_CIVILIANS.map(unit => unit.id));
-      for (const id of [
-        "settler",
-        "builder",
-        "work_boat",
-        "caravan",
-        "cargo_ship",
-        "missionary",
-        "inquisitor",
-        "great_prophet"
-      ]) {
-        expect(ids.has(id), `civilian ${id} exists`).toBe(true);
-      }
-
-      const techIds = new Set(CIV_TECHS.map(tech => tech.id));
-      for (const unit of CIV_CIVILIANS) {
-        expect(unit.name.length).toBeGreaterThan(0);
-        expect(unit.isUtility, `${unit.id} is utility`).toBe(true);
-        expect(["land", "sea", undefined]).toContain(unit.domain);
-        if (unit.requiredTech) {
-          expect(techIds.has(unit.requiredTech), `${unit.id} tech ${unit.requiredTech}`).toBe(true);
-        }
-        if (unit.capturedAs) {
-          expect(CIV_CIVILIAN_BY_ID[unit.capturedAs], `${unit.id} captured as ${unit.capturedAs}`).toBeDefined();
-        }
-      }
-
-      expect(CIV_CIVILIAN_BY_ID.builder).toBe(CIV_CIVILIANS.find(unit => unit.id === "builder"));
-      expect(getCivCivilian("builder")?.name).toBe("Builder");
-      expect(getCivCivilian("swordsman"), "combat units are roster-only now").toBeUndefined();
-    });
-  });
-
-  describe("beliefs and religions", () => {
-    it("ports pantheons, founder/follower/enhancer beliefs and religions", () => {
-      expect(CIV_PANTHEONS).toHaveLength(26);
-      expect(CIV_FOUNDER_BELIEFS).toHaveLength(9);
-      expect(CIV_FOLLOWER_BELIEFS).toHaveLength(16);
-      expect(CIV_ENHANCER_BELIEFS).toHaveLength(9);
-      expect(CIV_RELIGION_NAMES.length).toBeGreaterThanOrEqual(8);
-
-      const allBeliefs = [...CIV_PANTHEONS, ...CIV_FOUNDER_BELIEFS, ...CIV_FOLLOWER_BELIEFS, ...CIV_ENHANCER_BELIEFS];
-      expectUniqueIds(allBeliefs, "belief");
-      expect(Object.keys(CIV_BELIEF_BY_ID)).toHaveLength(allBeliefs.length);
-
-      for (const belief of allBeliefs) {
-        expect(belief.name.length).toBeGreaterThan(0);
-        expect(belief.text.length).toBeGreaterThan(0);
-        expect(belief.description.length).toBeGreaterThan(0);
-      }
-
-      for (const religion of CIV_RELIGION_NAMES) {
-        expect(religion.length).toBeGreaterThan(0);
-      }
-    });
-
-    it("resolves every belief building reference", () => {
-      const buildingIds = new Set(CIV_BUILDINGS.map(building => building.id));
-      const allBeliefs = [...CIV_PANTHEONS, ...CIV_FOUNDER_BELIEFS, ...CIV_FOLLOWER_BELIEFS, ...CIV_ENHANCER_BELIEFS];
-
-      for (const belief of allBeliefs) {
-        for (const effect of belief.effects?.buildingYields ?? []) {
-          expect(buildingIds.has(effect.building), `${belief.id} building ${effect.building}`).toBe(true);
-        }
-        for (const effect of belief.effects?.faithBuildings ?? []) {
-          expect(buildingIds.has(effect.building), `${belief.id} faith building ${effect.building}`).toBe(true);
-        }
-        for (const effect of belief.effects?.tileYields ?? []) {
-          if (effect.improvement) {
-            expect(CIV_IMPROVEMENT_BY_ID[effect.improvement], `${belief.id} improvement`).toBeDefined();
-          }
-        }
-      }
-    });
-  });
-
   describe("improvements, resources and tiles", () => {
     it("ports improvements, resources and tiles with resolvable references", () => {
       expect(CIV_IMPROVEMENTS).toHaveLength(14);
@@ -323,9 +232,6 @@ describe("living-civ catalogs (Slice 1)", () => {
         for (const tech of CIV_TECHS) {
           expect(resolveCivTechName(themeId, tech).length).toBeGreaterThan(0);
         }
-        for (const unit of CIV_CIVILIANS) {
-          expect(resolveCivUnitName(themeId, unit).length).toBeGreaterThan(0);
-        }
         for (const building of CIV_BUILDINGS) {
           expect(resolveCivBuildingName(themeId, building).length).toBeGreaterThan(0);
         }
@@ -334,9 +240,6 @@ describe("living-civ catalogs (Slice 1)", () => {
         }
       }
 
-      expect(resolveCivUnitName("historical", CIV_CIVILIAN_BY_ID.builder!)).toBe("Builder");
-      expect(resolveCivUnitName("fantasy", CIV_CIVILIAN_BY_ID.builder!)).toBe("Builder");
-      expect(resolveCivUnitName("astral", CIV_CIVILIAN_BY_ID.builder!)).toBe("Constructor Drone");
       expect(resolveCivBuildingName("astral", CIV_BUILDING_BY_ID.palace)).toBe("Command Nexus");
       expect(resolveCivImprovementName("astral", CIV_IMPROVEMENT_BY_ID.farm)).toBe("Agripod");
     });

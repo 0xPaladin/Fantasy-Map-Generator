@@ -373,25 +373,6 @@ export function spawnTrouble(
     cell
   };
 
-  // Phase E: mint the civic response as a burg production action — the
-  // province's major burg works the trouble off like any building asset.
-  const major =
-    pack.burgs.find(
-      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
-    ) ??
-    pack.burgs.find(
-      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId
-    );
-  if (major) {
-    const bSim = living.burgs[major.i];
-    if (bSim) {
-      bSim.productionQueue ??= [];
-      if (!bSim.productionQueue.some(item => item.kind === "trouble" && item.id === finalTroubleId)) {
-        bSim.productionQueue.push({ kind: "trouble", id: finalTroubleId });
-      }
-    }
-  }
-
   pushNews(living, {
     kind: "trouble",
     text: `${tDef.name} arose in ${province.name}! (${finalTheme} trouble, level ${finalLevel})`,
@@ -785,7 +766,7 @@ export function sendAdventurersToFaction(stateId: number, provinceId: number): b
   const traitBonus = (adventurer.virtues?.length ?? 0) - (adventurer.vices?.length ?? 0);
   const rng = getRng("adventurer:delve", stateId * 500 + provinceId, living.tick);
   const roll = rng.d(20);
-  const domainMod = valueModifier(living.states[stateId]?.yieldsPerTurn?.gold ?? 0);
+  const domainMod = valueModifier(Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0) / 50));
   const total = roll + domainMod + traitBonus;
   const dc = 14 + Math.ceil((factionReg?.a ?? 100) / 100);
 

@@ -8,13 +8,12 @@ const mocks = vi.hoisted(() => {
     states: {} as Record<number, unknown>,
     provinces: {} as Record<number, unknown>,
     burgs: {} as Record<number, unknown>,
-    units: {} as Record<string, unknown>,
     recentNews: [] as unknown[]
   };
   return { state, living: { getState: vi.fn(() => state) } };
 });
 
-vi.mock("@/model/physical/living-generator", () => ({ Living: mocks.living, UNIT_MAX_HP: 100 }));
+vi.mock("@/model/physical/living-generator", () => ({ Living: mocks.living }));
 
 import {
   clearLivingToasts,
@@ -55,7 +54,6 @@ beforeEach(() => {
   mocks.state.states = {};
   mocks.state.provinces = {};
   mocks.state.burgs = {};
-  mocks.state.units = {};
   mocks.state.recentNews = [];
 });
 
@@ -125,8 +123,7 @@ describe("collectLivingBadges", () => {
     expect(badges[0].text).toContain("Battle of Oakford");
   });
 
-  it("adds wounded unit and besieged city badges", () => {
-    mocks.state.units = { "1-0": { unitTypeId: "warrior", hp: 40 } };
+  it("adds besieged city badges", () => {
     mocks.state.burgs = { 1: { burgId: 1, hp: 120, maxHp: 250 } };
     (globalThis.pack as unknown as { states: unknown[] }).states = [
       { i: 0 },
@@ -135,7 +132,6 @@ describe("collectLivingBadges", () => {
 
     const badges = collectLivingBadges(mocks.state as never);
 
-    expect(badges.some(badge => badge.text.includes("40 HP"))).toBe(true);
     expect(badges.some(badge => badge.text.includes("120 / 250"))).toBe(true);
   });
 });

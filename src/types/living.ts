@@ -193,25 +193,14 @@ export interface BurgSimState {
   originalOwner?: number;
   originalCulture?: number;
   originalReligion?: number;
-  // OpenCiv city fields; lazily initialized by later Living World 2.0 slices.
+  /** a major burg: anchors siege HP, city strikes and garrison regeneration */
   isMajor?: boolean;
-  citizens?: number;
-  foodStored?: number;
-  cultureStored?: number;
-  tilesAcquired?: number;
-  nextBorderCell?: number | null;
-  workedCells?: number[];
-  lockedCells?: number[];
-  productionQueue?: ProductionItem[];
-  productionProgress?: Record<string, number>;
   /**
-   * OpenCiv building & wonder ids produced by the autonomous city loop.
-   * Kept apart from the legacy AER `buildings` list so the seasonal AER
-   * capacity math keeps working until Slice 4 retires it.
+   * Flag-synced asset ids (walls/market/temple/harbor families, palace).
+   * Reconciled from the native Burg flags; feeds siege HP. Projects (Phase 4
+   * of living-fmg-native.md) will grow this list again.
    */
   civBuildings?: string[];
-  /** last computed OpenCiv city yields, cached for the Living inspector */
-  cityYields?: YieldValues;
   hp?: number;
   maxHp?: number;
   /** state besieging this burg (0 = none) */
@@ -221,9 +210,6 @@ export interface BurgSimState {
   /** siege supply HD remaining (buffers attrition) */
   siegeSupplies?: number;
   hasStruckThisTurn?: boolean;
-  soldBuildingThisTurn?: boolean;
-  religionPressure?: Record<number, number>;
-  pantheonId?: string | null;
   pillaged?: boolean;
   /** accumulated seasonal reserves (Living ledger); upstream `burg.treasury` stays a day's net */
   treasury?: number;
@@ -253,14 +239,8 @@ export interface StatePolitySim {
   warExhaustion: number;
   claims: ClaimRecord[];
   grudges: GrudgeRecord[];
-  // OpenCiv empire fields; lazily initialized by later Living World 2.0 slices.
-  faith?: number;
-  prophetsEarned?: number;
-  pantheonId?: string | null;
-  religionId?: number | null;
-  happiness?: number;
-  happinessBreakdown?: HappinessBreakdown;
-  yieldsPerTurn?: YieldValues;
+  // Research (interim: science from development; Phase 2 of living-fmg-native.md
+  // replaces the tree with an era ladder derived from development alone).
   currentTechId?: string | null;
   researchQueue?: string[];
   researchedTechs?: string[];
@@ -323,54 +303,24 @@ export interface LivingWorldState {
   eschaton?: number;
   /** one-time legacy trouble/lair -> faction migration has run (faction-trouble conversion) */
   threatsMigrated?: boolean;
-  /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
-  worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
-  /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5.
-   *  After the armies migration this holds **utility regiments only**
-   *  (Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor,
-   *  Great Prophet) — combat regiments are blocks + `armies` below. */
-  units?: Record<string, UnitSimState>;
-  /** Per-tick combat-army state, keyed by `${stateId}-${regimentId}` (living-openciv-armies.md §5.2).
+  /** Per-tick combat-army state, keyed by `${stateId}-${regimentId}`.
    *  Composition itself lives on `Regiment.units`; lazily initialized in `syncArmies`. */
   armies?: Record<string, ArmySimState>;
-  /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
-  religions?: Record<number, ReligionBeliefState>;
   activeTroubles?: Record<string, ProvinceTrouble>;
   /** upstream economy is stale after a development, market or border change; re-run `Production.produce()` */
   economyDirty?: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Living World 2.0 (OpenCiv) catalogs and simulation types. See docs/plans/living-openciv.md.
+// OpenCiv catalog types. The tile economy is removed (living-fmg-native.md
+// Phase 1); only the buildings catalog (flag families, siege HP) and the
+// improvement names survive, and the tech tree lasts until Phase 2.
 // ---------------------------------------------------------------------------
 
 export type CivYieldId = "food" | "production" | "gold" | "science" | "culture" | "faith" | "happiness";
 
 export type YieldValues = Record<CivYieldId, number>;
 export type YieldDelta = Partial<YieldValues>;
-
-export interface StateCityYieldBreakdown {
-  burgId: number;
-  name: string;
-  isCapital: boolean;
-  yields: YieldValues;
-  grossGold: number;
-  maintenance: number;
-  science: number;
-  citizens: number;
-  workedCells: number;
-  buildings: string[];
-}
-
-export interface StateYieldBreakdown {
-  total: YieldValues;
-  totalCitizens: number;
-  totalWorkedCells: number;
-  upkeep: number;
-  maintenance: number;
-  cities: StateCityYieldBreakdown[];
-  capital: StateCityYieldBreakdown | null;
-}
 
 export type CivEraId =
   | "ancient"

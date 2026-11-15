@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { CIV_TECH_BY_ID, computePolityTechDevelopment } from "@/data/living-civ-techs";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
-import { Accounts } from "@/model/economy/accounts";
 import { Deals } from "@/model/economy/deals";
 import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
 import type { Burg } from "@/model/political/burgs-generator";
@@ -17,36 +15,18 @@ import type { Faction } from "@/types/factions";
 import type { StateAgenda } from "@/types/living";
 import {
   activeCivThemeId,
-  BASE_EMPIRE_HAPPINESS,
-  borderCultureNeeded,
-  borderInfluenceScore,
-  citizensFromPopulation,
   classifyGood,
+  FACTION_SUPPRESSION_SEASONS,
   figureBias,
-  foodNeededForGrowth,
-  getCellResource,
-  getCellTerrainInfo,
-  getCellYieldSources,
-  getCellYields,
-  happinessCombatMultiplier,
-  happinessGrowthFactor,
   hasStackingConflict,
-  hurryGoldCost,
   isMajorBurg,
-  isMinorBurg,
   isTechSelectable,
   Living,
-  LUXURY_HAPPINESS,
-  populationFromCitizens,
   regionTierFromPop,
   settlementTierFromPop,
   syncBurgBuildingsFromFlags,
   syncBurgFlagsFromBuildings,
-  syncCivBuildingsFromFlags,
-  syncCivFlagsFromBuildings,
-  terrainDefenseMultiplier,
-  UPKEEP_FREE,
-  unitMovementCost
+  terrainDefenseMultiplier
 } from "./living-generator";
 
 describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War & Unravel)", () => {
@@ -996,185 +976,42 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     });
   });
 
-  describe("OpenCiv slice 2: cell yields, resources, improvements & minor burgs", () => {
-    const makeGood = (i: number, name: string, tags: string[], demandCoverage: Good["demandCoverage"]): Good => ({
-      i,
-      name,
-      tags,
-      demandCoverage,
-      value: 1,
-      carriage: 1,
-      unit: "unit",
-      icon: "",
-      color: "#000000"
+  describe("Goods, burg classes & cell records", () => {
+    beforeEach(() => {
+      setupCityWorld();
     });
 
-    function setupTerrain(): void {
-      pack.cells.h = Uint8Array.from([20, 25, 25, 55, 10, 75]);
-      pack.cells.biome = Uint8Array.from([4, 4, 1, 3, 1, 4]);
-      pack.cells.harbor = Uint8Array.from([0, 0, 0, 0, 1, 0]);
-      pack.cells.f = new Uint16Array(6);
-      pack.cells.good = new Uint16Array(6);
-      pack.cells.burg = new Uint16Array(6);
-      pack.cells.r = new Uint16Array(6);
-      pack.features = [];
-      options.map.goods = [];
-    }
-
-    it("derives flat, hill, forest, coast and mountain terrain yields", () => {
-      setupTerrain();
-
-      expect(getCellYields(1)).toMatchObject({ food: 2, production: 0 });
-      expect(getCellYields(3).production).toBe(2);
-      expect(getCellYields(4)).toMatchObject({ food: 1, gold: 1 });
-      expect(getCellTerrainInfo(5)).toMatchObject({
-        isMountain: true,
-        isWorkable: false,
-        elevation: 2,
-        movementCost: 9999
+    it("classifies goods into the living resource classes", () => {
+      const good = (tags: string[], demandCoverage: Good["demandCoverage"]): Good => ({
+        i: 0,
+        name: "Good",
+        tags,
+        demandCoverage,
+        value: 1,
+        carriage: 1,
+        unit: "unit",
+        icon: "",
+        color: "#000000"
       });
-      expect(getCellTerrainInfo(3)).toMatchObject({ isHill: true, elevation: 1, movementCost: 2 });
 
-      pack.cells.biome[1] = 6;
-      expect(getCellTerrainInfo(1).movementCost).toBe(2);
-      expect(getCellYields(1)).toMatchObject({ food: 1, production: 1 });
+      expect(classifyGood(good(["food"], { food: 1 }))).toBe("bonus");
+      expect(classifyGood(good(["supply", "military"], { utilities: 0.6, military: 0.4 }))).toBe("strategic");
+      expect(classifyGood(good(["food", "luxury"], { food: 0.5, luxury: 0.5 }))).toBe("luxury");
+      expect(classifyGood(good(["ore", "military"], { food: 1 }))).toBe("strategic");
+      expect(classifyGood(good(["construction"], { construction: 1 }))).toBe("bonus");
+      expect(classifyGood(undefined)).toBeNull();
     });
 
-    it("treats rivers as fresh water and freshwater lakes as 2 Food", () => {
-      setupTerrain();
+    it("separates major and minor burgs for the city UI", () => {
+      Living.init();
 
-      pack.cells.r[2] = 1;
-      expect(getCellYields(2).food).toBe(2);
-
-      pack.cells.f[4] = 0;
-      pack.features = [
-        {
-          i: 0,
-          type: "lake",
-          land: false,
-          border: false,
-          cells: 1,
-          firstCell: 4,
-          vertices: [],
-          area: 0,
-          shoreline: [],
-          height: 0,
-          subtype: "freshwater",
-          group: "",
-          temp: 0,
-          flux: 0,
-          evaporation: 0,
-          name: "Lake"
-        }
-      ];
-      expect(getCellTerrainInfo(4).terrain).toBe("freshwater");
-      expect(getCellYields(4).food).toBe(2);
+      expect(isMajorBurg(pack.burgs[1])).toBe(true); // a capital
+      expect(isMajorBurg(pack.burgs[3])).toBe(false); // a free village
+      pack.burgs[4].population = 8; // a free city: settlement tier 4
+      expect(isMajorBurg(pack.burgs[4])).toBe(true);
     });
 
-    it("classifies goods and reveals strategic resources by tech", () => {
-      setupTerrain();
-      const wheat = makeGood(1, "Wheat", ["food"], { food: 1 });
-      const horses = makeGood(2, "Horses", ["supply", "military"], { utilities: 0.6, military: 0.4 });
-      const wine = makeGood(3, "Wine", ["food", "luxury"], { food: 0.5, luxury: 0.5 });
-      const iron = makeGood(4, "Iron", ["ore", "military"], { food: 1 });
-      const stone = makeGood(5, "Stone", ["construction"], { construction: 1 });
-      options.map.goods = [makeGood(0, "None", [], {}), wheat, horses, wine, iron, stone];
-
-      expect(classifyGood(wheat)).toBe("bonus");
-      expect(classifyGood(horses)).toBe("strategic");
-      expect(classifyGood(wine)).toBe("luxury");
-      expect(classifyGood(iron)).toBe("strategic");
-      expect(classifyGood(stone)).toBe("bonus");
-
-      pack.cells.good = Uint16Array.from([0, 1, 2, 3, 4, 5]);
-      expect(getCellYields(1).food).toBe(3);
-      expect(getCellResource(2, 1)).toMatchObject({ class: "strategic", revealed: false });
-      expect(getCellYields(2).production).toBe(0);
-      expect(getCellYields(3).food).toBe(1);
-
-      const living = Living.init();
-      living.states[1].researchedTechs = ["animal_husbandry"];
-      expect(getCellResource(2, 1, living)?.revealed).toBe(true);
-      expect(getCellYields(2, 1, living).production).toBe(1);
-    });
-
-    it("adds improvement yields and disables them when pillaged", () => {
-      setupTerrain();
-      const living = Living.init();
-      living.cells = {};
-
-      living.cells ??= {};
-      living.cells[1] = { improvement: "farm" };
-      expect(getCellYields(1, 0, living).food).toBe(3);
-
-      pack.cells.r[1] = 1;
-      living.states[1].researchedTechs = ["civil_service"];
-      expect(getCellYields(1, 1, living).food).toBe(4);
-
-      living.cells[1].pillaged = true;
-      expect(getCellYields(1, 1, living).food).toBe(2);
-
-      living.cells[3] = { improvement: "mine" };
-      expect(getCellYields(3, 0, living).production).toBe(3);
-      living.states[1].researchedTechs = ["chemistry"];
-      expect(getCellYields(3, 1, living).production).toBe(4);
-    });
-
-    it("separates major and minor burgs and yields village bonuses", () => {
-      setupTerrain();
-      pack.cells.h[4] = 25;
-      pack.cells.biome[4] = 4;
-      pack.cells.harbor[4] = 0;
-      const living = Living.init();
-      const capital = pack.burgs[1];
-      const freeVillage = pack.burgs[3];
-      const freeCity = pack.burgs[4];
-      expect(isMajorBurg(capital)).toBe(true);
-      expect(isMajorBurg(freeVillage)).toBe(false);
-      expect(isMinorBurg(freeVillage)).toBe(false);
-
-      pack.cells.province[4] = 1;
-      pack.cells.burg[4] = 3;
-      expect(isMinorBurg(freeVillage)).toBe(true);
-
-      expect(getCellYields(4, 0, living)).toMatchObject({ food: 3, gold: 3 });
-      const baseVillage = getCellYieldSources(4, 0, living).find(source => source.kind === "minor_burg");
-      expect(baseVillage?.yields).toMatchObject({ food: 1, gold: 3 });
-
-      freeVillage.temple = 1;
-      freeVillage.walls = 1;
-      freeVillage.port = 1;
-      const fullVillage = getCellYieldSources(4, 0, living).find(source => source.kind === "minor_burg");
-      expect(fullVillage?.yields).toMatchObject({ food: 2, gold: 4, faith: 1, culture: 1, production: 1 });
-
-      living.burgs[3].pillaged = true;
-      expect(getCellYieldSources(4, 0, living).some(source => source.kind === "minor_burg")).toBe(false);
-
-      freeCity.population = 8;
-      expect(isMajorBurg(freeCity)).toBe(true);
-    });
-
-    it("auto-connects a minor burg's underlying good as an improved resource", () => {
-      setupTerrain();
-      pack.cells.h[4] = 25;
-      pack.cells.biome[4] = 4;
-      pack.cells.harbor[4] = 0;
-      options.map.goods = [makeGood(0, "None", [], {}), makeGood(1, "Wheat", ["food"], { food: 1 })];
-      pack.cells.good[4] = 1;
-      pack.cells.burg[4] = 3;
-      pack.cells.province[4] = 1;
-      const living = Living.init();
-
-      const connected = getCellYieldSources(4, 0, living).find(source => source.kind === "resource");
-      expect(connected?.yields).toMatchObject({ food: 2 });
-
-      living.burgs[3].pillaged = true;
-      const disconnected = getCellYieldSources(4, 0, living).find(source => source.kind === "resource");
-      expect(disconnected?.yields).toMatchObject({ food: 1 });
-    });
-
-    it("lazily initializes living.cells for old saves", () => {
-      setupTerrain();
+    it("lazily initializes the cell record on old saves", () => {
       delete pack.history.living;
 
       const living = Living.init();
@@ -1395,255 +1232,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     options.map.goods = [makeGood(0, "None", [], {}), makeGood(1, "Wine", ["luxury"], { luxury: 1 })];
   }
 
-  describe("OpenCiv slice 3: autonomous major burg city loop", () => {
-    beforeEach(() => {
-      setupCityWorld();
-    });
-
-    it("maps population to citizens and back with OpenCiv thresholds", () => {
-      expect(citizensFromPopulation(18)).toBe(6);
-      expect(citizensFromPopulation(0)).toBe(1);
-      expect(populationFromCitizens(6)).toBe(18);
-      expect(populationFromCitizens(1)).toBe(0.5);
-      expect(foodNeededForGrowth(6)).toBe(63);
-      expect(borderCultureNeeded(0)).toBe(20);
-      expect(borderCultureNeeded(1)).toBe(32);
-      expect(borderCultureNeeded(1, 0.75)).toBe(24);
-      expect(borderCultureNeeded(0, 0.75, 1.15)).toBe(13);
-      expect(happinessGrowthFactor(0)).toBe(1);
-      expect(happinessGrowthFactor(-5)).toBe(0.25);
-      expect(happinessGrowthFactor(-10)).toBe(0);
-
-      // Influence: closer cells win, a visible luxury good outweighs two extra hops.
-      setupCityWorld();
-      pack.cells.good[2] = 1;
-      expect(borderInfluenceScore(1, 1, 1)).toBeLessThan(borderInfluenceScore(3, 3, 1));
-      expect(borderInfluenceScore(2, 3, 1)).toBeLessThan(borderInfluenceScore(1, 1, 1));
-    });
-
-    it("works the centre for free plus citizen cells, never stealing another city's cells", () => {
-      const living = Living.init();
-      Living.tick(1);
-
-      const b1 = living.burgs[1];
-      expect(b1.citizens).toBe(6);
-      expect(b1.workedCells?.length).toBe(5);
-      expect(b1.workedCells).not.toContain(5);
-      for (const cell of b1.workedCells ?? []) expect(pack.cells.state[cell]).toBe(1);
-      // Millbrook (a minor burg) is the best food cell and is worked first.
-      expect(b1.workedCells).toContain(4);
-      // Palace adds +3 Production and +1 Culture to the capital.
-      expect(b1.cityYields).toMatchObject({ food: 13, production: 3, culture: 1 });
-
-      const b2 = living.burgs[2];
-      expect(b2.citizens).toBe(3);
-      expect(b2.workedCells?.sort()).toEqual([7]);
-      for (const cell of b2.workedCells ?? []) expect(b1.workedCells ?? []).not.toContain(cell);
-    });
-
-    it("grows a citizen when the food bucket fills and grows satellite villages", () => {
-      const living = Living.init();
-      const b1 = living.burgs[1];
-      b1.citizens = 6;
-      b1.foodStored = 62;
-
-      Living.tick(1);
-
-      expect(b1.citizens).toBe(7);
-      expect(pack.burgs[1].population).toBe(24.5);
-      expect(pack.burgs[5].population).toBe(1.6);
-    });
-
-    it("keeps 40% of the bucket with an Aqueduct and starves without food", () => {
-      const living = Living.init();
-      const b1 = living.burgs[1];
-      b1.citizens = 6;
-      b1.civBuildings = ["palace", "aqueduct"];
-      b1.foodStored = 63;
-
-      Living.tick(1);
-
-      expect(b1.citizens).toBe(7);
-      expect(b1.foodStored).toBeCloseTo(26.2, 5);
-
-      b1.foodStored = -1000;
-      Living.tick(1);
-
-      expect(b1.citizens).toBe(6);
-      expect(b1.foodStored).toBe(0);
-    });
-
-    it("stops growth entirely while the empire is very unhappy", () => {
-      const living = Living.init();
-      living.states[1].happiness = -10;
-      const b1 = living.burgs[1];
-      b1.foodStored = 62;
-
-      Living.tick(1);
-
-      expect(b1.citizens).toBe(6);
-      expect(b1.foodStored).toBe(62);
-    });
-
-    it("claims the best unowned border cell and peacefully annexes a kin free burg", () => {
-      const living = Living.init();
-      pack.cells.good[2] = 1;
-      const b1 = living.burgs[1];
-      b1.cultureStored = 20;
-
-      Living.tick(1);
-
-      expect(pack.cells.state[2]).toBe(1);
-      expect(pack.cells.province[2]).toBe(1);
-      expect(pack.burgs[3].state).toBe(1);
-      expect(living.burgs[3].unrest).toBe(0);
-      expect(b1.tilesAcquired).toBe(1);
-      // 20 banked + 1 Palace Culture − 20 needed, clamped at 1.
-      expect(b1.cultureStored).toBeCloseTo(1, 5);
-    });
-
-    it("takes a foreign free burg by force and raises occupation unrest", () => {
-      const living = Living.init();
-      pack.cells.good[8] = 1;
-      const b1 = living.burgs[1];
-      b1.cultureStored = 20;
-
-      Living.tick(1);
-
-      expect(pack.cells.state[8]).toBe(1);
-      expect(pack.burgs[4].state).toBe(1);
-      expect(living.burgs[4].unrest).toBeGreaterThan(0);
-      expect(living.burgs[4].conqueredBy).toBe(1);
-      expect(living.recentNews.some(item => item.kind === "conquest" && item.burgId === 4)).toBe(true);
-    });
-
-    it("completes a queued building and raises the matching burg flag", () => {
-      const living = Living.init();
-      const b1 = living.burgs[1];
-      living.cells ??= {};
-      living.cells[1] = { improvement: "mine" };
-      b1.productionQueue = [{ kind: "building", id: "walls" }];
-      b1.productionProgress = { "building:walls": 74 };
-
-      Living.tick(1);
-
-      expect(b1.civBuildings).toContain("walls");
-      expect(b1.productionQueue).not.toContainEqual({ kind: "building", id: "walls" });
-      expect(pack.burgs[1].walls).toBe(1);
-      expect(living.recentNews.some(item => item.kind === "build" && item.burgId === 1)).toBe(true);
-    });
-
-    it("lets the governor pick the next project when the queue is empty", () => {
-      const living = Living.init();
-      living.cells ??= {};
-      living.cells[1] = { improvement: "mine" };
-
-      Living.tick(1);
-
-      expect(living.burgs[1].productionQueue?.[0]).toEqual({ kind: "building", id: "monument" });
-    });
-
-    it("races a World Wonder and refunds every rival's invested Production", () => {
-      const living = Living.init();
-      living.states[1].researchedTechs = ["writing"];
-      living.states[2].researchedTechs = ["writing"];
-      living.cells ??= {};
-      living.cells[1] = { improvement: "mine" };
-
-      const b1 = living.burgs[1];
-      b1.productionQueue = [{ kind: "wonder", id: "great_library" }];
-      b1.productionProgress = { "wonder:great_library": 184 };
-
-      const b2 = living.burgs[2];
-      b2.productionQueue = [{ kind: "wonder", id: "great_library" }];
-      b2.productionProgress = { "wonder:great_library": 40 };
-
-      Living.tick(1);
-
-      expect(living.worldWonders?.great_library).toMatchObject({ burgId: 1, stateId: 1 });
-      expect(b1.civBuildings).toContain("great_library");
-      expect(b2.productionQueue?.some(item => item.id === "great_library")).toBe(false);
-      expect(b2.productionProgress?.["wonder:great_library"]).toBeUndefined();
-      // 40 Gold refund plus the same tick's Empire gold income (Palace +3).
-      expect(pack.states[2].economy.treasury).toBe(40 + (living.states[2].yieldsPerTurn?.gold ?? 0));
-    });
-
-    it("feeds surplus food into Production while a Settler is queued", () => {
-      const living = Living.init();
-      const b1 = living.burgs[1];
-      b1.foodStored = 0;
-      b1.productionQueue = [{ kind: "unit", id: "settler" }];
-      b1.productionProgress = { "unit:settler": 0 };
-
-      Living.tick(1);
-
-      expect(b1.civBuildings).not.toContain("settler");
-      // Growth is locked: the surplus Food becomes Production, not food storage.
-      expect(b1.foodStored).toBe(0);
-      // 3 Palace Production + 1 Food-to-Production.
-      expect(b1.productionProgress?.["unit:settler"]).toBe(4);
-    });
-
-    it("keeps OpenCiv building ids and native burg flags in sync both ways", () => {
-      const burg = {
-        i: 9,
-        cell: 0,
-        x: 0,
-        y: 0,
-        walls: 1,
-        plaza: 1,
-        temple: 0,
-        citadel: 0,
-        capital: 0
-      } as unknown as Burg;
-
-      const ids = syncCivBuildingsFromFlags(burg, []);
-      expect(ids).toEqual(expect.arrayContaining(["walls", "market"]));
-      expect(ids).not.toContain("castle");
-      expect(ids).not.toContain("palace");
-
-      syncCivFlagsFromBuildings(burg, ["castle", "arsenal", "temple", "harbor", "palace"]);
-      expect(burg.walls).toBe(3);
-      expect(burg.citadel).toBe(1);
-      expect(burg.temple).toBe(1);
-      expect(burg.port).toBe(1);
-      expect(burg.capital).toBe(1);
-
-      const demolished = syncCivBuildingsFromFlags({ ...burg, walls: 0, citadel: 0 }, ["walls", "castle", "arsenal"]);
-      expect(demolished).not.toContain("walls");
-      expect(demolished).not.toContain("castle");
-      expect(demolished).not.toContain("arsenal");
-    });
-
-    it("is deterministic across identical seeds and starting packs", () => {
-      const run = () => {
-        setupCityWorld();
-        const living = Living.init({ seed: "slice-3-seed" });
-        living.cells ??= {};
-        living.cells[1] = { improvement: "farm" };
-        living.states[1].researchedTechs = ["writing"];
-        Living.tick(2);
-        return {
-          worked: [...(living.burgs[1].workedCells ?? [])],
-          yields: living.burgs[1].cityYields,
-          queue: living.burgs[1].productionQueue
-        };
-      };
-
-      expect(run()).toEqual(run());
-    });
-
-    it("lazily initializes worldWonders and OpenCiv city fields on old saves", () => {
-      delete pack.history.living;
-
-      const living = Living.init();
-      expect(living.worldWonders).toEqual({});
-      expect(living.burgs[1].civBuildings).toEqual(expect.arrayContaining(["palace"]));
-      expect(living.burgs[1].isMajor).toBe(true);
-    });
-  });
-
-  describe("OpenCiv slice 4: science, treasury & happiness", () => {
+  describe("Research, treasury & technology (interim science bridge)", () => {
     const makeRegiment = (i: number) => ({
       i,
       name: `Regiment ${i}`,
@@ -1676,18 +1265,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       options.map.lore.calendar.era = "Age of Dawn";
     });
 
-    it("computes hurry Gold cost and the very-unhappy combat penalty", () => {
-      expect(hurryGoldCost(0, false)).toBe(0);
-      expect(hurryGoldCost(75, false)).toBe(320);
-      expect(hurryGoldCost(75, true)).toBe(390);
-      expect(hurryGoldCost(75, false, true)).toBe(270);
-
-      expect(happinessCombatMultiplier(0)).toBe(1);
-      expect(happinessCombatMultiplier(-9)).toBe(1);
-      expect(happinessCombatMultiplier(-10)).toBe(0.67);
-      expect(happinessCombatMultiplier(undefined)).toBe(1);
-    });
-
     it("sets research through the public API and rejects unavailable techs", () => {
       const living = Living.init();
       const sSim = living.states[1];
@@ -1707,96 +1284,22 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(isTechSelectable(CIV_TECH_BY_ID.refrigeration!, new Set(), "fantasy")).toBe(false);
     });
 
-    it("banks Science each tick and completes the current technology", () => {
+    it("banks interim science from mean development and completes the current technology", () => {
       const living = Living.init();
       const sSim = living.states[1];
+      pack.cells.development = new Uint8Array(GRID * GRID);
+      pack.cells.development[5] = 90; // the capital's people: mean development / 30 = 3 science
+      pack.cells.pop[5] = 100; // development averages count people, not just burgs
       sSim.currentTechId = "pottery";
       sSim.researchedProgress = { pottery: 32 };
 
       Living.tick(1);
 
-      // Palace Science 3 pushes 32 over Pottery's 35 cost.
+      // 32 banked + 3 interim science pushes Pottery's 35 cost.
       expect(sSim.researchedTechs).toContain("pottery");
       expect(sSim.currentTechId).not.toBe("pottery");
       expect(sSim.currentTechId).toBeTruthy();
       expect(living.recentNews.some(item => item.kind === "tech")).toBe(true);
-    });
-
-    it("grants a free technology when a Great Library completes", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-      sSim.researchedTechs = ["writing"];
-      living.cells ??= {};
-      living.cells[1] = { improvement: "mine" };
-      const b1 = living.burgs[1];
-      b1.productionQueue = [{ kind: "wonder", id: "great_library" }];
-      b1.productionProgress = { "wonder:great_library": 184 };
-
-      Living.tick(1);
-
-      expect(living.worldWonders?.great_library).toMatchObject({ burgId: 1, stateId: 1 });
-      // The free tech is consumed by the same tick's research step.
-      expect(sSim.freeTechs).toBe(0);
-      expect(sSim.researchedTechs.length).toBeGreaterThan(1);
-    });
-
-    it("unlocks buildings through discovered technologies", () => {
-      const living = Living.init();
-      // Every owned cell is already improved, so no Builder is queued either.
-      living.cells = {};
-      for (const cell of [1, 4, 5, 6, 9, 10]) living.cells[cell] = { improvement: "farm" };
-      const b1 = living.burgs[1];
-      b1.civBuildings = ["palace", "monument"];
-      b1.productionQueue = [];
-
-      Living.tick(1);
-      expect(b1.productionQueue ?? []).toHaveLength(0);
-
-      living.states[1].researchedTechs = ["pottery"];
-      b1.productionQueue = [];
-      Living.tick(1);
-      expect(b1.productionQueue?.[0]).toEqual({ kind: "building", id: "granary" });
-    });
-
-    it("adds tech tile bonuses next to the base improvement yields", () => {
-      const living = Living.init();
-      living.cells ??= {};
-      living.cells[1] = { improvement: "farm" };
-      expect(getCellYields(1, 1, living).food).toBe(3);
-
-      living.states[1].researchedTechs = ["civil_service"];
-      expect(getCellYields(1, 1, living).food).toBe(3);
-
-      pack.cells.r[1] = 1;
-      expect(getCellYields(1, 1, living).food).toBe(4);
-      expect(getCellYieldSources(1, 1, living).some(source => source.kind === "tech")).toBe(true);
-
-      living.cells ??= {};
-      living.cells[3] = { improvement: "mine" };
-      expect(getCellYields(3, 1, living).production).toBe(1);
-      living.states[1].researchedTechs = ["chemistry"];
-      expect(getCellYields(3, 1, living).production).toBe(2);
-    });
-
-    it("rolls city Gold into the treasury net of maintenance and unit upkeep", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-
-      Living.tick(1);
-      // Palace +3 Gold, worked minor burg (Millbrook) +2 Gold.
-      expect(sSim.yieldsPerTurn?.gold).toBe(5);
-      expect(pack.states[1].economy.treasury).toBe(5);
-
-      // Monument maintenance 1 plus 4 regiments (1 above the free allowance).
-      living.burgs[1].civBuildings = ["palace", "monument"];
-      pack.states[1].military = Array.from({ length: Math.ceil(UPKEEP_FREE / 0.2) + 1 }, (_, index) =>
-        makeRegiment(index)
-      );
-      Living.tick(1);
-      // Five 100-man blocks cost less than the three-block free allowance; only maintenance bites.
-      // Phase E removed capacity gating, so an autonomous improvement can lift city Gold;
-      // assert the monument's maintenance relationship instead of a stale absolute.
-      expect(sSim.yieldsPerTurn?.gold).toBe((living.burgs[1].cityYields?.gold ?? 0) - 1);
     });
 
     it("disbands one block when the treasury goes negative", () => {
@@ -1818,97 +1321,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.recentNews.some(item => item.text.includes("disbanded"))).toBe(true);
     });
 
-    it("charges upkeep per block scaled by hp, with the free allowance and civilian rate", () => {
-      const living = Living.init();
-      const types = Military.getUnitTypes();
-      const elite = Object.values(types).sort((a, b) => b.upkeep - a.upkeep)[0]!;
-      const count = Math.ceil((UPKEEP_FREE + elite.upkeep * 2) / elite.upkeep);
-      const full = {
-        ...makeRegiment(0),
-        units: Array.from({ length: count }, () => ({ type: elite.id, hp: 1, exp: 0 }))
-      };
-      const half = {
-        ...makeRegiment(1),
-        units: Array.from({ length: count }, () => ({ type: elite.id, hp: 0.5, exp: 0 }))
-      };
-      const civilian = { ...makeRegiment(2), type: "builder", units: [] };
-      pack.states[1].military = [full, half, civilian];
-
-      Living.tick(1);
-
-      const b1 = living.burgs[1];
-      const gross = b1.cityYields?.gold ?? 0;
-      const maintenance = (b1.civBuildings ?? []).reduce(
-        (sum, id) => sum + (CIV_BUILDING_BY_ID[id]?.maintenance ?? 0),
-        0
-      );
-      const upkeep = Math.max(0, elite.upkeep * count * 1.5 + 0.1 - UPKEEP_FREE);
-      expect(living.states[1].yieldsPerTurn?.gold).toBeCloseTo(gross - maintenance - upkeep, 2);
-    });
-
-    it("derives Empire Happiness from luxuries, buildings and city costs", () => {
-      const living = Living.init();
-      Living.tick(1);
-
-      const sSim = living.states[1];
-      expect(sSim.happiness).toBe(BASE_EMPIRE_HAPPINESS - 3 - 6);
-      expect(sSim.happinessBreakdown).toMatchObject({
-        base: BASE_EMPIRE_HAPPINESS,
-        luxuries: 0,
-        cityUnhappiness: 3,
-        citizenUnhappiness: 6
-      });
-
-      pack.cells.good[1] = 1;
-      living.cells ??= {};
-      living.cells[1] = { improvement: "plantation" };
-      Living.tick(1);
-      expect(sSim.happinessBreakdown?.luxuries).toBe(LUXURY_HAPPINESS);
-      expect(sSim.happiness).toBe(LUXURY_HAPPINESS);
-
-      // Colosseum local happiness is capped by the city's citizens.
-      living.burgs[1].civBuildings = ["palace", "colosseum"];
-      living.burgs[1].citizens = 2;
-      pack.burgs[1].population = 2;
-      Living.tick(1);
-      expect(sSim.happinessBreakdown?.buildings).toBe(2);
-      expect(sSim.happiness).toBe(BASE_EMPIRE_HAPPINESS - 3 - 2 + 2 + LUXURY_HAPPINESS);
-    });
-
-    it("decays unravel while content and inflates it while very unhappy", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-
-      sSim.unravel = 50;
-      Living.tick(1);
-      expect(sSim.happiness).toBe(0);
-      expect(sSim.unravel).toBe(48);
-
-      const b1 = living.burgs[1];
-      b1.conqueredBy = 1;
-      b1.unrest = 100;
-      sSim.unravel = 0;
-      Living.tick(1);
-      expect(sSim.happiness).toBeLessThanOrEqual(-10);
-      expect(sSim.unravel).toBeGreaterThanOrEqual(6);
-    });
-
-    it("hurries the top production item for Gold with a reserve", () => {
-      const living = Living.init();
-      const b1 = living.burgs[1];
-      b1.productionQueue = [{ kind: "building", id: "monument" }];
-      b1.productionProgress = { "building:monument": 0 };
-
-      pack.states[1].economy.treasury = 50;
-      expect(Living.hurryProduction(1)).toBe(false);
-
-      pack.states[1].economy.treasury = 1000;
-      expect(Living.hurryProduction(1)).toBe(true);
-      expect(b1.civBuildings).toContain("monument");
-      expect(pack.states[1].economy.treasury).toBeLessThan(1000);
-    });
-
-    it("lazily initializes the OpenCiv empire record on old saves", () => {
+    it("lazily initializes the tech record on old saves", () => {
       delete pack.history.living;
 
       const living = Living.init();
@@ -1917,7 +1330,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(sSim.researchQueue).toEqual([]);
       expect(sSim.researchedProgress).toEqual({});
       expect(sSim.freeTechs).toBe(0);
-      expect(sSim.yieldsPerTurn).toBeDefined();
     });
   });
 
@@ -2008,8 +1420,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       Living.tick(1);
 
-      const simGold = living.states[1].yieldsPerTurn?.gold ?? 0;
-      const expected = 100 + simGold + (100 - 10 - 30) * 90;
+      const expected = 100 + (100 - 10 - 30) * 90;
       expect(living.states[1].treasury).toBeCloseTo(expected, 0);
       expect(state.economy.treasury).toBe(living.states[1].treasury);
     });
@@ -2041,20 +1452,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       Living.tick(1);
 
       expect(living.economyDirty).toBe(false);
-    });
-
-    it("sways the court with the people's upstream prosperity", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-      const before = sSim.happiness ?? 0;
-
-      pack.deals = [[1, 1, 1, 0, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
-      vi.spyOn(Accounts, "ofState").mockReturnValue({ prosperity: 0.8 } as never);
-      Living.tick(1);
-
-      expect(sSim.happinessBreakdown?.prosperity).toBe(3); // (0.8 - 0.5) * 10
-      expect(sSim.happiness ?? 0).toBe(before + 3);
-      vi.restoreAllMocks();
     });
   });
 
@@ -2176,15 +1573,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       state.economy.spent.military = 100; // underfunded: upkeep 0.05 < 0.5
 
       const living = Living.init();
-      living.states[1].yieldsPerTurn = {
-        food: 0,
-        production: 0,
-        gold: -10,
-        science: 0,
-        culture: 0,
-        faith: 0,
-        happiness: 0
-      };
 
       Living.tick(1);
 
@@ -2350,52 +1738,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       setupCityWorld();
     });
 
-    it("applies terrain defense and movement costs", () => {
+    it("applies terrain defense from hills and forests", () => {
       expect(terrainDefenseMultiplier(1)).toBe(1);
       pack.cells.h[3] = 55;
       expect(terrainDefenseMultiplier(3)).toBe(1.25);
       pack.cells.biome[2] = 6;
       expect(terrainDefenseMultiplier(2)).toBe(1.25);
       pack.cells.biome[2] = 4;
-
-      const unit = {
-        unitTypeId: "warrior",
-        domain: "land" as const,
-        combatClass: "melee" as const,
-        isUtility: false,
-        hp: 100,
-        movement: 2,
-        maxMovement: 2,
-        combatStrength: 8,
-        rangedStrength: 0,
-        range: 0,
-        xp: 0,
-        level: 1,
-        promotions: [],
-        fortified: false,
-        hasAttacked: false
-      };
-
-      expect(unitMovementCost(1, 2, unit)).toBe(1);
-      pack.cells.h[1] = 55;
-      pack.cells.h[2] = 55;
-      expect(unitMovementCost(1, 2, unit)).toBe(2);
-      pack.cells.h[1] = 25;
-      pack.cells.h[2] = 25;
-
-      (pack.cells as unknown as { routes: Record<number, Record<number, number>> }).routes = { 1: { 2: 7 } };
-      expect(unitMovementCost(1, 2, unit)).toBeCloseTo(1 / 3, 5);
-
-      (pack.cells as unknown as { routes: Uint16Array }).routes = new Uint16Array(16);
-      pack.cells.r[2] = 1;
-      expect(unitMovementCost(1, 2, unit)).toBe(2); // drains all remaining movement
-
-      pack.cells.h[2] = 75;
-      expect(unitMovementCost(1, 2, unit)).toBe(Number.POSITIVE_INFINITY);
-      pack.cells.h[2] = 25;
-
-      const fleet = { ...unit, domain: "sea" as const };
-      expect(unitMovementCost(1, 2, fleet)).toBe(Number.POSITIVE_INFINITY);
     });
 
     it("enforces 1UPT military/utility stacking", () => {
@@ -2413,7 +1762,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const regiment = pack.states[1].military![0];
       expect(regiment.units).toHaveLength(13);
       expect(living.armies?.[unitKey(1, 0)]).toMatchObject({ stance: "fortify", hasFought: false });
-      expect(living.units?.[unitKey(1, 0)]).toBeUndefined();
       // a mirrors men: 13 spear blocks at the roster's 150-man quantity.
       expect(regiment.a).toBe(13 * 150);
     });
@@ -2484,36 +1832,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       // upkeep, not a muster fee, is what bounds army size now).
       expect(pack.states[2].military ?? []).not.toContain(doomed);
       expect(pack.states[1].military?.length ?? 0).toBeGreaterThan(0);
-    });
-
-    it("converts a legacy 1UPT combat sim into army blocks", () => {
-      const living = Living.init();
-      pack.states[1].military = [makeRegiment(0, 5)];
-      pack.states[1].military![0].units = [];
-      const key = unitKey(1, 0);
-      living.units![key] = {
-        unitTypeId: "warrior",
-        domain: "land",
-        combatClass: "melee",
-        isUtility: false,
-        hp: 60,
-        movement: 2,
-        maxMovement: 2,
-        combatStrength: 30,
-        rangedStrength: 0,
-        range: 0,
-        xp: 0,
-        level: 4,
-        promotions: [],
-        fortified: false,
-        hasAttacked: false
-      };
-
-      Living.tick(1);
-
-      expect(living.units?.[key]).toBeUndefined();
-      expect(pack.states[1].military![0].units?.[0]?.exp).toBe(3); // level 4 → exp 3
-      expect(living.armies?.[key]).toBeDefined();
     });
 
     it("resolves a 2:1 army battle, reports losses in hp and mirrors reg.a", () => {
@@ -2609,56 +1927,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       expect(pack.states[1].military![0].units).toHaveLength(before);
       expect(living.armies?.[unitKey(1, 0)]).toBeDefined();
-      expect(living.units?.[unitKey(1, 0)]).toBeUndefined();
-    });
-
-    it("produces a combat unit into an army block", () => {
-      const living = Living.init();
-      const b1 = living.burgs[1];
-      const melee = Military.getRoster(pack.states[1]!)!.garrison.melee;
-      b1.productionQueue = [{ kind: "unit", id: melee }];
-      b1.productionProgress = { [`unit:${melee}`]: 0 };
-
-      expect(Living.hurryProduction(1)).toBe(false); // treasury too thin
-
-      pack.states[1].military = [makeRegiment(0, 5)];
-      pack.states[1].economy.treasury = 1000;
-      expect(Living.hurryProduction(1)).toBe(true);
-
-      const blocks = (pack.states[1].military ?? []).reduce((sum, reg) => sum + (reg.units?.length ?? 0), 0);
-      expect(blocks).toBeGreaterThan(13);
-      expect(Object.keys(living.armies ?? {}).length).toBeGreaterThan(0);
-    });
-
-    it("recruits utility units and lets a Builder improve a tile", () => {
-      const living = Living.init();
-      const regiment = Living.recruitUnit(1, 1, "builder");
-      expect(regiment).not.toBeNull();
-      const regimentId = regiment!.i;
-      const builder = living.units?.[unitKey(1, regimentId)];
-      expect(builder).toMatchObject({ isUtility: true, unitTypeId: "builder" });
-
-      Living.tick(10);
-
-      const improved = Object.values(living.cells ?? {}).filter(cell => cell.improvement);
-      expect(improved.length).toBeGreaterThan(0);
-    });
-
-    it("moves a Settler onto free land and founds a new burg", () => {
-      const living = Living.init();
-      pack.burgs[2].removed = true;
-      pack.burgs[3].removed = true;
-      pack.burgs[4].removed = true;
-      pack.burgs[5].removed = true;
-      pack.cells.state[15] = 1;
-      pack.cells.province[15] = 1;
-
-      expect(Living.recruitUnit(1, 1, "settler")).not.toBeNull();
-      Living.tick(6);
-
-      const founded = pack.burgs.find(burg => burg.cell === 15 && burg.state === 1);
-      expect(founded).toBeDefined();
-      expect(living.recentNews.some(item => item.kind === "colonize" && item.cell === 15)).toBe(true);
     });
 
     it("captures a city once its garrison is beaten", () => {
@@ -2672,9 +1940,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       const b2 = living.burgs[2];
       expect(pack.burgs[2].state).toBe(1);
       expect(b2.hp).toBe(100);
-      expect(b2.citizens).toBe(1);
-      expect(pack.burgs[2].population).toBe(0.5);
-      expect(b2.productionQueue).toEqual([]);
       expect(b2.unrest).toBeGreaterThanOrEqual(7);
     });
 
@@ -2790,28 +2055,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       // Neutral land: no replenishment.
       expect(Math.min(...neutralReg.units!.map(b => b.hp))).toBeCloseTo(0.4, 5);
     });
-
-    it("grants training experience from military buildings", () => {
-      const living = Living.init();
-      living.burgs[1].civBuildings = ["palace", "barracks"];
-
-      const regiment = Living.recruitUnit(1, 1, "warrior")!;
-      const block = living.armies?.[unitKey(1, regiment.i)] ? regiment.units?.[0] : undefined;
-      expect(block?.exp).toBeGreaterThan(0);
-
-      const builder = Living.recruitUnit(1, 1, "builder")!;
-      expect(living.units?.[unitKey(1, builder.i)]?.xp).toBe(15);
-    });
-
-    it("lazily initializes the tactical unit record on old saves", () => {
-      delete pack.history.living;
-
-      const living = Living.init();
-      expect(living.units).toBeDefined();
-    });
   });
 
-  describe("OpenCiv slice 6: religion and diplomacy", () => {
+  describe("Diplomacy (war and peace timers)", () => {
     const makeRegiment = (i: number, cell: number, state = 1) => ({
       i,
       name: `Regiment ${i}`,
@@ -2830,73 +2076,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     beforeEach(() => {
       setupCityWorld();
-    });
-
-    it("banks Faith and founds a pantheon", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-      sSim.faith = 10;
-
-      Living.tick(1);
-
-      expect(sSim.pantheonId).toBeTruthy();
-      expect(sSim.faith).toBeLessThan(10);
-      expect(living.recentNews.some(item => item.kind === "religion")).toBe(true);
-    });
-
-    it("births a Great Prophet that founds and then enhances a religion", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-      sSim.faith = 1000;
-
-      Living.tick(1);
-
-      expect(sSim.prophetsEarned).toBe(1);
-      expect(sSim.religionId).toBeTruthy();
-      const record = living.religions?.[sSim.religionId!];
-      expect(record).toBeDefined();
-      expect(record?.holyCityBurgId).toBe(1);
-      expect(record?.founderBeliefId).toBeTruthy();
-      expect(record?.followerBeliefIds).toHaveLength(1);
-      expect(pack.cells.religion[5]).toBe(sSim.religionId);
-
-      Living.tick(1);
-
-      expect(sSim.prophetsEarned).toBe(2);
-      expect(record?.enhanced).toBe(true);
-      expect(record?.followerBeliefIds.length).toBe(2);
-      expect(record?.enhancerBeliefId).toBeTruthy();
-    });
-
-    it("radiates pressure that flips a neighbour city and repaints the religion layer", () => {
-      const living = Living.init();
-      living.states[1].faith = 1000;
-
-      Living.tick(1);
-      const religionId = living.states[1].religionId!;
-      pack.cells.religion[11] = 0;
-      living.burgs[2].religionPressure = {};
-
-      Living.tick(8);
-
-      expect(living.burgs[2].religionPressure?.[religionId]).toBeGreaterThan(0);
-      expect(pack.cells.religion[11]).toBe(religionId);
-    });
-
-    it("spreads faith with a Missionary and consumes its charges", () => {
-      const living = Living.init();
-      living.states[1].faith = 1000;
-      Living.tick(1);
-      const religionId = living.states[1].religionId!;
-
-      const regiment = Living.recruitUnit(1, 1, "missionary")!;
-      regiment.cell = 11;
-      const missionary = living.units?.[`1-${regiment.i}`];
-
-      Living.tick(1);
-
-      expect(living.burgs[2].religionPressure?.[religionId]).toBeGreaterThanOrEqual(180);
-      expect(missionary?.spreadCharges).toBe(1);
     });
 
     it("locks war and peace behind the diplomacy timers", () => {
@@ -2932,323 +2111,12 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(pack.cells.state[regiment.cell]).not.toBe(2);
       expect(living.armies?.["1-0"]).toBeDefined();
     });
-
-    it("keeps religion state lazy on old saves", () => {
-      delete pack.history.living;
-
-      const living = Living.init();
-      expect(living.religions).toBeDefined();
-    });
   });
 
-  describe("Environmental trouble as a burg production action (Phase E)", () => {
-    beforeEach(() => {
-      setupCityWorld();
-    });
-
-    it("queues a trouble work order and clears it when Production completes", () => {
-      const living = Living.init();
-      const trouble = Living.spawnTrouble(1, "flooding", "burg", 2);
-      expect(trouble).not.toBeNull();
-      const carrier = Object.values(living.burgs).find(bSim =>
-        (bSim?.productionQueue ?? []).some(item => item.kind === "trouble")
-      );
-      expect(carrier).toBeDefined();
-
-      // Production completes the work order and clears the affliction.
-      carrier!.productionQueue = [{ kind: "trouble", id: "flooding" }];
-      carrier!.productionProgress = { "trouble:flooding": 79 }; // one Production from done
-      Living.tick(1);
-
-      expect(living.provinces[1].trouble).toBeNull();
-      expect(living.provinces[1].order).toBeGreaterThan(0);
-    });
-  });
-
-  describe("OpenCiv Faction City-Node Loop & Competitive Cell Draft (Phase 2)", () => {
+  describe("Faction armies & state suppression", () => {
     beforeEach(() => {
       setupCityWorld();
       pack.factions = [{ i: 0 } as Faction];
-    });
-
-    it("competes for worked cells: clandestine outpost pre-drafts cells before State Burg and siphons gold", () => {
-      const living = Living.init();
-      living.burgs[1].civBuildings = ["palace", "market"];
-
-      const shadowFaction = Factions.add({
-        name: "Nightblade Syndicate",
-        category: "underworld",
-        type: "thieves_guild",
-        allegiance: "clandestine",
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 70, assets: ["safe_house"] },
-        outposts: [
-          {
-            burgId: 1,
-            cell: 5,
-            tier: 2,
-            influence: 60,
-            secrecy: 60,
-            assets: [],
-            establishedYear: 990
-          }
-        ]
-      });
-      shadowFaction.hq.sim!.citizens = 1;
-      shadowFaction.outposts[0].sim!.citizens = 2;
-
-      Living.tick(1);
-
-      const b1 = living.burgs[1];
-      const hqWorked = shadowFaction.hq.sim?.workedCells ?? [];
-      const outWorked = shadowFaction.outposts[0].sim?.workedCells ?? [];
-      const stateWorked = b1.workedCells ?? [];
-
-      expect(hqWorked.length).toBeGreaterThanOrEqual(1);
-      expect(outWorked.length).toBeGreaterThanOrEqual(1);
-      expect(stateWorked.length).toBeLessThan(5);
-
-      for (const c of stateWorked) {
-        expect(hqWorked).not.toContain(c);
-        expect(outWorked).not.toContain(c);
-      }
-
-      expect(shadowFaction.outposts[0].sim?.cityYields?.gold ?? 0).toBeGreaterThan(1);
-    });
-
-    it("chartered faction alternates cell picks after state food floor and pays 15% charter tax to host burg", () => {
-      const living = Living.init();
-      const baseGoldBefore = living.burgs[1].cityYields?.gold ?? 0;
-
-      const consortium = Factions.add({
-        name: "Golden Scales Charter",
-        category: "commercial",
-        type: "merchant_consortium",
-        allegiance: "chartered",
-        patronStateId: 1,
-        stateRelations: { 1: "Friendly" },
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
-      });
-      consortium.hq.sim!.citizens = 2;
-
-      Living.tick(1);
-
-      const b1 = living.burgs[1];
-      const hqYields = consortium.hq.sim?.cityYields;
-      expect(hqYields).toBeDefined();
-      expect(hqYields!.gold).toBeLessThan(4);
-      expect(b1.cityYields!.gold).toBeGreaterThan(baseGoldBefore);
-    });
-
-    it("grows faction node citizens from food, boosts local influence from culture, and completes queued buildings", () => {
-      Living.init();
-      const guild = Factions.add({
-        name: "Silver Compass",
-        category: "commercial",
-        type: "merchant_consortium",
-        allegiance: "autonomous",
-        researchedTechs: ["pottery", "currency"],
-        hq: { cell: 11, burgId: 2, fortified: false, secrecy: 0, assets: [] },
-        outposts: [
-          {
-            burgId: 1,
-            cell: 5,
-            tier: 1,
-            influence: 40,
-            secrecy: 0,
-            assets: ["wayside_shrine"],
-            establishedYear: 995
-          }
-        ]
-      });
-
-      const rival = Factions.add({
-        name: "Rival Peddlers",
-        category: "commercial",
-        type: "merchant_consortium",
-        allegiance: "autonomous",
-        hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
-        outposts: [
-          {
-            burgId: 1,
-            cell: 5,
-            tier: 1,
-            influence: 35,
-            secrecy: 0,
-            assets: [],
-            establishedYear: 996
-          }
-        ]
-      });
-
-      const hqSim = guild.hq.sim!;
-      hqSim.citizens = 2;
-      hqSim.foodStored = foodNeededForGrowth(2);
-      hqSim.productionQueue = [{ kind: "building", id: "trade_depot" }];
-      hqSim.productionProgress = { "building:trade_depot": 79 };
-
-      const outSim = guild.outposts[0].sim!;
-      outSim.cultureStored = 20;
-
-      Living.tick(1);
-
-      expect(hqSim.citizens).toBe(3);
-      expect(hqSim.civBuildings).toContain("trade_depot");
-      expect(guild.hq.assets).toContain("trade_depot");
-
-      expect(guild.outposts[0].influence).toBe(50);
-      expect(rival.outposts[0].influence).toBe(30);
-    });
-
-    it("rolls up empire yields, luxury happiness, and research with host spillover", () => {
-      const living = Living.init();
-      living.states[1].researchedTechs = ["pottery"];
-
-      const faction = Factions.add({
-        name: "Golden Crest Syndicate",
-        category: "commercial",
-        type: "merchant_consortium",
-        allegiance: "autonomous",
-        treasury: 100,
-        researchedTechs: [],
-        researchedProgress: {},
-        currentTechId: "pottery",
-        researchQueue: ["writing"],
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
-        outposts: [{ burgId: 2, cell: 11, tier: 1, influence: 40, secrecy: 0, assets: [], establishedYear: 1000 }]
-      });
-
-      pack.cells.good[2] = 1;
-      living.cells![2] = { improvement: "farm" };
-      faction.hq.sim!.workedCells = [2];
-      faction.hq.sim!.cityYields = { food: 8, production: 5, gold: 12, science: 4, culture: 2, faith: 1, happiness: 0 };
-      faction.outposts[0].sim!.cityYields = {
-        food: 4,
-        production: 3,
-        gold: 8,
-        science: 2,
-        culture: 1,
-        faith: 0,
-        happiness: 0
-      };
-      faction.hq.sim!.civBuildings = ["trade_depot"];
-      faction.outposts[0].sim!.civBuildings = [];
-
-      Living.stepFactionEmpire(living);
-
-      expect(faction.yieldsPerTurn?.food).toBe(12);
-      expect(faction.yieldsPerTurn?.production).toBe(8);
-      expect(faction.yieldsPerTurn?.gold).toBe(20);
-      expect(faction.yieldsPerTurn?.culture).toBe(3);
-      expect(faction.yieldsPerTurn?.faith).toBe(1);
-      expect(faction.yieldsPerTurn?.science).toBe(6);
-      expect(faction.science).toBe(6);
-      expect(faction.treasury).toBe(120);
-      expect(faction.happinessBreakdown?.luxuries).toBeGreaterThan(0);
-      expect(faction.happinessBreakdown?.luxuries).toBe(4);
-      expect(faction.seasonsActive).toBeGreaterThan(0);
-      expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(7.5);
-    });
-
-    it("grants free techs, completes research, and disbands a block on bankruptcy", () => {
-      const living = Living.init();
-
-      const scholar = Factions.add({
-        name: "Test Scholars",
-        category: "adventuring",
-        type: "arcane_college",
-        allegiance: "autonomous",
-        treasury: 50,
-        researchedTechs: [],
-        researchedProgress: {},
-        currentTechId: null,
-        researchQueue: [],
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
-      });
-      scholar.freeTechs = 1;
-      scholar.hq.sim!.cityYields = { food: 5, production: 2, gold: 5, science: 1, culture: 1, faith: 0, happiness: 0 };
-
-      Living.stepFactionEmpire(living);
-      expect(scholar.researchedTechs).toContain("pottery");
-
-      const debtor = Factions.add({
-        name: "Test Debtors",
-        category: "martial",
-        type: "raider_clan",
-        allegiance: "hostile",
-        treasury: 1,
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
-      });
-      debtor.military = [
-        {
-          i: 1,
-          name: "Debtor Guard",
-          a: 100,
-          cell: 5,
-          x: 50,
-          y: 50,
-          bx: 50,
-          by: 50,
-          u: { spear: 100 },
-          units: [
-            { type: "spear", hp: 1, exp: 0 },
-            { type: "spear", hp: 1, exp: 0 }
-          ],
-          n: 0,
-          state: 0,
-          icon: "⚔️",
-          rosterId: debtor.rosterId
-        } as unknown as (typeof debtor.military)[number]
-      ];
-      debtor.hq.sim!.cityYields = { food: 5, production: 2, gold: 0, science: 1, culture: 1, faith: 0, happiness: 0 };
-      debtor.hq.sim!.civBuildings = ["grand_exchange", "counting_house"];
-
-      const blocksBefore = debtor.military[0]?.units?.length ?? 0;
-      Living.stepFactionEmpire(living);
-      expect(debtor.treasury).toBe(0);
-      expect(debtor.military[0]?.units?.length ?? 0).toBeLessThan(blocksBefore);
-    });
-
-    it("faction builders improve worked cells", () => {
-      const living = Living.init();
-      const faction = Factions.add({
-        name: "Builder Guild",
-        category: "commercial",
-        type: "merchant_consortium",
-        allegiance: "autonomous",
-        researchedTechs: ["pottery"],
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
-      });
-      faction.hq.sim!.productionQueue = [{ kind: "unit", id: "builder" }];
-      faction.hq.sim!.productionProgress = { "unit:builder": 49 };
-
-      Living.tick(10);
-
-      expect(faction.military.some(r => r.type === "builder")).toBe(true);
-      const improved = Object.values(living.cells ?? {}).filter(cell => cell.improvement);
-      expect(improved.length).toBeGreaterThan(0);
-    });
-
-    it("faction settlers march to a burg and establish an outpost", () => {
-      const living = Living.init();
-      const faction = Factions.add({
-        name: "Settler Guild",
-        category: "commercial",
-        type: "merchant_consortium",
-        allegiance: "autonomous",
-        researchedTechs: [],
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
-      });
-      faction.hq.sim!.productionQueue = [{ kind: "unit", id: "settler" }];
-      faction.hq.sim!.productionProgress = { "unit:settler": 105 };
-
-      Living.tick(10);
-
-      expect(faction.outposts.length).toBeGreaterThan(0);
-      expect(faction.outposts.some(o => o.burgId !== 1)).toBe(true);
-      expect(faction.military.some(r => r.type === "settler")).toBe(false);
-      expect(
-        living.recentNews.some(item => item.kind === "faction" && item.text.includes("established a new outpost"))
-      ).toBe(true);
     });
 
     it("faction armies fight adjacent enemy armies and siege burgs", () => {
@@ -3348,52 +2216,25 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(living.burgs[5]?.unrest ?? 0).toBeGreaterThan(unrestBefore);
     });
 
-    it("autonomous faction competes for worked cells against the host State Burg", () => {
-      const living = Living.init();
-      const faction = Factions.add({
-        name: "Independent Traders",
-        category: "commercial",
-        type: "merchant_consortium",
-        allegiance: "autonomous",
-        stateRelations: { 1: "Neutral" },
-        hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [] }
-      });
-      faction.hq.sim!.citizens = 2;
-
-      Living.tick(1);
-
-      const stateWorked = living.burgs[1]?.workedCells ?? [];
-      const factionWorked = faction.hq.sim?.workedCells ?? [];
-      expect(stateWorked.length).toBeGreaterThan(0);
-      expect(factionWorked.length).toBeGreaterThan(0);
-      expect(new Set([...stateWorked, ...factionWorked]).size).toBe(stateWorked.length + factionWorked.length);
-      expect(faction.hq.sim?.cityYields?.food ?? 0).toBeGreaterThan(0);
-      expect(faction.hq.sim?.cityYields?.gold ?? 0).toBeGreaterThanOrEqual(0);
-    });
-
     describe("State suppression administrative campaign (Phase 2)", () => {
       function queueSuppression(
         living: ReturnType<typeof Living.init>,
         faction: Faction,
-        nodeKey: string,
-        progress = 13
+        target: { burgId?: number; cell?: number } = { burgId: 1 },
+        progress = FACTION_SUPPRESSION_SEASONS - 1
       ) {
-        const b1 = living.burgs[1];
-        b1.productionQueue = [
-          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: nodeKey }
-        ];
-        b1.productionProgress = { "operation:faction-suppression": progress };
+        pack.states[1].economy.treasury = 1000;
         living.states[1].agenda = {
           kind: "suppress_faction",
           label: `Suppressing ${faction.name} in Aelor`,
           targetFactionId: faction.i,
-          targetBurgId: 1,
-          progress: 0,
-          required: 1
+          ...(target.burgId !== undefined ? { targetBurgId: target.burgId } : { targetCell: target.cell }),
+          progress,
+          required: FACTION_SUPPRESSION_SEASONS
         };
       }
 
-      it("starts one suppression operation and agenda via the public API", () => {
+      it("starts one suppression agenda via the public API", () => {
         Living.init();
         const faction = Factions.add({
           name: "Silver Hand",
@@ -3406,10 +2247,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         });
 
         expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
-        const b1 = Living.getState().burgs[1];
-        expect(b1.productionQueue).toEqual([
-          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: "outpost:1" }
-        ]);
         expect(Living.getState().states[1].agenda).toMatchObject({
           kind: "suppress_faction",
           targetFactionId: faction.i,
@@ -3452,11 +2289,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         Living.tick(1);
 
         expect(living.states[1].agenda).toMatchObject({ kind: "suppress_faction", targetFactionId: faction.i });
-        expect(
-          (living.burgs[1].productionQueue ?? []).some(
-            item => item.kind === "operation" && item.targetFactionId === faction.i
-          )
-        ).toBe(true);
       });
 
       it("applies order/secrecy pressure and pillages a depleted outpost", () => {
@@ -3470,7 +2302,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
           outposts: [{ burgId: 1, cell: 5, tier: 2, influence: 3, secrecy: 0, assets: [], establishedYear: 1000 }]
         });
-        queueSuppression(living, faction, "outpost:1");
+        queueSuppression(living, faction, { burgId: 1 });
 
         Living.tick(1);
 
@@ -3490,6 +2322,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           type: "thieves_guild",
           allegiance: "hostile",
           stateRelations: { 1: "Enemy" },
+          treasury: 1000,
+          raidThreshold: 100, // no opportunistic raid: the guard stays home
           hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
           outposts: [{ burgId: 1, cell: 5, tier: 2, influence: 10, secrecy: 0, assets: [], establishedYear: 1000 }]
         });
@@ -3511,7 +2345,11 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
             rosterId: faction.rosterId
           } as unknown as (typeof faction.military)[number]
         ];
-        queueSuppression(living, faction, "outpost:1");
+        // Impassable surroundings keep the garrison at its post (no adjacent siege target).
+        pack.cells.h = new Uint8Array(GRID * GRID).fill(75);
+        pack.cells.h[5] = 25;
+        pack.burgs[5].removed = true;
+        queueSuppression(living, faction, { burgId: 1 });
 
         Living.tick(1);
 
@@ -3530,10 +2368,11 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           allegiance: "hostile",
           stateRelations: { 1: "Enemy" },
           researchedTechs: ["pottery"],
+          treasury: 0, // no seasonal muster: the HQ itself must stand guardless
           hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 2, assets: [] },
           outposts: [{ burgId: 5, cell: 4, tier: 1, influence: 50, secrecy: 0, assets: [], establishedYear: 1000 }]
         });
-        queueSuppression(living, faction, "hq");
+        queueSuppression(living, faction, { burgId: 1 });
 
         Living.tick(1);
 
@@ -3553,9 +2392,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           type: "thieves_guild",
           allegiance: "hostile",
           stateRelations: { 1: "Enemy" },
+          treasury: 0, // no seasonal muster riding to the rescue
           hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 2, assets: [] }
         });
-        queueSuppression(living, faction, "hq");
+        queueSuppression(living, faction, { burgId: 1 });
 
         Living.tick(1);
 
@@ -3607,7 +2447,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         ];
       }
 
-      it("builds a capped militia garrison from citizens, tier and fortification", () => {
+      it("builds a capped militia garrison from tier and fortification", () => {
         Living.init();
         const faction = Factions.add({
           name: "Silver Hand",
@@ -3810,58 +2650,18 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(Living.startFactionSuppression(1, neutral.i)).toBe(false);
       });
 
-      it("accumulates production progress without spending gold", () => {
-        const living = Living.init();
-        const faction = hostileFaction("Silver Hand");
-        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
-        pack.states[1].economy.treasury = 500;
-
-        Living.tick(1);
-
-        const b1 = living.burgs[1];
-        const progress = b1.productionProgress?.["operation:faction-suppression"] ?? 0;
-        expect(progress).toBeGreaterThan(0);
-        expect(progress).toBeLessThan(14);
-        expect(pack.states[1].economy.treasury).toBeGreaterThanOrEqual(500);
-        expect(faction.outposts[0].influence).toBe(40);
-      });
-
-      it("hurries an operation for gold while retaining the reserve", () => {
-        const living = Living.init();
-        const faction = hostileFaction("Silver Hand");
-        expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
-        const b1 = living.burgs[1];
-        b1.productionProgress = { "operation:faction-suppression": 0 };
-        const remaining = 6 + 2 * 4;
-        const price = hurryGoldCost(remaining, false);
-
-        // Too thin: the state keeps its 100 Gold reserve.
-        pack.states[1].economy.treasury = price + 50;
-        expect(Living.hurryProduction(1)).toBe(false);
-        expect(pack.states[1].economy.treasury).toBe(price + 50);
-
-        pack.states[1].economy.treasury = 1000;
-        expect(Living.hurryProduction(1)).toBe(true);
-        expect(pack.states[1].economy.treasury).toBe(1000 - price);
-        expect(faction.outposts[0].influence).toBe(37);
-      });
-
-      it("reduces influence by the order/secrecy formula per completed operation", () => {
+      it("reduces influence by the order/secrecy formula on a campaign season", () => {
         const living = Living.init();
         const faction = hostileFaction("Silver Hand");
         living.provinces[1].order = 70;
-        const b1 = living.burgs[1];
-        b1.productionQueue = [
-          { kind: "operation", id: "faction-suppression", targetFactionId: faction.i, targetNodeKey: "outpost:1" }
-        ];
-        b1.productionProgress = { "operation:faction-suppression": 13 };
+        pack.states[1].economy.treasury = 1000;
         living.states[1].agenda = {
           kind: "suppress_faction",
           label: `Suppressing ${faction.name} in Aelor`,
           targetFactionId: faction.i,
           targetBurgId: 1,
-          progress: 0,
-          required: 1
+          progress: FACTION_SUPPRESSION_SEASONS - 1,
+          required: FACTION_SUPPRESSION_SEASONS
         };
 
         Living.tick(1);
@@ -3871,21 +2671,19 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(living.provinces[1].order).toBeGreaterThanOrEqual(72);
       });
 
-      it("progresses slowly without collapsing when local production is low", () => {
+      it("stalls a campaign the treasury cannot fund without collapsing the faction", () => {
         const living = Living.init();
         const faction = hostileFaction("Silver Hand");
         expect(Living.startFactionSuppression(1, faction.i)).toBe(true);
+        pack.states[1].economy.treasury = 0;
 
         Living.tick(2);
 
         expect(faction.removed).toBe(false);
         expect(faction.outposts[0].pillaged).toBeFalsy();
         expect(faction.outposts[0].influence).toBeGreaterThan(0);
-        const progress = living.burgs[1].productionProgress?.["operation:faction-suppression"] ?? 0;
-        const queued = (living.burgs[1].productionQueue ?? []).some(
-          item => item.kind === "operation" && item.targetFactionId === faction.i
-        );
-        expect(progress > 0 || queued).toBe(true);
+        expect(living.states[1].agenda?.kind).toBe("suppress_faction");
+        expect(living.states[1].agenda?.stallUntilTick).toBeGreaterThan(living.tick);
       });
     });
 
@@ -3939,7 +2737,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(Living.eligibleFactionSuppressionTargets(1).map(t => t.faction.i)).not.toContain(faction.i);
       });
 
-      it("starts a military-only agenda with no production queue for a wilderness HQ", () => {
+      it("starts a military-only agenda for a wilderness HQ", () => {
         const living = Living.init();
         const faction = wildernessFaction("Pale Hand");
 
@@ -3949,11 +2747,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(agenda?.targetCell).toBe(9);
         expect(agenda?.targetBurgId).toBeUndefined();
         expect(agenda?.label).toContain("wild");
-        for (const bSim of Object.values(living.burgs)) {
-          expect(
-            (bSim.productionQueue ?? []).some(item => item.kind === "operation" && item.id === "faction-suppression")
-          ).toBe(false);
-        }
         expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("began suppressing"))).toBe(
           true
         );
@@ -3986,7 +2779,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(faction.outposts).toHaveLength(0);
       });
 
-      it("keeps a wilderness agenda without production after a tick until the army can march", () => {
+      it("keeps a wilderness agenda after a tick until the army can march", () => {
         const living = Living.init();
         fieldArmy(13, 1); // far from cell 9: cannot storm yet
         const faction = wildernessFaction("Pale Hand");
@@ -3994,14 +2787,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
         Living.tick(1);
 
-        for (const bSim of Object.values(living.burgs)) {
-          expect(
-            (bSim.productionQueue ?? []).some(item => item.kind === "operation" && item.id === "faction-suppression")
-          ).toBe(false);
-        }
         // Either the marching army reached the stronghold this tick (pillaged,
-        // agenda retargeted/cleared) or it is still marching (agenda intact):
-        // in no case did an administrative operation appear.
+        // agenda retargeted/cleared) or it is still marching (agenda intact).
         if (faction.hq.pillaged) {
           expect(faction.removed).toBe(true);
         } else {
@@ -4812,10 +3599,9 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
   });
 });
 
-describe("Faction clear-trouble production clock (trouble conversion Phase 2)", () => {
+describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
   beforeEach(() => {
     buildStubPack();
-    // City loops need terrain columns or stepCities early-returns with empty yields
     pack.cells.h = Uint8Array.from([0, 30, 30, 30, 30, 30]);
     pack.cells.biome = Uint8Array.from([0, 2, 2, 2, 2, 2]);
     pack.factions = [{ i: 0 } as Faction];
@@ -4830,7 +3616,7 @@ describe("Faction clear-trouble production clock (trouble conversion Phase 2)", 
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
     });
 
-  it("assigns a clear_trouble agenda sized in production and banks node production each season", () => {
+  it("assigns a clear_trouble agenda sized by trouble level and advances it each season", () => {
     const living = Living.init();
     Living.spawnTrouble(1, "flooding", "burg", 1);
     const faction = caretaker("adventuring");
@@ -4935,7 +3721,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     buildStubPack();
   });
 
-  it("advances faction economy, applies yields, upkeeps, and progresses tech research with host-state spillover", () => {
+  it("banks upstream income and progresses tech research with host-state spillover", () => {
     buildStubPack();
     const living = Living.init();
     pack.factions = [{ i: 0 } as Faction];
@@ -4971,32 +3757,61 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       researchedProgress: {}
     });
 
-    faction.hq.sim!.cityYields = { food: 5, production: 3, gold: 12, science: 4, culture: 2, faith: 1, happiness: 0 };
-    faction.outposts[0].sim!.cityYields = {
-      food: 3,
-      production: 2,
-      gold: 8,
-      science: 2,
-      culture: 1,
-      faith: 0,
-      happiness: 0
-    };
-    faction.hq.sim!.civBuildings = ["trade_depot"];
-    faction.outposts[0].sim!.civBuildings = ["trade_depot"];
+    // Both nodes sit at development 90: mean development / 30 = 3 science.
+    const development = new Uint8Array((pack.cells.i as number[]).length);
+    development[1] = 90;
+    development[3] = 90;
+    pack.cells.development = development;
+
+    // A live upstream economy: the capital's product and market turnover feed the faction
+    options.map.goods = [
+      {
+        i: 1,
+        name: "Wheat",
+        tags: [],
+        demandCoverage: {},
+        value: 1,
+        carriage: 1,
+        unit: "unit",
+        icon: "",
+        color: "#000"
+      }
+    ] as never;
+    pack.cells.market = new Uint16Array((pack.cells.i as number[]).length);
+    pack.cells.market[1] = 1;
+    pack.markets = [{ i: 1 } as never];
+    pack.deals = [[1, 1, 1, 0, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+    pack.burgs[1].product = 10;
+
+    // Keep the seasonal muster out of the ledger assertion: one block already guards the HQ
+    const combatType = Object.keys(Military.getUnitTypes())[0]!;
+    faction.military = [
+      {
+        i: 1,
+        name: "Golden Crest Guard",
+        a: 150,
+        cell: 1,
+        x: 10,
+        y: 10,
+        bx: 10,
+        by: 10,
+        state: 0,
+        n: 0,
+        u: { [combatType]: 150 },
+        units: [{ type: combatType, hp: 1, exp: 0 }]
+      } as never
+    ];
 
     const initTreasury = faction.treasury;
+    const upstream = Living.getFactionYieldBreakdown(faction).upstreamGold;
+    const upkeep = Military.getUnitTypes()[combatType]!.upkeep;
     Living.stepFactionEmpire(living);
 
-    expect(faction.yieldsPerTurn?.food).toBe(8);
-    expect(faction.yieldsPerTurn?.production).toBe(5);
-    expect(faction.yieldsPerTurn?.gold).toBe(20);
-    expect(faction.treasury).toBe(initTreasury + 20);
-    expect(faction.science).toBe(6);
-    expect(Number.isFinite(faction.happiness ?? NaN)).toBe(true);
-    expect(faction.happinessBreakdown).toBeDefined();
+    expect(upstream).toBeGreaterThan(0);
+    expect(faction.treasury).toBeCloseTo(initTreasury + upstream - upkeep, 2);
 
-    // Tech research: progress accumulated with +25% host spillover (6 * 1.25 = 7.5)
-    expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(7.5);
+    // Tech research: progress accumulated with +25% host spillover (3 * 1.25 = 3.75)
+    expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(3.75);
 
     // Trigger completion
     faction.researchedProgress.pottery = 34;
