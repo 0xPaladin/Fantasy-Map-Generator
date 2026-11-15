@@ -98,14 +98,6 @@ export interface Faction {
   hq: FactionHq;
   outposts: FactionOutpost[];
 
-  // Advancement & OpenCiv Tech Tree
-  science: number;
-  currentTechId?: string | null;
-  researchQueue: string[];
-  researchedTechs: string[];
-  researchedProgress: Record<string, number>;
-  freeTechs?: number;
-
   // Economy, Diplomacy & Military
   treasury: number;
   influence: number;

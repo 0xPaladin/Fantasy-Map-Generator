@@ -8,6 +8,7 @@ import { activeAspects } from "@/data/hero-aspects";
 import { HERO_DISCIPLINES } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_IMPROVEMENT_BY_ID } from "@/data/living-civ-improvements";
+import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
@@ -728,7 +729,7 @@ function renderStateCard(stateId: number): string {
       f.sovereignAmbition &&
       (f.allegiance === "hostile" || f.allegiance === "clandestine") &&
       (f.seasonsActive ?? 0) >= 8 &&
-      (f.researchedTechs?.length ?? 0) >= 2 &&
+      (pack.cells.development?.[f.hq.cell] ?? 0) >= SOVEREIGN_DEVELOPMENT &&
       (() => {
         const provId = provIdOfFaction(f);
         return provId !== undefined && pack.provinces?.[provId]?.state === stateId;
@@ -827,7 +828,7 @@ function renderUpstreamState(stateId: number): string {
     `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Open the state's budget, taxes and tariffs">💼 Budget</button>`,
     development == null
       ? ""
-      : `<span class="livingCivChip" title="The people's average technology, which unlocks goods and raises output">🧪 ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`,
+      : `<span class="livingCivChip" title="The people's mean development and era: it unlocks goods and unit tiers and raises output">🧪 ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`,
     `<span class="livingCivChip" title="Share of the military spending its forces need; below it they fight worse">⚔️ ${percent(upkeep)} upkeep · ×${battle.toFixed(2)}</span>`
   ];
 

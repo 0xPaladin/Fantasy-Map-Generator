@@ -136,8 +136,7 @@ describe("FactionsGenerator", () => {
       outposts: [
         { burgId: 2, cell: 20, tier: 1, influence: 50, secrecy: 0, assets: ["trade_depot"], establishedYear: 990 },
         { burgId: 3, cell: 30, tier: 1, influence: 50, secrecy: 0, assets: [], establishedYear: 995 }
-      ],
-      researchedTechs: ["pottery", "currency"]
+      ]
     });
 
     expect(added.i).toBeGreaterThan(0);

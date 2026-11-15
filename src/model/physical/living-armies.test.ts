@@ -22,7 +22,7 @@ import {
   nextRosterUnitInCategory,
   normalizeArmy,
   pickRosterUnit,
-  requiredTechFor,
+  requiredDevelopmentFor,
   toBattleTypes,
   toBattleUnits,
   toBattleUnitsMen
@@ -272,21 +272,21 @@ describe("normalizeArmy", () => {
   });
 });
 
-describe("tech gating", () => {
-  it("returns the authored gate when present", () => {
+describe("development gating", () => {
+  it("returns the frozen development of an authored requiredTech", () => {
     const r: ResolvedRoster = {
       ...roster,
       units: { ...roster.units, sword: unit({ id: "sword", requiredTech: "iron_working" }) }
     };
-    expect(requiredTechFor(r.units.sword!, r)).toBe("iron_working");
+    expect(requiredDevelopmentFor(r.units.sword!, r)).toBe(26);
   });
 
   it("derives the gate from upkeep rank inside the category", () => {
-    // melee ladder: ["", "", "bronze_working", ...] — levy rank 0 (free), sword rank 1 (free)
-    expect(requiredTechFor(roster.units.levy!, roster)).toBe("");
-    expect(requiredTechFor(roster.units.sword!, roster)).toBe("");
-    // spellcaster ladder: ["", "writing", ...] — slann is rank 0 → free
-    expect(requiredTechFor(roster.units.slann!, roster)).toBe("");
+    // melee ladder: [0, 0, 16, ...] — levy rank 0 (free), sword rank 1 (free)
+    expect(requiredDevelopmentFor(roster.units.levy!, roster)).toBe(0);
+    expect(requiredDevelopmentFor(roster.units.sword!, roster)).toBe(0);
+    // spellcaster ladder: [0, 13, ...] — slann is rank 0 → free
+    expect(requiredDevelopmentFor(roster.units.slann!, roster)).toBe(0);
     const r: ResolvedRoster = {
       ...roster,
       units: {
@@ -296,13 +296,13 @@ describe("tech gating", () => {
       },
       recruitable: [...roster.recruitable, "acolyte"]
     };
-    expect(requiredTechFor(r.units.acolyte!, r)).toBe("writing");
+    expect(requiredDevelopmentFor(r.units.acolyte!, r)).toBe(13);
   });
 
   it("gates pickRosterUnit and hands back the next ladder step", () => {
-    expect(pickRosterUnit(roster, "melee", [])?.id).toBe("levy");
-    expect(pickRosterUnit(roster, "cavalry", [])?.id).toBe("knight");
-    expect(pickRosterUnit(roster, "ranged", ["machinery"])?.id).toBe("archer");
+    expect(pickRosterUnit(roster, "melee", 0)?.id).toBe("levy");
+    expect(pickRosterUnit(roster, "cavalry", 0)?.id).toBe("knight");
+    expect(pickRosterUnit(roster, "ranged", 37)?.id).toBe("archer");
     expect(nextRosterUnitInCategory(roster, "levy")?.id).toBe("sword");
     expect(nextRosterUnitInCategory(roster, "slann")).toBeUndefined();
   });

@@ -239,13 +239,6 @@ export interface StatePolitySim {
   warExhaustion: number;
   claims: ClaimRecord[];
   grudges: GrudgeRecord[];
-  // Research (interim: science from development; Phase 2 of living-fmg-native.md
-  // replaces the tree with an era ladder derived from development alone).
-  currentTechId?: string | null;
-  researchQueue?: string[];
-  researchedTechs?: string[];
-  researchedProgress?: Record<string, number>;
-  freeTechs?: number;
   warTurns?: Record<number, number>;
   peaceTreatyTurns?: Record<number, number>;
   /** Diplomatic treaties (Phase D): other-state id → active treaty kinds. Symmetric. */
@@ -321,49 +314,6 @@ export type CivYieldId = "food" | "production" | "gold" | "science" | "culture" 
 
 export type YieldValues = Record<CivYieldId, number>;
 export type YieldDelta = Partial<YieldValues>;
-
-export type CivEraId =
-  | "ancient"
-  | "classical"
-  | "medieval"
-  | "renaissance"
-  | "industrial"
-  | "modern"
-  | "atomic"
-  | "information";
-
-export type CivThemeId = "fantasy" | "historical" | "astral";
-
-export interface CivEraDef {
-  id: CivEraId;
-  name: string;
-  rows: readonly number[];
-}
-
-export interface CivTechNote {
-  text: string;
-  icon: string;
-}
-
-export interface CivTechTileBonus {
-  tileType: string;
-  freshWater?: boolean;
-  stats: YieldDelta;
-}
-
-export interface CivTechDef {
-  id: string;
-  name: string;
-  cost: number;
-  prerequisites: readonly string[];
-  row: number;
-  slot: number;
-  era: CivEraId;
-  description: string;
-  assetName?: string;
-  notes?: readonly CivTechNote[];
-  tileBonuses?: readonly CivTechTileBonus[];
-}
 
 export type UnitDomain = "land" | "sea";
 
@@ -557,105 +507,10 @@ export interface CivPromotionDef {
   notYet?: readonly string[];
 }
 
-export interface CivBeliefBuildingEffect {
-  building: string;
-  minFollowers?: number;
-  stats: YieldDelta;
-}
-
-export interface CivBeliefCityEffect {
-  minPopulation?: number;
-  river?: boolean;
-  stats: YieldDelta;
-}
-
-export interface CivBeliefEffects {
-  tileYields?: readonly CivTileYieldEffect[];
-  buildingYields?: readonly CivBeliefBuildingEffect[];
-  cityYields?: readonly CivBeliefCityEffect[];
-  wonderYields?: YieldDelta;
-  growthPercent?: number;
-  borderGrowthPercent?: number;
-  cityRangedPercent?: number;
-  wonderProduction?: { percent: number; eras: readonly CivEraId[] };
-  healNearCity?: number;
-  faithFromKills?: { range: number };
-  goldPerCity?: number;
-  happinessPerCities?: { per: number };
-  goldPerFollowers?: { per: number };
-  goldOnConversion?: number;
-  happinessPerForeignFollowers?: { per: number };
-  faithPerForeignCity?: number;
-  culturePerForeignFollowers?: { per: number };
-  faithBuildings?: readonly { building: string; faithCost: number }[];
-  faithUnits?: { beforeEra: CivEraId };
-  sciencePerOtherFollower?: number;
-  productionPercentPerFollower?: { percent: number; max: number };
-  growthPercentAtPeace?: number;
-  spreadRangePercent?: number;
-  spreadPressurePercent?: { percent: number; withTech?: { tech: string; percent: number } };
-  prophetCostPercent?: number;
-  prophetStrengthPercent?: number;
-  missionaryCostPercent?: number;
-  missionaryStrengthPercent?: number;
-  combatNearFriendlyPercent?: number;
-  combatNearEnemyPercent?: number;
-  faithOnGreatPerson?: number;
-}
-
-export interface CivBeliefDef {
-  id: string;
-  name: string;
-  text: string;
-  description: string;
-  yields?: YieldDelta;
-  effects?: CivBeliefEffects;
-  notYet?: readonly string[];
-}
-
-export interface CivThemeProfile {
-  id: CivThemeId;
-  label: string;
-  eraCap: CivEraId;
-  eraNames: Readonly<Record<CivEraId, string>>;
-  techNames: Readonly<Record<string, string>>;
-  unitNames: Readonly<Record<string, string>>;
-  buildingNames: Readonly<Record<string, string>>;
-  improvementNames: Readonly<Record<string, string>>;
-}
-
-export interface ProductionItem {
-  kind: "unit" | "building" | "wonder" | "trouble" | "operation";
-  id: string;
-  targetFactionId?: number;
-  targetNodeKey?: string;
-}
-
 export interface CellSimState {
   improvement?: string | null;
   pillaged?: boolean;
   progress?: Record<string, number>;
-}
-
-export type CellYieldSourceKind = "terrain" | "resource" | "improvement" | "minor_burg" | "tech";
-
-/** One additive contribution to a cell's OpenCiv yields, shown in the Living inspector. */
-export interface CellYieldSource {
-  kind: CellYieldSourceKind;
-  id: string;
-  label: string;
-  yields: YieldDelta;
-}
-
-/** An `options.map.goods` entry classified into OpenCiv's resource taxonomy. */
-export interface CellResourceInfo {
-  goodId: number;
-  goodName: string;
-  /** matching OpenCiv resource id, when the FMG good name maps cleanly */
-  resourceId: string | null;
-  class: CivResourceClass;
-  /** strategic resources stay hidden until their reveal tech is known */
-  revealed: boolean;
 }
 
 export interface CellTerrainInfo {
@@ -667,50 +522,6 @@ export interface CellTerrainInfo {
   elevation: 0 | 1 | 2;
   movementCost: number;
   hasFreshWater: boolean;
-}
-
-export interface ReligionBeliefState {
-  religionId: number;
-  founderStateId: number;
-  holyCityBurgId: number;
-  pantheonId?: string;
-  founderBeliefId?: string;
-  followerBeliefIds: string[];
-  enhancerBeliefId?: string;
-  enhanced: boolean;
-}
-
-export interface HappinessBreakdown {
-  base: number;
-  luxuries: number;
-  buildings: number;
-  religion: number;
-  /** upstream Prosperity of the state's people, when the economy has run */
-  prosperity?: number;
-  cityUnhappiness: number;
-  citizenUnhappiness: number;
-  unrestUnhappiness: number;
-}
-
-export interface UnitSimState {
-  unitTypeId: string;
-  domain: UnitDomain;
-  combatClass: UnitCombatClass;
-  isUtility: boolean;
-  hp: number;
-  movement: number;
-  maxMovement: number;
-  combatStrength: number;
-  rangedStrength: number;
-  range: number;
-  xp: number;
-  level: number;
-  promotions: string[];
-  fortified: boolean;
-  hasAttacked: boolean;
-  spreadCharges?: number;
-  conversionStrength?: number;
-  workOrder?: { improvementId: string; turnsLeft: number } | null;
 }
 
 // ---------------------------------------------------------------------------

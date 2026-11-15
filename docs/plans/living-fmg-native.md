@@ -1,6 +1,6 @@
 # Plan — Living World on FMG Rails (OpenCiv removal & native dynamism)
 
-**Status:** In progress — Phase 0 done (scope locked), **Phase 1 done** (OpenCiv civilians, city loop, queues, wonders, yields, happiness and religion engine stripped; interim bridges in place).
+**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv civilians, city loop, queues, wonders, yields, happiness and religion engine stripped; interim bridges in place), **Phase 2 done** (tech tree removed; the era ladder from development now gates unit tiers, and development moves by diffusion and develop projects).
 **Companions:** [upstream-economy-alignment.md](upstream-economy-alignment.md) (the bridge this plan builds on), [living-world.md](living-world.md) (original vision), [living-openciv.md](living-openciv.md) (superseded), [living-openciv-armies.md](living-openciv-armies.md) (partially superseded), [factions-civ-engine.md](factions-civ-engine.md) (partially superseded), [remove-living-guild.md](remove-living-guild.md)
 
 ## Execution policy
@@ -173,7 +173,7 @@ Factions lose their node economies, keep their soul:
 ## 9. Pillar 5 — Era ladder
 
 - A state's era = the stock era containing its population-weighted mean development (`Development.getAverages`, `options.map.eras`) — no new data.
-- Era gates: project tiers (§5) and roster unit tiers (replacing `requiredTechFor`; a unit's era is its roster's `minEra`, else the category ladder's).
+- Era gates: project tiers (§5) and roster unit tiers (replacing `requiredTechFor`; a unit's era is its roster's `minEra`, else the category ladder's). Roster JSONs still name a tech per unit, so Phase 2 froze each tech id's old development band (`UNIT_TECH_DEVELOPMENT`) as its threshold; rosters gain explicit eras later and the frozen table goes.
 - Development changes only through: diffusion (kept), project effects, ruler `develop` agenda targets, razing/pillage (kept), and plain map editing. The Phase 2 seeding/uplift code is deleted with the tech tree.
 - The HUD/badges show "Medieval (mean 34)" — one number, stock-derived.
 
@@ -217,7 +217,7 @@ Factions lose their node economies, keep their soul:
 | :--- | :--- | :--- |
 | 0 | This plan reviewed, seams agreed (`simAdjustments`, projects catalog list) | plan merged |
 | 1 | **Strip civilians**: delete city loop, civilians, queues, wonders, yields/happiness; slim HUD cards; build/lint/tests green; mobile burgs verified | tick runs without OpenCiv fields |
-| 2 | **Era ladder**: delete `CIV_TECHS`; era from `Development.getAverages`; roster/project gates switched; save migration | old saves load, era shown |
+| 2 | **Era ladder**: delete `CIV_TECHS`; era from `Development.getAverages`; roster/project gates switched; save migration | old saves load, era shown ✅ |
 | 3 | **Fiscal policy**: profiles from traits, spring drift through `setBudget`/`setCorruption`, event re-targets, news, God-mode locks; replace transient corruption modifier | two seeded states diverge measurably |
 | 4 | **Projects**: catalog, funding via orders + treasury, effects into `simAdjustments`/flags/development/output seams, Projects tab UI; Royal Road draws real route links and Market Charter converts a burg into a market center. | a granary consumes real stone and shows as a line |
 | 5 | **Trouble economics**: hazard → negative lines, clearing paths wired, ruins rewards | a hazard drains a treasury and is cleared |
@@ -233,7 +233,19 @@ Each phase lands independently buildable with its completion record appended her
 - **Market fee drift**: rulers moving `marketFee` re-spaces markets on regen (placement reads fees) — feature or bug? Propose: cap drift, chronicle the market reshuffle.
 - **KPI drift**: hazard drains and project income shift economy KPIs 11/14 (states' cut, treasury concentration) — re-measure with the tuner after phases 4–5.
 - **Mobile burgs**: verified in Phase 1 — live wandering reads `pack.cells`/`Burgs.move`/`Routes`, never the stripped fields.
-- **Astral mode**: post-scarcity hooks read development/prosperity, not OpenCiv fields — audit in Phase 2.
+- **Astral mode**: post-scarcity hooks read development/prosperity, not OpenCiv fields — audited in Phase 2: the astral regime still shapes diffusion caps (`ANCIENT_SUPPRESSED_CAP`) and `Output`/`Prosperity` read development unchanged.
+
+### Phase 2 completion record (done)
+
+**Shipped:** `src/data/living-eras.ts` (new), `src/model/physical/living-armies.ts`, `src/model/physical/living-generator.ts`, `src/model/physical/living-threats.ts`, `src/model/political/factions-generator.ts`, `src/model/economy/output.ts`, `src/controllers/living-hud.ts`, `src/types/living.ts`, `src/types/factions.ts`, `src/data/rosters` untouched. Deleted `living-civ-techs.ts`, `living-civ-techs.test.ts`, `living-civ-themes.ts`. `tsc` clean, Biome clean, unit suite green, Vite build green.
+
+- **The era ladder** (`living-eras.ts`): wrappers over the stock `Development.eras` — `eraIndex`, `eraName`, `eras()` — plus `SOVEREIGN_DEVELOPMENT = 18` (the Iron Age band). A polity's era is now simply the stock era its population-weighted mean development falls in; the HUD chip already shows `mean · era`.
+- **Tech tree removed**: `CIV_TECHS`/`CIV_TECH_BY_ID`, themes, `setResearch`/`grantTech`, state and faction research (`applyResearch`, `completeTech`, `applyFactionResearch`, seeding, uplift), and their sim fields. Old saves have `currentTechId`/`researchQueue`/`researchedTechs`/`researchedProgress`/`freeTechs` pruned from states and factions in `Living.init()`.
+- **Unit gating by era**: `requiredTechFor` became `requiredDevelopmentFor(unit, roster)`, returning a development threshold; `pickRosterUnit(roster, category, development)` takes a development level. Authored roster `requiredTech` ids resolve through the frozen `UNIT_TECH_DEVELOPMENT` map (tech id → its old development band) so **no roster JSON changed**; derived gates use per-category development ladders. State musters gate on mean development, faction musters/garrisons on the faction's node mean, and refits compare the same thresholds.
+- **Development moves on stock rails**: diffusion eases peopled cells toward their state's mean (with the land's biome/river/harbor ceiling), and a completed `develop` project now raises the province's peopled cells by +2 development (`raiseProvinceDevelopment`, marks the economy dirty) instead of only a sim counter. Razing, pillage and map editing still lower/raise it; nothing researches.
+- **Factions**: ascension and the eschaton now require `factionDevelopment ≥ SOVEREIGN_DEVELOPMENT` (was 2 techs); the HUD's ascendable hint reads the HQ cell's development. Faction data lost `science`/research fields.
+- **Improvements**: the old tech boosts on `Output` become development thresholds (farm +0.15 at ≥29, pasture +0.15 at ≥67, mine +0.2 at ≥56); pillage and the base boosts are unchanged.
+- **Tests**: research/tech/theme suites removed; era-gating tests added for `requiredDevelopmentFor`, `pickRosterUnit`, diffusion-toward-mean, develop-project uplift and development-gated ascension; catalogs/assets/save fixtures pruned of tech fields.
 
 ### Phase 1 completion record (done)
 

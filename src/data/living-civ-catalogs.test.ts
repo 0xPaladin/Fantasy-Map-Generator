@@ -7,18 +7,6 @@ import {
   CIV_TILE_BY_ID,
   CIV_TILES
 } from "./living-civ-improvements";
-import { CIV_ERAS, CIV_TECH_BY_ID, CIV_TECHS, getCivTech } from "./living-civ-techs";
-import {
-  activeCivEras,
-  CIV_THEMES,
-  getCivTheme,
-  isCivEraAvailable,
-  resolveCivBuildingName,
-  resolveCivEraName,
-  resolveCivImprovementName,
-  resolveCivTechName,
-  selectCivTheme
-} from "./living-civ-themes";
 
 function expectUniqueIds(items: readonly { id: string }[], label: string): void {
   const ids = items.map(item => item.id);
@@ -29,100 +17,19 @@ function expectUniqueIds(items: readonly { id: string }[], label: string): void 
   ).toBe(true);
 }
 
-/** Returns the first dependency cycle as `a -> b -> a`, or null when the graph is acyclic. */
-function findCycle(graph: ReadonlyMap<string, readonly string[]>): string[] | null {
-  const state = new Map<string, "visiting" | "done">();
-
-  const visit = (id: string, path: readonly string[]): string[] | null => {
-    if (state.get(id) === "done") return null;
-    if (state.get(id) === "visiting") return [...path, id];
-
-    state.set(id, "visiting");
-    for (const dependency of graph.get(id) ?? []) {
-      const cycle = visit(dependency, [...path, id]);
-      if (cycle) return cycle;
-    }
-    state.set(id, "done");
-    return null;
-  };
-
-  for (const id of graph.keys()) {
-    const cycle = visit(id, []);
-    if (cycle) return cycle;
-  }
-  return null;
-}
-
-function graphOf(items: readonly { id: string; prerequisites?: readonly string[] }[]): Map<string, readonly string[]> {
-  return new Map(items.map(item => [item.id, item.prerequisites ?? []]));
-}
-
 describe("living-civ catalogs (Slice 1)", () => {
-  describe("tech tree", () => {
-    it("ports every era and uses each tech's row era", () => {
-      expect(CIV_ERAS).toHaveLength(8);
-      expect(CIV_TECHS).toHaveLength(80);
-      expectUniqueIds(CIV_TECHS, "tech");
-
-      const seenRows = new Set<number>();
-      for (const era of CIV_ERAS) {
-        expect(era.name.length).toBeGreaterThan(0);
-        expect(era.rows.length).toBeGreaterThan(0);
-        for (const row of era.rows) {
-          expect(seenRows.has(row), `row ${row} belongs to one era`).toBe(false);
-          seenRows.add(row);
-        }
-      }
-
-      for (const tech of CIV_TECHS) {
-        expect(tech.name.length).toBeGreaterThan(0);
-        expect(tech.description.length).toBeGreaterThan(0);
-        expect(tech.cost).toBeGreaterThan(0);
-        expect(tech.row).toBeGreaterThanOrEqual(0);
-        expect(tech.slot).toBeGreaterThanOrEqual(0);
-
-        const eraRows = CIV_ERAS.find(entry => entry.id === tech.era)?.rows ?? [];
-        expect(eraRows, `tech ${tech.id} has a known era`).not.toHaveLength(0);
-        expect(eraRows, `tech ${tech.id} row fits its era`).toContain(tech.row);
-      }
-
-      expect(new Set(CIV_TECHS.map(tech => tech.era)).size).toBe(CIV_ERAS.length);
-      expect(CIV_TECH_BY_ID[CIV_TECHS[0].id]).toBe(CIV_TECHS[0]);
-      expect(getCivTech(CIV_TECHS[0].id)).toBe(CIV_TECHS[0]);
-      expect(getCivTech("not_a_tech")).toBeUndefined();
-    });
-
-    it("keeps the prerequisite graph closed and acyclic, with prerequisites on earlier rows", () => {
-      const techIds = new Set(CIV_TECHS.map(tech => tech.id));
-
-      for (const tech of CIV_TECHS) {
-        for (const prerequisite of tech.prerequisites) {
-          expect(techIds.has(prerequisite), `${tech.id} prerequisite ${prerequisite} exists`).toBe(true);
-          const prerequisiteTech = CIV_TECH_BY_ID[prerequisite];
-          expect(prerequisiteTech.row, `${tech.id} prerequisite ${prerequisite} sits earlier`).toBeLessThan(tech.row);
-        }
-      }
-
-      expect(findCycle(graphOf(CIV_TECHS))).toBeNull();
-    });
-  });
-
   describe("buildings", () => {
-    it("ports buildings with resolvable tech and building requirements", () => {
+    it("ports buildings with resolvable building requirements", () => {
       expect(CIV_BUILDINGS).toHaveLength(114);
       expect(CIV_BUILDINGS.filter(building => building.factionCategory !== undefined)).toHaveLength(20);
       expectUniqueIds(CIV_BUILDINGS, "building");
 
       const buildingIds = new Set(CIV_BUILDINGS.map(building => building.id));
-      const techIds = new Set(CIV_TECHS.map(tech => tech.id));
 
       for (const building of CIV_BUILDINGS) {
         expect(building.name.length).toBeGreaterThan(0);
         expect(building.stats).toBeDefined();
 
-        if (building.requiredTech) {
-          expect(techIds.has(building.requiredTech), `${building.id} tech ${building.requiredTech}`).toBe(true);
-        }
         if (building.requiresBuilding) {
           expect(
             buildingIds.has(building.requiresBuilding),
@@ -161,15 +68,8 @@ describe("living-civ catalogs (Slice 1)", () => {
       expectUniqueIds(CIV_RESOURCES, "resource");
       expectUniqueIds(CIV_TILES, "tile");
 
-      const techIds = new Set(CIV_TECHS.map(tech => tech.id));
-
       for (const improvement of CIV_IMPROVEMENTS) {
         expect(improvement.name.length).toBeGreaterThan(0);
-        if (improvement.requiredTech) {
-          expect(techIds.has(improvement.requiredTech), `${improvement.id} tech ${improvement.requiredTech}`).toBe(
-            true
-          );
-        }
         for (const [resource, tile] of Object.entries(improvement.resources ?? {})) {
           expect(resource.length).toBeGreaterThan(0);
           expect(CIV_TILE_BY_ID[tile], `${improvement.id} resource ${resource} -> ${tile}`).toBeDefined();
@@ -184,71 +84,8 @@ describe("living-civ catalogs (Slice 1)", () => {
         }
       }
 
-      for (const tech of CIV_TECHS) {
-        for (const bonus of tech.tileBonuses ?? []) {
-          expect(CIV_TILE_BY_ID[bonus.tileType], `${tech.id} bonus tile ${bonus.tileType}`).toBeDefined();
-        }
-      }
-
       expect(Object.keys(CIV_IMPROVEMENT_BY_ID)).toHaveLength(CIV_IMPROVEMENTS.length);
       expect(Object.keys(CIV_TILE_BY_ID)).toHaveLength(CIV_TILES.length);
-    });
-  });
-
-  describe("adaptive theme profiles", () => {
-    const themeIds = ["fantasy", "historical", "astral"] as const;
-    const eraIds = CIV_ERAS.map(era => era.id);
-
-    it("defines all three themes with active, ordered eras", () => {
-      for (const themeId of themeIds) {
-        const theme = getCivTheme(themeId);
-
-        expect(theme.id).toBe(themeId);
-        expect(theme.label.length).toBeGreaterThan(0);
-        expect(CIV_THEMES[themeId]).toBe(theme);
-
-        for (const era of eraIds) {
-          expect(theme.eraNames[era].length, `${themeId} names ${era}`).toBeGreaterThan(0);
-        }
-
-        const active = activeCivEras(themeId);
-        expect(active.length, `${themeId} has active eras`).toBeGreaterThan(0);
-        expect(active[0].id).toBe("ancient");
-        expect(active[active.length - 1].id).toBe(theme.eraCap);
-        expect(isCivEraAvailable(themeId, theme.eraCap)).toBe(true);
-      }
-
-      expect(isCivEraAvailable("fantasy", "industrial")).toBe(false);
-      expect(isCivEraAvailable("historical", "information")).toBe(true);
-      expect(isCivEraAvailable("astral", "information")).toBe(true);
-      expect(activeCivEras("fantasy").length).toBeLessThan(activeCivEras("historical").length);
-    });
-
-    it("resolves names with theme overrides and canonical fallbacks", () => {
-      for (const themeId of themeIds) {
-        for (const era of eraIds) {
-          expect(resolveCivEraName(themeId, era).length).toBeGreaterThan(0);
-        }
-        for (const tech of CIV_TECHS) {
-          expect(resolveCivTechName(themeId, tech).length).toBeGreaterThan(0);
-        }
-        for (const building of CIV_BUILDINGS) {
-          expect(resolveCivBuildingName(themeId, building).length).toBeGreaterThan(0);
-        }
-        for (const improvement of CIV_IMPROVEMENTS) {
-          expect(resolveCivImprovementName(themeId, improvement).length).toBeGreaterThan(0);
-        }
-      }
-
-      expect(resolveCivBuildingName("astral", CIV_BUILDING_BY_ID.palace)).toBe("Command Nexus");
-      expect(resolveCivImprovementName("astral", CIV_IMPROVEMENT_BY_ID.farm)).toBe("Agripod");
-    });
-
-    it("selects astral first, then historical, and fantasy by default", () => {
-      expect(selectCivTheme({})).toBe("fantasy");
-      expect(selectCivTheme({ historical: true })).toBe("historical");
-      expect(selectCivTheme({ astral: true })).toBe("astral");
-      expect(selectCivTheme({ astral: true, historical: true })).toBe("astral");
     });
   });
 

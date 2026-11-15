@@ -83,8 +83,7 @@ describe("State Cities & Economy dialog", () => {
       unravel: 0,
       warExhaustion: 0,
       claims: [],
-      grudges: [],
-      researchedTechs: ["pottery"]
+      grudges: []
     };
 
     living.burgs[1] = {

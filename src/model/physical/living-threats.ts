@@ -450,7 +450,6 @@ export function spawnDangerousFaction(
 
   const culture = pack.cells.culture?.[cell] ?? pack.states[province.state]?.culture ?? 1;
   const year = options?.map?.lore?.calendar?.year ?? 1000;
-  const researchQueue = arch.desiredTechs.filter(t => t !== "pottery" && t !== "mining");
 
   const faction = Factions.add({
     name: opts?.name ?? arch.name,
@@ -479,9 +478,6 @@ export function spawnDangerousFaction(
       assets: []
     },
     outposts: [],
-    currentTechId: researchQueue[0] ?? null,
-    researchQueue,
-    researchedTechs: ["pottery", "mining"],
     treasury: 150,
     influence: 30,
     military: [
@@ -915,8 +911,6 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
       newState.fullName = faction.stateForm ? `${faction.stateForm} of ${newState.name}` : faction.name;
       newState.color = faction.color;
       newState.economy.treasury = faction.treasury;
-      const newSim = living.states?.[newStateId];
-      if (newSim) newSim.researchedTechs = [...faction.researchedTechs];
       newState.military = [...(faction.military ?? [])];
 
       if (faction.leaderId) {
@@ -944,7 +938,6 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
 
 export function spawnRemnantFaction(fallenState: State, conquerorStateId?: number): Faction | null {
   if (!fallenState?.i) return null;
-  const fallenSim = getHost().getState().states?.[fallenState.i];
 
   const stateRelations: Record<number, "Enemy" | "Ally" | "Friendly" | "Neutral"> = {};
   if (conquerorStateId) {
@@ -973,9 +966,6 @@ export function spawnRemnantFaction(fallenState: State, conquerorStateId?: numbe
     },
     treasury: 120,
     influence: 40,
-    researchedTechs: fallenSim?.researchedTechs
-      ? [...fallenSim.researchedTechs]
-      : ["pottery", "mining", "iron_working"],
     stateRelations
   });
 

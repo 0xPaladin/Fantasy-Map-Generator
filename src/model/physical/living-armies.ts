@@ -8,6 +8,8 @@
  * `BATTLE_STRENGTH` abstract men so `fill = hp` exactly and integer loss
  * quantisation can never make a small-`quantity` block immortal (§5.3).
  */
+
+import { UNIT_TECH_DEVELOPMENT } from "@/data/living-eras";
 import type { ResolvedRoster, UnitCategory, UnitType } from "@/data/roster-content";
 import { type BattleTacticalOrder, categoryShares } from "@/model/battle/battle";
 import type { Regiment } from "@/model/political/military-generator";
@@ -153,32 +155,32 @@ export function normalizeArmy(regiment: Regiment, maxSlots: number, knownTypes?:
 }
 
 // ---------------------------------------------------------------------------
-// Tech gating (§6.4) — the derived ladder means no roster JSON needs edits.
+// Era gating — a unit opens at a development level; no roster JSON needs edits.
 // ---------------------------------------------------------------------------
 
-const CATEGORY_TECH_LADDER: Record<UnitCategory, readonly string[]> = {
-  melee: ["", "", "bronze_working", "iron_working", "steel", "gunpowder", "rifling", "replaceable_parts"],
-  ranged: ["", "archery", "construction", "machinery", "gunpowder", "rifling", "ballistics"],
-  cavalry: ["", "horseback_riding", "horseback_riding", "chivalry", "military_science", "combustion", "mobile_tactics"],
-  artillery: ["", "mathematics", "engineering", "physics", "chemistry", "dynamite", "rocketry"],
-  monster: ["", "", "bronze_working", "iron_working", "steel", ""],
-  spellcaster: ["", "writing", "philosophy", "theology", "education", "astronomy"]
+/** Development each upkeep rank opens at, per category (0 = always available). */
+const CATEGORY_DEVELOPMENT_LADDER: Record<UnitCategory, readonly number[]> = {
+  melee: [0, 0, 16, 26, 38, 43, 65, 81],
+  ranged: [0, 9, 21, 37, 43, 65, 83],
+  cavalry: [0, 20, 20, 36, 66, 84, 91],
+  artillery: [0, 21, 25, 37, 56, 76, 88],
+  monster: [0, 0, 16, 26, 38, 0],
+  spellcaster: [0, 13, 24, 27, 34, 40]
 };
 
 /**
- * The OpenCiv tech id that unlocks `unit`: the authored `requiredTech`, else
- * the ladder entry at the unit's upkeep rank among its roster's same-category
- * units, else `""` (always available).
+ * The development level at which `unit` opens: its frozen `requiredTech`
+ * threshold, else the category ladder entry at its upkeep rank, else 0.
  */
-export function requiredTechFor(unit: UnitType, roster: ResolvedRoster): string {
-  if (unit.requiredTech !== undefined) return unit.requiredTech;
+export function requiredDevelopmentFor(unit: UnitType, roster: ResolvedRoster): number {
+  if (unit.requiredTech !== undefined) return UNIT_TECH_DEVELOPMENT[unit.requiredTech] ?? 0;
   const peers = Object.values(roster.units)
     .filter(u => u.category === unit.category && u.requiredTech === undefined)
     .sort((a, b) => a.upkeep - b.upkeep || a.id.localeCompare(b.id));
-  const ladder = CATEGORY_TECH_LADDER[unit.category] ?? [];
+  const ladder = CATEGORY_DEVELOPMENT_LADDER[unit.category] ?? [];
   const rank = peers.findIndex(u => u.id === unit.id);
-  if (rank < 0) return "";
-  return ladder[Math.min(rank, ladder.length - 1)] ?? "";
+  if (rank < 0) return 0;
+  return ladder[Math.min(rank, ladder.length - 1)] ?? 0;
 }
 
 /** Next unit in the same category by upkeep rank — the derived upgrade target. */
@@ -197,16 +199,6 @@ export function nextRosterUnitInCategory(roster: ResolvedRoster, id: string): Un
 // goods a unit's block needs equipped; shortfalls demote the block to levies.
 // ---------------------------------------------------------------------------
 
-const GUNPOWDER_TECHS = new Set([
-  "gunpowder",
-  "rifling",
-  "ballistics",
-  "rocketry",
-  "combustion",
-  "replaceable_parts",
-  "mobile_tactics",
-  "stealth"
-]);
 const HEAVY_RANK = 3; // from here up a category's units are armored: metal as well as arms
 
 /** A unit's rank among its roster's same-category units, cheapest first. */
@@ -228,9 +220,7 @@ export function getUnitRequiredGoods(unit: UnitType, roster: ResolvedRoster): st
     case "cavalry":
       return rank >= HEAVY_RANK ? ["Horses", "Harnesses", "Arms"] : ["Horses", "Harnesses"];
     case "artillery":
-      return GUNPOWDER_TECHS.has(requiredTechFor(unit, roster))
-        ? ["Artillery", "Gunpowder"]
-        : ["Wood", "Ropes", "Iron"];
+      return requiredDevelopmentFor(unit, roster) >= 43 ? ["Artillery", "Gunpowder"] : ["Wood", "Ropes", "Iron"];
     case "monster":
       return ["Gemstones"];
     case "spellcaster":
@@ -249,14 +239,16 @@ export function levyUnitFor(roster: ResolvedRoster): UnitType | undefined {
   );
 }
 
-/** First recruitable unit of `category` whose gate `techs` satisfies. */
-export function pickRosterUnit(roster: ResolvedRoster, category: UnitCategory, techs: string[]): UnitType | undefined {
+/** First recruitable unit of `category` a people at `development` can field. */
+export function pickRosterUnit(
+  roster: ResolvedRoster,
+  category: UnitCategory,
+  development: number
+): UnitType | undefined {
   return Object.values(roster.units)
     .filter(
       u =>
-        u.category === category &&
-        roster.recruitable.includes(u.id) &&
-        isTechResearched(requiredTechFor(u, roster), techs)
+        u.category === category && roster.recruitable.includes(u.id) && development >= requiredDevelopmentFor(u, roster)
     )
     .sort((a, b) => a.upkeep - b.upkeep || a.id.localeCompare(b.id))[0];
 }
@@ -285,10 +277,6 @@ export function matchRosterUnitByCategory(roster: ResolvedRoster, combatClass: s
   return Object.values(roster.units)
     .filter(u => u.category === category && roster.recruitable.includes(u.id))
     .sort((a, b) => a.upkeep - b.upkeep || a.id.localeCompare(b.id))[0];
-}
-
-function isTechResearched(required: string, techs: string[]): boolean {
-  return required === "" || techs.includes(required);
 }
 
 // ---------------------------------------------------------------------------

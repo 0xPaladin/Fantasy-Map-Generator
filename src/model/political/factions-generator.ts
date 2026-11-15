@@ -63,8 +63,6 @@ export function syncFactionState(faction: Faction): void {
     faction.rosterId =
       faction.stateRosterId || assignStateRoster({ culture: faction.culture || 0, type: "Generic" }, pack?.cultures);
   }
-  faction.freeTechs ??= 0;
-
   if (faction.hq) {
     ensureFactionNodeSim(faction.hq, true);
   }
@@ -322,14 +320,6 @@ class FactionsModule {
       const foundedYear = Math.max(1, currentYear - foundingAge);
       const color = getFactionColor(id, category);
 
-      const initialTechs = ["pottery", "mining"];
-      if (category === "adventuring") initialTechs.push("writing");
-      if (category === "commercial") initialTechs.push("currency");
-      if (category === "martial") initialTechs.push("archery");
-      if (category === "religious") initialTechs.push("philosophy");
-
-      const researchQueue = arch?.desiredTechs ? arch.desiredTechs.filter(t => !initialTechs.includes(t)) : [];
-
       const stateRelations: Record<number, FactionRelation> = {};
       if (allegiance === "state_arm" && optionsOverride.patronStateId) {
         stateRelations[optionsOverride.patronStateId] = "Ally";
@@ -388,11 +378,6 @@ class FactionsModule {
         stateRosterId: arch?.stateRosterId,
         hq,
         outposts,
-        science: 2,
-        currentTechId: researchQueue[0] ?? null,
-        researchQueue,
-        researchedTechs: initialTechs,
-        researchedProgress: {},
         treasury: Math.floor(rng.next() * 200 + 100),
         influence: Math.floor(rng.next() * 50 + 20),
         military,
@@ -670,11 +655,6 @@ class FactionsModule {
       stateRosterId: params.stateRosterId,
       hq: params.hq || { cell: 0, fortified: false, secrecy: 0, assets: [] },
       outposts: params.outposts || [],
-      science: params.science || 2,
-      currentTechId: params.currentTechId ?? null,
-      researchQueue: params.researchQueue || [],
-      researchedTechs: params.researchedTechs || ["pottery", "mining"],
-      researchedProgress: params.researchedProgress || {},
       treasury: params.treasury ?? 150,
       influence: params.influence ?? 30,
       rosterId: params.rosterId,

@@ -3,13 +3,7 @@
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { ANCIENT_SUPPRESSED_CAP } from "@/data/development";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import {
-  CIV_TECH_BY_ID,
-  CIV_TECHS,
-  computePolityTechDevelopment,
-  seedTechsFromDevelopment
-} from "@/data/living-civ-techs";
-import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
+import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
 import { RESOURCE_FACTION_IDS } from "@/data/living-troubles";
 import {
   assignStateRoster,
@@ -51,7 +45,7 @@ import {
   nextRosterUnitInCategory,
   normalizeArmy,
   pickRosterUnit,
-  requiredTechFor,
+  requiredDevelopmentFor,
   toBattleTypes,
   toBattleUnits,
   toBattleUnitsMen
@@ -70,7 +64,6 @@ import type { Province } from "@/model/political/provinces-generator";
 import { noFinance, type State, States } from "@/model/political/states-generator";
 import { type AstralTechRegime, classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
-import { isAstralView } from "@/renderers/view-mode";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type { Good } from "@/types/economy";
 import type {
@@ -89,8 +82,6 @@ import type {
   BurgSimState,
   CellTerrainInfo,
   CivResourceClass,
-  CivTechDef,
-  CivThemeId,
   GrudgeReason,
   HeroDoctrine,
   HeroGuildState,
@@ -118,7 +109,6 @@ import { LivingThreats } from "./living-threats";
 const MAX_RECENT_NEWS = 50;
 const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
-const SCHOLARLY_BUILDINGS = new Set(["library", "university", "public_school"]);
 const DEVELOPMENT_DECAY_SLACK = 3; // rural cells keep a little more than their land allows
 const CHARTER_TITHE = "Chartered Faction Tithes"; // the state budget line charters pay
 const SABOTAGE_ORDER = 15; // public order a ruined working costs its province
@@ -490,22 +480,6 @@ export interface FactionSuppressionTarget {
   nodeKey: FactionNodeKey;
   score: number;
 }
-
-/** OpenCiv theme profile for the live map: Astral, Historical/Modern or Fantasy. */
-export function activeCivThemeId(): CivThemeId {
-  const astral = isAstralView();
-  const year = options?.map?.lore?.calendar?.year ?? 1000;
-  const era = String(options?.map?.lore?.calendar?.era ?? "");
-  const historical = year >= 1800 || /industrial|modern|atomic|information|steam/i.test(era);
-  return selectCivTheme({ astral, historical });
-}
-
-/** A tech is selectable when its era is unlocked and every prerequisite is known. */
-export function isTechSelectable(tech: CivTechDef, researched: ReadonlySet<string>, theme: CivThemeId): boolean {
-  if (researched.has(tech.id)) return false;
-  if (!isCivEraAvailable(theme, tech.era)) return false;
-  return tech.prerequisites.every(id => researched.has(id));
-}
 export const CITY_BASE_HP = 200;
 /** A unit looks this many hops for an enemy to engage. */
 export const UNIT_AGGRO_RANGE = 6;
@@ -581,11 +555,12 @@ class LivingModel {
     return pack.history?.living ?? this.init();
   }
 
-  /** living-fmg-native.md Phase 1: strip retired OpenCiv fields from older saves. */
+  /** living-fmg-native.md: strip retired OpenCiv/research fields from older saves. */
   private pruneLegacyFields(living: LivingWorldState): void {
     type Legacy = Record<string, unknown>;
     const legacy = living as unknown as Legacy;
     for (const key of ["worldWonders", "religions", "units"]) delete legacy[key];
+    const researchKeys = ["currentTechId", "researchQueue", "researchedTechs", "researchedProgress", "freeTechs"];
     for (const sSim of Object.values(living.states)) {
       const record = sSim as unknown as Legacy;
       for (const key of [
@@ -595,10 +570,16 @@ class LivingModel {
         "religionId",
         "happiness",
         "happinessBreakdown",
-        "yieldsPerTurn"
+        "yieldsPerTurn",
+        ...researchKeys
       ]) {
         delete record[key];
       }
+    }
+    for (const faction of pack.factions ?? []) {
+      if (!faction?.i) continue;
+      const record = faction as unknown as Legacy;
+      for (const key of [...researchKeys, "happiness", "happinessBreakdown", "yieldsPerTurn"]) delete record[key];
     }
     for (const bSim of Object.values(living.burgs)) {
       const record = bSim as unknown as Legacy;
@@ -869,7 +850,7 @@ class LivingModel {
       }
 
       this.syncWorld();
-      this.stepEmpire(living);
+      this.stepFactionEmpire(living);
       this.stepDevelopmentDiffusion(living);
       this.stepEconomy(living);
       this.stepTactical(living);
@@ -993,7 +974,7 @@ class LivingModel {
       if (
         (faction.allegiance === "hostile" || faction.allegiance === "clandestine") &&
         (faction.seasonsActive ?? 0) >= 8 &&
-        (faction.researchedTechs?.length ?? 0) >= 2
+        this.factionDevelopment(faction) >= SOVEREIGN_DEVELOPMENT
       ) {
         doom += 1;
       }
@@ -1050,7 +1031,6 @@ class LivingModel {
   syncStates(living: LivingWorldState): void {
     const { content } = currentContent();
     const availableRosters = new Set(Object.keys(content.rosters));
-    const development = this.developmentAverages();
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) {
@@ -1073,36 +1053,20 @@ class LivingModel {
           warExhaustion: 0,
           claims: [],
           grudges: [],
-          currentTechId: null,
-          researchQueue: [],
-          researchedTechs: [],
-          researchedProgress: {},
-          freeTechs: 0,
           treasury: Number(pack.states[state.i]?.economy?.treasury ?? 0)
         };
       } else {
         existing.rulerId = rulerId;
-        existing.currentTechId ??= null;
-        existing.researchQueue ??= [];
-        existing.researchedTechs ??= [];
-        existing.researchedProgress ??= {};
-        existing.freeTechs ??= 0;
         existing.treasury ??= Number(state.economy?.treasury ?? 0);
         existing.warTurns ??= {};
         existing.peaceTreatyTurns ??= {};
       }
-
-      const sSim = living.states[state.i];
-      this.seedPolityTechs(sSim.researchedTechs ?? [], sSim.researchedProgress ?? {}, development.get(state.i) ?? 0);
     }
   }
 
   syncFactions(_living: LivingWorldState): void {
     for (const faction of Factions.active()) {
       syncFactionState(faction);
-      faction.researchedTechs ??= [];
-      faction.researchedProgress ??= {};
-      this.seedPolityTechs(faction.researchedTechs, faction.researchedProgress, this.factionDevelopment(faction));
     }
   }
 
@@ -1118,6 +1082,11 @@ class LivingModel {
       if (id > 0 && value !== undefined) averages.set(id, value);
     });
     return averages;
+  }
+
+  /** A state's mean development, 0 when the map carries none. */
+  private stateDevelopment(stateId: number): number {
+    return this.developmentAverages().get(stateId) ?? 0;
   }
 
   /** Mean development at a faction's HQ and outposts. */
@@ -1136,55 +1105,6 @@ class LivingModel {
     return count > 0 ? total / count : 0;
   }
 
-  /** §2.2: a polity that starts past the foragers' era already knows its earlier rows' technologies. */
-  private seedPolityTechs(techs: string[], progress: Record<string, number>, development: number): void {
-    if (techs.length > 0 || Object.keys(progress).length > 0) return;
-    const seeded = seedTechsFromDevelopment(development);
-    techs.push(...seeded.researched);
-    Object.assign(progress, seeded.progress);
-  }
-
-  /** §2.3: a discovery raises the polity's cities and marks the upstream economy to re-run. */
-  private raiseTechDevelopment(
-    living: LivingWorldState,
-    researchedTechs: readonly string[],
-    cells: readonly number[]
-  ): void {
-    const development = pack.cells.development;
-    if (!development) return;
-
-    const target = computePolityTechDevelopment(researchedTechs);
-    if (target <= 0) return;
-
-    let changed = false;
-    for (const cell of cells) {
-      if (!development[cell]) continue; // wild land stays wild
-      const goal = Math.min(100, target + this.schoolBonus(living, cell));
-      if (development[cell] >= goal) continue;
-      development[cell] = goal;
-      changed = true;
-    }
-    if (changed) living.economyDirty = true;
-  }
-
-  /** +2 development in a city with a seat of learning. */
-  private schoolBonus(living: LivingWorldState, cell: number): number {
-    const burgId = pack.cells.burg?.[cell] ?? 0;
-    const buildings = burgId ? (living.burgs[burgId]?.civBuildings ?? []) : [];
-    return buildings.some(id => SCHOLARLY_BUILDINGS.has(id)) ? 2 : 0;
-  }
-
-  /** The capital and every burg a state owns: where a discovery lands first. */
-  private settlementCells(stateId: number): number[] {
-    const cells = new Set<number>();
-    const capital = pack.burgs[pack.states[stateId]?.capital ?? 0];
-    if (capital?.i && !capital.removed) cells.add(capital.cell);
-    for (const burg of pack.burgs) {
-      if (burg?.i && !burg.removed && burg.state === stateId) cells.add(burg.cell);
-    }
-    return [...cells];
-  }
-
   /** A faction's live HQ and outpost cells. */
   private factionSettlementCells(faction: Faction): number[] {
     const cells: number[] = [];
@@ -1197,16 +1117,17 @@ class LivingModel {
     return cells;
   }
 
-  /** §2.3: peopled land steps toward its polity's technology level, eased by the land itself. */
+  /** Peopled land eases toward its people's mean development; the land itself sets the local ceiling. */
   private stepDevelopmentDiffusion(living: LivingWorldState): void {
     const { cells } = pack;
     const development = cells.development;
     if (!development || !cells.state) return;
     const astral = Development.isAstralMode();
+    const averages = this.developmentAverages();
     const targets = new Map<number, { target: number; regime: AstralTechRegime }>();
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
-      const target = computePolityTechDevelopment(living.states[state.i]?.researchedTechs ?? []);
+      const target = averages.get(state.i) ?? 0;
       if (target > 0) {
         const regime = astral ? classifyAstralRegime(pack.cultures?.[state.culture ?? 0]) : "standardSciFi";
         targets.set(state.i, { target, regime });
@@ -1764,9 +1685,9 @@ class LivingModel {
   factionGarrisonBlocks(faction: Faction, node: FactionHq | FactionOutpost, isHq: boolean): ArmyBlock[] {
     const types = Military.getUnitTypes();
     const roster = faction.rosterId ? Military.getRoster(faction) : undefined;
-    const techs = new Set(faction.researchedTechs ?? []);
+    const development = this.factionDevelopment(faction);
     const melee =
-      (roster ? pickRosterUnit(roster, "melee", [...techs]) : undefined) ??
+      (roster ? pickRosterUnit(roster, "melee", development) : undefined) ??
       Object.values(types).find(type => type.category === "melee") ??
       Object.values(types)[0];
     if (!melee) return [];
@@ -1947,7 +1868,7 @@ class LivingModel {
 
     const roster = Military.getRoster(faction);
     if (!roster) return;
-    const unit = pickRosterUnit(roster, "melee", [...(faction.researchedTechs ?? [])]);
+    const unit = pickRosterUnit(roster, "melee", this.factionDevelopment(faction));
     if (!unit) return;
 
     const cost = Math.max(1, Math.round(unit.cost ?? 0));
@@ -1998,83 +1919,6 @@ class LivingModel {
       cell: node.cell,
       ...(node.burgId ? { burgId: node.burgId } : {})
     });
-  }
-
-  /** §6.1 Research: bank Science into the current tech, then pick the next project. */
-  private applyResearch(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
-    const theme = activeCivThemeId();
-    sSim.researchedTechs ??= [];
-    sSim.researchedProgress ??= {};
-    sSim.researchQueue ??= [];
-    const researched = new Set(sSim.researchedTechs);
-
-    let freeTechs = sSim.freeTechs ?? 0;
-    while (freeTechs > 0) {
-      const free = this.nextTech(researched, theme);
-      if (!free) break;
-      this.completeTech(state, sSim, free, living, true);
-      researched.add(free.id);
-      freeTechs -= 1;
-    }
-    sSim.freeTechs = freeTechs;
-
-    let current: CivTechDef | undefined = sSim.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
-    if (!current || !isTechSelectable(current, researched, theme)) {
-      const queued = sSim.researchQueue
-        .map(id => CIV_TECH_BY_ID[id])
-        .find(tech => tech !== undefined && isTechSelectable(tech, researched, theme));
-      current = queued ?? this.nextTech(researched, theme) ?? undefined;
-      sSim.currentTechId = current?.id ?? null;
-    }
-    if (!current) return;
-
-    const science = this.interimScience(this.developmentAverages().get(state.i) ?? 0);
-    const cost = Math.max(1, current.cost);
-    const banked = (sSim.researchedProgress[current.id] ?? 0) + science;
-    if (banked < cost) {
-      sSim.researchedProgress[current.id] = Math.round(banked * 100) / 100;
-      return;
-    }
-    this.completeTech(state, sSim, current, living, false);
-
-    // Keep the research queue moving: pick the next project immediately.
-    const advanced = new Set(sSim.researchedTechs ?? []);
-    const queued = sSim.researchQueue
-      .map(id => CIV_TECH_BY_ID[id])
-      .find(tech => tech !== undefined && isTechSelectable(tech, advanced, theme));
-    sSim.currentTechId = (queued ?? this.nextTech(advanced, theme))?.id ?? null;
-  }
-
-  /** Cheapest selectable technology, deterministic on ties. */
-  private nextTech(researched: ReadonlySet<string>, theme: CivThemeId): CivTechDef | null {
-    const available = CIV_TECHS.filter(tech => isTechSelectable(tech, researched, theme)).sort(
-      (a, b) => a.cost - b.cost || a.row - b.row || a.slot - b.slot || a.id.localeCompare(b.id)
-    );
-    return available[0] ?? null;
-  }
-
-  private completeTech(
-    state: State,
-    sSim: StatePolitySim,
-    tech: CivTechDef,
-    living: LivingWorldState,
-    free: boolean
-  ): void {
-    sSim.researchedTechs ??= [];
-    if (!sSim.researchedTechs.includes(tech.id)) sSim.researchedTechs.push(tech.id);
-    if (sSim.researchedProgress) delete sSim.researchedProgress[tech.id];
-    if (sSim.researchQueue) sSim.researchQueue = sSim.researchQueue.filter(id => id !== tech.id);
-    sSim.currentTechId = null;
-
-    const name = resolveCivTechName(activeCivThemeId(), tech);
-    this.pushNews(living, {
-      kind: "tech",
-      text: `${state.name} discovered ${name}${free ? " through foreign scholars" : ""}.`,
-      cell: state.center,
-      stateId: state.i
-    });
-
-    this.raiseTechDevelopment(living, sSim.researchedTechs ?? [], this.settlementCells(state.i));
   }
 
   /** §7.1 Bankruptcy: reset the treasury and disband the newest block, not the whole regiment. */
@@ -2193,84 +2037,6 @@ class LivingModel {
     return upstream.upstreamGold - blockUpkeep;
   }
 
-  /** Host state used for the +25% research spillover. */
-  private factionHostStateId(faction: Faction): number {
-    if (faction.patronStateId) return faction.patronStateId;
-    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) return pack.burgs[faction.hq.burgId]?.state ?? 0;
-    const first = (faction.outposts ?? []).find(outpost => !outpost.pillaged);
-    if (first?.burgId) return pack.burgs[first.burgId]?.state ?? 0;
-    return 0;
-  }
-
-  private completeFactionTech(faction: Faction, tech: CivTechDef, living: LivingWorldState, free: boolean): void {
-    faction.researchedTechs ??= [];
-    if (!faction.researchedTechs.includes(tech.id)) faction.researchedTechs.push(tech.id);
-    faction.researchedProgress ??= {};
-    delete faction.researchedProgress[tech.id];
-    faction.researchQueue = (faction.researchQueue ?? []).filter(id => id !== tech.id);
-    faction.currentTechId = null;
-
-    const name = resolveCivTechName(activeCivThemeId(), tech);
-    this.pushNews(living, {
-      kind: "faction",
-      text: `${faction.name} discovered ${name}${free ? " through foreign scholars" : ""}.`,
-      cell: faction.hq?.cell,
-      ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
-    });
-
-    this.raiseTechDevelopment(living, faction.researchedTechs, this.factionSettlementCells(faction));
-  }
-
-  /** Research with +25% spillover when the host state already knows the tech. */
-  private applyFactionResearch(faction: Faction, living: LivingWorldState): void {
-    const theme = activeCivThemeId();
-    faction.researchedTechs ??= [];
-    faction.researchedProgress ??= {};
-    faction.researchQueue ??= [];
-    const researched = new Set(faction.researchedTechs);
-
-    let freeTechs = faction.freeTechs ?? 0;
-    while (freeTechs > 0) {
-      const free = this.nextTech(researched, theme);
-      if (!free) break;
-      this.completeFactionTech(faction, free, living, true);
-      researched.add(free.id);
-      freeTechs -= 1;
-    }
-    faction.freeTechs = freeTechs;
-
-    let current: CivTechDef | undefined = faction.currentTechId ? CIV_TECH_BY_ID[faction.currentTechId] : undefined;
-    if (!current || !isTechSelectable(current, researched, theme)) {
-      const queued = faction.researchQueue
-        .map(id => CIV_TECH_BY_ID[id])
-        .find(tech => tech !== undefined && isTechSelectable(tech, researched, theme));
-      current = queued ?? this.nextTech(researched, theme) ?? undefined;
-      faction.currentTechId = current?.id ?? null;
-    }
-    if (!current) return;
-
-    let science = this.interimScience(this.factionDevelopment(faction));
-    const hostId = this.factionHostStateId(faction);
-    if (hostId > 0) {
-      const hostTechs = living.states[hostId]?.researchedTechs ?? [];
-      if (hostTechs.includes(current.id)) science = Math.round(science * 1.25 * 100) / 100;
-    }
-
-    const cost = Math.max(1, current.cost);
-    const banked = (faction.researchedProgress[current.id] ?? 0) + science;
-    if (banked < cost) {
-      faction.researchedProgress[current.id] = Math.round(banked * 100) / 100;
-      return;
-    }
-    this.completeFactionTech(faction, current, living, false);
-
-    const advanced = new Set(faction.researchedTechs ?? []);
-    const queued = faction.researchQueue
-      .map(id => CIV_TECH_BY_ID[id])
-      .find(tech => tech !== undefined && isTechSelectable(tech, advanced, theme));
-    faction.currentTechId = (queued ?? this.nextTech(advanced, theme))?.id ?? null;
-  }
-
   /** Bank the faction's season: upstream income less its forces' upkeep; debt disbands a block. */
   private applyFactionTreasury(faction: Faction, living: LivingWorldState): void {
     faction.treasury = Math.round((Number(faction.treasury ?? 0) + this.factionSeasonalGold(faction)) * 100) / 100;
@@ -2317,7 +2083,6 @@ class LivingModel {
         const patron = breakdown.charterPatronId;
         charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
       }
-      this.applyFactionResearch(faction, living);
       this.applyFactionTreasury(faction, living);
       this.musterFactionBlock(faction, living);
     }
@@ -2334,52 +2099,6 @@ class LivingModel {
       state.economy.adjustments = value > 0 ? [...others, { name: CHARTER_TITHE, value }] : others;
       living.economyDirty = true;
     }
-  }
-
-  /** One seasonal empire tick: research on the development bridge. Treasury banking lives in stepEconomy. */
-  private stepEmpire(living: LivingWorldState): void {
-    for (const state of pack.states) {
-      if (!state?.i || state.removed) continue;
-      const sSim = living.states[state.i];
-      if (!sSim) continue;
-      this.applyResearch(state, sSim, living);
-    }
-
-    this.stepFactionEmpire(living);
-  }
-
-  /** Interim research income (Phase 2 replaces the tech tree): a people's development itself. */
-  private interimScience(meanDevelopment: number): number {
-    return meanDevelopment > 0 ? Math.max(1, Math.round(meanDevelopment / 30)) : 0;
-  }
-
-  /** Choose the technology a state researches next (public for HUD and Sandbox controls). */
-  setResearch(stateId: number, techId: string): boolean {
-    const living = this.getState();
-    const state = pack.states[stateId];
-    const sSim = living.states[stateId];
-    const tech = CIV_TECH_BY_ID[techId];
-    if (!state?.i || state.removed || !sSim || !tech) return false;
-
-    const researched = new Set(sSim.researchedTechs ?? []);
-    if (!isTechSelectable(tech, researched, activeCivThemeId())) return false;
-
-    sSim.researchQueue = [techId, ...(sSim.researchQueue ?? []).filter(id => id !== techId)];
-    sSim.currentTechId = techId;
-    return true;
-  }
-
-  /** Grant a technology outright (wonders, Guild scrolls, Sandbox God Mode). */
-  grantTech(stateId: number, techId: string): boolean {
-    const living = this.getState();
-    const state = pack.states[stateId];
-    const sSim = living.states[stateId];
-    const tech = CIV_TECH_BY_ID[techId];
-    if (!state?.i || state.removed || !sSim || !tech) return false;
-    if ((sSim.researchedTechs ?? []).includes(techId)) return false;
-
-    this.completeTech(state, sSim, tech, living, true);
-    return true;
   }
 
   /**
@@ -3742,7 +3461,7 @@ class LivingModel {
     if (
       faction.sovereignAmbition &&
       !burg.capital &&
-      (faction.seasonsActive >= 4 || faction.researchedTechs.length >= 2)
+      (faction.seasonsActive >= 4 || this.factionDevelopment(faction) >= SOVEREIGN_DEVELOPMENT)
     ) {
       const ascStateId = this.ascendFactionToState(faction.i, burg.i);
       if (ascStateId !== null) return;
@@ -4400,7 +4119,7 @@ class LivingModel {
 
     const types = Military.getUnitTypes();
     const roster = Military.getRoster(state);
-    const techs = sSim.researchedTechs ?? [];
+    const development = this.stateDevelopment(state.i);
     const renames: string[] = [];
     let upgraded = 0;
 
@@ -4411,8 +4130,7 @@ class LivingModel {
       const authored = current.upgradesTo ? types[current.upgradesTo] : undefined;
       const target = authored ?? (roster ? nextRosterUnitInCategory(roster, current.id) : undefined);
       if (!target || target.id === current.id) continue;
-      const gate = roster ? requiredTechFor(target, roster) : "";
-      if (gate && !techs.includes(gate)) continue;
+      if (roster && development < requiredDevelopmentFor(target, roster)) continue;
 
       const cost = Math.max(5, Math.round((10 * target.upkeep) / BASELINE_UPKEEP));
       if (Number(state.economy.treasury ?? 0) < cost) break;
@@ -5982,10 +5700,12 @@ class LivingModel {
     }
     const heldGoods = this.heldGoods(state.i);
     const maxWalls = this.maxOwnedWallTier(state.i);
+    const development = this.stateDevelopment(state.i);
 
     for (const unitId of roster.recruitable) {
       const unit = unitTypes[unitId];
       if (!unit) continue;
+      if (development < requiredDevelopmentFor(unit, roster)) continue; // the era ladder gates it
       const sources = unlockSources.get(unitId);
       if (sources && !sources.some(id => heldBuildings.has(id))) continue;
       if (unit.requiresGood !== undefined && !heldGoods.has(unit.requiresGood)) continue;
@@ -6688,6 +6408,8 @@ class LivingModel {
       if (progress.turnsLeft > 0) continue;
 
       pSim.development += 1;
+      // The project's real effect is on the map: its peopled cells gain development.
+      this.raiseProvinceDevelopment(province.i, 2, living);
       const burg = pack.burgs[progress.settlementId];
       if (burg && !burg.removed) {
         const growth = this.rng("develop:growth", burg.i).range(0.05, 0.15);
@@ -6710,6 +6432,19 @@ class LivingModel {
         burgId: burg?.i
       });
     }
+  }
+
+  /** A completed develop project raises its province's peopled cells, unlocking goods tiers. */
+  private raiseProvinceDevelopment(provinceId: number, amount: number, living: LivingWorldState): void {
+    const development = pack.cells.development;
+    if (!development) return;
+    let changed = false;
+    for (const cell of this.provinceCells(provinceId)) {
+      if (!development[cell]) continue; // wild land stays wild
+      development[cell] = Math.min(100, development[cell] + amount);
+      changed = true;
+    }
+    if (changed) living.economyDirty = true;
   }
 
   private advanceConstructions(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
@@ -7055,7 +6790,7 @@ class LivingModel {
         faction.sovereignAmbition &&
         faction.allegiance === "hostile" &&
         (faction.seasonsActive ?? 0) >= 8 &&
-        (faction.researchedTechs?.length ?? 0) >= 2
+        this.factionDevelopment(faction) >= SOVEREIGN_DEVELOPMENT
       ) {
         const provId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
         const pSim = provId ? living.provinces?.[provId] : undefined;

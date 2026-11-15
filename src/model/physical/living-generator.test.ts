@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CIV_TECH_BY_ID, computePolityTechDevelopment } from "@/data/living-civ-techs";
+import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
 import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Deals } from "@/model/economy/deals";
-import { nextRosterUnitInCategory, requiredTechFor } from "@/model/physical/living-armies";
+import { nextRosterUnitInCategory, requiredDevelopmentFor } from "@/model/physical/living-armies";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { Military, syncRegimentTotals } from "@/model/political/military-generator";
@@ -14,13 +14,11 @@ import type { Good } from "@/types/economy";
 import type { Faction } from "@/types/factions";
 import type { StateAgenda } from "@/types/living";
 import {
-  activeCivThemeId,
   classifyGood,
   FACTION_SUPPRESSION_SEASONS,
   figureBias,
   hasStackingConflict,
   isMajorBurg,
-  isTechSelectable,
   Living,
   regionTierFromPop,
   settlementTierFromPop,
@@ -880,12 +878,21 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
   });
 
   describe("Wheel of Ages (slice 5)", () => {
+    /** A dangerous faction's seat settled past the sovereignty threshold. */
+    function seedFactionDevelopment(cell: number): void {
+      pack.cells.h = new Uint8Array(pack.cells.i.length).fill(25);
+      pack.cells.burg = new Uint16Array(pack.cells.i.length);
+      pack.cells.development = new Uint8Array(pack.cells.i.length);
+      pack.cells.development[cell] = SOVEREIGN_DEVELOPMENT;
+    }
+
     it("tracks the eschaton clock from mighty factions and evil conquests", () => {
       const living = Living.init();
       expect(Living.getEschaton()).toBe(0);
 
       const doom = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 9)!;
       doom.seasonsActive = 8;
+      seedFactionDevelopment(pack.burgs[1].cell);
       Living.tick(1);
       expect(Living.getEschaton()).toBe(1);
 
@@ -913,6 +920,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     it("winds the eschaton back when a dangerous faction is purged", () => {
       const living = Living.init();
       Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 9)!.seasonsActive = 8;
+      seedFactionDevelopment(pack.burgs[1].cell);
       Living.tick(1);
       expect(Living.getEschaton()).toBe(1);
 
@@ -1232,7 +1240,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     options.map.goods = [makeGood(0, "None", [], {}), makeGood(1, "Wine", ["luxury"], { luxury: 1 })];
   }
 
-  describe("Research, treasury & technology (interim science bridge)", () => {
+  describe("State treasury & bankruptcy", () => {
     const makeRegiment = (i: number) => ({
       i,
       name: `Regiment ${i}`,
@@ -1253,55 +1261,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       setupCityWorld();
     });
 
-    it("selects the OpenCiv theme and era cap from the live map", () => {
-      expect(activeCivThemeId()).toBe("fantasy");
-
-      options.map.lore.calendar.year = 1900;
-      expect(activeCivThemeId()).toBe("historical");
-
-      options.map.lore.calendar.year = 1000;
-      options.map.lore.calendar.era = "Age of Steam";
-      expect(activeCivThemeId()).toBe("historical");
-      options.map.lore.calendar.era = "Age of Dawn";
-    });
-
-    it("sets research through the public API and rejects unavailable techs", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-
-      expect(Living.setResearch(1, "pottery")).toBe(true);
-      expect(sSim.currentTechId).toBe("pottery");
-      expect(Living.setResearch(1, "metallurgy")).toBe(false);
-
-      expect(Living.grantTech(1, "pottery")).toBe(true);
-      expect(sSim.researchedTechs).toContain("pottery");
-      expect(Living.grantTech(1, "pottery")).toBe(false);
-      expect(isTechSelectable(CIV_TECH_BY_ID.pottery!, new Set(), "fantasy")).toBe(true);
-      expect(isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(), "fantasy")).toBe(false);
-      expect(isTechSelectable(CIV_TECH_BY_ID.metallurgy!, new Set(["gunpowder", "printing_press"]), "fantasy")).toBe(
-        true
-      );
-      expect(isTechSelectable(CIV_TECH_BY_ID.refrigeration!, new Set(), "fantasy")).toBe(false);
-    });
-
-    it("banks interim science from mean development and completes the current technology", () => {
-      const living = Living.init();
-      const sSim = living.states[1];
-      pack.cells.development = new Uint8Array(GRID * GRID);
-      pack.cells.development[5] = 90; // the capital's people: mean development / 30 = 3 science
-      pack.cells.pop[5] = 100; // development averages count people, not just burgs
-      sSim.currentTechId = "pottery";
-      sSim.researchedProgress = { pottery: 32 };
-
-      Living.tick(1);
-
-      // 32 banked + 3 interim science pushes Pottery's 35 cost.
-      expect(sSim.researchedTechs).toContain("pottery");
-      expect(sSim.currentTechId).not.toBe("pottery");
-      expect(sSim.currentTechId).toBeTruthy();
-      expect(living.recentNews.some(item => item.kind === "tech")).toBe(true);
-    });
-
     it("disbands one block when the treasury goes negative", () => {
       const living = Living.init();
       const first = makeRegiment(0);
@@ -1320,17 +1279,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(second.units).toHaveLength(1);
       expect(living.recentNews.some(item => item.text.includes("disbanded"))).toBe(true);
     });
-
-    it("lazily initializes the tech record on old saves", () => {
-      delete pack.history.living;
-
-      const living = Living.init();
-      const sSim = living.states[1];
-      expect(sSim.researchedTechs).toEqual([]);
-      expect(sSim.researchQueue).toEqual([]);
-      expect(sSim.researchedProgress).toEqual({});
-      expect(sSim.freeTechs).toBe(0);
-    });
   });
 
   describe("Upstream development bridge (economy alignment Phase 2)", () => {
@@ -1347,48 +1295,31 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       return development;
     }
 
-    it("seeds a state's technologies from the upstream development field", () => {
-      seedMap({ 1: 20, 4: 20, 5: 20, 6: 20, 9: 20, 10: 20 }, { 1: 100, 6: 50, 9: 20 });
-
-      const living = Living.init();
-      const sSim = living.states[1];
-      const known = new Set(sSim.researchedTechs ?? []);
-
-      expect(known.has("pottery")).toBe(true);
-      expect((sSim.researchedTechs ?? []).every(id => CIV_TECH_BY_ID[id]!.row <= 2)).toBe(true);
-      for (const id of sSim.researchedTechs ?? []) {
-        for (const prerequisite of CIV_TECH_BY_ID[id]!.prerequisites) expect(known.has(prerequisite)).toBe(true);
-      }
-      expect(computePolityTechDevelopment(sSim.researchedTechs ?? [])).toBeGreaterThanOrEqual(18);
-    });
-
     it("leaves a map without development untouched", () => {
       const living = Living.init();
 
-      expect(living.states[1].researchedTechs).toEqual([]);
+      expect(pack.cells.development).toBeUndefined();
       expect(living.economyDirty).toBeFalsy();
     });
 
-    it("raises a state's cities when a technology completes", () => {
-      const development = seedMap({ 1: 12, 4: 12, 5: 12, 6: 12, 9: 12, 10: 12 }, { 1: 100 });
+    it("eases peopled cells toward the state's mean development", () => {
+      const development = seedMap({ 5: 60, 9: 40 }, { 5: 100, 9: 100 }); // mean 50
       const living = Living.init();
-      expect(living.states[1]!.researchedTechs?.length).toBeGreaterThan(0);
 
-      expect(Living.grantTech(1, "mathematics")).toBe(true);
+      Living.tick(1);
 
-      expect(development[5]).toBeGreaterThan(12); // the capital
-      expect(development[4]).toBeGreaterThan(12); // Millbrook
-      expect(development[1]).toBe(12); // the countryside waits for the seasonal diffusion
+      expect(development[9]).toBe(41); // the low cell climbs toward the mean
+      expect(development[5]).toBe(60); // the burg keeps its own level
       expect(living.economyDirty).toBe(true);
     });
 
-    it("diffuses technology from the polity level into its peopled land", () => {
+    it("diffuses development from the polity level into its peopled land", () => {
       const development = seedMap({ 1: 20, 4: 20, 5: 20, 6: 20, 9: 6, 10: 20 }, { 1: 100, 9: 1 });
       const living = Living.init();
 
       Living.tick(1);
 
-      expect(development[9]).toBeGreaterThan(6); // its people's technology spreads
+      expect(development[9]).toBeGreaterThan(6); // its people's development spreads
       expect(development[6]).toBe(20); // nobody lives there
       expect(living.economyDirty).toBe(true);
     });
@@ -1467,8 +1398,16 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       map.units = { population: { scale: 1 } };
     }
 
+    /** A fully developed people: the state's mean development clears every era gate. */
+    function seedStateDevelopment(): void {
+      pack.cells.development = new Uint8Array(GRID * GRID);
+      pack.cells.development[5] = 100;
+      pack.cells.pop[5] = 100;
+    }
+
     it("musters through the equipment gate when the economy has run", () => {
       armOptions();
+      seedStateDevelopment();
       const arms = makeGood(9, "Arms", ["military"], { military: 1 });
       options.map.goods = [makeGood(0, "None", [], {}), arms];
       pack.deals = [[1, 1, arms.i, 2, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals; // a demand deal, no kept stock
@@ -1482,6 +1421,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     it("musters the requested block when the goods cannot be measured", () => {
       armOptions();
+      seedStateDevelopment();
       pack.deals = undefined as unknown as typeof pack.deals;
 
       expect(Living.muster(1)).toBe(true);
@@ -1993,6 +1933,10 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     it("prunes a block destroyed by a city strike", () => {
       const living = Living.init();
+      // A settled people: the muster that replaces the dead block clears the sword's era gate
+      pack.cells.development = new Uint8Array(GRID * GRID);
+      pack.cells.development[5] = 20;
+      pack.cells.pop[5] = 100;
       pack.states[1].economy.treasury = 0; // no Gold: no autonomous muster
       Living.forceWar(1, 2);
       const doomed = makeRegiment(0, 7); // in enemy land: no replenishment
@@ -2002,7 +1946,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       Living.tick(1);
 
-      // City strike destroys the nearly-dead block; destroyed blocks are pruned.
+      // City strike destroys the nearly-dead block; a fresh muster replaces it.
       const units = pack.states[1].military?.[0]?.units ?? [];
       expect(units.every(block => block.hp > 0)).toBe(true);
       expect(units.some(block => block.hp <= 0.05)).toBe(false);
@@ -2011,7 +1955,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     it("refits army blocks for Gold, preserving hp and exp", () => {
       pack.states[1].military = [makeRegiment(0, 5)];
-      const living = Living.init();
+      Living.init();
       const types = Military.getUnitTypes();
       const roster = Military.getRoster(pack.states[1]!)!;
       const currentId = roster.garrison.melee;
@@ -2023,7 +1967,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       regiment.units = [{ type: current.id, hp: 0.45, exp: 6 }];
       syncRegimentTotals(regiment, types);
       pack.states[1].economy.treasury = 1000;
-      living.states[1]!.researchedTechs = [requiredTechFor(target!, roster)];
+      pack.cells.development = new Uint8Array(GRID * GRID);
+      pack.cells.development[5] = requiredDevelopmentFor(target!, roster);
+      pack.cells.pop[5] = 100; // the state's mean development clears the target's gate
 
       expect(Living.upgradeRegiment(1, 0)).toBe(true);
 
@@ -2367,7 +2313,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           type: "thieves_guild",
           allegiance: "hostile",
           stateRelations: { 1: "Enemy" },
-          researchedTechs: ["pottery"],
           treasury: 0, // no seasonal muster: the HQ itself must stand guardless
           hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 2, assets: [] },
           outposts: [{ burgId: 5, cell: 4, tier: 1, influence: 50, secrecy: 0, assets: [], establishedYear: 1000 }]
@@ -2380,7 +2325,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         expect(faction.hq.burgId).toBe(5);
         expect(faction.hq.pillaged).toBe(false);
         expect(faction.outposts).toHaveLength(0);
-        expect(faction.researchedTechs).toContain("pottery");
         expect(living.recentNews.some(item => item.kind === "faction" && item.text.includes("fled to"))).toBe(true);
       });
 
@@ -2912,13 +2856,6 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
     it("a titan's footfall scours the land it sets down on", () => {
       Living.init();
-      // block re-seeding (an empty progress object would be re-seeded from development 50 mid-tick)
-      for (const state of Object.values(Living.getState().states ?? {})) {
-        state.researchedTechs = [];
-        state.researchedProgress = { seedguard: 1 };
-        state.currentTechId = null;
-        state.researchQueue = [];
-      }
       pack.cells.development = Uint8Array.from([50, 50, 50, 50, 50, 50]);
       const burg = addTitan(5);
 
@@ -3514,6 +3451,12 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     const living = Living.getState();
     living.provinces[2].order = 18;
     pack.burgs[2].walls = 0;
+    // Its seat is settled enough to claim sovereignty
+    pack.cells.h = new Uint8Array((pack.cells.i as number[]).length).fill(25);
+    pack.cells.biome = new Uint8Array((pack.cells.i as number[]).length).fill(4);
+    pack.cells.burg = new Uint16Array((pack.cells.i as number[]).length);
+    pack.cells.development = new Uint8Array((pack.cells.i as number[]).length);
+    pack.cells.development[pack.burgs[2].cell] = SOVEREIGN_DEVELOPMENT;
 
     Living.tick(1);
 
@@ -3530,6 +3473,12 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     faction.allegiance = "hostile";
     faction.seasonsActive = 7; // stepProvinces increments to 8
     faction.raidThreshold = 7; // prevent raid so Path B is exercised directly
+    // The wilderness seat is settled enough to claim sovereignty
+    pack.cells.h = new Uint8Array((pack.cells.i as number[]).length).fill(25);
+    pack.cells.biome = new Uint8Array((pack.cells.i as number[]).length).fill(4);
+    pack.cells.burg = new Uint16Array((pack.cells.i as number[]).length);
+    pack.cells.development = new Uint8Array((pack.cells.i as number[]).length);
+    pack.cells.development[4] = SOVEREIGN_DEVELOPMENT;
 
     Living.tick(1);
 
@@ -3721,15 +3670,12 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     buildStubPack();
   });
 
-  it("banks upstream income and progresses tech research with host-state spillover", () => {
+  it("banks upstream income less its forces' upkeep", () => {
     buildStubPack();
     const living = Living.init();
     pack.factions = [{ i: 0 } as Faction];
     (pack.cells as unknown as { h: Uint8Array }).h = new Uint8Array((pack.cells.i as number[]).length).fill(25);
     (pack.cells as unknown as { biome: Uint8Array }).biome = new Uint8Array((pack.cells.i as number[]).length).fill(4);
-
-    // Host state 1 has researched pottery
-    living.states[1].researchedTechs = ["pottery"];
 
     const faction = Factions.add({
       name: "Golden Crest Trading",
@@ -3749,19 +3695,8 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
         }
       ],
       treasury: 100,
-      science: 2,
-      influence: 20,
-      currentTechId: "pottery",
-      researchQueue: ["writing"],
-      researchedTechs: [],
-      researchedProgress: {}
+      influence: 20
     });
-
-    // Both nodes sit at development 90: mean development / 30 = 3 science.
-    const development = new Uint8Array((pack.cells.i as number[]).length);
-    development[1] = 90;
-    development[3] = 90;
-    pack.cells.development = development;
 
     // A live upstream economy: the capital's product and market turnover feed the faction
     options.map.goods = [
@@ -3809,15 +3744,6 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
 
     expect(upstream).toBeGreaterThan(0);
     expect(faction.treasury).toBeCloseTo(initTreasury + upstream - upkeep, 2);
-
-    // Tech research: progress accumulated with +25% host spillover (3 * 1.25 = 3.75)
-    expect(faction.researchedProgress.pottery ?? 0).toBeCloseTo(3.75);
-
-    // Trigger completion
-    faction.researchedProgress.pottery = 34;
-    Living.stepFactionEmpire(living);
-    expect(faction.researchedTechs).toContain("pottery");
-    expect(faction.currentTechId).toBe("writing");
   });
 
   it("handles autonomous agendas: expands outposts and Clashes in contested burgs", () => {
@@ -3941,6 +3867,10 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     } as unknown as (typeof raiderFaction.military)[number]);
     expect(raiderFaction.military[0].u).toHaveProperty("spear");
 
+    // A settled realm at its seat clears the sovereignty development gate
+    pack.cells.development = new Uint8Array((pack.cells.i as number[]).length);
+    pack.cells.development[4] = SOVEREIGN_DEVELOPMENT;
+
     // Direct ascension test: ascendFactionToState
     const stateCountBefore = pack.states.length;
     const ascStateId = Living.ascendFactionToState(raiderFaction.i, 2);
@@ -3955,9 +3885,8 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
   });
 
   it("spawns remnant faction on state collapse with inherited identity and hostilities", () => {
-    const living = Living.init();
+    Living.init();
     const fallenState = pack.states[1];
-    living.states[1].researchedTechs = ["mining", "pottery", "masonry"];
 
     const remnant = Living.spawnRemnantFaction(fallenState, 2);
     expect(remnant).not.toBeNull();
@@ -3967,6 +3896,5 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(remnant!.allegiance).toBe("hostile");
     expect(remnant!.sovereignAmbition).toBe(true);
     expect(remnant!.stateRelations[2]).toBe("Enemy");
-    expect(remnant!.researchedTechs).toEqual(living.states[1].researchedTechs);
   });
 });
