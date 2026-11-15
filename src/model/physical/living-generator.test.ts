@@ -4125,4 +4125,68 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(pack.states[1].economy.simAdjustments?.some(entry => entry.name.startsWith("Trouble: "))).toBe(false);
     });
   });
+
+  describe("Faction works (living-fmg-native Phase 6)", () => {
+    function factionWorld(development = 30) {
+      const living = Living.init();
+      pack.factions = [{ i: 0 } as never];
+      pack.cells.development = new Uint8Array([0, development, development, development, 0, 0]);
+      pack.cells.burg = new Uint16Array([0, 1, 0, 2, 0, 0]);
+      pack.cells.h = new Uint8Array([10, 30, 30, 40, 10, 10]);
+      pack.cells.biome = new Uint8Array([0, 4, 4, 5, 0, 0]);
+      const faction = Factions.add({
+        name: "Test Consortium",
+        category: "commercial",
+        type: "merchant_consortium",
+        hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] },
+        outposts: [],
+        treasury: 500
+      });
+      return { living, faction };
+    }
+
+    it("commissions an asset from treasury and pays the host town a daily line", () => {
+      const { living, faction } = factionWorld();
+      expect(Living.commissionFactionAsset(faction.i, "trade_depot", "hq")).toBe(true);
+      expect(faction.treasury).toBe(450);
+      expect(faction.project).toMatchObject({ assetId: "trade_depot", nodeKey: "hq", turnsLeft: 1 });
+
+      Living.tick(1);
+      expect(faction.project).toBeUndefined();
+      expect(faction.hq.assets).toContain("trade_depot");
+      const line = pack.burgs[1].simAdjustments?.find(entry =>
+        entry.name.startsWith("Faction: Test Consortium Trade Depot")
+      );
+      expect(line?.value).toBe(1); // the depot's gold bite on its host
+      expect(living.projects ?? []).toBeDefined();
+    });
+
+    it("gates faction works by the node's development", () => {
+      const { faction } = factionWorld(10);
+      expect(Living.commissionFactionAsset(faction.i, "counting_house", "hq")).toBe(false); // needs currency at 25
+
+      pack.cells.development = new Uint8Array([0, 30, 30, 30, 0, 0]);
+      expect(Living.commissionFactionAsset(faction.i, "counting_house", "hq")).toBe(true);
+    });
+
+    it("drops a line when the work is gone", () => {
+      const { faction } = factionWorld();
+      Living.commissionFactionAsset(faction.i, "trade_depot", "hq");
+      Living.tick(1);
+      expect(pack.burgs[1].simAdjustments?.some(entry => entry.name.startsWith("Faction: "))).toBe(true);
+
+      faction.hq.assets = [];
+      if (faction.hq.sim) faction.hq.sim.civBuildings = [];
+      faction.treasury = 0; // nothing new to build
+      Living.tick(1);
+      expect(pack.burgs[1].simAdjustments?.some(entry => entry.name.startsWith("Faction: "))).toBe(false);
+    });
+
+    it("commissions works on its own when funded", () => {
+      const { faction } = factionWorld();
+      Living.tick(1);
+      expect(faction.project).toBeDefined();
+      expect(Number(faction.treasury)).toBeLessThan(500);
+    });
+  });
 });

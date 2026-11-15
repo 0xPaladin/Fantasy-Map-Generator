@@ -222,13 +222,15 @@ describe("FactionsEditor", () => {
     expect(assetsPanel.style.display).toBe("none");
   });
 
-  it("supports adding and dismantling assets in the Assets tab", () => {
+  it("supports commissioning and dismantling assets in the Assets tab", () => {
     const faction = Factions.add({
       name: "Silver Vault",
       category: "commercial",
       type: "merchant_consortium",
-      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] },
+      treasury: 500
     });
+    pack.cells.development = new Uint8Array([0, 30, 30]);
 
     openOutpostsDialog(faction.i, "assets");
 
@@ -240,12 +242,19 @@ describe("FactionsEditor", () => {
     assetSelect.value = "trade_depot";
     addAssetBtn.click();
 
-    expect(faction.hq.assets).toContain("trade_depot");
+    // A work is commissioned: paid from the treasury, built over seasons (phase 6).
+    expect(faction.project).toMatchObject({ assetId: "trade_depot", nodeKey: "hq" });
+    expect(faction.treasury).toBe(450);
+    expect(faction.hq.assets).not.toContain("trade_depot");
+
+    // A finished asset can still be dismantled from the node.
+    faction.project = undefined;
+    faction.hq.assets = ["trade_depot"];
+    openOutpostsDialog(faction.i, "assets");
     const assetRows = document.querySelectorAll("#assetsTable > .states");
     expect(assetRows.length).toBe(1);
     expect(document.querySelector("#assetsTable")?.innerHTML).toContain("Trade Depot");
 
-    // Dismantle asset
     const removeBtn = document.querySelector<HTMLButtonElement>('.removeAssetBtn[data-node="hq"][data-index="0"]')!;
     expect(removeBtn).not.toBeNull();
     removeBtn.click();

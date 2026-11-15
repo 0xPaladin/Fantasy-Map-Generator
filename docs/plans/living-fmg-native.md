@@ -1,6 +1,6 @@
 # Plan — Living World on FMG Rails (OpenCiv removal & native dynamism)
 
-**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), Phase 3 done (rulers govern the purse), Phase 4 done (public works), **Phase 5 done** (trouble economics: hazards and hostile factions drain the treasury through negative lines, spawn on fragile stock rails, and pay a small treasure when cleared).
+**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), Phase 3 done (rulers govern the purse), Phase 4 done (public works), Phase 5 done (trouble economics), **Phase 6 done** (factions ride the rails: no city loop, income on the upstream hooks, asset works funded from treasury and paid into host towns).
 **Companions:** [upstream-economy-alignment.md](upstream-economy-alignment.md) (the bridge this plan builds on), [living-world.md](living-world.md) (original vision), [living-openciv.md](living-openciv.md) (superseded), [living-openciv-armies.md](living-openciv-armies.md) (partially superseded), [factions-civ-engine.md](factions-civ-engine.md) (partially superseded), [remove-living-guild.md](remove-living-guild.md)
 
 ## Execution policy
@@ -222,7 +222,7 @@ Factions lose their node economies, keep their soul:
 | 3 | **Fiscal policy**: profiles from traits, spring drift through `setBudget`/`setCorruption`, event re-targets, news, God-mode locks; replace transient corruption modifier | two seeded states diverge measurably ✅ |
 | 4 | **Projects**: catalog, funding via orders + treasury, effects into `simAdjustments`/flags/development/output seams, Projects tab UI; Royal Road draws real route links and Market Charter converts a burg into a market center. | a granary consumes real stone and shows as a line ✅ |
 | 5 | **Trouble economics**: hazard → negative lines, clearing paths wired, ruins rewards | a hazard drains a treasury and is cleared ✅ |
-| 6 | **Factions re-anchored**: delete node loop; income/forces/raids/suppression/ascension on rails; faction project lines | faction sheet shows income & lines, no city fields |
+| 6 | **Factions re-anchored**: delete node loop; income/forces/raids/suppression/ascension on rails; faction project lines | faction sheet shows income & lines, no city fields ✅ |
 | 7 | **Religious drift**: unitless conversions, chronicle, holy-site pressure | province flips over ~decades on a test map |
 | 8 | **Polish & docs**: HUD/card rebuild final pass, wiki/data-model/economy docs, test refresh, save compat sweep, delete superseded plan docs | full suite green, docs current |
 
@@ -235,6 +235,16 @@ Each phase lands independently buildable with its completion record appended her
 - **KPI drift**: hazard drains and project income shift economy KPIs 11/14 (states' cut, treasury concentration) — re-measure with the tuner after phases 4–5.
 - **Mobile burgs**: verified in Phase 1 — live wandering reads `pack.cells`/`Burgs.move`/`Routes`, never the stripped fields.
 - **Astral mode**: post-scarcity hooks read development/prosperity, not OpenCiv fields — audited in Phase 2: the astral regime still shapes diffusion caps (`ANCIENT_SUPPRESSED_CAP`) and `Output`/`Prosperity` read development unchanged.
+
+### Phase 6 completion record (done)
+
+**Shipped:** `src/model/physical/living-generator.ts` (faction asset works and line sync), `src/model/political/factions-generator.ts` (already slimmed in Phase 1), `src/controllers/political/factions-editor.ts` (commission/trade/lines), `src/types/factions.ts` (faction project field); tests in the generator and editor suites. `tsc` clean, Biome clean, **3,724 tests passing**, Vite build green.
+
+- **No city loop stands**: faction HQ/outposts are map anchors with assets, garrisons and lines — no citizens, worked cells, queues, tile yields or happiness. Income is the Phase 1/2 upstream hooks (commissions, graft, retainers, court tithes), upkeep is block pay, and musters cost treasury and gate on node development.
+- **Asset works**: assets are now built, not toggled. A faction keeps one project; each season it advances, or the faction commissions the best asset its track, era (frozen `requiredTech` bands) and purse allow, at a valid node (HQ first; `hq_only`, `burg` and `wilderness` rules honoured). Cost is paid from the faction treasury (`FACTION_PROJECT_RESERVE = 20` kept in hand); build time equals the asset tier. God mode and the editor commission specific works via `Living.commissionFactionAsset`.
+- **Line effects**: each completed asset writes a daily `Faction: <name> <asset>` line into its host burg's `simAdjustments` for its `burgImpact.gold` (a consortium enriches its town, a thieves' guild drains it), rebuilt every season so a pillaged, relocated or dismantled node drops its line. Order and unrest bites apply to the host province/burg at completion.
+- **Editor**: the "+ Asset" picker now commissions a work (treasury cost, construction time); the Outposts table gained a **Lines** column showing what each node's works write into its host town; the main factions table gained a **Trade** column with the season's upstream income. Income and lines are visible; no city fields remain.
+- **Tests**: four faction-works tests (treasury + project commission, completion + host line, era gating, line removal when the asset is gone, auto-commission when funded) and the editor suite now asserts commissioning and dismantling.
 
 ### Phase 5 completion record (done)
 

@@ -135,6 +135,13 @@ const columns: EditorColumn<Faction>[] = [
     sortType: "number"
   },
   {
+    key: "trade",
+    label: t("Trade"),
+    width: "5em",
+    sortBy: f => Living.getFactionYieldBreakdown(f).upstreamGold,
+    sortType: "number"
+  },
+  {
     key: "military",
     label: t("Forces"),
     width: "4em",
@@ -398,6 +405,7 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <span data-col="hq" class="pointer" data-action="locate" data-tip="${t("Click to zoom to HQ")}" style="text-decoration: underline;">${escapeHtml(hqName)}</span>
         <span data-col="outposts" class="badge pointer" data-action="outposts" data-tip="${t("Click to manage outposts and assets")}">${f.outposts?.length || 0}</span>
         <input type="number" min="0" max="99999" value="${f.treasury || 0}" data-col="treasury" data-action="treasury" style="width: 4.5em;" />
+        <span data-col="trade" style="text-align: center;">${formatTrade(Living.getFactionYieldBreakdown(f).upstreamGold)}</span>
         <span data-col="military" style="text-align: center;">${f.military?.length || 0}</span>
         <div data-col="details" class="pointer icon-pencil" data-action="details" data-tip="${t("Manage Outposts & Assets")}"></div>
         <div data-col="remove" class="pointer icon-trash" data-action="remove" data-tip="${t("Remove faction")}"></div>
@@ -591,6 +599,13 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>`
     : "";
   const hqTrade = formatTrade(breakdown.hq?.upstreamGold);
+  const lineSum = (burgId?: number) => {
+    if (!burgId) return 0;
+    const burg = pack.burgs[burgId];
+    return (burg?.simAdjustments ?? [])
+      .filter(line => line.name.startsWith(`Faction: ${faction.name}`))
+      .reduce((total, line) => total + line.value, 0);
+  };
 
   const burgOptions = (pack.burgs ?? [])
     .filter(b => b?.i && !b.removed && b.i !== faction.hq.burgId && !faction.outposts.some(o => o.burgId === b.i))
@@ -603,6 +618,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       <div style="justify-content: center; text-align: center;">2</div>
       <div style="justify-content: center; text-align: center;">${Math.round(faction.hq.influence ?? 70)}%${hqStatusText}</div>
       <div style="justify-content: center; text-align: center;">${hqTrade}</div>
+      <div style="justify-content: center; text-align: center;">${formatTrade(lineSum(faction.hq.burgId))}</div>
       <div></div>
     </div>
   `;
@@ -622,6 +638,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         <div style="justify-content: center; text-align: center;">${op.tier}</div>
         <div style="justify-content: center; text-align: center;">${op.influence}%${statusText}</div>
         <div style="justify-content: center; text-align: center;">${trade}</div>
+        <div style="justify-content: center; text-align: center;">${formatTrade(lineSum(op.burgId))}</div>
         <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
           <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
         </div>
@@ -860,12 +877,13 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
 
       <!-- Tab 1: HQ & Outposts -->
       <div class="tabPanel" data-panel="outposts" style="display: ${activeTab === "outposts" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
-        <div id="outpostsTable" class="table" style="--table-columns: 10em 3.5em 8em 7em 2em; width: 0; min-width: 100%;">
+        <div id="outpostsTable" class="table" style="--table-columns: 10em 3.5em 7em 6em 6em 2em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Burg")}</div>
             <div style="justify-content: center; text-align: center;">${t("Tier")}</div>
             <div style="justify-content: center; text-align: center;">${t("Influence")}</div>
             <div style="justify-content: center; text-align: center;" data-tip="${t("Gold the node draws from its host's economy a season")}">${t("Trade")}</div>
+            <div style="justify-content: center; text-align: center;" data-tip="${t("Daily lines the faction's works write into the host town")}">${t("Lines")}</div>
             <div></div>
           </div>
           ${locationsTableRows}
@@ -959,23 +977,8 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     const assetId = assetSel?.value;
     if (!assetId) return;
 
-    if (loc === "hq") {
-      faction.hq.assets.push(assetId);
-      if (faction.hq.sim) {
-        faction.hq.sim.civBuildings = [...faction.hq.assets];
-      }
-      syncFactionState(faction);
-    } else if (loc.startsWith("outpost:")) {
-      const opIdx = Number(loc.split(":")[1]);
-      const outpost = faction.outposts[opIdx];
-      if (outpost) {
-        outpost.assets.push(assetId);
-        if (outpost.sim) {
-          outpost.sim.civBuildings = [...outpost.assets];
-        }
-        syncFactionState(faction);
-      }
-    }
+    const nodeKey = loc === "hq" ? "hq" : (`outpost:${Number(loc.split(":")[1])}` as const);
+    Living.commissionFactionAsset(factionId, assetId, nodeKey);
 
     Layers.draw("factions");
     openOutpostsDialog(factionId, currentTab);

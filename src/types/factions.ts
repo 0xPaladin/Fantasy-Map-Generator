@@ -73,6 +73,8 @@ export interface Faction {
   type: string;
   allegiance: FactionAllegiance;
   patronStateId?: number;
+  /** the work the faction has under way at one of its nodes (phase 6 of living-fmg-native.md) */
+  project?: { assetId: string; nodeKey: FactionNodeKey; turnsLeft: number };
 
   // Identity & Visuals
   color: string;

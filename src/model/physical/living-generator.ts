@@ -3,8 +3,9 @@
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { ANCIENT_SUPPRESSED_CAP } from "@/data/development";
 import { EXPENSES, type Expense } from "@/data/expenses";
+import { getAllFactionAssets, getFactionAsset } from "@/data/faction-assets";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
-import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
+import { SOVEREIGN_DEVELOPMENT, UNIT_TECH_DEVELOPMENT } from "@/data/living-eras";
 import { PROJECT_BY_ID, PROJECTS, type ProjectDef } from "@/data/living-projects";
 import { RESOURCE_FACTION_IDS } from "@/data/living-troubles";
 import {
@@ -84,6 +85,7 @@ import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type { Good } from "@/types/economy";
 import type {
   Faction,
+  FactionAssetDef,
   FactionHq,
   FactionNodeKey,
   FactionNodeYieldBreakdown,
@@ -132,6 +134,19 @@ const CHARTER_TITHE = "Chartered Faction Tithes"; // the state budget line chart
 const SABOTAGE_ORDER = 15; // public order a ruined working costs its province
 const PROJECT_RESERVE = 25; // seasons of net kept in hand before a public work starts
 const PROJECT_CAMP_REPLENISH = 0.05; // extra capability a season an army camp gives resting forces
+const FACTION_PROJECT_RESERVE = 20; // a faction keeps this much in hand before building its next work
+
+/** Whether a faction's track, era and node rules allow an asset. */
+function factionCanBuildAsset(faction: Faction, def: FactionAssetDef, development: number): boolean {
+  const category = faction.category;
+  const trackFits =
+    def.track === category ||
+    (def.track === "scholarly" && ["adventuring", "religious", "political"].includes(category)) ||
+    (def.track === "wilder" && ["martial", "adventuring"].includes(category));
+  if (!trackFits) return false;
+  const gate = def.requiredTech ? (UNIT_TECH_DEVELOPMENT[def.requiredTech] ?? 0) : 0;
+  return development >= gate;
+}
 
 /** What a move in one fiscal line reads like, as [raised, lowered] predicate completions. */
 const FISCAL_PHRASES: Record<FiscalLock, readonly [string, string]> = {
@@ -2130,6 +2145,158 @@ class LivingModel {
     return nodes;
   }
 
+  /** A faction's next work: advance it, or commission the best asset its track and purse allow. */
+  private stepFactionProject(faction: Faction, living: LivingWorldState): void {
+    if (faction.project) {
+      if (faction.project.turnsLeft > 1) {
+        faction.project.turnsLeft -= 1;
+        return;
+      }
+      this.completeFactionProject(faction, living);
+      return;
+    }
+
+    const treasury = Number(faction.treasury ?? 0);
+    const development = this.factionDevelopment(faction);
+    const candidates = getAllFactionAssets()
+      .filter(def => factionCanBuildAsset(faction, def, development))
+      .filter(def => treasury >= def.cost + FACTION_PROJECT_RESERVE)
+      .filter(def => this.pickFactionAssetNode(faction, def) !== null)
+      .sort((a, b) => a.tier - b.tier || a.cost - b.cost || a.id.localeCompare(b.id));
+    const next = candidates[0];
+    if (next) this.commissionFactionAsset(faction.i, next.id);
+  }
+
+  /** God mode / editor: pay for and begin one faction asset at a node. */
+  commissionFactionAsset(factionId: number, assetId: string, nodeKey?: FactionNodeKey): boolean {
+    const faction = Factions.active().find(entry => entry.i === factionId);
+    const def = getFactionAsset(assetId);
+    if (!faction?.i || faction.removed || !def || faction.project) return false;
+    if (Number(faction.treasury ?? 0) < def.cost) return false;
+    if (!factionCanBuildAsset(faction, def, this.factionDevelopment(faction))) return false;
+
+    const target = nodeKey ? this.factionNodeByKey(faction, nodeKey) : this.pickFactionAssetNode(faction, def);
+    if (!target || (target.node.assets ?? []).includes(assetId)) return false;
+
+    faction.treasury = Math.round((Number(faction.treasury) - def.cost) * 100) / 100;
+    faction.project = {
+      assetId,
+      nodeKey: factionSuppressionNodeKey(target.node, target.isHq),
+      turnsLeft: def.tier
+    };
+    if (pack.history?.living) pack.history.living.economyDirty = true;
+    return true;
+  }
+
+  /** Finish a faction work: add it to the node and let the host town feel it. */
+  private completeFactionProject(faction: Faction, living: LivingWorldState): void {
+    const active = faction.project;
+    if (!active) return;
+    const def = getFactionAsset(active.assetId);
+    const target = this.factionNodeByKey(faction, active.nodeKey);
+    if (!def || !target) {
+      faction.project = undefined;
+      return;
+    }
+
+    target.node.assets = [...(target.node.assets ?? []), def.id];
+    if (target.node.sim) target.node.sim.civBuildings = [...target.node.assets];
+    this.applyFactionAssetImpacts(target.node, def);
+    faction.influence = minmax((faction.influence ?? 0) + 2, 0, 100);
+    faction.project = undefined;
+    living.economyDirty = true;
+
+    const location = target.node.burgId ? (pack.burgs[target.node.burgId]?.name ?? "a burg") : "the wilds";
+    const text = `${faction.name} completes its ${def.name} in ${location}.`;
+    this.pushNews(living, {
+      kind: "faction",
+      text,
+      cell: target.node.cell,
+      ...(target.node.burgId ? { burgId: target.node.burgId } : {})
+    });
+    this.pushHistory("deed", [{ kind: "state", id: faction.patronStateId ?? 0 }], target.node.cell, text);
+  }
+
+  /** Order and unrest bites at once; money lines are rebuilt by `syncFactionLines`. */
+  private applyFactionAssetImpacts(node: FactionHq | FactionOutpost, def: FactionAssetDef): void {
+    const burg = node.burgId ? pack.burgs[node.burgId] : undefined;
+    if (!burg?.i) return;
+    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+    const pSim = provinceId ? this.getState().provinces[provinceId] : undefined;
+    if (pSim && def.burgImpact?.order) {
+      pSim.order = minmax(pSim.order + def.burgImpact.order * 3, 0, 100);
+    }
+    if (def.burgImpact?.unrest) {
+      const bSim = this.getState().burgs[burg.i];
+      if (bSim) bSim.unrest = minmax(bSim.unrest + Math.max(0, def.burgImpact.unrest) * 3, 0, 100);
+    }
+  }
+
+  /** Rebuild every faction money line on its host towns: one per asset with a gold bite. */
+  private syncFactionLines(living: LivingWorldState): void {
+    const prefix = "Faction: ";
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed) continue;
+      const current = burg.simAdjustments ?? [];
+      const kept = current.filter(line => !line.name.startsWith(prefix));
+      const lines: { name: string; value: number }[] = [];
+
+      for (const faction of Factions.active()) {
+        for (const { node } of this.factionNodes(faction)) {
+          if (!node.burgId || node.burgId !== burg.i) continue;
+          for (const assetId of node.assets ?? []) {
+            const def = getFactionAsset(assetId);
+            const value = def?.burgImpact?.gold ?? 0;
+            if (!def || !value) continue;
+            lines.push({ name: `${prefix}${faction.name} ${def.name}`, value });
+          }
+        }
+      }
+
+      const next = [...kept, ...lines];
+      if (JSON.stringify(next) === JSON.stringify(current)) continue;
+      burg.simAdjustments = next;
+      living.economyDirty = true;
+    }
+  }
+
+  /** A faction's live nodes, HQ first. */
+  private factionNodes(faction: Faction): { node: FactionHq | FactionOutpost; isHq: boolean }[] {
+    const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
+    if (faction.hq && !faction.hq.pillaged) nodes.push({ node: faction.hq, isHq: true });
+    for (const outpost of faction.outposts ?? []) {
+      if (!outpost.pillaged) nodes.push({ node: outpost, isHq: false });
+    }
+    return nodes;
+  }
+
+  private factionNodeByKey(
+    faction: Faction,
+    key: FactionNodeKey
+  ): { node: FactionHq | FactionOutpost; isHq: boolean } | null {
+    for (const entry of this.factionNodes(faction)) {
+      if (factionSuppressionNodeKey(entry.node, entry.isHq) === key) return entry;
+    }
+    return null;
+  }
+
+  /** The node a new asset can be built at, honouring its location rule. */
+  private pickFactionAssetNode(
+    faction: Faction,
+    def: FactionAssetDef
+  ): { node: FactionHq | FactionOutpost; isHq: boolean } | null {
+    const nodes = this.factionNodes(faction);
+    const fits = (entry: { node: FactionHq | FactionOutpost; isHq: boolean }) => {
+      if (!entry.isHq && def.location === "hq_only") return false;
+      if (def.location === "burg" && !entry.node.burgId) return false;
+      if (def.location === "wilderness" && entry.node.burgId) return false;
+      if ((entry.node.assets ?? []).includes(def.id)) return false;
+      return true;
+    };
+    const candidates = nodes.filter(fits);
+    return candidates.find(entry => entry.isHq) ?? candidates[0] ?? null;
+  }
+
   /** §5.1 upstream-only faction income: trade commissions, graft, retainers and tithes per node. */
   getFactionYieldBreakdown(faction: Faction): FactionYieldBreakdown {
     const nodes: FactionNodeYieldBreakdown[] = [];
@@ -2234,7 +2401,9 @@ class LivingModel {
       }
       this.applyFactionTreasury(faction, living);
       this.musterFactionBlock(faction, living);
+      this.stepFactionProject(faction, living);
     }
+    this.syncFactionLines(living);
     this.applyCharterTithes(living, charters);
   }
 
