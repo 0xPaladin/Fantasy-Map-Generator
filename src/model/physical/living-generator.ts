@@ -5,6 +5,7 @@ import { ANCIENT_SUPPRESSED_CAP } from "@/data/development";
 import { EXPENSES, type Expense } from "@/data/expenses";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
+import { PROJECT_BY_ID, PROJECTS, type ProjectDef } from "@/data/living-projects";
 import { RESOURCE_FACTION_IDS } from "@/data/living-troubles";
 import {
   assignStateRoster,
@@ -26,6 +27,7 @@ import {
   stepBattleRound
 } from "@/model/battle/battle";
 import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
+import { Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
 import { Routes } from "@/model/economy/routes-generator";
 import { type FigureBias, figureBias } from "@/model/physical/figure-bias";
@@ -101,6 +103,7 @@ import type {
   HeroGuildState,
   LivingNewsItem,
   LivingNewsKind,
+  LivingProject,
   LivingWorldState,
   MissionTag,
   ProvinceTrouble,
@@ -126,6 +129,8 @@ const GIANT_PROVINCE_LIMIT = 3;
 const DEVELOPMENT_DECAY_SLACK = 3; // rural cells keep a little more than their land allows
 const CHARTER_TITHE = "Chartered Faction Tithes"; // the state budget line charters pay
 const SABOTAGE_ORDER = 15; // public order a ruined working costs its province
+const PROJECT_RESERVE = 25; // seasons of net kept in hand before a public work starts
+const PROJECT_CAMP_REPLENISH = 0.05; // extra capability a season an army camp gives resting forces
 
 /** What a move in one fiscal line reads like, as [raised, lowered] predicate completions. */
 const FISCAL_PHRASES: Record<FiscalLock, readonly [string, string]> = {
@@ -887,6 +892,7 @@ class LivingModel {
       this.stepProvinces(living);
       this.stepFactions(living);
       this.stepStates(living);
+      this.stepProjects(living);
       this.stepDiplomacy(living);
       this.stepRebellions(living);
       this.stepMobileBurgs(living);
@@ -4353,6 +4359,7 @@ class LivingModel {
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
+      const camp = this.hasProject(state.i, "army_camp", living) ? PROJECT_CAMP_REPLENISH : 0;
       for (const regiment of state.military ?? []) {
         const key = this.unitKey(state.i, regiment.i);
         const army = living.armies?.[key];
@@ -4365,7 +4372,7 @@ class LivingModel {
         if (!inCity && !friendly) continue;
 
         const gain =
-          (army.stance === "encamp" ? base * config.military.encampReplenishBonus : base) * (inCity ? 1 : 0.5);
+          ((army.stance === "encamp" ? base * config.military.encampReplenishBonus : base) + camp) * (inCity ? 1 : 0.5);
         let healed = false;
         for (const block of regiment.units ?? []) {
           if (block.hp <= 0 || block.hp >= 1) continue;
@@ -6571,6 +6578,407 @@ class LivingModel {
       default:
         sSim.agenda = null;
     }
+  }
+
+  /** God mode: commission a specific work (optionally at a target), paying its treasury cost now. */
+  commissionProject(stateId: number, projectId: string, targetId?: number): boolean {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    const sSim = living.states[stateId];
+    const def = PROJECT_BY_ID[projectId];
+    if (!state?.i || state.removed || !sSim || !def || sSim.project) return false;
+    if (this.stateDevelopment(stateId) < def.minDevelopment) return false;
+    if (Number(state.economy.treasury ?? 0) < def.treasury) return false;
+
+    if (!living.projects) living.projects = [];
+    const target = targetId ?? this.projectTarget(state, def, living);
+    if (target === null) return false;
+    if (living.projects.some(project => project.id === def.id && project.targetId === target)) return false;
+
+    state.economy.treasury = Math.round((Number(state.economy.treasury) - def.treasury) * 100) / 100;
+    sSim.project = { id: def.id, scale: def.scale, targetId: target, turnsLeft: def.seasons };
+    living.economyDirty = true;
+    return true;
+  }
+
+  /** Each season: advance a public work, or commission the next one the ruler favours. */
+  private stepProjects(living: LivingWorldState): void {
+    living.projects ??= [];
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+
+      if (sSim.project) {
+        if (sSim.project.turnsLeft > 1) {
+          sSim.project.turnsLeft -= 1;
+          continue;
+        }
+        this.completeProject(state, sSim, living);
+        continue;
+      }
+
+      this.startProject(state, sSim, living);
+    }
+  }
+
+  /** Pay for and begin the best work the ruler can afford and values. */
+  private startProject(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const development = this.stateDevelopment(state.i);
+    const treasury = Number(state.economy.treasury ?? 0);
+    const bias = rulerBias(state.i) ?? { martial: 0.1, civic: 0.1, pious: 0.1, cruel: 0 };
+
+    let best: { def: ProjectDef; target: number; score: number } | null = null;
+    for (const def of PROJECTS) {
+      if (development < def.minDevelopment) continue;
+      if (treasury < def.treasury + PROJECT_RESERVE) continue;
+      const target = this.projectTarget(state, def, living);
+      if (target === null) continue;
+      const score = this.projectScore(state, def, target, bias, living);
+      if (!best || score > best.score || (score === best.score && def.id < best.def.id)) {
+        best = { def, target, score };
+      }
+    }
+    if (!best) return;
+
+    state.economy.treasury = Math.round((treasury - best.def.treasury) * 100) / 100;
+    sSim.project = { id: best.def.id, scale: best.def.scale, targetId: best.target, turnsLeft: best.def.seasons };
+    living.economyDirty = true;
+
+    const where = this.projectTargetName(state, best.def, best.target);
+    this.pushNews(living, {
+      kind: "build",
+      text: `${state.name} begins ${this.withArticle(best.def.name)}${where ? ` in ${where}` : ""}.`,
+      cell: this.projectTargetCell(state, best.def, best.target),
+      stateId: state.i,
+      burgId: best.def.scale === "burg" ? best.target : undefined
+    });
+  }
+
+  /** The target id a project would build at, or null when none is valid or free. */
+  private projectTarget(state: State, def: ProjectDef, living: LivingWorldState): number | null {
+    const built = (targetId: number) =>
+      (living.projects ?? []).some(project => project.id === def.id && project.targetId === targetId) ||
+      (living.states[state.i]?.project?.id === def.id && living.states[state.i]?.project?.targetId === targetId);
+
+    if (def.scale === "state") return built(state.i) ? null : state.i;
+
+    if (def.scale === "province") {
+      const provinces = this.ownedProvinces(state.i)
+        .filter(province => province.i && !province.removed)
+        .filter(province => !built(province.i))
+        .sort((a, b) => (living.provinces[a.i]?.order ?? 70) - (living.provinces[b.i]?.order ?? 70) || a.i - b.i);
+      return provinces[0]?.i ?? null;
+    }
+
+    const burgs = this.stateBurgs(state.i).filter(burg => !built(burg.i));
+    if (!burgs.length) return null;
+    if (def.needsCoast) {
+      const coastal = burgs
+        .filter(burg => this.isCoastal(burg) && !burg.port)
+        .sort((a, b) => (b.population ?? 0) - (a.population ?? 0) || a.i - b.i);
+      if (!coastal.length) return null;
+      return coastal[0]!.i;
+    }
+    if (def.effect.market) {
+      const charterable = burgs
+        .filter(burg => !(pack.markets ?? []).some(market => market.centerBurgId === burg.i))
+        .sort((a, b) => (b.population ?? 0) - (a.population ?? 0) || a.i - b.i);
+      if (!charterable.length) return null;
+      return charterable[0]!.i;
+    }
+    if (def.effect.burgFlag === "walls") {
+      const border = burgs
+        .filter(burg => !burg.capital && this.isBorderBurg(state.i, burg))
+        .sort((a, b) => (b.population ?? 0) - (a.population ?? 0) || a.i - b.i);
+      if (border.length) return border[0]!.i;
+    }
+    return (burgs.find(burg => burg.capital) ?? burgs[0]!).i;
+  }
+
+  /** How much this ruler wants that work at that target right now. */
+  private projectScore(
+    state: State,
+    def: ProjectDef,
+    target: number,
+    bias: { martial: number; civic: number; pious: number; cruel: number },
+    living: LivingWorldState
+  ): number {
+    let score = 1;
+    for (const key of ["martial", "civic", "pious", "cruel"] as const) {
+      score += (def.affinity?.[key] ?? 0) * bias[key] * 10;
+    }
+
+    if (this.stateAtWar(state)) {
+      if (def.id === "walls" || def.id === "army_camp") score += 8;
+      if (def.id === "granary") score += 3;
+    }
+    if ((state.economy.budget.corruption ?? 0) >= 25 && def.id === "courthouse") score += 8;
+    if (def.id === "land_improvement" && this.stateDevelopment(state.i) < 27) score += 4;
+    if (def.id === "college" && this.stateDevelopment(state.i) >= 27) score += 4;
+    if (def.id === "market_charter" && this.stateBurgs(state.i).length >= 3) score += 3;
+
+    const provinceId = def.scale === "province" ? target : this.provinceOfTarget(def, target);
+    const trouble = provinceId ? living.provinces[provinceId]?.trouble : null;
+    if (trouble) {
+      if (def.id === "granary" || def.id === "courthouse") score += 6;
+    }
+    const order = provinceId ? (living.provinces[provinceId]?.order ?? 70) : 70;
+    if (order < 50 && (def.id === "courthouse" || def.id === "granary")) score += 4;
+
+    return score;
+  }
+
+  /** Finish a work: buy its goods from the market, write its effects, chronicle it. */
+  private completeProject(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const active = sSim.project;
+    if (!active) return;
+    const def = PROJECT_BY_ID[active.id];
+    if (!def) {
+      sSim.project = undefined;
+      return;
+    }
+
+    const burgId = this.projectBurgId(state, def, active.targetId);
+    const burg = burgId ? pack.burgs[burgId] : undefined;
+    if (!def || (def.scale !== "state" && (!burg?.i || burg.removed || burg.state !== state.i))) {
+      sSim.project = undefined; // the target is no longer the ruler's
+      return;
+    }
+
+    if (!this.consumeProjectGoods(burg, def)) {
+      sSim.project = undefined;
+      this.pushNews(living, {
+        kind: "build",
+        text: `${state.name} abandons its ${def.name.toLowerCase()}: the markets cannot supply the works.`,
+        cell: burg?.cell ?? state.center,
+        stateId: state.i
+      });
+      return;
+    }
+
+    const line = this.applyProjectEffect(state, def, active.targetId, burgId);
+    const where = this.projectTargetName(state, def, active.targetId);
+    const project: LivingProject = {
+      id: def.id,
+      name: def.name,
+      stateId: state.i,
+      scale: def.scale,
+      targetId: active.targetId,
+      burgId,
+      completedTick: living.tick,
+      ...(line ? { line } : {})
+    };
+    living.projects ??= [];
+    living.projects.push(project);
+    sSim.project = undefined;
+    living.economyDirty = true;
+
+    const text = `${state.name} completes ${this.withArticle(def.name)}${where ? ` in ${where}` : ""}.`;
+    this.pushNews(living, {
+      kind: "build",
+      text,
+      cell: burg?.cell ?? state.center,
+      stateId: state.i,
+      burgId
+    });
+    this.pushHistory(
+      "deed",
+      [{ kind: "state", id: state.i }, ...(burg?.i ? [{ kind: "burg", id: burg.i } as HistRef] : [])],
+      burg?.cell ?? state.center,
+      text
+    );
+  }
+
+  /** A work buys its goods from the town's market; a stripped map without one needs none. */
+  private consumeProjectGoods(burg: Burg | undefined, def: ProjectDef): boolean {
+    if (!def.goods?.length) return true;
+    if (!pack.markets?.length) return true; // no markets on this map
+    Markets.sync();
+    const market = burg ? Markets.ofBurg(burg) : undefined;
+    if (!market) return true; // no market on this map: the work draws on the treasury alone
+
+    for (const cost of def.goods) {
+      const good = options.map.goods?.find(entry => entry.name === cost.name);
+      if (!good) continue; // the good is not traded here
+      const row = market.goods[good.i];
+      if (!row || row.stock + 0.01 < cost.units) return false;
+    }
+    for (const cost of def.goods) {
+      const good = options.map.goods?.find(entry => entry.name === cost.name);
+      const row = good ? market.goods[good.i] : undefined;
+      if (!row) continue;
+      row.stock = Math.round((row.stock - cost.units) * 100) / 100;
+    }
+    return true;
+  }
+
+  /** Write every effect of a finished work; returns the daily line it added, if any. */
+  private applyProjectEffect(
+    state: State,
+    def: ProjectDef,
+    targetId: number,
+    burgId: number | undefined
+  ): { name: string; value: number } | undefined {
+    const { effect } = def;
+    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const targetName = this.projectTargetName(state, def, targetId) ?? state.name;
+    let line: { name: string; value: number } | undefined;
+
+    if (effect.line) {
+      const name = `${effect.line.label} of ${targetName}`;
+      const value = effect.line.value;
+      line = { name, value };
+      const merge = (lines: { name: string; value: number }[] | undefined) => [
+        ...(lines ?? []).filter(entry => entry.name !== name),
+        { name, value }
+      ];
+      if (def.scale === "burg" && burg) burg.simAdjustments = merge(burg.simAdjustments);
+      else state.economy.simAdjustments = merge(state.economy.simAdjustments);
+    }
+
+    if (effect.development) {
+      const provinceId = this.provinceOfTarget(def, targetId);
+      if (provinceId) this.raiseProvinceDevelopment(provinceId, effect.development, this.getState());
+    }
+
+    if (effect.corruption) {
+      const corruption = Math.max(0, Math.round((state.economy.budget.corruption ?? 0) - effect.corruption));
+      States.setCorruption(state.i, corruption);
+    }
+
+    if (effect.burgFlag && burg) {
+      switch (effect.burgFlag) {
+        case "walls":
+          burg.walls = Math.min(3, Number(burg.walls ?? 0) + 1);
+          if (burg.walls >= 2) burg.citadel = 1;
+          break;
+        case "citadel":
+          burg.citadel = 1;
+          break;
+        case "plaza":
+          burg.plaza = 1;
+          break;
+        case "temple":
+          burg.temple = 1;
+          break;
+        case "port":
+          burg.port = 1;
+          break;
+      }
+    }
+
+    if (effect.improvement) {
+      const provinceId = this.provinceOfTarget(def, targetId);
+      if (provinceId) this.improveProvince(provinceId, this.getState());
+    }
+
+    if (effect.route) {
+      for (const town of this.stateBurgs(state.i)) {
+        if (Routes.isConnected(town.cell)) continue;
+        try {
+          Routes.connect(town.cell);
+        } catch {
+          // a stripped map has no route grid
+        }
+      }
+    }
+
+    if (effect.market && burg?.i) {
+      try {
+        Markets.addMarket(burg.i);
+        Markets.expand();
+      } catch {
+        // a stripped map has no market grid
+      }
+    }
+
+    return line;
+  }
+
+  /** Lay improvements across a province's peopled cells (works that the economy can read). */
+  private improveProvince(provinceId: number, living: LivingWorldState): void {
+    living.cells ??= {};
+    for (const cell of this.provinceCells(provinceId)) {
+      if (!pack.cells.pop[cell] && !pack.cells.burg?.[cell]) continue;
+      if (pack.cells.h[cell] < 20) continue;
+      if (living.cells[cell]?.improvement) continue;
+      const improvement = this.improvementForCell(cell);
+      if (!improvement) continue;
+      living.cells[cell] = { ...(living.cells[cell] ?? {}), improvement, pillaged: false, progress: {} };
+    }
+  }
+
+  /** The land work a cell wants: forest mills, hill mines, farms elsewhere. */
+  private improvementForCell(cell: number): string | null {
+    const height = Number(pack.cells.h?.[cell] ?? 0);
+    if (height < 20) return null;
+    if (height >= 50) return "mine";
+    const biome = Number(pack.cells.biome?.[cell] ?? 0);
+    if (biome === 6 || biome === 8 || biome === 9) return "lumber_mill";
+    if (biome === 12) return "pasture";
+    return "farm";
+  }
+
+  /** Whether the state owns a finished work of this kind. */
+  private hasProject(stateId: number, id: string, living: LivingWorldState): boolean {
+    return (living.projects ?? []).some(project => project.stateId === stateId && project.id === id);
+  }
+
+  /** The burg a work is built at: the target itself, or a settlement of the province/state. */
+  private projectBurgId(state: State, def: ProjectDef, targetId: number): number | undefined {
+    if (def.scale === "burg") return targetId;
+    if (def.scale === "province") return this.pickProvinceSettlement(targetId, state.i) ?? state.capital;
+    return state.capital;
+  }
+
+  /** The province a work belongs to, for development and improvements. */
+  private provinceOfTarget(def: ProjectDef, targetId: number): number | undefined {
+    if (def.scale === "province") return targetId;
+    if (def.scale === "burg") {
+      const burg = pack.burgs[targetId];
+      const provinceId = burg ? Number(pack.cells.province?.[burg.cell] ?? 0) : 0;
+      return provinceId || undefined;
+    }
+    return undefined;
+  }
+
+  /** A work's target as a readable name. */
+  private projectTargetName(state: State, def: ProjectDef, targetId: number): string | undefined {
+    if (def.scale === "state") return state.name;
+    if (def.scale === "province") return pack.provinces?.[targetId]?.name;
+    return pack.burgs[targetId]?.name;
+  }
+
+  /** A work's target as a map cell, for news and markers. */
+  private projectTargetCell(state: State, def: ProjectDef, targetId: number): number | undefined {
+    if (def.scale === "burg") return pack.burgs[targetId]?.cell;
+    if (def.scale === "province") return pack.provinces?.[targetId]?.center;
+    return state.center;
+  }
+
+  private withArticle(name: string): string {
+    return /^[aeiou]/i.test(name) ? `an ${name}` : `a ${name}`;
+  }
+
+  /** A state's surface burgs, capital first on ties. */
+  private stateBurgs(stateId: number): Burg[] {
+    return pack.burgs
+      .filter((burg): burg is Burg => Boolean(burg?.i && !burg.removed && burg.state === stateId))
+      .sort((a, b) => Number(b.capital ?? 0) - Number(a.capital ?? 0) || a.i - b.i);
+  }
+
+  /** A burg with sea at its door. */
+  private isCoastal(burg: Burg): boolean {
+    return (pack.cells.c?.[burg.cell] ?? []).some(cell => Number(pack.cells.h?.[cell] ?? 20) < 20);
+  }
+
+  /** A burg touching another state. */
+  private isBorderBurg(stateId: number, burg: Burg): boolean {
+    return (pack.cells.c?.[burg.cell] ?? []).some(cell => {
+      const owner = Number(pack.cells.state?.[cell] ?? 0);
+      return owner > 0 && owner !== stateId;
+    });
   }
 
   private advanceDevelopment(state: State, sSim: StatePolitySim, living: LivingWorldState): void {

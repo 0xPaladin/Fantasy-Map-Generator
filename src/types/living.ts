@@ -172,6 +172,28 @@ export interface StateAgenda {
 
 export type GrudgeReason = "conquest" | "sacked" | "slain_ruler" | "slain_general" | "repulsed";
 
+/** A funded public work: where it stands and what it pays a day. */
+export type ProjectScale = "state" | "province" | "burg";
+
+export interface ActiveProject {
+  id: string;
+  scale: ProjectScale;
+  targetId: number;
+  turnsLeft: number;
+}
+
+export interface LivingProject {
+  id: string;
+  name: string;
+  stateId: number;
+  scale: ProjectScale;
+  targetId: number;
+  burgId?: number;
+  completedTick: number;
+  /** the daily line it writes into the target's simAdjustments */
+  line?: { name: string; value: number };
+}
+
 export interface GrudgeRecord {
   id: number;
   againstStateId?: number;
@@ -259,6 +281,8 @@ export interface StatePolitySim {
   treaties?: Record<number, TreatyKind[]>;
   /** the ruler's fiscal steering: targets drift the real budget each spring */
   fiscal?: FiscalPolicyState;
+  /** the public work under construction, one at a time */
+  project?: ActiveProject;
   /** accumulated seasonal reserves (Living ledger); mirrored onto `state.economy.treasury` */
   treasury?: number;
 }
@@ -315,6 +339,8 @@ export interface LivingWorldState {
   /** Per-tick combat-army state, keyed by `${stateId}-${regimentId}`.
    *  Composition itself lives on `Regiment.units`; lazily initialized in `syncArmies`. */
   armies?: Record<string, ArmySimState>;
+  /** completed public works (living-fmg-native.md phase 4) */
+  projects?: LivingProject[];
   activeTroubles?: Record<string, ProvinceTrouble>;
   /** upstream economy is stale after a development, market or border change; re-run `Production.produce()` */
   economyDirty?: boolean;

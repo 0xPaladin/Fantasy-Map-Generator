@@ -40,6 +40,7 @@ import { SEASON_NAMES } from "@/types/living";
 import { dialogState } from "@/ui/dialog/state";
 import { zoomTo } from "@/ui/map/zoom";
 import { escapeHtml, findEl, getPointer } from "@/utils";
+import { t } from "@/utils/i18n";
 
 const HUD_ID = "livingWorldHud";
 const INSPECTOR_ID = "livingInspector";
@@ -744,6 +745,7 @@ function renderStateCard(stateId: number): string {
     <button type="button" class="livingInspectorTitle" data-open="states" data-id="${stateId}" title="States editor">${escapeHtml(state.fullName ?? state.name ?? "State")}</button>
     ${renderRuler(ruler, age)}
     ${renderFiscal(stateId)}
+    ${renderProjects(stateId)}
     ${renderUpstreamState(stateId)}
     ${renderStateProvinces(stateId)}
     ${renderAgenda(sSim, living)}
@@ -829,6 +831,43 @@ function renderFiscal(stateId: number): string {
   return `<div class="livingSection">
     <div class="livingSectionTitle">Fiscal policy <span class="livingMuted">· ruler's target, drifting ${policy.stride}/spring</span></div>
     <div class="livingPoolVitals">${chips}</div>
+  </div>`;
+}
+
+/** Phase 4: the works under construction and the daily lines they pay. */
+function renderProjects(stateId: number): string {
+  const living = Living.getState();
+  const sSim = living.states[stateId];
+  if (!sSim) return "";
+  const active = sSim.project;
+  const built = (living.projects ?? []).filter(project => project.stateId === stateId);
+  if (!active && built.length === 0) return "";
+
+  const targetName = (scale: string, targetId: number) => {
+    if (scale === "state") return pack.states[stateId]?.name ?? "";
+    if (scale === "province") return pack.provinces?.[targetId]?.name ?? `Province ${targetId}`;
+    return pack.burgs?.[targetId]?.name ?? `Burg ${targetId}`;
+  };
+
+  const activeRow = active
+    ? `<div class="livingMuted">🏗️ ${escapeHtml(active.id.replace(/_/g, " "))} · ${escapeHtml(
+        targetName(active.scale, active.targetId)
+      )} · ${active.turnsLeft} ${t("seasons left")}</div>`
+    : "";
+  const rows = built
+    .slice(-8)
+    .map(project => {
+      const line = project.line ? ` +${project.line.value}/day` : "";
+      return `<span class="livingCivChip" title="${escapeHtml(project.name)}${escapeHtml(line)}">🏛️ ${escapeHtml(
+        project.name
+      )}${line}</span>`;
+    })
+    .join("");
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Public works${built.length ? ` <span class="livingMuted">· ${built.length}</span>` : ""}</div>
+    ${activeRow}
+    <div class="livingPoolVitals">${rows}</div>
   </div>`;
 }
 

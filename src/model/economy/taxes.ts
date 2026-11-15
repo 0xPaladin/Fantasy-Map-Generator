@@ -20,13 +20,13 @@ class TaxesModule {
     const marketFees = this.getMarketFees();
     for (const state of states) {
       if (!state.i || state.removed) continue;
-      const { budget, adjustments } = state.economy;
+      const { budget, adjustments, simAdjustments } = state.economy;
       const collected = rn(
         (salesTax[state.i] || 0) +
           (tariffs[state.i] || 0) +
           (pollTax[state.i] || 0) +
           (marketFees[state.i] || 0) +
-          sum(adjustments, line => line.value),
+          sum([...adjustments, ...(simAdjustments ?? [])], line => line.value),
         2
       );
       const expenses = sum(EXPENSES.map(expense => budget[expense]));

@@ -69,7 +69,10 @@ class StateOrdersModule {
           const burg = province.burg && Markets.ofBurg(province.burg) ? province.burg : atCapital;
           return burg ? [{ burg, share: province.share, corruption: this.tendency(state, province), spent: 0 }] : [];
         });
-      const opening = (dawn[state.i] || 0) + (fees[state.i] || 0) + sum(state.economy.adjustments, line => line.value);
+      const opening =
+        (dawn[state.i] || 0) +
+        (fees[state.i] || 0) +
+        sum([...state.economy.adjustments, ...(state.economy.simAdjustments ?? [])], line => line.value);
       this.runs.push({
         stateId: state.i,
         dawn: opening,

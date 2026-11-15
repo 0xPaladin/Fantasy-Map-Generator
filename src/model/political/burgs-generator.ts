@@ -80,6 +80,8 @@ export interface Burg {
   product?: number; // gross product from the last production run
   treasury?: number; // cash balance from the last economy run
   adjustments?: { name: string; value: number }[]; // income a day besides trade; negative for debts or upkeep. The user's, kept on regeneration
+  /** sim-owned lines (projects, troubles); merged with `adjustments` where the economy reads them */
+  simAdjustments?: { name: string; value: number }[];
   pollTaxPaid?: number; // poll tax paid to its state in the last economy run
   label?: Label;
   note?: string;

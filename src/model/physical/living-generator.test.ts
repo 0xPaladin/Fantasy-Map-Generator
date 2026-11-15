@@ -3962,4 +3962,83 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(policy.locks).toEqual([]);
     });
   });
+
+  describe("Public works (living-fmg-native Phase 4)", () => {
+    /** A funded state with development high enough to build, and land data for works. */
+    function projectWorld(development = 30) {
+      const living = Living.init();
+      const state = pack.states[1];
+      state.economy.treasury = 500;
+      pack.cells.development = new Uint8Array([0, development, development, development, 0, 0]);
+      pack.cells.burg = new Uint16Array([0, 1, 0, 2, 0, 0]);
+      pack.cells.h = new Uint8Array([10, 30, 30, 40, 10, 10]);
+      pack.cells.biome = new Uint8Array([0, 4, 4, 5, 0, 0]);
+      return { living, state };
+    }
+
+    it("commissions a work the ruler's era allows and completes it in seasons", () => {
+      const { living, state } = projectWorld();
+      expect(Living.commissionProject(1, "walls", 1)).toBe(true);
+      expect(state.economy.treasury).toBe(410);
+      expect(living.states[1]!.project).toMatchObject({ id: "walls", targetId: 1, turnsLeft: 2 });
+
+      Living.tick(2);
+      expect(living.states[1]!.project).toBeUndefined();
+      expect(pack.burgs[1].walls).toBe(3); // walls1 + citadel normalize to walls2, then the work raises a tier
+      expect(living.projects).toHaveLength(1);
+      expect(living.projects![0]).toMatchObject({ id: "walls", stateId: 1, targetId: 1 });
+    });
+
+    it("gates works by the people's development", () => {
+      projectWorld(10);
+      expect(Living.commissionProject(1, "college", 1)).toBe(false); // needs 27
+
+      pack.cells.development = new Uint8Array([0, 30, 30, 30, 0, 0]);
+      expect(Living.commissionProject(1, "college", 1)).toBe(true);
+    });
+
+    it("writes a daily line into the target's sim adjustments", () => {
+      projectWorld();
+      expect(Living.commissionProject(1, "temple_works", 2)).toBe(true);
+      Living.tick(2);
+
+      const line = pack.burgs[2].simAdjustments?.find(entry => entry.name.startsWith("Temple works"));
+      expect(line?.value).toBe(2);
+      expect(pack.burgs[2].temple).toBe(1);
+    });
+
+    it("buys its goods from the town's market, and stalls without them", () => {
+      projectWorld();
+      options.map.goods = [{ i: 1, name: "Stone", value: 1.5 }] as unknown as typeof options.map.goods;
+      const market = { i: 1, centerBurgId: 1, goods: { 1: { stock: 10, price: 1.5 } } };
+      pack.markets = [market] as unknown as typeof pack.markets;
+      pack.cells.market = new Uint16Array([0, 1, 1, 1, 0, 0]);
+
+      expect(Living.commissionProject(1, "walls", 1)).toBe(true);
+      Living.tick(2);
+      expect(market.goods[1].stock).toBe(4); // six units of stone spent
+
+      // The next wall cannot be built twice at the same burg.
+      expect(Living.commissionProject(1, "walls", 1)).toBe(false);
+    });
+
+    it("charters a new market and keeps one work per target", () => {
+      const { living } = projectWorld();
+      pack.markets = [] as unknown as typeof pack.markets;
+      pack.cells.market = new Uint16Array([0, 0, 0, 0, 0, 0]);
+
+      expect(Living.commissionProject(1, "market_charter", 2)).toBe(true);
+      Living.tick(2);
+      expect(pack.markets.some(entry => entry.centerBurgId === 2)).toBe(true);
+      expect(pack.burgs[2].plaza).toBe(1);
+      expect(living.projects!.some(project => project.id === "market_charter" && project.targetId === 2)).toBe(true);
+    });
+
+    it("automatically starts a work the ruler favours without a commission", () => {
+      const { living, state } = projectWorld();
+      Living.tick(1);
+      expect(living.states[1]!.project).toBeDefined();
+      expect(state.economy.treasury).toBeLessThan(500);
+    });
+  });
 });
