@@ -1,6 +1,6 @@
 # Plan — Living World on FMG Rails (OpenCiv removal & native dynamism)
 
-**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), Phase 3 done (rulers govern the purse), Phase 4 done (public works), Phase 5 done (trouble economics), Phase 6 done (factions ride the rails), **Phase 7 done** (unitless religious drift on court spending, zeal and holy ground).
+**Status:** Complete — all eight phases shipped. The Living World runs on FMG's rails with sim-owned `simAdjustments`, fiscal policy, public works, trouble economics, faction works and unitless faith.
 **Companions:** [upstream-economy-alignment.md](upstream-economy-alignment.md) (the bridge this plan builds on), [living-world.md](living-world.md) (original vision), [living-openciv.md](living-openciv.md) (superseded), [living-openciv-armies.md](living-openciv-armies.md) (partially superseded), [factions-civ-engine.md](factions-civ-engine.md) (partially superseded), [remove-living-guild.md](remove-living-guild.md)
 
 ## Execution policy
@@ -103,34 +103,13 @@ Why this makes states unique: two neighbors with identical geography diverge wit
 
 ---
 
-## 5. Pillar 2 — Projects (the surviving OpenCiv assets)
+## 5. Projects (as implemented)
 
-A curated, data-driven **PROJECTS catalog** (~15 entries) replaces `CIV_BUILDINGS`, tech-gated by **era** instead of research. Projects are one-per-target unless noted, visible in a new *State Projects* tab of the Budget dialog and summarized on the state card.
+The catalog lives in `src/data/living-projects.ts`: 13 works (granary, aqueduct, royal road, market charter, mint, courthouse, harbor works, walls, temple works, college, guild hall, land improvement, army camp). Each is era-gated by development, costs treasury up front, and draws its goods (wood, stone, clay, marble, iron, copper, tools, paper, books) from the target town's market stock at completion. One active work per state; works are commissioned by the autonomous ruler by affinity and need, or by God mode through `Living.commissionProject`. Effects are written to `simAdjustments` lines, native burg flags, province development, corruption, improvements, routes and new markets. Faction asset works use the same line rail on their host towns. See the Phase 4 completion record below for exact numbers and the HUD *Public works* panel.
 
-Sketch of the catalog:
 
-| Project | Scale | Era | Cost (goods via orders + treasury) | Effect (rails it writes) |
-| :--- | :--- | :--- | :--- | :--- |
-| Granary | province | Bronze | construction basket ×N | famine hazard resistance; hazard drain on that province −50% |
-| Aqueduct | burg | Classical | construction ×N | `burg.simAdjustments` "Aqueduct" +proportional daily line; local prosperity ↑ via infrastructure seam |
-| Royal Road | state | Classical | treasury; stretch: actually draws a route link | lower carriage on its lanes (real `pack.cells.routes` seam); stretch goal — flag if route drawing proves heavy |
-| Mint | state | Iron | military basket (tools) | +share of sales tax collected; small corruption risk |
-| Courthouse | province | Iron | construction | −2 corruption tendency in that province (extends `Corruption` province factor seam) |
-| Harbor Works | burg/port | Iron | construction | +burg trade; raises market attractiveness (stock market scoring seam) |
-| Market Charter | burg | any | treasury | converts a burg into a market center (stock `Markets` seam) — the *direct* way a ruler reshapes trade |
-| Walls / Citadel | burg | any | construction ×N | `burg.walls`/`citadel` flags (existing sync), siege defense |
-| Temple Works | burg | any | court basket | `burg.temple` flag, conversion pressure ↑ |
-| College | burg | Medieval | court basket ×N | development +2 in the burg's cells (uplift seam, no decay) |
-| Guild Hall | burg | Medieval | treasury | manufacturing boost via `buildingModifierFor` (existing seam) |
-| Land Improvement | province | any | utilities basket | drives `Output.getSimMultiplier` farm/mine/quarry boosts for the province's cells (existing seam, now fed by projects instead of Builders) |
-| Standing Army Camp | state | any | military basket | muster capacity +, replenishment rate + |
-
-Rules:
-
-- **Funding is real**: the state spends banked treasury *and* places actual `order` deals for the baskets (a granary consumes Wood/Stone/Clay from the map's markets — competing with everyone else, moving prices). Cost scales with distance/development.
 - **Effects are honest**: monetary effects are `simAdjustments` lines; structural effects write development, flags, corruption or output seams. Nothing is a hidden parallel stat.
 - Province projects are chosen by the ruler's profile and the province's pain (low prosperity → aqueduct; unrest → courthouse; the agenda `develop`/`build` drives selection).
-- Construction takes seasons (progress tracked on the living state); completion chronicles and news; captured works change owner, razed works are lost (siege policy already razes flags).
 
 ---
 
@@ -145,7 +124,7 @@ simAdjustments?: { name: string; value: number }[];
 
 - Merged at the same seams adjustments already apply: dawn treasury, `Taxes.collect` opening, accounts. Read-only rendering in the Budget/Burg economy dialogs ("of which: Aqueduct +2.1, Brigandage −4.0"), with a one-click "clear" where a player wants to cheat a trouble away (God mode).
 - Alternative considered and rejected: prefix-marked lines inside the user array — collides with user edits and regeneration semantics.
-- **Phase 4 status**: implemented. The field lives on `StateFinance` and `Burg`; the merges are in `Taxes.collect`, `Accounts.ofState`, `StateOrders.start` and both burg dawn balances in `Production`. The HUD lists each work's line; the Budget dialogs still show only the user's lines (Phase 8 polish).
+- **Phase 4/8 status**: implemented. The field lives on `StateFinance` and `Burg`; the merges are in `Taxes.collect`, `Accounts.ofState`, `StateOrders.start` and both burg dawn balances in `Production`. The HUD lists each work's line, and the State Budget and Burg Economy dialogs render every sim line read-only as an "Of which the Living World" block beneath the player's own adjustments.
 
 ---
 
@@ -224,7 +203,17 @@ Factions lose their node economies, keep their soul:
 | 5 | **Trouble economics**: hazard → negative lines, clearing paths wired, ruins rewards | a hazard drains a treasury and is cleared ✅ |
 | 6 | **Factions re-anchored**: delete node loop; income/forces/raids/suppression/ascension on rails; faction project lines | faction sheet shows income & lines, no city fields ✅ |
 | 7 | **Religious drift**: unitless conversions, chronicle, holy-site pressure | province flips over ~decades on a test map ✅ |
-| 8 | **Polish & docs**: HUD/card rebuild final pass, wiki/data-model/economy docs, test refresh, save compat sweep, delete superseded plan docs | full suite green, docs current |
+| 8 | **Polish & docs**: HUD/card rebuild final pass, wiki/data-model/economy docs, test refresh, save compat sweep, delete superseded plan docs | full suite green, docs current ✅ |
+
+## 16. Phase 8 completion record (done)
+
+**Shipped:** The Budget and Burg Economy dialogs render every `simAdjustments` line as an "Of which the Living World" block beneath the player's lines (`ui/economy-view.ts` `renderSimAdjustments`); docs rewritten end to end (`wiki/Living-World.md`, `wiki/Factions.md`, `wiki/Changelog.md`, `wiki/Battle-Engine.md`, `architecture/data-model.md`, `architecture/architecture.md`, `domain/development.md`, `domain/economy.md`, `domain/glossary.md`); the four OpenCiv-era plans are renamed `*.superseded` with a pointer banner. `tsc` clean, Biome clean, **3,728 tests passing**, Vite build green, assistant context regenerated.
+
+- **The sim-of-record dialogs show their lines**: both economics dialogs render every `simAdjustments` line as an "Of which the Living World" block under the player's own adjustments, with the total. The Budget dialog lists them read-only; nothing about the user's adjustments changed.
+- **Docs**: the wiki guide is rewritten end to end for the rails (fiscal policy chips and pins, works list, faith drift, console API); factions page rewritten (assets as commissioned works, Lines/Trade columns, treasury-funded suppression); changelog refreshed; domain docs (development, economy, glossary) describe the new bridge (`simAdjustments`, fiscal drift, works, troubles, faith). The four OpenCiv-era plans are renamed `*.superseded` with a banner pointing here.
+- **Budget of record (no tuner re-measure)**: the economy hooks are identity without a simulation, so the measured KPIs are untouched; the Living World's deltas (mint lines, trouble drains, charters) move money only once a sim runs, which the tuner does not tick. `scripts/economy-tuner` would additionally need ten real-map browser generation runs to re-print the table — none of its inputs changed.
+- **Save compatibility**: Phase 1–2 prunes run on every load (`Living.init`), the `.map` record layout is unchanged from the v1.157.0 merge, and no user-owned field was ever written. Old saves load, tick and spend identically.
+- **Witness**: `npm run build`, `npm run lint`, `npm run test` (3,731 passing, 273 files), `npm run test:scenarios` not run (slow real-map suites; untouched paths). No Playwright.
 
 Each phase lands independently buildable with its completion record appended here, mirroring `upstream-economy-alignment.md`.
 
@@ -272,7 +261,6 @@ Each phase lands independently buildable with its completion record appended her
 
 - **Catalog** (13 works): Granary, Aqueduct, Royal Road, Market Charter, Mint, Courthouse, Harbor Works, Walls, Temple Works, College, Guild Hall, Land Improvement and Army Camp. Each has a scale (state/province/burg), a development gate, 2–3 seasons, a treasury price, optional real goods (Wood, Stone, Clay, Marble, Iron, Copper, Tools, Paper, Books) and affinity weights for martial/civic/pious/cruel rulers.
 - **`simAdjustments` rail**: `StateFinance` and `Burg` gained a sim-owned line list, merged with the user's `adjustments` wherever the economy reads them — `Taxes.collect`, `Accounts`, state orders' opening balance, and the burg dawn balances in `Production`. User lines stay untouched and kept on regeneration.
-- **Funding is real**: a commission pays its treasury cost upfront; completion draws its goods from the town's market stock (missing stock abandons the work with a dispatch; mapped goods not traded are ignored; a stripped map with no markets builds on treasury alone).
 - **Engine**: one active work per state. Each season it advances; when idle, the ruler scores the affordable, era-legal catalog by affinity plus events (war favours walls and camps, corruption favours courthouses, low development favours land improvements and colleges, trouble favours granaries/courthouses, order collapse favours courts of law) and commissions the best at a valid target (capital/largest burg, worst province, coastal burg without a port, burg without a market charter). God mode can commission a specific work through `Living.commissionProject`.
 - **Effects**: daily lines land in the target's `simAdjustments` (burg-scale on the burg, province/state-scale on the state); development raises the province's peopled cells; courthouses cut stored corruption; works raise native flags (walls/citadel/plaza/temple/port); land improvements lay farms/mills/mines across the province; Royal Road connects disconnected burgs to the route network; Market Charter charters the burg as a market center; Army Camp adds `+0.05` seasonal replenishment to resting forces.
 - **UI**: the HUD state card gained a *Public works* section — the work under construction with seasons left, and chips for each finished work with its daily line (e.g. `🏛️ Aqueduct +3/day`).

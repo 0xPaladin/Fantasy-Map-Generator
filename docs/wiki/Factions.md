@@ -36,7 +36,7 @@ Rival factions and their host states watch that footprint: a busy faction draws 
 
 ### Headquarters and Outposts
 
-Every HQ and outpost is an embedded [`BurgSimState`](https://github.com/0xPaladin/Fantasy-Map-Generator/blob/master/docs/architecture/data-model.md#living-world) city-node (`citizens`, `workedCells`, `foodStored`/`cultureStored`, `productionQueue`, `civBuildings`, `cityYields`, `hp`/`maxHp`): wilderness HQs simulate in place without creating a `pack.burgs` entry until ascension promotes them to a sovereign burg/state. Every faction maintains a single primary base:
+Every HQ and outpost is an anchor on the map: a `FactionHq` or `FactionOutpost` with a `cell`, optional `burgId`, `tier`, `influence`, `secrecy`, `assets` and a `sim` record for siege HP and unrest. Wilderness HQs simulate in place without creating a `pack.burgs` entry until ascension promotes them to a sovereign burg/state. Every faction maintains a single primary base:
 * **Urban Headquarters**: Situated in a populated burg or capital, benefiting from local commerce and population.
 * **Wilderness Headquarters**: Anchored to a danger marker (`dungeon`, `lair`, `ruins`, `cave`, `volcano`, etc.), serving as a stronghold for hostile warbands, cults, or outcasts.
 
@@ -49,52 +49,27 @@ A faction expands into settlements within its reach by establishing **Burg Outpo
 
 ### Faction Assets
 
-Factions construct buildings at their HQ and outposts across six tracks (18 distinct structures) using the unified OpenCiv production system. `FACTION_ASSETS_CATALOG` lists the faction-only assets (each a `CivBuildingDef`-shaped definition with production `cost`, gold `maintenance`, `requiredTech` and yield `stats`); `getFactionAsset` resolves any OpenCiv building id as an asset too, taking its cost, tier and stats from the building. Factions build them alongside OpenCiv staples (`walls`, `market`, `library`, `workshop`, `forge`, `temple`):
+Factions build works at their HQ and outposts from a catalog of faction assets ([faction-assets.ts](../../src/data/faction-assets.ts)): commercial depots and counting houses, underworld safe houses and smuggler warrens, shrines and temples, muster camps and chapter lodges. Each asset has a **treasury cost**, an era gate (its equiredTech reads as a development threshold) and node rules (hq_only, urg, wilderness).
 
-| Track | Tier 1 | Tier 2 | Tier 3 | Primary Benefits |
-| :--- | :--- | :--- | :--- | :--- |
-| **Commerce** | Counting House | Trading Enclave | Merchant Bank | +Gold per season, boost to burg trade yields |
-| **Underworld** | Safehouse | Smuggler Den | Shadow Syndicate | +Gold (siphoned), +Influence, +Burg unrest |
-| **Holy** | Chapel | Sanctuary | Cathedral Chapter | +Faith, +Influence, +Burg public order |
-| **Martial** | Training Yard | Armory | Citadel Bastion | +Regiment muster capacity, +Burg defense |
-| **Arcane** | Scriptorium | Laboratory | Arcane Sanctum | +Science per season, tech research speed |
-| **Statecraft** | Embassy | Chancery | Grand Chancellery | +Diplomatic influence, patron state stability |
+A work is **commissioned**, not bought: the faction pays the cost up front and builds it over a number of seasons equal to the asset's tier. On completion the asset joins the node, and its money bite becomes a daily line in the host burg's simAdjustments - a consortium enriches its town (+1 to +4 a day per commercial asset), a thieves' den drains it. Order and unrest bites apply to the host province and burg at completion. God mode and the editor commission specific works via Living.commissionFactionAsset(factionId, assetId, nodeKey?).
 
-Buildings are produced from city-node `production` (Production queue), not bought outright with treasury; `hurryProduction()` can rush them for gold.
+The _Faction Outposts_ dialog lists each node's **Trade** (its season's upstream income) and **Lines** (what the faction's works write into the host town); its header shows the empire's trade a season and, for a charter, its tithes.
 
 ---
 
 ### The Living World Simulation
 
-Factions run on the same OpenCiv engine as states and burgs. Every **HQ and outpost is a city-node** (`BurgSimState`) that works cells, gathers the seven yields, grows citizens, and produces buildings and units.
+Factions ride the same rails as states - no city loop, no citizens, worked cells, queues or yields. Each season (Living.tick()):
 
-When the Living World advances each season (`Living.tick()`):
+1. **Income** - every HQ and outpost earns from the [economy underneath](Living-World.md#the-economy-underneath) (see the table below), and its money lines are rebuilt on the host burg.
+2. **Treasury** - income less its forces' block upkeep is banked into action.treasury; a negative balance disbands the newest block.
+3. **Works** - the faction advances its commissioned asset, or commissions the best one its track, era and purse allow (see above).
+4. **Muster** - a faction under strength and funded musters one roster block per season, gated on goods like a state's.
+5. **Influence** - temples and chanceries grow influence with the court's spending; charters pay their patron.
 
-1. **City-Node Loop** — Each HQ/outpost competes for worked cells with the host burg and rival factions within 3 hops. Allegiance decides the draft: `state_arm` works after the state (cooperative), `chartered` alternates after the state's food floor and pays a 15% tithe, `autonomous` interleaves by local `influence` vs state `order`, `clandestine`/`hostile` pre-draft and siphon up to 50% of the host burg's centre gold. Food surplus grows citizens (`15 + 8 × citizens`), culture raises `influence` (urban) or claims wilderness territory (wilderness HQ), and production completes buildings/units.
-2. **Empire Rollup** — Yields are summed across HQ + outposts (science via library/university multipliers), minus building maintenance and army upkeep, banked into the faction treasury (negative treasury disbands the newest block). Happiness is `9 + 4 × unique worked luxuries + buildings − 3 per node − citizens`. Research advances on the 80-tech OpenCiv tree with +25% host-state spillover, plus free technologies.
-3. **Tactical Layer** — Utility and combat regiments use the same 1UPT / `ArmyBlock[]` system as states, keyed `f{id}-{regimentId}`:
-   * **Builders** improve unimproved cells worked by the faction.
-   * **Settlers/Envoys** march to target burgs and found outposts on arrival (no teleport expansion).
-   * **Combat armies** engage enemy State or rival Faction armies (`resolveArmyBattle()`), pillage tiles, and siege burgs — a successful sovereign-ambition siege triggers state ascension.
-   * State-arm agencies defect when their patron's `unravel >= 60`; rival outposts still clash for turf influence.
+**Tactically** the factions use the same ArmyBlock[] regiments, keyed {id}-{regimentId}, as states: they engage enemy state or rival faction armies, siege burgs, strike cities in range, and replenish in their own towns. A successful sovereign-ambition siege or an entrenched hostile faction ascends into a sovereign state; state-arm agencies defect when their patron's unravel passes 60, and rival outposts clash for turf influence.
 
-The legacy flat economy (`outpost.tier * 2`, instant gold asset purchases, teleport raids, `u: { spear: 50 }` musters) is retired — assets, units and outposts all flow through the production/tactical queues.
-
-#### Upstream economy income
-
-On top of the worked cells, every HQ and outpost earns from the [economy underneath](Living-World.md#the-economy-underneath) — FMG's goods, markets, taxes and graft. The _Faction Outposts_ dialog lists it per node in the **Trade** column, and its header shows the empire's trade a season and, for a charter, its tithes.
-
-| Category | Earns each season |
-| :--- | :--- |
-| **Commercial** | a fifth of its host burg's manufacturing product, plus a commission on the market's turnover of `5%`, raised by `3%` for each commercial asset it keeps there (`trade_depot`, `counting_house`, `grand_exchange`, `bazaar`, `harbor`, `seaport`, `bank`), up to `15%` |
-| **Underworld** | a share of the province's official graft (`state.economy.pocketed`), from `10%` up to `40%` with local influence, plus half of the state's tariffs, half again more under an **embargo** |
-| **Martial** | a `5%` retainer on the host state's military spending while the relation is `Friendly` or `Ally`; against a hostile state it raids and plunders burg treasuries instead |
-| **Religious** | `5%` of the court's spending, scaled by local prosperity, and up to 3 points of influence a season |
-| **Political** | the temple's tithe plus `5%` of the administration's spending |
-
-A faction leader's traits scale that income (`1 + 0.25 × civic + 0.15 × cruel`). A **`chartered`** or **`state_arm`** faction pays `15%` of it to its patron state, and the states' budget shows the total as the line **Chartered Faction Tithes** in its Revenue card.
-
----
+The legacy flat economy (instant asset purchases, teleport raids) is retired - assets, musters and raids all flow through treasury, goods and the shared battle engine.
 
 ### State Suppression of Hostile Factions
 
@@ -102,9 +77,9 @@ States counter hostile or clandestine factions in-world instead of only through 
 
 Auditing one node at a time:
 
-* **Urban nodes** are pressured through a `faction-suppression` production operation queued in the host burg (`6 + tier × 4` Production, never Gold; gold only hurries via `hurryProduction()`, keeping its reserve). Each completed operation deals `max(1, floor((provinceOrder − nodeSecrecy) / 20))` influence damage, raises province order, burg unrest and state unravel. A defending faction guard pauses pressure (and repeated stalls strain the state); unguarded low-influence (≤ 25) or fortified nodes can be stormed directly by the field army through the shared battle engine — victory pillages, failure retreats and delays the campaign.
+* **Urban nodes** are pressured administratively: each funded season costs the suppressing state `6 + tier � 4` gold from its treasury and, after three funded seasons, deals influence damage based on province order vs the node's secrecy, raises province order, burg unrest and state unravel. A defending faction guard pauses pressure (and repeated stalls strain the state); unguarded low-influence (= 25) or fortified nodes can be stormed directly by the field army through the shared battle engine � victory pillages, failure retreats and delays the campaign.
 * **Wilderness strongholds** (HQ with no burg on a state-owned cell) are military-only: there is no host city to queue in, so the field army marches to the HQ cell and storms it once adjacent, under the same guard-first and pillage rules.
-* **Pillage consequences:** a razed outpost is skipped from yields/production/culture; a razed HQ relocates to the faction's strongest surviving outpost or dissolves the faction when none remain. Pillaged nodes show a slate crest with a 💀 badge and a "Pillaged" tooltip; the Outposts & Assets dialog shows per-node influence and suppression progress.
+* **Pillage consequences:** a razed outpost is skipped from yields/production/culture; a razed HQ relocates to the faction's strongest surviving outpost or dissolves the faction when none remain. Pillaged nodes show a slate crest with a 💀 badge and a "Pillaged" tooltip; the Outposts & Assets dialog shows per-node influence while the campaign runs.
 
 Lawful `state_arm`, `chartered` and non-hostile factions are never eligible. Schedules, tuning and tests: [`faction-suppression.md`](../plans/faction-suppression.md).
 

@@ -1,3 +1,5 @@
+> **Superseded by [living-fmg-native.md](living-fmg-native.md) (2026-11-15).** This document describes the OpenCiv engine that Phase 1-8 removed: the tile-yield economy, city loop, research tree, citizens, imperial happiness, the civilian units and the faction city-node loop. Nothing in this file is the current behaviour; see living-fmg-native.md for what the Living World does now.
+
 # Plan — Living World 2.0: OpenCiv 4X Simulation Engine Under the Hood
 
 Updated: 2026-11-03. Status: **delivered — Slices 1–6 complete** (Living World now runs the OpenCiv 4X simulation).

@@ -648,22 +648,23 @@ Top level:
 - `states`, `provinces`, `burgs`: `Record<number, StatePolitySim | ProvinceSimState | BurgSimState>` - per-entity simulation state, keyed by the map entity id
 - `cells`: `Record<number, CellSimState>` - optional tile improvements and pillage state
 - `armies`: `Record<string, ArmySimState>` - optional per-tick combat-army state, keyed by `${stateId}-${regimentId}`
-- `units`: `Record<string, UnitSimState>` - optional utility-regiment state (settlers, builders, missionaries, ...)
-- `recentNews`, `eschaton`, `worldWonders` - optional presentation and Age Finale state
-- `economyDirty`: `boolean` - optional. The upstream economy is stale (a development change, a market or border change, a charter budget line or an audit) and the next seasonal tick reruns it through `Production.regenerate()`
+- `projects`: `LivingProject[]` - optional completed public works (`id`, `name`, `stateId`, `scale`, `targetId`, `burgId?`, `completedTick`, `line?`)
+- `recentNews`, `eschaton` - optional presentation and Age Finale state
+- `economyDirty`: `boolean` - optional. The economy is stale (a development change, a market or border change, a fiscal drift, a project line, a trouble line or an audit) and the next seasonal tick reruns it through `Production.regenerate()`
 
 `StatePolitySim`:
 
 - `agenda`: `StateAgenda | null` - the state's current **goal**, e.g. `conquer`, `raid`, `defend`, `develop`, `build`, `hire_adventurers`, `suppress_faction`
 - `unravel`, `warExhaustion`, `claims`, `grudges` - the collapse clock, peace pressure and the memory of lost burgs and wrongs
-- `faith`, `happiness`, `yieldsPerTurn`, `currentTechId`, `researchQueue`, `researchedTechs` - optional OpenCiv empire fields
+- `fiscal`: optional `FiscalPolicyState` - the ruler the target was set under, pinned lines, the accession baseline and which dispatches were logged
+- `project`: optional `ActiveProject` (`id`, `scale`, `targetId`, `turnsLeft`) - the one public work under construction
 - `treasury`: `number` - optional mirror of the state's accumulated reserve (`state.economy.treasury`); the upstream field stays authoritative
 - `warTurns`, `peaceTreatyTurns` - optional war/truce clocks
 - `treaties`: `Record<number, TreatyKind[]>` - optional positive agreements per other state (`nonAggression`, `trade`, `defensiveAlliance`, `militaryAccess`); symmetric
 
 A `StateAgenda` carries `kind`, a display `label`, an optional `targetStateId` / `targetProvinceId` / `targetBurgId` / `targetCell` / `buildingId`, plus `targetFactionId` and `stallUntilTick` for `suppress_faction`, and `progress` / `required`.
 
-`BurgSimState` carries `development`, `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, the OpenCiv city fields (`citizens`, `foodStored`, worked/locked cells) and the `productionQueue` (`{ kind: "unit" | "building" | "wonder" | "trouble" | "operation", id, targetFactionId?, targetNodeKey? }`) with its per-item progress. Suppression uses a `faction-suppression` operation (`6 + tier × 4` Production) queued in the host burg; wilderness HQs are military-only and never queue it. `treasury` is optional: the burg's accumulated seasonal reserve (`(product − pollTaxPaid) × 90` a season), separate from upstream `burg.treasury`, which stays a day's net.
+`BurgSimState` carries `baseTier`, `development`, roster `buildings`, `construction`, `unrest`, `conqueredBy`, the original owner/culture/religion, `isMajor`, the flag-synced `civBuildings` (walls/plaza/temple/harbor families and palace; feeds siege HP and mirrors the native flags), siege state (`siegeStateId`, `siegeProgress`, `siegeSupplies`), `hasStruckThisTurn`, `pillaged`, and `treasury` - the burg's accumulated seasonal reserve (`(product − pollTaxPaid) × 90` a season), separate from upstream `burg.treasury`, which stays a day's net. There are no citizens, worked cells, food buckets, queues or city yields.
 
 `ProvinceSimState` carries `order`, `stability`, `development`, `developmentProgress`, and the active `trouble` (hazards only — dangerous factions live in `pack.factions`).
 
@@ -675,9 +676,10 @@ Map data that is **not** simulation state: `state.rosterId` (the culture roster)
 
 The simulation runs on the v1.157.0 economy and writes back into it ([upstream-economy-alignment.md](../plans/upstream-economy-alignment.md), [Economy](../domain/economy.md#the-living-world-bridge)):
 
-- **Read**: `pack.cells.development` (settles goods tiers and productivity), `pack.cells.prosperity`, `pack.deals`, `options.map.goods`, `state.economy.collected` / `pocketed` / `spent` / `budget`, `burg.product` / `pollTaxPaid`, `Prosperity`, `Accounts`, `Stability`. Every read is gated on a readable run (deals + markets + goods), so stripped packs and pre-economy saves see none of it.
-- **Written**: `pack.cells.development` (research and seasonal diffusion), `living.cells[].pillaged` (sabotage; `Output` prices it at `0.25`), `state.economy.treasury` (a season's flows banked onto the reserve), `state.economy.budget.corruption` (an audit), and one budget line per state, `Chartered Faction Tithes`, in `state.economy.adjustments` (the charters' 15% of their upstream income, ÷ 90 as a day's money). Rulers and their magistrates also sway what the run reads through `living-rulers.ts` without writing the budget: `Corruption.effectiveBudget`, `StateOrders.getProvision`, `Military.getLivingBattleUpkeep`.
-- **Faction yields**: `FactionYieldBreakdown` and its nodes are computed on demand (`Living.getFactionYieldBreakdown`) from the last run; only the rollup is stored, on `Faction.yieldsPerTurn`.
+- **Read**: `pack.cells.development` (settles goods tiers and productivity), `pack.cells.prosperity`, `pack.cells.religion` (drift), `pack.deals`, `options.map.goods`, `state.economy.collected` / `pocketed` / `spent` / `budget`, `StateOrders.getProvision`, `burg.product` / `pollTaxPaid`, `Prosperity`, `Accounts`, `Stability`. Every read is gated on a readable run (deals + markets + goods), so stripped packs and pre-economy saves see none of it.
+- **Written**: `pack.cells.development` (diffusion and completed develop projects), `pack.cells.religion` (unitless drift), `living.cells[].pillaged` (sabotage; `Output` prices it at `0.25`), `state.economy.treasury` (a season's flows banked onto the reserve), the budget lines, corruption and the sales/poll taxes (fiscal drift), `state.economy.simAdjustments` and `burg.simAdjustments` (projects, faction works and hazards), native burg flags (works), `pack.markets` (Market Charter), `pack.cells.routes` (Royal Road), and one budget line per state, `Chartered Faction Tithes`, in `state.economy.adjustments`. Rulers and their magistrates sway what the run reads through `living-rulers.ts` (`Corruption.effectiveBudget`, `StateOrders.getProvision`, `Military.getLivingBattleUpkeep`).
+- **Faction yields**: `FactionYieldBreakdown` is computed on demand (`Living.getFactionYieldBreakdown`) from the last run; only the rollup is stored, on `Faction.yieldsPerTurn`.
+- **Sim adjustments**: `state.economy.simAdjustments` and `burg.simAdjustments` are sim-owned named lines merged with the user's `adjustments` in `Taxes`, `Accounts`, `StateOrders` and both burg dawn balances; the user's lines are never modified.
 
 ## Characters
 

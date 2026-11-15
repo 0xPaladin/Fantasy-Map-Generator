@@ -84,6 +84,6 @@ Magic bends the attrition rate rather than adding headcount:
 
 ## Further reading
 
-- Army model and economy: [`docs/plans/living-openciv-armies.md`](../plans/living-openciv-armies.md)
-- Seasonal simulation: [`docs/plans/living-world.md`](../plans/living-world.md)
+- Army model and economy: [`docs/plans/living-fmg-native.md`](../plans/living-fmg-native.md)
+- Seasonal simulation: [`docs/wiki/Living-World.md`](Living-World.md)
 - Living World player guide: [`Living-World.md`](Living-World.md)

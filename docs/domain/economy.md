@@ -287,7 +287,15 @@ A faction leader's traits scale that income (`1 + 0.25 × civic + 0.15 × cruel`
 
 **Rulers** ([living-rulers.ts](../../src/model/physical/living-rulers.ts)) lean the run by their traits, their culture's values, and half of their `magistrate` specialist's: official corruption `−5 × civic + 6 × cruel` points, court provision `1 + 0.25 × pious`, administration and infrastructure provision `1 + 0.2 × civic`, living battle upkeep `1 + 0.2 × martial` and siege progress `1 + 0.3 × martial`. `Corruption.effectiveBudget` applies the first wherever corruption is read (`getTendency`, `getStateTendency`, `curb` → taxes, orders, accounts, stability), `StateOrders.getProvision` the court and infrastructure ones, `Military.getLivingBattleUpkeep` the upkeep one, and `Living` the siege one. The ways to change a state without a run — `Living.auditCorruption` (budget corruption cut by 4 points, a day's `pocketed` graft recovered into the treasury) and `Living.sabotageDeposit` (`cells[cell].pillaged`, which `Output.getSimMultiplier` prices at `0.25`) — also raise `economyDirty`.
 
-Design record and per-phase completion notes: [upstream-economy-alignment.md](../plans/upstream-economy-alignment.md).
+**Rulers govern the purse.** Each spring the ruler's temperament (plus half a magistrate's) sets targets for the four budget lines, corruption and the sales/poll taxes and the real values drift toward them: 2 points a season under a monarchy or theocracy, 1 under a republic or union, none under an anarchy. War, rebellion, provincial trouble and a negative treasury re-target them. A line that moves far enough is chronicled once, and God mode can pin any line (`Living.fiscalPolicy`, `Living.toggleFiscalLock`).
+
+**Public works** ([living-projects.ts](../../src/data/living-projects.ts)): a state keeps one work under construction (granary, aqueduct, royal road, market charter, mint, courthouse, harbor works, walls, temple works, college, guild hall, land improvement, army camp). Cost is treasury up front plus real goods drawn from the town's market stock at completion; effects are daily `simAdjustments` lines, native burg flags, development on peopled cells, stored-corruption cuts, land improvements, route links, a new market center or faster replenishment. Faction works use the same line rail (asset `burgImpact.gold`) on their host towns.
+
+**Troubles drain the purse.** A hazard writes `-(round(level × 0.8) + 1)` a day and a hostile faction `-(2 + seasons/3)`; a funded administration grinds hazards down, and clearing one pays the clearer a small treasure. The spiral then runs through the economy itself: less collected, thinner reserve, weaker upkeep, lower order.
+
+**Faith drifts** on the same rails: court provision and ruler zeal convert minority-faith provinces each spring, and the changed `pack.cells.religion` feeds diversity, corruption and stability on the next run.
+
+Design record and per-phase completion notes: [upstream-economy-alignment.md](../plans/upstream-economy-alignment.md) and [living-fmg-native.md](../plans/living-fmg-native.md).
 
 ## KPIs
 
