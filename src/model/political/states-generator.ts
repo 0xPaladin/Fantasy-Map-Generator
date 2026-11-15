@@ -78,6 +78,8 @@ export interface StateFinance {
   pollTax: number;
   marketFee: number; // license fee a day from each market centered in the state
   adjustments: { name: string; value: number }[]; // income a day besides taxes; negative for debts or tribute paid. The user's, kept on regeneration
+  /** sim-owned lines (projects, troubles); merged with `adjustments` where the economy reads them */
+  simAdjustments?: { name: string; value: number }[];
   budget: StateBudget;
   collected: number; // all the taxes collected in the last run
   spent: Record<Expense, number>; // what each expense bought in the last run

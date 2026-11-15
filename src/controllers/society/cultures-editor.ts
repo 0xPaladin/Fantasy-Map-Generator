@@ -1,6 +1,14 @@
 import { type D3DragEvent, drag, easeSinIn, select, transition } from "d3";
 import { Controllers } from "@/controllers";
-import { ALIGNMENT_COLORS, ALIGNMENTS, type Alignment, alignmentRank, valuesText } from "@/data/culture-traits";
+import {
+  ALIGNMENT_COLORS,
+  ALIGNMENTS,
+  type Alignment,
+  alignmentRank,
+  rollValues,
+  traitsRng,
+  valuesText
+} from "@/data/culture-traits";
 import { CULTURE_TYPES } from "@/data/culture-types";
 import { DEFAULT_DEVELOPMENT } from "@/data/development";
 import { CULTURE_TYPE_LABELS, SHIELD_LABELS } from "@/data/id-labels";
@@ -555,6 +563,9 @@ function culturesEditorAddLines(view: TableView<Culture>): void {
     .querySelectorAll("div > select.cultureAlignment")
     .forEach($el => void $el.addEventListener("change", cultureChangeAlignment));
   ensureEl("culturesBody")
+    .querySelectorAll("div > span.cultureRegenerateValues")
+    .forEach($el => void $el.addEventListener("click", cultureRegenerateValues));
+  ensureEl("culturesBody")
     .querySelectorAll("div > select.cultureType")
     .forEach($el => void $el.addEventListener("change", cultureChangeType));
   ensureEl("culturesBody")
@@ -616,12 +627,15 @@ function getAlignmentCell(culture: Culture): string {
 /** "truth · justice", or the dominant "truth above all", emphasized as a whole */
 function getValuesCell(culture: Culture): string {
   const values = culture.values ?? [];
-  if (!values.length) return /* html */ `<div data-col="values" class="cultureTraitsEmpty">—</div>`;
+  const regen = culture.alignment
+    ? `<span class="icon-cw pointer cultureRegenerateValues" data-tip="${t("Regenerate values from alignment")}"></span>`
+    : "";
+  if (!values.length) return /* html */ `<div data-col="values" class="cultureTraitsEmpty">—${regen}</div>`;
 
   const text = escapeHtml(valuesText(values));
   const rendered = values.length === 1 ? `<b>${text}</b>` : text;
   const hint = values.length === 1 ? "The value this culture holds above all others" : "The values this culture prizes";
-  return /* html */ `<div data-col="values" data-tip="${hint}"><span class="cultureValues">${rendered}</span></div>`;
+  return /* html */ `<div data-col="values" data-tip="${hint}"><span class="cultureValues">${rendered}</span>${regen}</div>`;
 }
 
 function getTypeOptions(type: string): string {
@@ -782,6 +796,24 @@ function cultureChangeDevelopment(this: HTMLInputElement): void {
   this.value = String(culture.development ?? DEFAULT_DEVELOPMENT); // an invalid value goes back
 }
 
+function updateValuesCell(row: HTMLElement, culture: Culture): void {
+  const cell = row.querySelector<HTMLElement>('[data-col="values"]');
+  if (!cell) return;
+  cell.outerHTML = getValuesCell(culture);
+  row.querySelector<HTMLElement>(".cultureRegenerateValues")?.addEventListener("click", cultureRegenerateValues);
+}
+
+function cultureRegenerateValues(this: HTMLElement): void {
+  const row = this.closest(".states") as HTMLElement;
+  const culture = pack.cultures[+row.dataset.id!];
+  if (!culture?.i || !culture.alignment) return;
+  culture.values = rollValues(
+    traitsRng(`${options.map?.seed ?? ""}:${Math.random()}`, "culture", culture.i),
+    culture.alignment
+  );
+  updateValuesCell(row, culture);
+}
+
 function cultureChangeAlignment(this: HTMLSelectElement): void {
   const row = this.closest(".states") as HTMLElement;
   const culture = pack.cultures[+row.dataset.id!];
@@ -796,6 +828,7 @@ function cultureChangeAlignment(this: HTMLSelectElement): void {
     this.style.color = "";
     this.dataset.tip = t("Click to set alignment");
   }
+  updateValuesCell(row, culture);
 }
 
 function cultureChangeType(this: HTMLSelectElement): void {

@@ -1585,6 +1585,73 @@
       }
     }
   },
+  "networks": {
+    "groups": {
+      "wormhole": {
+        "attrs": {
+          "opacity": 1,
+          "fill": "#c084fc",
+          "fill-opacity": 1,
+          "stroke": "#7c3aed",
+          "stroke-opacity": 1,
+          "stroke-width": 0.15,
+          "stroke-dasharray": null,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "filter": null
+        },
+        "options": {
+          "size": 1.2,
+          "linkColor": "#a855f7",
+          "linkWidth": 0.45,
+          "linkOpacity": 0.9,
+          "linkDash": "6 4"
+        }
+      },
+      "hyperlane": {
+        "attrs": {
+          "opacity": 1,
+          "fill": "#67e8f9",
+          "fill-opacity": 1,
+          "stroke": "#0891b2",
+          "stroke-opacity": 1,
+          "stroke-width": 0.15,
+          "stroke-dasharray": null,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "filter": null
+        },
+        "options": {
+          "size": 1.1,
+          "linkColor": "#22d3ee",
+          "linkWidth": 0.5,
+          "linkOpacity": 0.9,
+          "linkDash": "2 2"
+        }
+      },
+      "relay": {
+        "attrs": {
+          "opacity": 1,
+          "fill": "#fde68a",
+          "fill-opacity": 1,
+          "stroke": "#d97706",
+          "stroke-opacity": 1,
+          "stroke-width": 0.15,
+          "stroke-dasharray": null,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "filter": null
+        },
+        "options": {
+          "size": 0.9,
+          "linkColor": "#fbbf24",
+          "linkWidth": 0.35,
+          "linkOpacity": 0.85,
+          "linkDash": "1.2 3"
+        }
+      }
+    }
+  },
   "rulers": {
     "attrs": {
       "opacity": null,

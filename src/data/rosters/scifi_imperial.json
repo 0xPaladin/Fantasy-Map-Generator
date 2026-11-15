@@ -1,0 +1,130 @@
+{
+  "id": "scifiImperialBase",
+  "name": "Ascendancy & Imperial Battlefleets",
+  "roster": {
+    "id": "scifiImperialBase",
+    "units": {
+      "dokokin_hoplites": {
+        "name": "Dokokin Four-Armed Chitin Hoplites",
+        "category": "melee",
+        "quantity": 120,
+        "attack": 13,
+        "defense": 14,
+        "charge": 7,
+        "missile": 0,
+        "cost": 22,
+        "upkeep": 0.18,
+        "capacityCost": { "m": 3, "w": 2, "s": 0, "c": 0 }
+      },
+      "ascendancy_legionaries": {
+        "name": "Power-Armored Coilgun Legionaries",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 7,
+        "defense": 13,
+        "charge": 3,
+        "missile": 16,
+        "cost": 24,
+        "upkeep": 0.19,
+        "capacityCost": { "m": 2, "w": 2, "s": 0, "c": 0 }
+      },
+      "torpedo_gunboats": {
+        "name": "Apex Torpedo Gunboats & Boarding Rams",
+        "category": "cavalry",
+        "quantity": 24,
+        "attack": 14,
+        "defense": 11,
+        "charge": 15,
+        "missile": 12,
+        "cost": 32,
+        "upkeep": 0.25,
+        "capacityCost": { "m": 2, "w": 3, "s": 0, "c": 0 }
+      },
+      "rail_battlecruisers": {
+        "name": "Ascendancy Spinal Rail-Battlecruisers",
+        "category": "artillery",
+        "quantity": 12,
+        "attack": 10,
+        "defense": 13,
+        "charge": 3,
+        "missile": 20,
+        "cost": 44,
+        "upkeep": 0.35,
+        "capacityCost": { "m": 2, "w": 4, "s": 0, "c": 0 }
+      },
+      "iron_superdreadnought": {
+        "name": "Mazani & Ascendancy Siege Superdreadnought",
+        "category": "monster",
+        "quantity": 4,
+        "attack": 17,
+        "defense": 19,
+        "charge": 10,
+        "missile": 16,
+        "cost": 60,
+        "upkeep": 0.48,
+        "capacityCost": { "m": 4, "w": 5, "s": 0, "c": 0 },
+        "powers": { "terror": 0.06 }
+      },
+      "magitech_astrogators": {
+        "name": "Magitech Barrier & Tactical Astrogators",
+        "category": "spellcaster",
+        "quantity": 20,
+        "attack": 5,
+        "defense": 9,
+        "charge": 1,
+        "missile": 14,
+        "cost": 34,
+        "upkeep": 0.27,
+        "capacityCost": { "m": 1, "w": 2, "s": 3, "c": 1 },
+        "powers": { "ward": 0.1 }
+      },
+      "trench_cuirassiers": {
+        "name": "Trench-Line Ballistic Militia",
+        "category": "melee",
+        "quantity": 150,
+        "attack": 5,
+        "defense": 8,
+        "charge": 2,
+        "missile": 0,
+        "cost": 6,
+        "upkeep": 0.04,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      },
+      "bunker_needlers": {
+        "name": "Perimeter Coil-Rifle Garrison",
+        "category": "ranged",
+        "quantity": 100,
+        "attack": 3,
+        "defense": 5,
+        "charge": 1,
+        "missile": 9,
+        "cost": 6,
+        "upkeep": 0.04,
+        "capacityCost": { "m": 0, "w": 1, "s": 0, "c": 0 }
+      }
+    },
+    "recruitable": [
+      "dokokin_hoplites",
+      "ascendancy_legionaries",
+      "torpedo_gunboats",
+      "rail_battlecruisers",
+      "iron_superdreadnought",
+      "magitech_astrogators"
+    ],
+    "garrison": { "melee": "trench_cuirassiers", "ranged": "bunker_needlers" },
+    "regimentMap": {
+      "infantry": "dokokin_hoplites",
+      "archers": "ascendancy_legionaries",
+      "cavalry": "torpedo_gunboats",
+      "artillery": "rail_battlecruisers"
+    },
+    "caps": {
+      "torpedo_gunboats": 4,
+      "rail_battlecruisers": 3,
+      "iron_superdreadnought": 2,
+      "magitech_astrogators": 2
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

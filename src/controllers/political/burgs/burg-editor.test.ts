@@ -74,7 +74,7 @@ it("shows the OpenCiv city state and opens the Living inspector", () => {
 
   vi.stubGlobal("pack", {
     burgs: [null, { i: 1, cell: 0, state: 0, name: "Polmabas", group: "city", population: 10 }],
-    cells: { province: [0], g: [0], h: [30] },
+    cells: { province: [0], g: [0], h: [30], religion: [1] },
     states: [{ name: "Neutrals" }],
     cultures: [],
     religions: [
@@ -88,13 +88,10 @@ it("shows the OpenCiv city state and opens the Living inspector", () => {
             burgId: 1,
             baseTier: 5,
             isMajor: true,
-            citizens: 4,
-            cityYields: { food: 9, production: 4, gold: 5, science: 3, culture: 1, faith: 2, happiness: 0 },
             hp: 210,
             maxHp: 250,
-            productionQueue: [{ kind: "building", id: "monument" }],
-            productionProgress: { "building:monument": 20 },
-            religionPressure: { 1: 240 }
+            buildings: [],
+            construction: { buildingId: "monument", turnsLeft: 2 }
           }
         }
       }
@@ -108,10 +105,10 @@ it("shows the OpenCiv city state and opens the Living inspector", () => {
 
   const section = document.getElementById("burgLivingSection");
   expect(section?.style.display).toBe("block");
-  expect(section?.textContent).toContain("4 citizens");
+  expect(section?.textContent).toContain("Unrest 0%");
   expect(section?.textContent).toContain("Solar Church");
-  expect(section?.textContent).toContain("Monument");
-  expect(section?.textContent).toContain("20 / 60");
+  expect(section?.textContent).toContain("Building: monument");
+  expect(section?.textContent).toContain("2 seasons left");
 
   document.getElementById("burgLivingOpen")!.click();
   expect(inspect).toHaveBeenCalledWith("burg", 1);

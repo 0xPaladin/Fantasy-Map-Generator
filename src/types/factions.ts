@@ -1,7 +1,7 @@
 import type { Alignment } from "@/data/culture-traits";
 import type { Regiment } from "@/model/political/military-generator";
 import type { Emblem } from "@/types/emblems";
-import type { BurgSimState, HappinessBreakdown, YieldValues } from "@/types/living";
+import type { BurgSimState } from "@/types/living";
 
 export type FactionCategory = "commercial" | "adventuring" | "underworld" | "religious" | "political" | "martial";
 
@@ -73,6 +73,8 @@ export interface Faction {
   type: string;
   allegiance: FactionAllegiance;
   patronStateId?: number;
+  /** the work the faction has under way at one of its nodes (phase 6 of living-fmg-native.md) */
+  project?: { assetId: string; nodeKey: FactionNodeKey; turnsLeft: number };
 
   // Identity & Visuals
   color: string;
@@ -97,17 +99,6 @@ export interface Faction {
   // HQ & Outposts
   hq: FactionHq;
   outposts: FactionOutpost[];
-
-  // Advancement & OpenCiv Tech Tree
-  science: number;
-  currentTechId?: string | null;
-  researchQueue: string[];
-  researchedTechs: string[];
-  researchedProgress: Record<string, number>;
-  freeTechs?: number;
-  yieldsPerTurn?: YieldValues;
-  happiness?: number;
-  happinessBreakdown?: HappinessBreakdown;
 
   // Economy, Diplomacy & Military
   treasury: number;
@@ -181,12 +172,6 @@ export interface FactionArchetypeDef {
 export interface FactionNodeYieldBreakdown {
   node: FactionHq | FactionOutpost;
   isHq: boolean;
-  yields: YieldValues;
-  grossGold: number;
-  maintenance: number;
-  science: number;
-  citizens: number;
-  workedCells: number;
   /** upstream economy gold of the node's season, already net of the charter tithe */
   upstreamGold: number;
   /** what the node pays its patron state of its upstream gold */
@@ -194,11 +179,6 @@ export interface FactionNodeYieldBreakdown {
 }
 
 export interface FactionYieldBreakdown {
-  total: YieldValues;
-  totalCitizens: number;
-  totalWorkedCells: number;
-  upkeep: number;
-  maintenance: number;
   nodes: FactionNodeYieldBreakdown[];
   hq: FactionNodeYieldBreakdown | null;
   outposts: FactionNodeYieldBreakdown[];

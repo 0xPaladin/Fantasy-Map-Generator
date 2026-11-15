@@ -28,6 +28,7 @@ import {
   prosperityTip,
   renderProsperity,
   renderProsperityParts,
+  renderSimAdjustments,
   splitDealPrice,
   tariffCell,
   tone,
@@ -650,6 +651,14 @@ function renderStats(burg: Burg): void {
     adjustments => Burgs.setAdjustments(burg.i!, adjustments),
     signed
   );
+  renderSimAdjustments(
+    ensureEl(`${dialogId}SimAdjustments`),
+    burg.simAdjustments ?? [],
+    t(
+      "Lines the Living World writes (public works, troubles, factions); they merge with your adjustments and take effect when production is regenerated"
+    ),
+    signed
+  );
 }
 
 /** An amount with its sign, the coin left to the column's header */
@@ -691,6 +700,7 @@ function renderBalance(burg: Burg): string {
     ${line(t("Market License"), t("The license its state charges a market's center a day"), -fee)}
     ${isCenter ? line(t("Market Margin"), t("Market margin: {{rate}}% of every trade at its market", { rate: rn(Markets.getMarginRate(market) * 100, 1) }), margin, true) : ""}
     <div id="${dialogId}Adjustments"></div>
+    <div id="${dialogId}SimAdjustments"></div>
     <div class="total">${line(t("Day Balance"), treasuryTip, treasury, true)}</div>`;
 }
 

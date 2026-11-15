@@ -1,23 +1,13 @@
 import { Controllers } from "@/controllers";
-import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
-import { CIV_TECH_BY_ID } from "@/data/living-civ-techs";
-import { resolveCivTechName } from "@/data/living-civ-themes";
+import { currentContent } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
 import { Prosperity } from "@/model/economy/prosperity";
 import { canReadUpstreamEconomy } from "@/model/physical/living-faction-economy";
-import {
-  activeCivThemeId,
-  citizensFromPopulation,
-  factionSuppressionProductionCost,
-  Living,
-  settlementTierFromPop
-} from "@/model/physical/living-generator";
+import { isMajorBurg, Living, settlementTierFromPop } from "@/model/physical/living-generator";
 import type { Burg } from "@/model/political/burgs-generator";
-import { Military, type Regiment } from "@/model/political/military-generator";
+import type { Regiment } from "@/model/political/military-generator";
 import { Stability } from "@/model/political/stability";
 import { Development } from "@/model/society/development-generator";
-import type { YieldValues } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { zoomTo } from "@/ui/map/zoom";
 import { t } from "@/utils/i18n";
@@ -26,38 +16,10 @@ import { capitalize, escapeHtml } from "@/utils/string-utils";
 
 export const STATE_CITIES_DIALOG_ID = "stateCitiesDialog" as const;
 
-function formatYieldValue(value: number | undefined): string {
-  return String(Math.round(value ?? 0));
-}
-
-function formatYields(yields?: YieldValues): string {
-  if (!yields) return "—";
-  return `🌾 ${formatYieldValue(yields.food)} · 🔨 ${formatYieldValue(yields.production)} · 🪙 ${formatYieldValue(yields.gold)} · 🔬 ${formatYieldValue(yields.science)} · 🎭 ${formatYieldValue(yields.culture)} · ✨ ${formatYieldValue(yields.faith)}`;
-}
-
 /** A city's upstream prosperity, 0–100, or — before the economy has run */
 function formatProsperity(burgId: number): string {
   const prosperity = canReadUpstreamEconomy() ? Prosperity.getBurg(burgId)?.prosperity : undefined;
   return prosperity == null ? "—" : `${Math.round(prosperity * 100)}%`;
-}
-
-function formatBuildingBenefits(buildingId?: string): string {
-  if (!buildingId) return "—";
-  const civ = CIV_BUILDING_BY_ID[buildingId];
-  if (!civ) return "—";
-
-  const parts: string[] = [];
-  if (civ.stats?.food) parts.push(`+${civ.stats.food} 🌾`);
-  if (civ.stats?.production) parts.push(`+${civ.stats.production} 🔨`);
-  if (civ.stats?.gold) parts.push(`+${civ.stats.gold} 🪙`);
-  if (civ.stats?.science) parts.push(`+${civ.stats.science} 🔬`);
-  if (civ.stats?.culture) parts.push(`+${civ.stats.culture} 🎭`);
-  if (civ.stats?.faith) parts.push(`+${civ.stats.faith} ✨`);
-  if (civ.stats?.defense) parts.push(`+${civ.stats.defense} 🛡️`);
-  if (civ.effects?.trainedUnitExperience?.amount) parts.push(`+${civ.effects.trainedUnitExperience.amount} XP`);
-  if (civ.effects?.foodKeptPercent) parts.push(`+${civ.effects.foodKeptPercent}% food kept`);
-
-  return parts.length ? parts.join(", ") : civ.effects ? t("Special effect") : "—";
 }
 
 function formatRegimentComposition(reg: Regiment): string {
@@ -79,15 +41,12 @@ function formatRegimentComposition(reg: Regiment): string {
   return reg.n ? t("Fleet") : t("Regiment");
 }
 
-/** Open Cities & Yields Management Dialog for a single State */
+/** Open the Cities & Economy dialog for one state: its cities, standing assets and forces. */
 export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "assets" | "forces" = "cities"): void {
   const state = pack.states?.[stateId];
   if (!state || state.removed) return;
 
   const living = Living.getState();
-  const sSim = living.states[stateId];
-  const breakdown = Living.getStateYieldBreakdown(state, living);
-  if (sSim) sSim.yieldsPerTurn = breakdown.total;
 
   Dialog.destroy(STATE_CITIES_DIALOG_ID);
 
@@ -95,12 +54,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   const capitalName = capital?.name ?? t("None");
   const cultureName = pack.cultures[state.culture]?.name ?? t("None");
 
-  const currentTech = sSim?.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
-  const techName = currentTech ? resolveCivTechName(activeCivThemeId(), currentTech) : undefined;
-  const techProgress = currentTech ? Math.round(sSim?.researchedProgress?.[currentTech.id] ?? 0) : 0;
-  const techCost = currentTech?.cost ?? 0;
-
-  // §6.2: the upstream figures the Living World runs on, alongside the seasonal yields
+  // The upstream figures the Living World runs on.
   const readable = canReadUpstreamEconomy();
   const prosperity = readable ? Accounts.ofState(stateId)?.prosperity : undefined;
   const stability = readable ? Stability.get(stateId)?.stability : undefined;
@@ -109,10 +63,11 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
 
   let currentTab = activeTab;
 
-  // Burg candidate options for "+ City"
   const stateBurgs = (pack.burgs ?? []).filter((b): b is Burg => Boolean(b?.i && !b.removed && b.state === stateId));
-  const currentCityBurgIds = new Set(breakdown.cities.map(c => c.burgId));
-  const availableBurgs = stateBurgs.filter(b => !currentCityBurgIds.has(b.i));
+  const cities = stateBurgs.filter(burg => isMajorBurg(burg));
+  const cityIds = new Set(cities.map(burg => burg.i));
+  const availableBurgs = stateBurgs.filter(burg => !cityIds.has(burg.i));
+
   const addCityOptions = availableBurgs.length
     ? availableBurgs
         .sort((a, b) => (b.population ?? 0) - (a.population ?? 0))
@@ -123,62 +78,30 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
         .join("")
     : `<option disabled>${t("All state burgs are major cities")}</option>`;
 
-  const citiesHtml = breakdown.cities.length
-    ? breakdown.cities
-        .map(city => {
-          const burg = pack.burgs?.[city.burgId];
-          const bSim = living.burgs[city.burgId];
-          const isStateCapital = Boolean(city.isCapital || state.capital === city.burgId);
-          const isProvCapital =
-            !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === city.burgId));
+  const citiesHtml = cities.length
+    ? cities
+        .map(burg => {
+          const isStateCapital = Boolean(state.capital === burg.i);
+          const isProvCapital = Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === burg.i));
           const starPrefix = isStateCapital
             ? "⭐ "
             : isProvCapital
               ? '<span style="font-size: 0.85em; opacity: 0.85; margin-right: 2px;">★</span>'
               : "";
-
-          const prodItem = bSim?.productionQueue?.[0];
-          let queueText = "";
-          if (prodItem) {
-            if (prodItem.kind === "operation" && prodItem.id === "faction-suppression") {
-              const targetFaction =
-                prodItem.targetFactionId !== undefined ? pack.factions?.[prodItem.targetFactionId] : undefined;
-              const targetNode =
-                prodItem.targetNodeKey === "hq"
-                  ? targetFaction?.hq
-                  : targetFaction?.outposts?.find(outpost => `outpost:${outpost.burgId}` === prodItem.targetNodeKey);
-              const tier = "tier" in (targetNode ?? {}) ? (targetNode as { tier: number }).tier : 2;
-              const prog = Math.round(bSim?.productionProgress?.[itemToProgressKey(prodItem)] ?? 0);
-              const cost = factionSuppressionProductionCost({ tier });
-              queueText = `<span style="font-size: 0.8em; opacity: 0.75; margin-left: 4px;">🔨 Suppressing (${prog}/${cost})</span>`;
-            } else {
-              const def =
-                prodItem.kind === "unit"
-                  ? (CIV_CIVILIAN_BY_ID[prodItem.id] ?? Military.getUnitTypes()[prodItem.id])
-                  : CIV_BUILDING_BY_ID[prodItem.id];
-              const prog = Math.round(bSim?.productionProgress?.[itemToProgressKey(prodItem)] ?? 0);
-              const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 0);
-              queueText = `<span style="font-size: 0.8em; opacity: 0.75; margin-left: 4px;">🔨 ${escapeHtml(def?.name ?? prodItem.id)} (${prog}/${cost})</span>`;
-            }
-          }
-
-          const popText = burg?.population ? burg.population.toLocaleString() : "—";
+          const popText = burg.population ? burg.population.toLocaleString() : "—";
 
           return /* html */ `
-            <div class="states" data-burg-id="${city.burgId}">
+            <div class="states" data-burg-id="${burg.i}">
               <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                ${starPrefix}<b>${escapeHtml(city.name)}</b>${queueText}
+                ${starPrefix}<b>${escapeHtml(burg.name ?? `Burg ${burg.i}`)}</b>
               </div>
               <div style="justify-content: center; text-align: center;">${popText}</div>
-              <div style="justify-content: center; text-align: center;">${city.citizens}</div>
-              <div style="justify-content: center; text-align: center;">${city.workedCells}</div>
-              <div style="justify-content: center; text-align: center;">${formatProsperity(city.burgId)}</div>
-              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${formatYields(city.yields)}</div>
+              <div style="justify-content: center; text-align: center;">${formatProsperity(burg.i)}</div>
               <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
-                <button class="btn icon-search zoomCityBtn" data-burg-id="${city.burgId}" data-tip="${t("Zoom to city")}"></button>
-                <button class="btn icon-bank cityEconomyBtn" data-burg-id="${city.burgId}" data-tip="${t("Open the burg's economy")}"></button>
-                <button class="btn icon-pencil editCityBtn" data-burg-id="${city.burgId}" data-tip="${t("Edit burg")}"></button>
-                ${!isStateCapital ? `<button class="btn icon-trash removeCityBtn" data-burg-id="${city.burgId}" data-tip="${t("Remove city from major cities")}"></button>` : ""}
+                <button class="btn icon-search zoomCityBtn" data-burg-id="${burg.i}" data-tip="${t("Zoom to city")}"></button>
+                <button class="btn icon-bank cityEconomyBtn" data-burg-id="${burg.i}" data-tip="${t("Open the burg's economy")}"></button>
+                <button class="btn icon-pencil editCityBtn" data-burg-id="${burg.i}" data-tip="${t("Edit burg")}"></button>
+                ${!isStateCapital ? `<button class="btn icon-trash removeCityBtn" data-burg-id="${burg.i}" data-tip="${t("Remove city from major cities")}"></button>` : ""}
               </div>
             </div>
           `;
@@ -186,67 +109,44 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
         .join("")
     : `<div class="states" style="display: flex; justify-content: center; padding: 6px; opacity: 0.7;">${t("No major cities established yet.")}</div>`;
 
+  // Assets: the roster buildings standing in the state's burgs, and works under way.
   interface StateAssetEntry {
     name: string;
-    buildingId: string;
     location: string;
     starPrefix: string;
     progress: string;
-    progressTip?: string;
     isComplete: boolean;
-    benefits: string;
     burgId: number;
   }
 
   const assetEntries: StateAssetEntry[] = [];
-
-  for (const city of breakdown.cities) {
-    const bSim = living.burgs[city.burgId];
-    const isStateCapital = Boolean(city.isCapital || state.capital === city.burgId);
-    const isProvCapital =
-      !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === city.burgId));
-    const starPrefix = isStateCapital
-      ? "⭐ "
-      : isProvCapital
-        ? '<span style="font-size: 0.85em; opacity: 0.85; margin-right: 2px;">★</span>'
-        : "";
-
-    // Completed buildings
-    for (const bId of city.buildings) {
-      const def = CIV_BUILDING_BY_ID[bId];
+  for (const burg of cities) {
+    const bSim = living.burgs[burg.i];
+    if (!bSim) continue;
+    const isStateCapital = Boolean(state.capital === burg.i);
+    const isProvCapital = Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === burg.i));
+    const starPrefix = isStateCapital ? "⭐ " : isProvCapital ? "★ " : "";
+    for (const buildingId of bSim.buildings) {
+      const def = currentContent().content.buildings.find(entry => entry.id === buildingId);
       assetEntries.push({
-        name: def?.name ?? bId,
-        buildingId: bId,
-        location: city.name,
+        name: def?.name ?? buildingId,
+        location: burg.name ?? "Burg",
         starPrefix,
         progress: "100%",
         isComplete: true,
-        benefits: formatBuildingBenefits(bId),
-        burgId: city.burgId
+        burgId: burg.i
       });
     }
-
-    // In-progress buildings
-    for (const item of bSim?.productionQueue ?? []) {
-      if (item.kind === "building" && !city.buildings.includes(item.id)) {
-        const def = CIV_BUILDING_BY_ID[item.id];
-        const prog = Math.round(
-          bSim?.productionProgress?.[itemToProgressKey(item)] ?? bSim?.productionProgress?.[item.id] ?? 0
-        );
-        const cost = Math.round((def as { cost?: number } | undefined)?.cost ?? 100);
-        const pct = Math.min(99, Math.round((prog / Math.max(1, cost)) * 100));
-        assetEntries.push({
-          name: def?.name ?? item.id,
-          buildingId: item.id,
-          location: city.name,
-          starPrefix,
-          progress: `${pct}%`,
-          progressTip: `${prog}/${cost}`,
-          isComplete: false,
-          benefits: formatBuildingBenefits(item.id),
-          burgId: city.burgId
-        });
-      }
+    if (bSim.construction) {
+      const def = currentContent().content.buildings.find(entry => entry.id === bSim.construction?.buildingId);
+      assetEntries.push({
+        name: def?.name ?? bSim.construction.buildingId,
+        location: burg.name ?? "Burg",
+        starPrefix,
+        progress: `${Math.max(0, bSim.construction.turnsLeft)} ${t("seasons left")}`,
+        isComplete: false,
+        burgId: burg.i
+      });
     }
   }
 
@@ -258,12 +158,10 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
             <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><b>${escapeHtml(r.name)}</b></div>
             <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.starPrefix}${escapeHtml(r.location)}</div>
             <div style="justify-content: center; text-align: center;">
-              <span style="font-weight: 600; color: ${r.isComplete ? "#4ade80" : "#fbbf24"};" ${r.progressTip ? `data-tip="${escapeHtml(r.progressTip)}"` : ""}>${escapeHtml(r.progress)}</span>
+              <span style="font-weight: 600; color: ${r.isComplete ? "#4ade80" : "#fbbf24"};">${escapeHtml(r.progress)}</span>
             </div>
-            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.benefits}</div>
             <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
               <button class="btn icon-search zoomCityBtn" data-burg-id="${r.burgId}" data-tip="${t("Zoom to city")}"></button>
-              ${r.isComplete ? `<button class="btn icon-trash removeAssetBtn" data-burg-id="${r.burgId}" data-building-id="${r.buildingId}" data-tip="${t("Dismantle asset")}"></button>` : ""}
             </div>
           </div>
         `
@@ -271,22 +169,16 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
         .join("")
     : `<div class="states" style="display: flex; justify-content: center; padding: 6px; opacity: 0.7;">${t("No assets constructed yet.")}</div>`;
 
-  const assetCityOptions = breakdown.cities.length
-    ? breakdown.cities
+  const cityOptions = cities.length
+    ? cities
         .map(c => {
-          const isStateCapital = Boolean(c.isCapital || state.capital === c.burgId);
-          const isProvCapital =
-            !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.burgId));
+          const isStateCapital = Boolean(state.capital === c.i);
+          const isProvCapital = Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.i));
           const prefix = isStateCapital ? "⭐ " : isProvCapital ? "★ " : "";
-          return `<option value="${c.burgId}">${prefix}${escapeHtml(c.name)}</option>`;
+          return `<option value="${c.i}">${prefix}${escapeHtml(c.name ?? `Burg ${c.i}`)}</option>`;
         })
         .join("")
     : `<option disabled>${t("No cities available")}</option>`;
-
-  const civBuildingOptions = [...CIV_BUILDINGS]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(b => `<option value="${b.id}">${escapeHtml(b.name)}${b.cost ? ` (${b.cost}🔨)` : ""}</option>`)
-    .join("");
 
   // Forces table rows
   const forcesRowsHtml = (state.military ?? []).length
@@ -304,8 +196,6 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
             else if ((pack.cells?.h?.[r.cell] ?? 20) < 20) locName = t("At Sea");
           }
 
-          const compText = formatRegimentComposition(r);
-
           return /* html */ `
             <div class="states" data-reg-id="${r.i}">
               <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -315,7 +205,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
                 ${escapeHtml(locName)}
               </div>
               <div style="justify-content: center; text-align: center;">${(r.a ?? 0).toLocaleString()}</div>
-              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(compText)}</div>
+              <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(formatRegimentComposition(r))}</div>
               <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
                 <button class="btn icon-search zoomForceBtn" data-cell="${r.cell}" data-x="${r.x}" data-y="${r.y}" data-tip="${t("Zoom to force")}"></button>
                 <button class="btn icon-trash removeForceBtn" data-reg-id="${r.i}" data-tip="${t("Disband force")}"></button>
@@ -325,18 +215,6 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
         })
         .join("")
     : `<div class="states" style="display: flex; justify-content: center; padding: 6px; opacity: 0.7;">${t("No military forces mustered yet.")}</div>`;
-
-  const forceCityOptions = breakdown.cities.length
-    ? breakdown.cities
-        .map(c => {
-          const isStateCapital = Boolean(c.isCapital || state.capital === c.burgId);
-          const isProvCapital =
-            !isStateCapital && Boolean(pack.provinces?.some(p => p?.i && !p.removed && p.burg === c.burgId));
-          const prefix = isStateCapital ? "⭐ " : isProvCapital ? "★ " : "";
-          return `<option value="${c.burgId}">${prefix}${escapeHtml(c.name)}</option>`;
-        })
-        .join("")
-    : `<option disabled>${t("No cities available")}</option>`;
 
   const markup = /* html */ `
     <div id="${STATE_CITIES_DIALOG_ID}" class="dialog stable editorDialog" style="width: 100%; min-width: 860px; max-width: 95vw; max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
@@ -437,13 +315,12 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
             ? ""
             : `<span class="badge">${t("Development")}: ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`
         }
-        ${techName ? `<span class="badge">🔬 ${escapeHtml(techName)} (${techProgress}/${techCost})</span>` : ""}
       </div>
 
       <!-- Tab Buttons -->
       <div class="dialogTabs">
         <button type="button" class="tabBtn ${activeTab === "cities" ? "active" : ""}" data-tab="cities">
-          🏛️ ${t("Major Cities")} (${breakdown.cities.length})
+          🏛️ ${t("Major Cities")} (${cities.length})
         </button>
         <button type="button" class="tabBtn ${activeTab === "assets" ? "active" : ""}" data-tab="assets">
           🪙 ${t("Assets")} (${assetEntries.length})
@@ -455,14 +332,11 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
 
       <!-- Tab 1: Major Cities -->
       <div class="tabPanel" data-panel="cities" style="display: ${activeTab === "cities" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
-        <div id="stateCitiesTable" class="table" style="--table-columns: minmax(12em, 1.3fr) 5.5em 4.5em 4em 5em minmax(29em, 3fr) 7.5em; width: 0; min-width: 100%;">
+        <div id="stateCitiesTable" class="table" style="--table-columns: minmax(12em, 1.3fr) 5.5em 6em 7.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("City")}</div>
             <div style="justify-content: center; text-align: center;">${t("Pop")}</div>
-            <div style="justify-content: center; text-align: center;">${t("Citizens")}</div>
-            <div style="justify-content: center; text-align: center;">${t("Cells")}</div>
             <div style="justify-content: center; text-align: center;">${t("Prosperity")}</div>
-            <div>${t("Yields")}</div>
             <div style="justify-content: flex-end; text-align: right;">${t("Actions")}</div>
           </div>
           ${citiesHtml}
@@ -477,24 +351,14 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
 
       <!-- Tab 2: Assets -->
       <div class="tabPanel" data-panel="assets" style="display: ${activeTab === "assets" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
-        <div id="stateAssetsTable" class="table" style="--table-columns: minmax(12em, 1.2fr) minmax(10em, 1fr) 5.5em minmax(27em, 3fr) 4.5em; width: 0; min-width: 100%;">
+        <div id="stateAssetsTable" class="table" style="--table-columns: minmax(12em, 1.2fr) minmax(10em, 1fr) 8em 4.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Asset")}</div>
             <div>${t("Location")}</div>
             <div style="justify-content: center; text-align: center;">${t("Progress")}</div>
-            <div>${t("Benefits")}</div>
             <div style="justify-content: flex-end; text-align: right;"></div>
           </div>
           ${assetsRowsHtml}
-        </div>
-        <div style="width: 0; min-width: 100%; display: flex; gap: 4px; margin-top: 4px;">
-          <select id="newStateAssetCitySelect" style="flex: 1;" ${breakdown.cities.length ? "" : "disabled"}>
-            ${assetCityOptions}
-          </select>
-          <select id="newStateAssetSelect" style="flex: 1.5;" ${breakdown.cities.length ? "" : "disabled"}>
-            ${civBuildingOptions}
-          </select>
-          <button id="addStateAssetBtn" class="btn" ${breakdown.cities.length ? "" : "disabled"}>${t("+ Asset")}</button>
         </div>
       </div>
 
@@ -511,12 +375,12 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
           ${forcesRowsHtml}
         </div>
         <div style="width: 0; min-width: 100%; display: flex; gap: 4px; margin-top: 4px;">
-          <select id="newStateForceLocationSelect" style="flex: 1;" ${breakdown.cities.length ? "" : "disabled"}>
-            ${forceCityOptions}
+          <select id="newStateForceLocationSelect" style="flex: 1;" ${cities.length ? "" : "disabled"}>
+            ${cityOptions}
           </select>
           <input id="newStateForceNameInput" type="text" placeholder="${t("Force name")}" style="flex: 1.2;" />
           <input id="newStateForceTroopsInput" type="number" min="10" step="50" value="100" style="width: 5.5em;" />
-          <button id="addStateForceBtn" class="btn" ${breakdown.cities.length ? "" : "disabled"}>${t("+ Force")}</button>
+          <button id="addStateForceBtn" class="btn" ${cities.length ? "" : "disabled"}>${t("+ Force")}</button>
         </div>
       </div>
 
@@ -529,7 +393,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   document.body.insertAdjacentHTML("beforeend", markup);
 
   Dialog.open(STATE_CITIES_DIALOG_ID, {
-    title: `${t("State Cities & Yields")} - ${state.name}`,
+    title: `${t("State Cities & Economy")} - ${state.name}`,
     width: "auto",
     minWidth: 860,
     maxHeight: Math.round((window.innerHeight || 800) * 0.85),
@@ -577,8 +441,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
     .forEach(btn => {
       btn.addEventListener("click", e => {
         const target = e.currentTarget as HTMLElement;
-        const burgId = Number(target.dataset.burgId);
-        void Controllers.BurgEditor.open(burgId);
+        void Controllers.BurgEditor.open(Number(target.dataset.burgId));
       });
     });
 
@@ -609,15 +472,8 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
         const target = e.currentTarget as HTMLElement;
         const burgId = Number(target.dataset.burgId);
         if (!burgId) return;
-
         const bSim = living.burgs[burgId];
-        if (bSim) {
-          bSim.isMajor = false;
-        }
-        const burg = pack.burgs?.[burgId];
-        if (burg) Living.refreshStateBurgYields(state, burg);
-        const newBreakdown = Living.getStateYieldBreakdown(state, living);
-        if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
+        if (bSim) bSim.isMajor = false;
         openStateCitiesDialog(stateId, currentTab);
       });
     });
@@ -648,76 +504,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
       living.burgs[burgId] = bSim;
     }
     bSim.isMajor = true;
-    if (!bSim.citizens) {
-      bSim.citizens = Math.max(1, citizensFromPopulation(burg.population ?? 0));
-    }
-    Living.refreshStateBurgYields(state, burg);
-    const newBreakdown = Living.getStateYieldBreakdown(state, living);
-    if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
     openStateCitiesDialog(stateId, "cities");
-  });
-
-  // Dismantle Asset listener
-  ensureEl(STATE_CITIES_DIALOG_ID)
-    ?.querySelectorAll(".removeAssetBtn")
-    .forEach(btn => {
-      btn.addEventListener("click", e => {
-        const target = e.currentTarget as HTMLElement;
-        const burgId = Number(target.dataset.burgId);
-        const buildingId = target.dataset.buildingId;
-        if (!burgId || !buildingId) return;
-
-        const bSim = living.burgs[burgId];
-        if (!bSim?.civBuildings) return;
-
-        const idx = bSim.civBuildings.indexOf(buildingId);
-        if (idx !== -1) {
-          bSim.civBuildings.splice(idx, 1);
-        }
-        const burg = pack.burgs?.[burgId];
-        if (burg) Living.refreshStateBurgYields(state, burg);
-        const newBreakdown = Living.getStateYieldBreakdown(state, living);
-        if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
-        openStateCitiesDialog(stateId, "assets");
-      });
-    });
-
-  // Add Asset listener
-  ensureEl("addStateAssetBtn")?.addEventListener("click", () => {
-    const citySel = ensureEl<HTMLSelectElement>("newStateAssetCitySelect");
-    const assetSel = ensureEl<HTMLSelectElement>("newStateAssetSelect");
-    const burgId = Number(citySel?.value);
-    const assetId = assetSel?.value;
-    if (!burgId || !assetId) return;
-
-    const burg = pack.burgs?.[burgId];
-    if (!burg) return;
-
-    let bSim = living.burgs[burgId];
-    if (!bSim) {
-      bSim = {
-        burgId,
-        baseTier: settlementTierFromPop(burg.population ?? 0),
-        development: 0,
-        developmentProgress: 0,
-        buildings: [],
-        civBuildings: [],
-        construction: null,
-        unrest: 0,
-        originalOwner: burg.state ?? 0,
-        originalCulture: burg.culture,
-        originalReligion: pack.cells.religion?.[burg.cell] ?? 0
-      };
-      living.burgs[burgId] = bSim;
-    }
-    bSim.civBuildings ??= [];
-    if (!bSim.civBuildings.includes(assetId)) {
-      bSim.civBuildings.push(assetId);
-    }
-    Living.refreshStateBurgYields(state, burg);
-    const newBreakdown = Living.getStateYieldBreakdown(state, living);
-    if (sSim) sSim.yieldsPerTurn = newBreakdown.total;
-    openStateCitiesDialog(stateId, "assets");
   });
 
   // Zoom to force listener
@@ -781,10 +568,6 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
   ensureEl("stateCitiesOverviewBurgsBtn")?.addEventListener("click", () => {
     void Controllers.BurgsOverview.open({ stateId });
   });
-}
-
-function itemToProgressKey(item: { kind?: string; id: string }): string {
-  return item.kind ? `${item.kind}:${item.id}` : item.id;
 }
 
 export const StateCitiesDialog = {

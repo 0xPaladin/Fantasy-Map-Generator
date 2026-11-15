@@ -24,6 +24,7 @@ import {
   EconomyTerms,
   economyWikiButton,
   mountAdjustments,
+  renderSimAdjustments,
   tone
 } from "@/ui/economy-view";
 import { tip } from "@/ui/tooltips";
@@ -123,6 +124,11 @@ function render(): void {
     edit.adjustments = adjustments;
     drawCollected();
   });
+  renderSimAdjustments(
+    ensureEl("stateSimAdjustments"),
+    state.economy.simAdjustments ?? [],
+    t("Lines the Living World writes (public works, troubles, factions); they merge with your adjustments")
+  );
   drawCollected();
   drawBudget();
   drawRules();
@@ -188,6 +194,7 @@ function renderForm(state: State): string {
         <tr><td data-tip="${t("Paid a day by each market centered in the state, from its margin")}">${t("Market License")}</td><td class="muted">${t("Markets: {{markets}}", { markets })}</td><td><input id="stateMarketFee" type="number" min="0" step="1" value="${state.economy.marketFee || 0}"/></td>${amount(marketFees, "positive")}</tr>
         <tr><td>${t("Import Tariffs")}</td><td></td><td></td>${amount(tariffs, "positive")}</tr>
         <tr><td colspan="4" id="stateAdjustments"></td></tr>
+        <tr><td colspan="4" id="stateSimAdjustments"></td></tr>
         <tr class="total"><td colspan="3">${t("Collected")}</td>${amount(salesTax + tariffs + pollTax + marketFees, "", "", "stateCollected")}</tr>
       </tbody>
       <tbody id="stateBudget">

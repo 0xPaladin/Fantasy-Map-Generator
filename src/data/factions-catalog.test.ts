@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { FACTION_ASSETS_CATALOG } from "@/data/faction-assets";
-import { CIV_TECHS } from "@/data/living-civ-techs";
 import { LAIR_CATALOG } from "@/data/living-lairs";
 import { getTroubleFactionType, ORGANIZATIONAL_TROUBLE_IDS, TROUBLE_CATALOG } from "@/data/living-troubles";
 import { getAllFactionArchetypes, getArchetypesByCategory, getFactionArchetype } from "./factions-catalog";
 
 describe("FACTIONS_CATALOG", () => {
   const knownAssetIds = new Set(Object.keys(FACTION_ASSETS_CATALOG));
-  const knownTechIds = new Set(CIV_TECHS.map(t => t.id));
 
   it("contains at least 38 archetypes across 6 categories", () => {
     const archetypes = getAllFactionArchetypes();
@@ -26,14 +24,6 @@ describe("FACTIONS_CATALOG", () => {
     for (const archetype of getAllFactionArchetypes()) {
       for (const assetId of archetype.desiredAssets) {
         expect(knownAssetIds.has(assetId)).toBe(true);
-      }
-    }
-  });
-
-  it("ensures all desiredTechs exist in CIV_TECHS", () => {
-    for (const archetype of getAllFactionArchetypes()) {
-      for (const techId of archetype.desiredTechs) {
-        expect(knownTechIds.has(techId)).toBe(true);
       }
     }
   });

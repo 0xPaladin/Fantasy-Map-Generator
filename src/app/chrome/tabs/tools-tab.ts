@@ -213,6 +213,13 @@ const TEMPLATE = /* html */ `
       ${t("River")}
     </button>
     <button id="addRoute" data-tip="${t("Open route creation dialog")}" data-shortcut="Shift + 5">${t("Route")}</button>
+    <button
+      id="addNetwork"
+      class="astral-only"
+      data-tip="${t("Create an astral network of wormholes, hyperspace lanes or relays")}"
+    >
+      ${t("Network")}
+    </button>
   </div>
   <div class="separator">${t("Show")}</div>
   <div class="grid">

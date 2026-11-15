@@ -137,7 +137,10 @@ class AccountsModule {
       pollTaxOwed: owed[stateId] || 0,
       marketFees: Taxes.getMarketFees()[stateId] || 0,
       markets: pack.markets.filter(market => Markets.getState(market) === stateId).length,
-      adjustments: sum(pack.states[stateId]?.economy.adjustments ?? [], line => line.value),
+      adjustments: sum(
+        [...(pack.states[stateId]?.economy.adjustments ?? []), ...(pack.states[stateId]?.economy.simAdjustments ?? [])],
+        line => line.value
+      ),
       corruption: pack.states[stateId]?.economy.pocketed || 0
     };
   }

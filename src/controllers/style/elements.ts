@@ -1,6 +1,8 @@
 // The style elements and their user-named groups, as the editor and its dialogs list them
 
+import { NETWORK_KIND_DEFINITIONS } from "@/data/astral-networks";
 import { layerLabel } from "@/data/layer-labels";
+import { Networks } from "@/model/astral/networks";
 import { stylesSchema } from "@/model/styles/styles-schema";
 import { getLabelsData } from "@/renderers/labels/label-data";
 import { Layers } from "@/renderers/layers";
@@ -63,6 +65,14 @@ const GROUP_SOURCES: Partial<Record<StyleElement, () => GroupEntry[]>> = {
         label: name,
         count: `${t("Burgs")}: ${all.get(name) ?? 0}, ${t("Ports")}: ${ports.get(name) ?? 0}`
       }));
+  },
+  networks: () => {
+    const counts = countBy(Networks.getAll(), network => network.kind);
+    return Object.keys(styles.networks.groups).map(id => ({
+      id,
+      label: NETWORK_KIND_DEFINITIONS[id as keyof typeof NETWORK_KIND_DEFINITIONS]?.label ?? id,
+      count: String(counts.get(id) ?? 0)
+    }));
   },
   routes: () => {
     const counts = countBy(pack.routes ?? [], route => route.group);

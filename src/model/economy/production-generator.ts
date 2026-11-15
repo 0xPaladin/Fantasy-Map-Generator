@@ -231,7 +231,7 @@ export class ProductionModule {
       burg.product = 0;
       burg.production = [];
       burg.pollTaxPaid = 0;
-      burg.treasury = sum(burg.adjustments ?? [], line => line.value);
+      burg.treasury = sum([...(burg.adjustments ?? []), ...(burg.simAdjustments ?? [])], line => line.value);
     }
     for (const state of pack.states) if (state.i && !state.removed) state.economy.spent = noExpenses();
     pack.cells.prosperity = new Uint8Array(pack.cells.i.length);
@@ -262,7 +262,8 @@ export class ProductionModule {
       // a mobile burg on the road is outside the market grid: it carries stock and buys nothing until it docks
       const onTheRoad = Burgs.isOnTheRoad(burg);
       burg.pollTaxPaid = !onTheRoad && market ? rn(Taxes.getPollTaxDue(burg.state || 0, burg.population || 0), 2) : 0;
-      burg.treasury = sum(burg.adjustments ?? [], line => line.value) - burg.pollTaxPaid;
+      burg.treasury =
+        sum([...(burg.adjustments ?? []), ...(burg.simAdjustments ?? [])], line => line.value) - burg.pollTaxPaid;
       this.tradeCarried(burg, market, onTheRoad);
       if (market && !onTheRoad) days.push(this.createBurgDay(index, burg, market, recording));
       else {

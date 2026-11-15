@@ -185,7 +185,7 @@ test.describe("Verse Map Topography Transformation", () => {
         { name: "Gray Syndicate (Ancient)", i: 11, base: "VRGRY", shield: "targe", color: "#708090", type: "Generic" },
         { name: "Xothians (Ancient)", i: 12, base: "VRMIG", shield: "diamond", color: "#3cb371", type: "Generic" },
         // Independents & Thralls
-        { name: "The One (Frontier)", i: 13, base: "VRFRN", shield: "oval", color: "#ba55d3", type: "Generic" },
+        { name: "The One (Nexus)", i: 13, base: "VRONE", shield: "square", color: "#ba55d3", type: "Generic" },
         { name: "Ascendancy (Independent)", i: 14, base: "VRGRY", shield: "round", color: "#cd853f", type: "Generic" },
         { name: "Collective (Independent)", i: 15, base: "VRGRY", shield: "round", color: "#20b2aa", type: "Generic" },
         { name: "Venar (Independent)", i: 16, base: "VRECH", shield: "pavise", color: "#dda0dd", type: "Generic" },

@@ -48,6 +48,8 @@ export interface ThreatHost {
   addBattleMarker?(burgOrCell: Burg | number, label?: string): void;
   fieldArmy?(state: State): Regiment | null;
   applyArmySurvivors?(state: State, regiment: Regiment, units: ArmyUnit[]): void;
+  /** a cleared hazard drops a small treasure into the clearer's treasury */
+  rewardTroubleClear?(provinceId: number, level?: number): number;
   provinceCells?(provinceId: number): number[];
   recordGrudge?(stateId: number, burg: Burg, kind: string, reason: string, otherId?: number): void;
   findFigure?(figureId: number): HistoricalFigure | undefined;
@@ -373,25 +375,6 @@ export function spawnTrouble(
     cell
   };
 
-  // Phase E: mint the civic response as a burg production action — the
-  // province's major burg works the trouble off like any building asset.
-  const major =
-    pack.burgs.find(
-      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId && b.capital
-    ) ??
-    pack.burgs.find(
-      b => b?.i && !b.removed && b.state === province.state && pack.cells.province?.[b.cell] === provinceId
-    );
-  if (major) {
-    const bSim = living.burgs[major.i];
-    if (bSim) {
-      bSim.productionQueue ??= [];
-      if (!bSim.productionQueue.some(item => item.kind === "trouble" && item.id === finalTroubleId)) {
-        bSim.productionQueue.push({ kind: "trouble", id: finalTroubleId });
-      }
-    }
-  }
-
   pushNews(living, {
     kind: "trouble",
     text: `${tDef.name} arose in ${province.name}! (${finalTheme} trouble, level ${finalLevel})`,
@@ -469,7 +452,6 @@ export function spawnDangerousFaction(
 
   const culture = pack.cells.culture?.[cell] ?? pack.states[province.state]?.culture ?? 1;
   const year = options?.map?.lore?.calendar?.year ?? 1000;
-  const researchQueue = arch.desiredTechs.filter(t => t !== "pottery" && t !== "mining");
 
   const faction = Factions.add({
     name: opts?.name ?? arch.name,
@@ -498,9 +480,6 @@ export function spawnDangerousFaction(
       assets: []
     },
     outposts: [],
-    currentTechId: researchQueue[0] ?? null,
-    researchQueue,
-    researchedTechs: ["pottery", "mining"],
     treasury: 150,
     influence: 30,
     military: [
@@ -588,10 +567,11 @@ export function quellTrouble(provinceId: number): boolean {
   const pSim = living.provinces[provinceId];
   if (!pSim?.trouble) return false;
 
+  const loot = host.rewardTroubleClear?.(provinceId, pSim.trouble.level) ?? 0;
   pSim.trouble = null;
   pushNews(living, {
     kind: "trouble",
-    text: `Trouble in ${province.name} was quelled.`,
+    text: `Trouble in ${province.name} was quelled${loot ? `, and ${loot} gold recovered` : ""}.`,
     cell: province.center ?? 0,
     stateId: province.state
   });
@@ -785,7 +765,7 @@ export function sendAdventurersToFaction(stateId: number, provinceId: number): b
   const traitBonus = (adventurer.virtues?.length ?? 0) - (adventurer.vices?.length ?? 0);
   const rng = getRng("adventurer:delve", stateId * 500 + provinceId, living.tick);
   const roll = rng.d(20);
-  const domainMod = valueModifier(living.states[stateId]?.yieldsPerTurn?.gold ?? 0);
+  const domainMod = valueModifier(Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0) / 50));
   const total = roll + domainMod + traitBonus;
   const dc = 14 + Math.ceil((factionReg?.a ?? 100) / 100);
 
@@ -934,8 +914,6 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
       newState.fullName = faction.stateForm ? `${faction.stateForm} of ${newState.name}` : faction.name;
       newState.color = faction.color;
       newState.economy.treasury = faction.treasury;
-      const newSim = living.states?.[newStateId];
-      if (newSim) newSim.researchedTechs = [...faction.researchedTechs];
       newState.military = [...(faction.military ?? [])];
 
       if (faction.leaderId) {
@@ -963,7 +941,6 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
 
 export function spawnRemnantFaction(fallenState: State, conquerorStateId?: number): Faction | null {
   if (!fallenState?.i) return null;
-  const fallenSim = getHost().getState().states?.[fallenState.i];
 
   const stateRelations: Record<number, "Enemy" | "Ally" | "Friendly" | "Neutral"> = {};
   if (conquerorStateId) {
@@ -992,9 +969,6 @@ export function spawnRemnantFaction(fallenState: State, conquerorStateId?: numbe
     },
     treasury: 120,
     influence: 40,
-    researchedTechs: fallenSim?.researchedTechs
-      ? [...fallenSim.researchedTechs]
-      : ["pottery", "mining", "iron_working"],
     stateRelations
   });
 

@@ -11,7 +11,7 @@ export const ASTRAL_DEFAULT_PRESET = "astral";
 export const ASTRAL_PRESETS: Record<string, AstralPreset> = {
   astral: {
     name: "Astral chart",
-    layers: ["states", "routes", "systems", "labels", "scaleBar"]
+    layers: ["states", "routes", "networks", "systems", "labels", "scaleBar"]
   },
   empires: {
     name: "Empires",
@@ -27,6 +27,6 @@ export const ASTRAL_PRESETS: Record<string, AstralPreset> = {
   },
   systems: {
     name: "Systems and lanes",
-    layers: ["systems", "routes", "labels", "scaleBar"]
+    layers: ["systems", "routes", "networks", "labels", "scaleBar"]
   }
 };

@@ -52,18 +52,17 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 
 ## Unreleased (civ branch)
 
-- Living World: the Grand Guild player layer is removed — no guild wallet, missions, relics, petitions or popups; the HUD inspector keeps every intervention as free God Mode, and heroes keep their sheets, vitals, doctrines and paths
-- Factions: states can now suppress hostile factions in the Living World — production-funded `suppress_faction` agenda against urban nodes (influence damage, guard stalls, pillage, HQ relocation/dissolution), military storm of wilderness strongholds on state-owned cells, plus Inspector "Suppress faction" command and pillaged badges
-- Factions: unified OpenCiv engine — HQs/outposts are city-nodes competing for worked cells, gathering seven yields, producing from unified queues, researching with host spillover, and fighting with shared Builders/Settlers/armies/sieges
-- Factions Editor: new Yields, Citizens, Worked Cells and Production columns; Outposts dialog and Burg inspector show per-node yields, citizens, worked cells and production queue
-- Economy rework: upstream's goods, markets, prices, taxes, budgets, prosperity and stability replace the old parallel economy, with old maps converted on load
-- Economy: the Living World runs on the new economy — seasonal treasuries, improvements and buildings that raise real output, and prosperity that sways happiness
-- Factions: trade commissions, graft siphoning, smuggling, retainers and court tithes earned from the host economy; charters pay a named **Chartered Faction Tithes** line into the patron's budget
-- Characters: ruler traits now tell on the economy — corruption, court and administration output, army upkeep — and an audit or sabotage changes a state without a regeneration
-- Development: technologies researched in the Living World raise the people's development, unlocking goods and raising output, and the countryside follows its towns each season
-- Military: musters are gated by unit goods (arms, horses, artillery…), short states field levies instead, and funded armies fight better than unpaid ones
-- HUD inspector: the state card shows prosperity, stability, development and army upkeep; the burg card its prosperity and trade balance; alt-clicking a cell opens a cell card with its development, prosperity, deposit and rural output
-- State Cities & Yields and Faction Outposts dialogs: upstream prosperity, stability, development, trade and tithes beside the seasonal yields
+- Living World: the OpenCiv city economy is removed from the Living World — no citizens, worked cells, food buckets, production queues, wonders, settlers or builders, empire happiness or research tree. The map's own economy is the engine; the simulation bends its levers
+- Living World: rulers govern the purse — each spring, budgets, corruption and the sales/poll taxes drift toward the ruler's target (2 points a season under a monarchy, 1 under a republic, none under an anarchy); war, rebellion, troubles and bankruptcy re-target it; a moved line is chronicled once and any line can be pinned from the HUD
+- Living World: public works — a state keeps one work under construction (granary, aqueduct, royal road, market charter, mint, courthouse, harbor works, walls, temple works, college, guild hall, land improvement, army camp), funded by treasury and paid for with real goods from the markets; works write daily `simAdjustments` lines, raise native burg flags, develop provinces, cut corruption, lay improvements, link the road network and charter new markets
+- Living World: trouble economics — hazards write negative `simAdjustments` lines draining the treasury (hostile factions too), spawn more where stability is low or corruption is high, are ground down by a funded administration, cleared by adventurers/armies/the magistrate, and pay a small treasure to the clearer
+- Living World: factions ride the rails — no city loop; those they build now are faction assets (trade depots, safe houses, shrines, muster camps…) paid from treasury and written as daily lines into their host town; the Faction Outposts dialog shows Trade and Lines columns
+- Living World: faith drifts without prophets or missionaries — each spring a minority-faith province may convert on court spending, ruler zeal, co-religionists and a held holy site; rural cells convert first and a majority flip is chronicled
+- Living World: development is the only technology — it gates goods tiers, unit tiers, faction ascension (18) and the works catalog; diffusion eases peopled land toward the state's mean, and develop projects and Colleges raise it
+- Military: musters are gated by unit goods and by the state's development (a unit opens at its tier); short or backward states field levies; battle power scales with the state's battle upkeep
+- HUD inspector: the state card shows treasury and fiscal policy chips (click to pin), public works, prosperity/stability/development + upkeep; the burg card its prosperity, trade balance and assets; alt-clicking a cell opens its development, deposit and rural output
+- State Cities & Economy and Faction Outposts dialogs: upstream prosperity, stability, development and trade, no city fields
+- Economy: the Living World runs on the new economy — seasonal treasuries, improvements and buildings that raise real output, and sim-owned `simAdjustments` lines merged with the player's adjustments
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 

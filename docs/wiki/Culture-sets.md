@@ -243,7 +243,7 @@ Cosmic science-fiction setting featuring twenty-two cultures across three tiers:
 
 **Independents & Thralls**
 
-- The One (Nexus): Cybernetic consensus intelligence anchored in frigid data-cores. Namesbase: Verse Frontier.
+- The One (Nexus): Cybernetic consensus intelligence anchored in frigid data-cores. Namesbase: Verse The One.
 - Ascendancy (Independent): Militaristic breakaway sector-states and highland bastions. Namesbase: Verse Frontier.
 - Collective (Independent): Free-port merchant leagues and orbital habitats. Namesbase: Verse Frontier.
 - Venar (Independent): Reclusive outer-rim prospectors and drift-miners. Namesbase: Verse Frontier.

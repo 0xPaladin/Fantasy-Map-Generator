@@ -231,7 +231,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     value: 20,
     icon: "goods-artillery",
     color: "#0284c7",
-    demandCoverage: { construction: 4, utilities: 2 },
+    demandCoverage: { construction: 4, utilities: 2, military: 3 },
     recipes: [{ "Parts, Basic Industry": 1, "Metal Ingots, Rare Alloys": 0.5 }]
   },
   {
@@ -359,7 +359,7 @@ const ASTRAL_COMMODITIES_SPECS: AstralGoodRawSpec[] = [
     development: 90,
     icon: "goods-tools",
     color: "#38bdf8",
-    demandCoverage: { construction: 5, utilities: 5, food: 4 },
+    demandCoverage: { construction: 5, utilities: 5, food: 4, military: 4 },
     recipes: [{ "Fusion Plants": 1 }]
   },
   {

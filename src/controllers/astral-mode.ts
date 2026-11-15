@@ -5,6 +5,7 @@ import { ASTRAL_DEFAULT_PRESET, ASTRAL_PRESETS } from "@/data/astral-layers";
 import { ANOMALY_DIVIDER, astralLegend, MARKER_READINGS } from "@/data/astral-markers";
 import { ASTRAL_ERAS, DEFAULT_ERAS, type Era } from "@/data/development";
 import { isAstralBase } from "@/data/name-bases";
+import { assignAstralStateRoster } from "@/data/roster-content";
 import { Goods } from "@/model/economy/goods-generator";
 import { Production } from "@/model/economy/production-generator";
 import { Icons } from "@/model/icons";
@@ -12,6 +13,12 @@ import { Options } from "@/model/options/options-model";
 import type { OptionsData } from "@/model/options/options-schema";
 import { pickFor, sectorWordFor } from "@/model/physical/astral-naming";
 import { Burgs } from "@/model/political/burgs-generator";
+import { Military, type Regiment } from "@/model/political/military-generator";
+import {
+  getAstralMilitaryUnits,
+  getDefaultMilitaryUnits,
+  isAstralMilitaryUnits
+} from "@/model/political/military-units";
 import { Provinces } from "@/model/political/provinces-generator";
 import { States, type TariffRule } from "@/model/political/states-generator";
 import { Development } from "@/model/society/development-generator";
@@ -21,6 +28,7 @@ import { applyPerformanceSettings, setHaloOwnedByBorders } from "@/renderers/per
 import { is3dView, isAstralView, returnToAstralSector, setAstralView } from "@/renderers/view-mode";
 import { StylePresetsService } from "@/services/style-presets";
 import type { Good } from "@/types/economy";
+import type { MilitaryUnit } from "@/types/military";
 import type { StylesData } from "@/types/styles";
 import { refreshEditors } from "@/ui/dialog/dialog-helpers";
 import { invokeActiveZooming } from "@/ui/map/zoom";
@@ -58,6 +66,7 @@ const ASTRAL_BASE_DEVELOPMENT: Record<string, number> = {
   VRHUI: 80,
   VRXOT: 78,
   TRKCN: 64,
+  VRONE: 90,
   VRFRN: 68,
   GRMCO: 62,
   GRMIR: 58,
@@ -92,7 +101,8 @@ const ASTRAL_NAME_BASES = [
   "VRECH",
   "VRGRY",
   "VRXOT",
-  "VRFRN"
+  "VRFRN",
+  "VRONE"
 ];
 
 interface BurgSnapshot {
@@ -108,6 +118,9 @@ interface StateSnapshot {
   fullName?: string;
   label?: string;
   tariffs?: TariffRule[];
+  rosterId?: string;
+  alert?: number;
+  military?: Regiment[];
 }
 
 interface ProvinceSnapshot {
@@ -142,6 +155,7 @@ interface Profile extends StoredProfile {
   eras?: Era[];
   cellsDevelopment?: Uint8Array;
   culturesDevelopment?: { i: number; development?: number }[];
+  militaryUnits?: MilitaryUnit[];
 }
 
 let profile: Profile | null = null;
@@ -244,6 +258,19 @@ function applyAstralGoods(): void {
   }
 }
 
+function applyAstralMilitary(): void {
+  if (!pack?.states || !pack?.cells) return;
+  if (!isAstralMilitaryUnits(options.map.military?.units)) {
+    options.map.military.units = getAstralMilitaryUnits();
+  }
+  for (const state of pack.states) {
+    if (!state.i || state.removed) continue;
+    state.rosterId = assignAstralStateRoster(state, pack.cultures ?? []);
+  }
+  Military.generate();
+  if (Layers.state.active.includes("military")) Layers.draw("military");
+}
+
 function applyAstralMarkers(): void {
   if (!pack?.markers) return;
   for (const marker of pack.markers) {
@@ -288,6 +315,9 @@ function reverseAstralState(previous: Profile | null): void {
         if (state.economy && s.tariffs !== undefined) {
           state.economy.tariffs = structuredClone(s.tariffs);
         }
+        state.rosterId = s.rosterId;
+        if (s.alert !== undefined) state.alert = s.alert;
+        if (s.military !== undefined) state.military = structuredClone(s.military);
       }
     }
   }
@@ -332,6 +362,18 @@ function reverseAstralState(previous: Profile | null): void {
     Goods.generate();
     Production.regenerate();
     Layers.draw("markets", "goods", "trade");
+  }
+
+  if (previous?.militaryUnits) {
+    options.map.military.units = structuredClone(previous.militaryUnits);
+    if (Layers.state.active.includes("military")) Layers.draw("military");
+  } else if (isAstralMilitaryUnits(options.map.military?.units)) {
+    options.map.military.units = getDefaultMilitaryUnits();
+    for (const state of pack.states ?? []) {
+      if (state.i && !state.removed) delete state.rosterId;
+    }
+    Military.generate();
+    if (Layers.state.active.includes("military")) Layers.draw("military");
   }
 
   if (previous?.markers) {
@@ -425,7 +467,10 @@ async function enter(): Promise<void> {
     formName: s.formName,
     fullName: s.fullName,
     label: s.label?.text,
-    tariffs: s.economy?.tariffs ? structuredClone(s.economy.tariffs) : undefined
+    tariffs: s.economy?.tariffs ? structuredClone(s.economy.tariffs) : undefined,
+    rosterId: s.rosterId,
+    alert: s.alert,
+    military: s.military ? structuredClone(s.military) : undefined
   }));
 
   const provincesSnapshot: ProvinceSnapshot[] = (pack.provinces ?? []).map(p => ({
@@ -440,6 +485,7 @@ async function enter(): Promise<void> {
   const erasSnapshot = options.map.eras ? structuredClone(options.map.eras) : undefined;
   const cellsDevSnapshot = pack.cells?.development ? new Uint8Array(pack.cells.development) : undefined;
   const culturesDevSnapshot = (pack.cultures ?? []).map(c => ({ i: c.i, development: c.development }));
+  const militaryUnitsSnapshot = options.map.military?.units ? structuredClone(options.map.military.units) : undefined;
 
   const markersSnapshot: MarkerSnapshot[] = (pack.markers ?? []).map(m => ({
     i: m.i,
@@ -462,7 +508,8 @@ async function enter(): Promise<void> {
     markers: markersSnapshot,
     eras: erasSnapshot,
     cellsDevelopment: cellsDevSnapshot,
-    culturesDevelopment: culturesDevSnapshot
+    culturesDevelopment: culturesDevSnapshot,
+    militaryUnits: militaryUnitsSnapshot
   };
   profile = next;
   saveProfile({ stylePreset: next.stylePreset, styled: next.styled, layers: next.layers });
@@ -480,6 +527,7 @@ async function enter(): Promise<void> {
   applyAstralNames();
   applyAstralDevelopment();
   applyAstralGoods();
+  applyAstralMilitary();
   applyAstralMarkers();
   refreshEditors();
 

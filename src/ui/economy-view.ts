@@ -275,9 +275,38 @@ const ADJUSTMENTS_STYLE = /* css */ `<style>
   .adjustments .lines { margin: 0.15em 0 0.2em 1em }
   .adjustments .line { display: grid; grid-template-columns: 1fr 6.5em 1.2em; column-gap: 0.3em; align-items: center; margin-bottom: 0.15em }
   .adjustments button.add { font-size: 0.8em; padding: 0 0.4em }
+  .adjustments .sim { opacity: 0.8; font-size: 0.9em }
+  .adjustments .sim .line { grid-template-columns: 1fr 6.5em }
+  .adjustments .simHead { font-size: 0.8em; opacity: 0.7; border-top: 1px dotted #c4c4c4; margin-top: 0.15em; padding-top: 0.15em }
 </style>`;
 
 let expanded = false; // the last choice, kept for the next row shown
+
+/** Read-only rows for the simulation's own adjustment lines (works, troubles, factions) */
+export function renderSimAdjustments(
+  container: HTMLElement,
+  lines: Adjustment[],
+  tip: string,
+  formatTotal: (value: number) => string = formatPrice
+): void {
+  if (!lines.length) {
+    container.innerHTML = "";
+    return;
+  }
+  const total = sum(lines, line => line.value);
+  const rows = lines
+    .map(
+      line => /* html */ `<div class="line">
+        <span>${escapeHtml(line.name)}</span>
+        <span style="text-align: right; font-variant-numeric: tabular-nums">${formatTotal(line.value)}</span>
+      </div>`
+    )
+    .join("");
+  container.innerHTML = /* html */ `<style>.simAdjustments .line { grid-template-columns: 1fr 6.5em }</style><div class="adjustments sim simAdjustments">
+    <div class="simHead" data-tip="${escapeHtml(tip)}">${t("Of which the Living World")} (${lines.length}) <span class="${total > 0 ? "positive" : total < 0 ? "negative" : ""}">${formatTotal(total)}</span></div>
+    <div class="lines">${rows}</div>
+  </div>`;
+}
 
 /** Fills the container; onChange gets the lines after every edit, a value being typed as 0 */
 export function mountAdjustments(

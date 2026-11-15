@@ -1,6 +1,6 @@
 // Characters editor: the table and the sheet dialog. See docs/plans/characters.md.
 import { ACTION_DEFS, ACTIONS, DICE } from "@/data/character-actions";
-import { ALIGNMENTS, type Alignment } from "@/data/culture-traits";
+import { ALIGNMENTS, type Alignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { Characters } from "@/model/society/characters";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
@@ -366,6 +366,7 @@ export function openCharacterDetails(characterId: number): void {
   ensureEl("saveCharacterButton").addEventListener("click", () => saveCharacter(characterId));
   ensureEl("cancelCharacterButton").addEventListener("click", () => Dialog.close(detailsId));
   ensureEl("deleteCharacterButton").addEventListener("click", () => deleteCharacter(characterId));
+  ensureEl("regenerateCharacterTraitsButton").addEventListener("click", () => regenerateCharacterTraits(characterId));
   ensureEl("addRoleButton").addEventListener("click", () => appendRoleRow());
   ensureEl("addRelationButton").addEventListener("click", () => appendRelationRow());
 
@@ -410,10 +411,13 @@ function renderDetails(character: HistoricalFigure): string {
 
       <section class="editorSection">
         <h4>${t("Traits")}</h4>
-        <label style="display: flex; flex-direction: column;">${t("Alignment")}<select id="characterAlignment" style="width: 100%;">
-          <option value="">${t("None")}</option>
-          ${ALIGNMENTS.map(alignment => `<option value="${alignment}" ${character.alignment === alignment ? "selected" : ""}>${capitalize(alignment)}</option>`).join("")}
-        </select></label>
+        <div style="display: flex; gap: 6px; align-items: end; margin-bottom: 4px;">
+          <label style="flex: 1; display: flex; flex-direction: column;">${t("Alignment")}<select id="characterAlignment" style="width: 100%;">
+            <option value="">${t("None")}</option>
+            ${ALIGNMENTS.map(alignment => `<option value="${alignment}" ${character.alignment === alignment ? "selected" : ""}>${capitalize(alignment)}</option>`).join("")}
+          </select></label>
+          <button id="regenerateCharacterTraitsButton" type="button" class="btn icon-cw" data-tip="${t("Regenerate virtues and vices from alignment")}"></button>
+        </div>
         <label style="display: flex; flex-direction: column;">${t("Virtues")}<input id="characterVirtues" value="${escapeHtml((character.virtues ?? []).join(", "))}" style="width: 100%;" /></label>
         <label style="display: flex; flex-direction: column;">${t("Vices")}<input id="characterVices" value="${escapeHtml((character.vices ?? []).join(", "))}" style="width: 100%;" /></label>
       </section>
@@ -650,6 +654,21 @@ function readHero(character: HistoricalFigure): HeroSheet | undefined {
       picks: readList("heroPicks")
     }
   };
+}
+
+function regenerateCharacterTraits(characterId: number): void {
+  const alignment = readText("characterAlignment") as Alignment | "";
+  const virtuesInput = ensureEl<HTMLInputElement>("characterVirtues");
+  const vicesInput = ensureEl<HTMLInputElement>("characterVices");
+  if (!alignment || !ALIGNMENTS.includes(alignment)) {
+    virtuesInput.value = "";
+    vicesInput.value = "";
+    return;
+  }
+  const rng = traitsRng(`${options.map?.seed ?? ""}:${Math.random()}`, "figure", characterId);
+  const { virtues, vices } = rollFigureTraits(rng, alignment);
+  virtuesInput.value = virtues.join(", ");
+  vicesInput.value = vices.join(", ");
 }
 
 function saveCharacter(characterId: number): void {

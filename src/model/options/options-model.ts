@@ -104,6 +104,7 @@ class OptionsModel {
         military: { units: getDefaultMilitaryUnits() },
         transports: Transports.getDefaults(),
         eras: Development.getDefaultEras(),
+        networks: [],
         customIcons: [],
         goods: [],
         coastline: Coastline.getDefaultSettings(),

@@ -1,6 +1,8 @@
 import { select } from "d3";
 import { readingOf } from "@/data/astral-markers";
+import { NETWORK_KIND_DEFINITIONS } from "@/data/astral-networks";
 import { FEATURE_SUBTYPE_LABELS } from "@/data/id-labels";
+import { Networks } from "@/model/astral/networks";
 import { Goods } from "@/model/economy/goods-generator";
 import { Markets } from "@/model/economy/markets-generator";
 import { Output } from "@/model/economy/output";
@@ -191,6 +193,16 @@ function getElementTip({ group, target, event, path, cellId }: TipContext): stri
       return withHint(name ? escapeHtml(name) : undefined);
     }
     return undefined;
+  }
+
+  if (target.closest("#networks")) {
+    const networkId = Number(target.closest<SVGElement>("[data-network]")?.dataset.network ?? NaN);
+    const network = Networks.get(networkId);
+    if (!network) return withHint();
+    const kind = NETWORK_KIND_DEFINITIONS[network.kind].label;
+    const label = target.closest(".links") ? t("{{kind}} link", { kind }) : t("{{kind}} network", { kind });
+    const nodes = t("{{nodes}} nodes", { nodes: network.nodes.length });
+    return withHint(sentences(escapeHtml(network.name), label, nodes));
   }
 
   if (group === "terrain" || group === "ice") return withHint();

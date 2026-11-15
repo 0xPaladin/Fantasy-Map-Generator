@@ -2,24 +2,11 @@
 
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { ANCIENT_SUPPRESSED_CAP } from "@/data/development";
-import {
-  CIV_BELIEF_BY_ID,
-  CIV_ENHANCER_BELIEFS,
-  CIV_FOLLOWER_BELIEFS,
-  CIV_FOUNDER_BELIEFS,
-  CIV_PANTHEONS,
-  CIV_RELIGION_NAMES
-} from "@/data/living-civ-beliefs";
-import { CIV_BUILDING_BY_ID, CIV_BUILDINGS } from "@/data/living-civ-buildings";
-import { CIV_CIVILIAN_BY_ID } from "@/data/living-civ-civilians";
-import { CIV_IMPROVEMENT_BY_ID, CIV_RESOURCE_BY_ID } from "@/data/living-civ-improvements";
-import {
-  CIV_TECH_BY_ID,
-  CIV_TECHS,
-  computePolityTechDevelopment,
-  seedTechsFromDevelopment
-} from "@/data/living-civ-techs";
-import { isCivEraAvailable, resolveCivTechName, selectCivTheme } from "@/data/living-civ-themes";
+import { EXPENSES, type Expense } from "@/data/expenses";
+import { getAllFactionAssets, getFactionAsset } from "@/data/faction-assets";
+import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { SOVEREIGN_DEVELOPMENT, UNIT_TECH_DEVELOPMENT } from "@/data/living-eras";
+import { PROJECT_BY_ID, PROJECTS, type ProjectDef } from "@/data/living-projects";
 import { RESOURCE_FACTION_IDS } from "@/data/living-troubles";
 import {
   assignStateRoster,
@@ -41,9 +28,8 @@ import {
   stepBattleRound
 } from "@/model/battle/battle";
 import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
-import { Accounts } from "@/model/economy/accounts";
+import { Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
-import { Prosperity as UpstreamProsperity } from "@/model/economy/prosperity";
 import { Routes } from "@/model/economy/routes-generator";
 import { StateOrders } from "@/model/economy/state-orders";
 import { type FigureBias, figureBias } from "@/model/physical/figure-bias";
@@ -60,19 +46,30 @@ import {
   getUnitRequiredGoods,
   isCivilianUnit,
   levyUnitFor,
-  matchRosterUnitByCategory,
   migrateArmyBlocks,
   nextRosterUnitInCategory,
   normalizeArmy,
   pickRosterUnit,
-  requiredTechFor,
+  requiredDevelopmentFor,
   toBattleTypes,
   toBattleUnits,
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
-import { canReadUpstreamEconomy, factionUpstreamIncome, SEASON_DAYS } from "@/model/physical/living-faction-economy";
+import { factionUpstreamIncome, SEASON_DAYS } from "@/model/physical/living-faction-economy";
+import {
+  CORRUPTION_DRIFT,
+  CORRUPTION_NEWS_THRESHOLD,
+  FISCAL_DRIFT,
+  FISCAL_NEWS_THRESHOLD,
+  type FiscalEvents,
+  fiscalProfile,
+  fiscalStride,
+  fiscalTarget,
+  fiscalValue,
+  TAX_DRIFT
+} from "@/model/physical/living-fiscal";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
-import { type Burg, Burgs, isSurfaceBurg } from "@/model/political/burgs-generator";
+import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
   Military,
@@ -81,14 +78,15 @@ import {
   syncRegimentTotals
 } from "@/model/political/military-generator";
 import type { Province } from "@/model/political/provinces-generator";
+import { Stability } from "@/model/political/stability";
 import { noFinance, type State, States } from "@/model/political/states-generator";
 import { type AstralTechRegime, classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
-import { isAstralView } from "@/renderers/view-mode";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type { Good } from "@/types/economy";
 import type {
   Faction,
+  FactionAssetDef,
   FactionHq,
   FactionNodeKey,
   FactionNodeYieldBreakdown,
@@ -96,45 +94,31 @@ import type {
   FactionYieldBreakdown
 } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef, Realm } from "@/types/history";
-import {
-  type ArmyBattleRecord,
-  type ArmySimState,
-  type ArmyStance,
-  type BurgSimState,
-  type CellResourceInfo,
-  type CellSimState,
-  type CellTerrainInfo,
-  type CellYieldSource,
-  type CivBeliefDef,
-  type CivBuildingDef,
-  type CivResourceClass,
-  type CivTechDef,
-  type CivThemeId,
-  type CivUnitDef,
-  type GrudgeReason,
-  type HappinessBreakdown,
-  type HeroDoctrine,
-  type HeroGuildState,
-  type LivingNewsItem,
-  type LivingNewsKind,
-  type LivingWorldState,
-  type MissionTag,
-  type ProductionItem,
-  type ProvinceTrouble,
-  type ReligionBeliefState,
-  SEASON_NAMES,
-  type SeasonId,
-  type StateAgenda,
-  type StateCityYieldBreakdown,
-  type StatePolitySim,
-  type StateYieldBreakdown,
-  type TreatyKind,
-  type TroubleTheme,
-  type TroubleUnitRole,
-  type UnitSimState,
-  type YieldDelta,
-  type YieldValues
+import type {
+  ArmyBattleRecord,
+  ArmySimState,
+  ArmyStance,
+  BurgSimState,
+  CellTerrainInfo,
+  CivResourceClass,
+  FiscalLock,
+  GrudgeReason,
+  HeroDoctrine,
+  HeroGuildState,
+  LivingNewsItem,
+  LivingNewsKind,
+  LivingProject,
+  LivingWorldState,
+  MissionTag,
+  ProvinceTrouble,
+  SeasonId,
+  StateAgenda,
+  StatePolitySim,
+  TreatyKind,
+  TroubleTheme,
+  TroubleUnitRole
 } from "@/types/living";
+import { SEASON_NAMES } from "@/types/living";
 import { minmax } from "@/utils";
 import { SEA_LEVEL } from "@/utils/height-utils";
 import { createRng, type Rng } from "@/utils/rng";
@@ -146,13 +130,38 @@ import { LivingThreats } from "./living-threats";
 const MAX_RECENT_NEWS = 50;
 const WHEEL_YEAR_LEAP = 150;
 const GIANT_PROVINCE_LIMIT = 3;
-const SCHOLARLY_BUILDINGS = new Set(["library", "university", "public_school"]);
 const DEVELOPMENT_DECAY_SLACK = 3; // rural cells keep a little more than their land allows
-const SCHOLARLY_GOODS = ["Paper", "Ink", "Books", "Glass"] as const;
-const SCHOLAR_SCIENCE_CAP = 5; // books light a city's lamps but cannot replace schools
-const COURT_PROVISION_YIELD = 3; // culture and faith a fully served court provides per season
 const CHARTER_TITHE = "Chartered Faction Tithes"; // the state budget line charters pay
 const SABOTAGE_ORDER = 15; // public order a ruined working costs its province
+const PROJECT_RESERVE = 25; // seasons of net kept in hand before a public work starts
+const PROJECT_CAMP_REPLENISH = 0.05; // extra capability a season an army camp gives resting forces
+const FACTION_PROJECT_RESERVE = 20; // a faction keeps this much in hand before building its next work
+
+/** Whether a faction's track, era and node rules allow an asset. */
+function factionCanBuildAsset(faction: Faction, def: FactionAssetDef, development: number): boolean {
+  const category = faction.category;
+  const trackFits =
+    def.track === category ||
+    (def.track === "scholarly" && ["adventuring", "religious", "political"].includes(category)) ||
+    (def.track === "wilder" && ["martial", "adventuring"].includes(category));
+  if (!trackFits) return false;
+  const gate = def.requiredTech ? (UNIT_TECH_DEVELOPMENT[def.requiredTech] ?? 0) : 0;
+  return development >= gate;
+}
+
+/** What a move in one fiscal line reads like, as [raised, lowered] predicate completions. */
+const FISCAL_PHRASES: Record<FiscalLock, readonly [string, string]> = {
+  military: ["musters a greater share of its taxes for the army.", "lets its army's share of the taxes wither."],
+  court: ["gilds its court while the provinces wait.", "tightens its court's belt."],
+  administration: [
+    "grows its chancery: more clerks and fewer bribes.",
+    "thins its chancery, and the clerks grow greedy."
+  ],
+  infrastructure: ["lays roads and granaries across its provinces.", "shelves its public works for another year."],
+  corruption: ["lets graft spread among its officials.", "reins in its officials' cut."],
+  salesTax: ["raises the sales tax.", "eases the sales tax."],
+  pollTax: ["raises the head tax.", "eases the head tax."]
+};
 
 const ERA_EPITHETS = ["Ash", "the Compact", "Drowned Kings", "Iron and Salt", "Quiet Stars", "Broken Crowns"] as const;
 const ERA_ORDINALS = [
@@ -360,26 +369,6 @@ export function syncCivFlagsFromBuildings(burg: Burg, civBuildings: readonly str
   if (held.has("palace")) burg.capital = 1;
 }
 
-const CIV_YIELD_KEYS = ["food", "production", "gold", "science", "culture", "faith", "happiness"] as const;
-
-const RESOURCE_ID_ALIASES: Record<string, string> = {
-  gemstones: "gems",
-  game: "deer"
-};
-
-/** Fresh zeroed OpenCiv yield record. */
-export function emptyYields(): YieldValues {
-  return { food: 0, production: 0, gold: 0, science: 0, culture: 0, faith: 0, happiness: 0 };
-}
-
-function humanizeId(id: string): string {
-  return id.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase());
-}
-
-function hasYield(delta: YieldDelta): boolean {
-  return CIV_YIELD_KEYS.some(key => (delta[key] ?? 0) !== 0);
-}
-
 /** A cell has fresh water if it carries a river or borders a freshwater lake. */
 export function hasFreshWater(cell: number): boolean {
   const cells = pack.cells;
@@ -458,42 +447,6 @@ export function getCellTerrainInfo(cell: number): CellTerrainInfo {
   };
 }
 
-function baseTerrainYields(cell: number, info: CellTerrainInfo): YieldDelta {
-  const height = Number(pack.cells.h?.[cell] ?? 0);
-  const biome = Number(pack.cells.biome?.[cell] ?? 0);
-
-  if (info.isMountain) return {};
-
-  if (info.isWater) {
-    if (info.terrain === "freshwater") return { food: 2 };
-    if (info.terrain === "shallow_ocean") return { food: 1, gold: 1 };
-    return { food: 1 };
-  }
-
-  // Forest canopy replaces the underlying flat/hill yield.
-  if (biome === 7) return { food: 2 };
-  if (biome === 6 || biome === 8 || biome === 9) return { food: 1, production: 1 };
-
-  if (height >= 50) return { production: 2 };
-
-  switch (biome) {
-    case 1:
-    case 2:
-      return info.hasFreshWater ? { food: 2 } : {};
-    case 3:
-    case 5:
-      return { food: 1, production: 1 };
-    case 4:
-      return { food: 2 };
-    case 10:
-      return { food: 1 };
-    case 12:
-      return { food: 1 };
-    default:
-      return {};
-  }
-}
-
 /** Classify an FMG trade good into OpenCiv's Bonus / Strategic / Luxury taxonomy. */
 export function classifyGood(good: Good | undefined): CivResourceClass | null {
   if (!good) return null;
@@ -515,35 +468,6 @@ export function classifyGood(good: Good | undefined): CivResourceClass | null {
   return null;
 }
 
-function civResourceIdForGood(good: Good): string | null {
-  const normalized = good.name.toLowerCase().trim().replace(/\s+/g, "_");
-  for (const candidate of [normalized, RESOURCE_ID_ALIASES[normalized]]) {
-    if (candidate && CIV_RESOURCE_BY_ID[candidate]) return candidate;
-  }
-  return null;
-}
-
-/** The good on a cell plus its OpenCiv resource class and reveal status. */
-export function getCellResource(
-  cell: number,
-  playerStateId = 0,
-  living: LivingWorldState | undefined = pack.history?.living
-): CellResourceInfo | null {
-  const goodId = Number(pack.cells.good?.[cell] ?? 0);
-  if (!goodId) return null;
-
-  const good = options.map.goods?.[goodId];
-  const resourceClass = classifyGood(good);
-  if (!good || !resourceClass) return null;
-
-  const resourceId = civResourceIdForGood(good);
-  const revealTech = resourceId ? CIV_RESOURCE_BY_ID[resourceId]?.revealTech : undefined;
-  const stateSim = playerStateId > 0 ? living?.states?.[playerStateId] : undefined;
-  const revealed = !revealTech || Boolean(stateSim?.researchedTechs?.includes(revealTech));
-
-  return { goodId, goodName: good.name, resourceId, class: resourceClass, revealed };
-}
-
 /** A non-removed burg that runs the full OpenCiv city loop. */
 export function isMajorBurg(burg: Burg | undefined | null): boolean {
   if (!burg?.i || burg.removed) return false;
@@ -554,300 +478,6 @@ export function isMajorBurg(burg: Burg | undefined | null): boolean {
   return !burg.state && settlementTierFromPop(burg.population ?? 0) >= 3;
 }
 
-/** A non-capital settlement inside a province: a village tile improvement. */
-export function isMinorBurg(burg: Burg | undefined | null): boolean {
-  if (!burg?.i || burg.removed || isMajorBurg(burg)) return false;
-  const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
-  if (!provinceId) return false;
-  const province = pack.provinces?.[provinceId];
-  return Boolean(province?.i && !province.removed && province.burg !== burg.i);
-}
-
-function burgAtCell(cell: number): Burg | undefined {
-  const burgId = Number(pack.cells.burg?.[cell] ?? 0);
-  return burgId ? pack.burgs?.[burgId] : undefined;
-}
-
-function isBurgPillaged(burg: Burg, living: LivingWorldState | undefined): boolean {
-  return Boolean(burg.shanty) || Boolean(living?.burgs?.[burg.i]?.pillaged);
-}
-
-function isMinorBurgTroubled(burg: Burg, living: LivingWorldState | undefined): boolean {
-  const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
-  const trouble = provinceId ? living?.provinces?.[provinceId]?.trouble : null;
-  return Boolean(trouble && trouble.burgId === burg.i);
-}
-
-function resourceYieldDelta(resource: CellResourceInfo, good: Good, improved: boolean): YieldDelta {
-  if (resource.class === "strategic" && !resource.revealed) return {};
-
-  const amount = improved ? 2 : 1;
-  const tags = new Set(good.tags ?? []);
-
-  if (resource.class === "luxury") {
-    if (tags.has("food")) return { food: amount };
-    if (tags.has("construction") || tags.has("ore")) return { production: amount };
-    return { gold: amount };
-  }
-
-  if (resource.class === "strategic") return { production: amount };
-
-  if (tags.has("construction") || tags.has("ore") || tags.has("fuel")) return { production: amount };
-  return { food: amount };
-}
-
-/**
- * Base improvement yields. Tech upgrades are added separately from the
- * OpenCiv `tileBonuses` catalog so Science visibly unlocks them.
- */
-function improvementYieldDelta(improvementId: string, resource: CellResourceInfo | null): YieldDelta {
-  switch (improvementId) {
-    case "farm":
-      return { food: 1 };
-    case "mine":
-    case "quarry":
-      return { production: 1 };
-    case "pasture": {
-      const food = resource?.resourceId === "cattle" || resource?.resourceId === "sheep";
-      return food ? { food: 1 } : { production: 1 };
-    }
-    case "plantation":
-      return { gold: 2 };
-    case "camp":
-      return { production: 1 };
-    case "lumber_mill":
-      return { production: 1 };
-    case "trading_post":
-      return { gold: 1 };
-    case "fishing_boats":
-      return { food: 1, gold: 1 };
-    default:
-      return {};
-  }
-}
-
-/** OpenCiv tile ids a generic FMG improvement can match, e.g. `mine` -> `iron_mine`. */
-function improvementTileTypes(improvementId: string, resource: CellResourceInfo | null): string[] {
-  const types = [improvementId];
-  const resourceId = resource?.resourceId;
-  if (!resourceId) return types;
-  types.push(`${resourceId}_${improvementId}`, `improved_${resourceId}`);
-  return types;
-}
-
-/** Tech tile bonuses for an active improvement, e.g. Chemistry +1 Production from Mines. */
-function techTileBonusDelta(
-  improvementId: string,
-  cell: number,
-  resource: CellResourceInfo | null,
-  researchedTechs: readonly string[]
-): YieldDelta {
-  if (researchedTechs.length === 0) return {};
-  const tileTypes = new Set(improvementTileTypes(improvementId, resource));
-  const freshWater = hasFreshWater(cell);
-  const total: YieldDelta = {};
-
-  for (const techId of researchedTechs) {
-    const tech = CIV_TECH_BY_ID[techId];
-    for (const bonus of tech?.tileBonuses ?? []) {
-      if (!tileTypes.has(bonus.tileType)) continue;
-      if (bonus.freshWater !== undefined && bonus.freshWater !== freshWater) continue;
-      for (const key of CIV_YIELD_KEYS) total[key] = (total[key] ?? 0) + (bonus.stats[key] ?? 0);
-    }
-  }
-  return total;
-}
-
-function minorBurgYieldDelta(burg: Burg, pillaged: boolean): YieldDelta {
-  if (pillaged) return {};
-
-  const yields: YieldDelta = { food: 1, gold: 2 };
-  if (burg.plaza) yields.gold = (yields.gold ?? 0) + 1;
-  if (burg.temple) {
-    yields.faith = 1;
-    yields.culture = 1;
-  }
-  if (burg.walls) yields.production = 1;
-  if (burg.port) {
-    yields.food = (yields.food ?? 0) + 1;
-    yields.gold = (yields.gold ?? 0) + 1;
-  }
-  return yields;
-}
-
-/** Every additive yield contribution on a cell: terrain, resource, improvement, minor burg. */
-export function getCellYieldSources(
-  cell: number,
-  playerStateId = 0,
-  living: LivingWorldState | undefined = pack.history?.living
-): CellYieldSource[] {
-  const info = getCellTerrainInfo(cell);
-  if (!info.isWorkable) return [];
-
-  const sources: CellYieldSource[] = [];
-  const terrainYields = baseTerrainYields(cell, info);
-  if (hasYield(terrainYields)) {
-    sources.push({ kind: "terrain", id: info.terrain, label: humanizeId(info.terrain), yields: terrainYields });
-  }
-
-  const resource = getCellResource(cell, playerStateId, living);
-  const burg = burgAtCell(cell);
-  const minorBurg = burg && isMinorBurg(burg) && !isMinorBurgTroubled(burg, living) ? burg : undefined;
-  const minorPillaged = minorBurg ? isBurgPillaged(minorBurg, living) : false;
-  const cellSim: CellSimState | undefined = living?.cells?.[cell];
-  const improvementId = cellSim?.improvement ?? null;
-  const improvementActive = Boolean(improvementId && !cellSim?.pillaged);
-  const connected = improvementActive || Boolean(minorBurg && !minorPillaged);
-
-  if (resource && options.map.goods?.[resource.goodId]) {
-    const yields = resourceYieldDelta(resource, options.map.goods[resource.goodId], connected);
-    if (hasYield(yields)) {
-      sources.push({
-        kind: "resource",
-        id: resource.resourceId ?? resource.goodName,
-        label: resource.goodName,
-        yields
-      });
-    }
-  }
-
-  if (improvementId && improvementActive) {
-    const yields = improvementYieldDelta(improvementId, resource);
-    if (hasYield(yields)) {
-      const def = CIV_IMPROVEMENT_BY_ID[improvementId];
-      sources.push({ kind: "improvement", id: improvementId, label: def?.name ?? humanizeId(improvementId), yields });
-    }
-
-    const techs = living?.states?.[playerStateId]?.researchedTechs ?? [];
-    const techYields = techTileBonusDelta(improvementId, cell, resource, techs);
-    if (hasYield(techYields)) {
-      sources.push({ kind: "tech", id: improvementId, label: "Technology upgrades", yields: techYields });
-    }
-  }
-
-  if (minorBurg) {
-    const yields = minorBurgYieldDelta(minorBurg, minorPillaged);
-    if (hasYield(yields)) {
-      sources.push({
-        kind: "minor_burg",
-        id: String(minorBurg.i),
-        label: `${minorBurg.name ?? "Village"} (village)`,
-        yields
-      });
-    }
-  }
-
-  return sources;
-}
-
-/** Sum all Slice 2 cell yields into one OpenCiv yield record. */
-export function getCellYields(
-  cell: number,
-  playerStateId = 0,
-  living: LivingWorldState | undefined = pack.history?.living
-): YieldValues {
-  const total = emptyYields();
-  for (const source of getCellYieldSources(cell, playerStateId, living)) {
-    for (const key of CIV_YIELD_KEYS) total[key] += source.yields[key] ?? 0;
-  }
-  return total;
-}
-
-// ---------------------------------------------------------------------------
-// Slice 3: autonomous Major Burg city loop (OpenCiv `City`)
-// ---------------------------------------------------------------------------
-
-/** A Major Burg works its centre for free plus citizen cells within this many Voronoi hops. */
-export const MAX_WORK_DISTANCE = 3;
-/** Culture border growth looks for unowned cells within this many hops. */
-export const MAX_ACQUIRE_DISTANCE = 5;
-/** Each OpenCiv citizen eats 2 Food per tick. */
-export const FOOD_PER_CITIZEN = 2;
-/** Citizens are assigned until the net Food surplus reaches this floor. */
-export const DEFAULT_FOCUS_GROWTH_TARGET = 1;
-/** While a Settler is queued, every surplus Food becomes Production. */
-export const SETTLER_FOOD_TO_PRODUCTION_FACTOR = 1;
-export const SETTLER_UNIT_ID = "settler";
-/** OpenCiv city population ceiling. */
-export const MAX_CITIZENS = 30;
-
-/** OpenCiv citizen count for an FMG burg population (`floor(sqrt(pop * 2))`). */
-export function citizensFromPopulation(population: number): number {
-  return Math.max(1, Math.floor(Math.sqrt(Math.max(0, population) * 2)));
-}
-
-/** FMG burg population for an OpenCiv citizen count (`citizens² / 2`). */
-export function populationFromCitizens(citizens: number): number {
-  const safe = Math.max(1, Math.floor(citizens));
-  return Math.max(0.5, Math.round(((safe * safe) / 2) * 10) / 10);
-}
-
-/** Food bucket size that grows a city by one citizen: `15 + 8 × citizens`. */
-export function foodNeededForGrowth(citizens: number): number {
-  return 15 + 8 * Math.max(1, Math.floor(citizens));
-}
-
-/** Border culture bucket: `max(1, floor(floor(20 + (10N)^1.1) × cost / speed))`. */
-export function borderCultureNeeded(tilesAcquired: number, costFactor = 1, speedFactor = 1): number {
-  const base = Math.floor(20 + (10 * Math.max(0, tilesAcquired)) ** 1.1);
-  const speed = speedFactor > 0 ? speedFactor : 1;
-  return Math.max(1, Math.floor((base * costFactor) / speed));
-}
-
-/**
- * Influence score for a candidate border cell: lower is better.
- * `100 × hops` plus feature bonuses from §4.3 of the plan.
- */
-export function borderInfluenceScore(
-  cell: number,
-  hops: number,
-  playerStateId: number,
-  living: LivingWorldState | undefined = pack.history?.living
-): number {
-  let score = 100 * Math.max(1, hops);
-  const info = getCellTerrainInfo(cell);
-  if (info.isMountain) score += 100;
-  if (info.hasFreshWater) score -= 50;
-
-  const resource = getCellResource(cell, playerStateId, living);
-  if (resource) {
-    if (!resource.revealed) score -= 75;
-    else if (resource.class === "luxury") score -= 250;
-    else if (resource.class === "strategic") score -= 200;
-    else score -= 150;
-  } else if ((pack.cells.c?.[cell] ?? []).some(neighbor => Number(pack.cells.good?.[neighbor] ?? 0) > 0)) {
-    score -= 75;
-  }
-
-  const burgId = Number(pack.cells.burg?.[cell] ?? 0);
-  const burg = burgId ? pack.burgs?.[burgId] : undefined;
-  if (burg?.i && !burg.removed && !burg.state) score -= 200;
-
-  return score;
-}
-
-/** Growth multiplier from Empire Happiness: full, quarter or none. */
-export function happinessGrowthFactor(happiness: number): number {
-  if (happiness <= -10) return 0;
-  if (happiness < 0) return 0.25;
-  return 1;
-}
-
-/** The economy buildings the autonomous governor prioritises before wonders. */
-const CITY_ECONOMY_BUILDINGS: readonly string[] = [
-  "monument",
-  "granary",
-  "library",
-  "market",
-  "shrine",
-  "workshop",
-  "aqueduct",
-  "university",
-  "bank",
-  "public_school",
-  "factory"
-];
-
 // ---------------------------------------------------------------------------
 // Slice 4: empire rollup helpers (Science, Gold, Happiness)
 // ---------------------------------------------------------------------------
@@ -855,22 +485,11 @@ const CITY_ECONOMY_BUILDINGS: readonly string[] = [
 /** Regiments beyond this count cost 1 Gold per tick of upkeep. */
 /** Gold per tick for a median block at full capability (living-openciv-armies.md §10.2). */
 export const BASELINE_UPKEEP = 0.2;
-/** Three baseline blocks are free, so a starting army costs nothing. */
-export const UPKEEP_FREE = 3 * BASELINE_UPKEEP;
-/** A civilian regiment costs a flat tenth, independent of roster prices. */
-export const CIVILIAN_UPKEEP = 0.1;
-/** At or below this net happiness growth stops and combat suffers. */
-export const VERY_UNHAPPY_HAPPINESS = -10;
-/** Very unhappy empires fight at two thirds strength. */
-export const UNHAPPY_COMBAT_MULTIPLIER = 0.67;
-/** States only hurry production while keeping this Gold reserve. */
-export const GOLD_PURCHASE_RESERVE = 100;
-export const BASE_EMPIRE_HAPPINESS = 9;
-export const LUXURY_HAPPINESS = 4;
 /** Production plan for state suppression of a faction node. */
-export const FACTION_SUPPRESSION_OPERATION_ID = "faction-suppression";
 export const FACTION_SUPPRESSION_PRODUCTION_BASE = 6;
 export const FACTION_SUPPRESSION_PRODUCTION_PER_TIER = 4;
+/** Seasons of funded administrative pressure a suppression campaign needs. */
+export const FACTION_SUPPRESSION_SEASONS = 3;
 /** Unguarded nodes at or below this influence can be stormed directly. */
 export const FACTION_SUPPRESSION_ASSAULT_THRESHOLD = 25;
 /** Cap on temporary garrison blocks raised for a faction stronghold assault. */
@@ -911,54 +530,11 @@ export interface FactionSuppressionTarget {
   nodeKey: FactionNodeKey;
   score: number;
 }
-
-/** OpenCiv theme profile for the live map: Astral, Historical/Modern or Fantasy. */
-export function activeCivThemeId(): CivThemeId {
-  const astral = isAstralView();
-  const year = options?.map?.lore?.calendar?.year ?? 1000;
-  const era = String(options?.map?.lore?.calendar?.era ?? "");
-  const historical = year >= 1800 || /industrial|modern|atomic|information|steam/i.test(era);
-  return selectCivTheme({ astral, historical });
-}
-
-/** Combat strength multiplier from Empire Happiness (a flat -33% when very unhappy). */
-export function happinessCombatMultiplier(happiness: number | undefined): number {
-  return (happiness ?? 0) <= VERY_UNHAPPY_HAPPINESS ? UNHAPPY_COMBAT_MULTIPLIER : 1;
-}
-
-/** Gold cost to hurry `remainingProduction` in a Major Burg. */
-export function hurryGoldCost(remainingProduction: number, isUnit: boolean, hasBigBen = false): number {
-  const remaining = Math.max(0, remainingProduction);
-  if (remaining <= 0) return 0;
-  const raw = (30 * remaining) ** 0.75 * (isUnit ? 1.2 : 1) * (hasBigBen ? 0.85 : 1);
-  return Math.max(10, Math.floor(raw / 10) * 10);
-}
-
-/** A tech is selectable when its era is unlocked and every prerequisite is known. */
-export function isTechSelectable(tech: CivTechDef, researched: ReadonlySet<string>, theme: CivThemeId): boolean {
-  if (researched.has(tech.id)) return false;
-  if (!isCivEraAvailable(theme, tech.era)) return false;
-  return tech.prerequisites.every(id => researched.has(id));
-}
-
-// ---------------------------------------------------------------------------
-// Slice 5: 1UPT tactical units, combat, builders, settlers and city sieges
-// ---------------------------------------------------------------------------
-
-export const UNIT_MAX_HP = 100;
 export const CITY_BASE_HP = 200;
 /** A unit looks this many hops for an enemy to engage. */
 export const UNIT_AGGRO_RANGE = 6;
-/** Builders improve owned cells within this many hops. */
-export const BUILDER_RANGE = 8;
 /** One city strike removes this much capability from a single block. */
 export const CITY_STRIKE_HP = 0.1;
-
-/** Cumulative XP needed to reach a level. */
-export function xpForLevel(level: number): number {
-  const safe = Math.max(1, Math.floor(level));
-  return (10 * safe * (safe + 1)) / 2;
-}
 
 /** Terrain defense multiplier for the defender's cell (+25% on hills, forest and jungle). */
 export function terrainDefenseMultiplier(cell: number): number {
@@ -967,26 +543,6 @@ export function terrainDefenseMultiplier(cell: number): number {
   const biome = Number(pack.cells.biome?.[cell] ?? 0);
   if (biome === 6 || biome === 7 || biome === 8) return 1.25;
   return 1;
-}
-
-/** Movement cost from one cell to the next for a unit; Infinity blocks the step. */
-export function unitMovementCost(from: number, to: number, unit: UnitSimState): number {
-  const target = getCellTerrainInfo(to);
-  if (unit.domain === "sea") {
-    if (!target.isWater) return Number.POSITIVE_INFINITY;
-  } else if (target.isWater || target.isMountain) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  if (Number(pack.cells.routes?.[from]?.[to] ?? 0) > 0) return 1 / 3;
-
-  const riverCrossing =
-    Number(pack.cells.r?.[from] ?? 0) !== Number(pack.cells.r?.[to] ?? 0) && Number(pack.cells.r?.[to] ?? 0) > 0;
-  // An unbridged river crossing drains every remaining movement point.
-  if (riverCrossing) return Math.max(1, unit.movement);
-
-  if (target.movementCost >= 9999) return Number.POSITIVE_INFINITY;
-  return target.movementCost;
 }
 
 /** 1UPT: a cell holds at most one military and one utility unit per state; never two states. */
@@ -998,55 +554,9 @@ export function hasStackingConflict(
 ): boolean {
   return occupied.some(entry => entry.key !== selfKey && (entry.stateId !== stateId || entry.isUtility === isUtility));
 }
-
-// ---------------------------------------------------------------------------
-// Slice 6: religion pressure, belief effects and diplomacy timers
-// ---------------------------------------------------------------------------
-
-/** A citizen represents 60 pressure for its faith. */
-export const CONVERSION_PRESSURE = 60;
-/** Faith needed for the first pantheon; each further pantheon costs 5 more. */
-export const PANTHEON_BASE_FAITH = 10;
-export const PANTHEON_FAITH_STEP = 5;
-/** Great Prophet thresholds. */
-export const PROPHET_BASE_FAITH = 200;
-export const PROPHET_FAITH_STEP = 100;
-/** Religious pressure: radius, per-city/holy-city amounts and unit spreads. */
-export const PRESSURE_RADIUS = 10;
-export const PRESSURE_RADIUS_PREACHERS = 13;
-export const PRESSURE_PER_CITY = 6;
-export const PRESSURE_HOLY_CITY = 12;
-export const PRESSURE_CAP = 6000;
-export const MISSIONARY_PRESSURE = 180;
-export const PROPHET_PRESSURE = 240;
 /** Diplomacy clocks. */
 export const MIN_WAR_TURNS = 10;
 export const PEACE_TREATY_TURNS = 10;
-
-/** Faith cost of the next pantheon for a state with `founded` pantheons already. */
-export function pantheonFaithCost(founded: number): number {
-  return PANTHEON_BASE_FAITH + PANTHEON_FAITH_STEP * Math.max(0, founded);
-}
-
-/** Faith cost of the next Great Prophet. */
-export function prophetFaithCost(earned: number, hasMessiah = false): number {
-  return Math.floor((PROPHET_BASE_FAITH + PROPHET_FAITH_STEP * Math.max(0, earned)) * (hasMessiah ? 0.75 : 1));
-}
-
-/** A city's majority religion, or 0 when no faith has a majority. */
-export function majorityReligion(pressure: Record<number, number> | undefined, citizens: number): number {
-  const entries = Object.entries(pressure ?? {})
-    .map(([id, value]) => [Number(id), Math.max(0, value)] as const)
-    .filter(([, value]) => value > 0)
-    .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
-  const first = entries[0];
-  if (!first) return 0;
-
-  const total = entries.reduce((sum, [, value]) => sum + value, 0);
-  const [id, value] = first;
-  const needed = Math.max(CONVERSION_PRESSURE, Math.max(1, citizens) * CONVERSION_PRESSURE * 0.5);
-  return value >= total - value && value >= needed ? id : 0;
-}
 
 class LivingModel {
   /** Initialize or reconcile the Living World state on `pack.history.living` */
@@ -1074,6 +584,7 @@ class LivingModel {
     history.living.provinces ??= {};
     history.living.cells ??= {};
     history.living.recentNews ??= [];
+    this.pruneLegacyFields(history.living);
 
     if (opts?.seed !== undefined) history.living.seed = String(opts.seed);
     if (opts?.snapshotIntervalYears !== undefined) {
@@ -1092,6 +603,53 @@ class LivingModel {
   /** Return the active LivingWorldState, initializing it lazily if needed */
   getState(): LivingWorldState {
     return pack.history?.living ?? this.init();
+  }
+
+  /** living-fmg-native.md: strip retired OpenCiv/research fields from older saves. */
+  private pruneLegacyFields(living: LivingWorldState): void {
+    type Legacy = Record<string, unknown>;
+    const legacy = living as unknown as Legacy;
+    for (const key of ["worldWonders", "religions", "units"]) delete legacy[key];
+    const researchKeys = ["currentTechId", "researchQueue", "researchedTechs", "researchedProgress", "freeTechs"];
+    for (const sSim of Object.values(living.states)) {
+      const record = sSim as unknown as Legacy;
+      for (const key of [
+        "faith",
+        "prophetsEarned",
+        "pantheonId",
+        "religionId",
+        "happiness",
+        "happinessBreakdown",
+        "yieldsPerTurn",
+        ...researchKeys
+      ]) {
+        delete record[key];
+      }
+    }
+    for (const faction of pack.factions ?? []) {
+      if (!faction?.i) continue;
+      const record = faction as unknown as Legacy;
+      for (const key of [...researchKeys, "happiness", "happinessBreakdown", "yieldsPerTurn"]) delete record[key];
+    }
+    for (const bSim of Object.values(living.burgs)) {
+      const record = bSim as unknown as Legacy;
+      for (const key of [
+        "citizens",
+        "foodStored",
+        "cultureStored",
+        "tilesAcquired",
+        "nextBorderCell",
+        "workedCells",
+        "lockedCells",
+        "productionQueue",
+        "productionProgress",
+        "cityYields",
+        "religionPressure",
+        "pantheonId"
+      ]) {
+        delete record[key];
+      }
+    }
   }
 
   /** Vitals, temperament, injuries and doctrine for one hero; lazily initialized. */
@@ -1337,21 +895,23 @@ class LivingModel {
         const currentEra = pack.history?.eras?.at(-1);
         if (currentEra) currentEra.to = options.map.lore.calendar.year;
         this.stepRulers(living);
+        this.stepFiscalPolicy(living);
+        this.stepReligiousDrift(living);
         this.stepGrudges(living);
         this.captureSnapshot(living);
       }
 
       this.syncWorld();
-      this.stepCities(living);
-      this.stepEmpire(living);
+      this.stepFactionEmpire(living);
       this.stepDevelopmentDiffusion(living);
+      this.syncTroubleLines(living);
       this.stepEconomy(living);
-      this.stepReligion(living);
       this.stepTactical(living);
       this.stepBurgUnrest(living);
       this.stepProvinces(living);
       this.stepFactions(living);
       this.stepStates(living);
+      this.stepProjects(living);
       this.stepDiplomacy(living);
       this.stepRebellions(living);
       this.stepMobileBurgs(living);
@@ -1370,8 +930,6 @@ class LivingModel {
     living.provinces ??= {};
     living.cells ??= {};
     living.recentNews ??= [];
-    living.worldWonders ??= {};
-    living.religions ??= {};
     living.activeTroubles ??= {};
     this.syncBurgs(living);
     this.syncProvinces(living);
@@ -1470,7 +1028,7 @@ class LivingModel {
       if (
         (faction.allegiance === "hostile" || faction.allegiance === "clandestine") &&
         (faction.seasonsActive ?? 0) >= 8 &&
-        (faction.researchedTechs?.length ?? 0) >= 2
+        this.factionDevelopment(faction) >= SOVEREIGN_DEVELOPMENT
       ) {
         doom += 1;
       }
@@ -1527,7 +1085,6 @@ class LivingModel {
   syncStates(living: LivingWorldState): void {
     const { content } = currentContent();
     const availableRosters = new Set(Object.keys(content.rosters));
-    const development = this.developmentAverages();
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) {
@@ -1550,40 +1107,20 @@ class LivingModel {
           warExhaustion: 0,
           claims: [],
           grudges: [],
-          currentTechId: null,
-          researchQueue: [],
-          researchedTechs: [],
-          researchedProgress: {},
-          freeTechs: 0,
-          treasury: Number(pack.states[state.i]?.economy?.treasury ?? 0),
-          yieldsPerTurn: emptyYields()
+          treasury: Number(pack.states[state.i]?.economy?.treasury ?? 0)
         };
       } else {
         existing.rulerId = rulerId;
-        existing.currentTechId ??= null;
-        existing.researchQueue ??= [];
-        existing.researchedTechs ??= [];
-        existing.researchedProgress ??= {};
-        existing.freeTechs ??= 0;
         existing.treasury ??= Number(state.economy?.treasury ?? 0);
-        existing.yieldsPerTurn ??= emptyYields();
         existing.warTurns ??= {};
         existing.peaceTreatyTurns ??= {};
-        existing.faith ??= 0;
-        existing.prophetsEarned ??= 0;
       }
-
-      const sSim = living.states[state.i];
-      this.seedPolityTechs(sSim.researchedTechs ?? [], sSim.researchedProgress ?? {}, development.get(state.i) ?? 0);
     }
   }
 
   syncFactions(_living: LivingWorldState): void {
     for (const faction of Factions.active()) {
       syncFactionState(faction);
-      faction.researchedTechs ??= [];
-      faction.researchedProgress ??= {};
-      this.seedPolityTechs(faction.researchedTechs, faction.researchedProgress, this.factionDevelopment(faction));
     }
   }
 
@@ -1599,6 +1136,11 @@ class LivingModel {
       if (id > 0 && value !== undefined) averages.set(id, value);
     });
     return averages;
+  }
+
+  /** A state's mean development, 0 when the map carries none. */
+  private stateDevelopment(stateId: number): number {
+    return this.developmentAverages().get(stateId) ?? 0;
   }
 
   /** Mean development at a faction's HQ and outposts. */
@@ -1617,55 +1159,6 @@ class LivingModel {
     return count > 0 ? total / count : 0;
   }
 
-  /** §2.2: a polity that starts past the foragers' era already knows its earlier rows' technologies. */
-  private seedPolityTechs(techs: string[], progress: Record<string, number>, development: number): void {
-    if (techs.length > 0 || Object.keys(progress).length > 0) return;
-    const seeded = seedTechsFromDevelopment(development);
-    techs.push(...seeded.researched);
-    Object.assign(progress, seeded.progress);
-  }
-
-  /** §2.3: a discovery raises the polity's cities and marks the upstream economy to re-run. */
-  private raiseTechDevelopment(
-    living: LivingWorldState,
-    researchedTechs: readonly string[],
-    cells: readonly number[]
-  ): void {
-    const development = pack.cells.development;
-    if (!development) return;
-
-    const target = computePolityTechDevelopment(researchedTechs);
-    if (target <= 0) return;
-
-    let changed = false;
-    for (const cell of cells) {
-      if (!development[cell]) continue; // wild land stays wild
-      const goal = Math.min(100, target + this.schoolBonus(living, cell));
-      if (development[cell] >= goal) continue;
-      development[cell] = goal;
-      changed = true;
-    }
-    if (changed) living.economyDirty = true;
-  }
-
-  /** +2 development in a city with a seat of learning. */
-  private schoolBonus(living: LivingWorldState, cell: number): number {
-    const burgId = pack.cells.burg?.[cell] ?? 0;
-    const buildings = burgId ? (living.burgs[burgId]?.civBuildings ?? []) : [];
-    return buildings.some(id => SCHOLARLY_BUILDINGS.has(id)) ? 2 : 0;
-  }
-
-  /** The capital and every burg a state owns: where a discovery lands first. */
-  private settlementCells(stateId: number): number[] {
-    const cells = new Set<number>();
-    const capital = pack.burgs[pack.states[stateId]?.capital ?? 0];
-    if (capital?.i && !capital.removed) cells.add(capital.cell);
-    for (const burg of pack.burgs) {
-      if (burg?.i && !burg.removed && burg.state === stateId) cells.add(burg.cell);
-    }
-    return [...cells];
-  }
-
   /** A faction's live HQ and outpost cells. */
   private factionSettlementCells(faction: Faction): number[] {
     const cells: number[] = [];
@@ -1678,16 +1171,17 @@ class LivingModel {
     return cells;
   }
 
-  /** §2.3: peopled land steps toward its polity's technology level, eased by the land itself. */
+  /** Peopled land eases toward its people's mean development; the land itself sets the local ceiling. */
   private stepDevelopmentDiffusion(living: LivingWorldState): void {
     const { cells } = pack;
     const development = cells.development;
     if (!development || !cells.state) return;
     const astral = Development.isAstralMode();
+    const averages = this.developmentAverages();
     const targets = new Map<number, { target: number; regime: AstralTechRegime }>();
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
-      const target = computePolityTechDevelopment(living.states[state.i]?.researchedTechs ?? []);
+      const target = averages.get(state.i) ?? 0;
       if (target > 0) {
         const regime = astral ? classifyAstralRegime(pack.cultures?.[state.culture ?? 0]) : "standardSciFi";
         targets.set(state.i, { target, regime });
@@ -1775,15 +1269,6 @@ class LivingModel {
     if (!economy) return 0;
     const spent = Object.values(economy.spent ?? {}).reduce((total, value) => total + Number(value ?? 0), 0);
     return (Number(economy.collected ?? 0) - Number(economy.pocketed ?? 0) - spent) * SEASON_DAYS;
-  }
-
-  /** Upstream accounts are readable only after a full economy run on a whole map. */
-  private canReadUpstreamEconomy(): boolean {
-    return canReadUpstreamEconomy();
-  }
-
-  private upstreamAccounts(stateId: number): ReturnType<typeof Accounts.ofState> {
-    return this.canReadUpstreamEconomy() ? Accounts.ofState(stateId) : null;
   }
 
   syncProvinces(living: LivingWorldState): void {
@@ -1932,6 +1417,118 @@ class LivingModel {
     return ["cruel", "greedy", "slothful", "cowardly", "vengeful", "wrathful", "paranoid"].some(vice =>
       vices.has(vice)
     );
+  }
+
+  /** Spring: the ruler's fiscal target pulls the real budget, taxes and graft. */
+  private stepFiscalPolicy(living: LivingWorldState): void {
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+      const stride = Math.min(fiscalStride(state), FISCAL_DRIFT);
+      if (!stride) continue;
+      const profile = fiscalProfile(state, this.fiscalEvents(state, living));
+      if (!profile) continue;
+
+      this.ensureFiscalBaseline(state, sSim);
+      const locks = new Set(sSim.fiscal?.locks ?? []);
+      let changed = false;
+
+      const budget: Partial<Record<Expense, number>> = {};
+      for (const line of EXPENSES) {
+        if (locks.has(line)) continue;
+        const next = this.driftNumber(fiscalValue(state, line), fiscalTarget(profile, line), stride);
+        if (next !== fiscalValue(state, line)) budget[line] = next;
+      }
+      if (Object.keys(budget).length) {
+        States.setBudget(state.i, budget);
+        changed = true;
+      }
+
+      if (!locks.has("corruption")) {
+        const current = state.economy.budget.corruption;
+        const next = this.driftNumber(current, profile.corruption, CORRUPTION_DRIFT);
+        if (next !== current) {
+          States.setCorruption(state.i, next);
+          changed = true;
+        }
+      }
+
+      if (!locks.has("salesTax") || !locks.has("pollTax")) {
+        const sales = locks.has("salesTax")
+          ? state.economy.salesTax
+          : this.driftNumber(state.economy.salesTax, profile.salesTax, TAX_DRIFT, 4);
+        const poll = locks.has("pollTax")
+          ? state.economy.pollTax
+          : this.driftNumber(state.economy.pollTax, profile.pollTax, TAX_DRIFT, 4);
+        if (sales !== state.economy.salesTax || poll !== state.economy.pollTax) {
+          States.setTaxes(state.i, sales, poll);
+          changed = true;
+        }
+      }
+
+      if (!changed) continue;
+      living.economyDirty = true; // the run's taxes, spending and graft follow the purse
+      this.pushFiscalNews(state, sSim, locks, living);
+    }
+  }
+
+  /** The political weather the purse must answer this spring. */
+  private fiscalEvents(state: State, living: LivingWorldState): FiscalEvents {
+    return {
+      war: this.stateAtWar(state),
+      rebellion: (living.states[state.i]?.unravel ?? 0) >= 50,
+      hazard: this.ownedProvinces(state.i).some(province => Boolean(living.provinces[province.i]?.trouble)),
+      bankrupt: Number(state.economy.treasury ?? 0) < 0
+    };
+  }
+
+  /** Each ruler starts with a baseline so a later dispatch can say what changed. */
+  private ensureFiscalBaseline(state: State, sSim: StatePolitySim): void {
+    if (!sSim.fiscal) sSim.fiscal = {};
+    const fiscal = sSim.fiscal;
+    if (fiscal.rulerId === sSim.rulerId && fiscal.baseline) return;
+    fiscal.rulerId = sSim.rulerId;
+    fiscal.logged = {};
+    fiscal.baseline = Object.fromEntries(
+      [...EXPENSES, "corruption", "salesTax", "pollTax"].map(line => [line, fiscalValue(state, line as FiscalLock)])
+    ) as Partial<Record<FiscalLock, number>>;
+  }
+
+  /** Move one value toward its target by at most `stride`, rounded to `decimals`. */
+  private driftNumber(current: number, target: number, stride: number, decimals = 0): number {
+    const step = Math.min(stride, Math.abs(target - current));
+    const next = current + Math.sign(target - current) * step;
+    const scale = 10 ** decimals;
+    return Math.round(next * scale) / scale;
+  }
+
+  /** One dispatch per spring at most: the line the ruler moved furthest from accession. */
+  private pushFiscalNews(state: State, sSim: StatePolitySim, locks: Set<FiscalLock>, living: LivingWorldState): void {
+    const baseline = sSim.fiscal?.baseline;
+    if (!baseline) return;
+    let best: { line: FiscalLock; deviation: number; value: number } | null = null;
+    for (const line of [...EXPENSES, "corruption", "salesTax", "pollTax"] as FiscalLock[]) {
+      if (locks.has(line) || sSim.fiscal?.logged?.[line]) continue;
+      const start = baseline[line];
+      if (start === undefined) continue;
+      const value = fiscalValue(state, line);
+      const deviation =
+        line === "salesTax" || line === "pollTax" ? Math.abs(value - start) * 100 : Math.abs(value - start);
+      const threshold =
+        line === "corruption"
+          ? CORRUPTION_NEWS_THRESHOLD
+          : line === "salesTax" || line === "pollTax"
+            ? 1
+            : FISCAL_NEWS_THRESHOLD;
+      if (deviation < threshold) continue;
+      if (!best || deviation > best.deviation) best = { line, deviation, value };
+    }
+    if (!best) return;
+    sSim.fiscal!.logged = { ...sSim.fiscal!.logged, [best.line]: true };
+    const up = best.value > (baseline[best.line] ?? 0);
+    const text = `${state.name} ${FISCAL_PHRASES[best.line][up ? 0 : 1]}`;
+    this.pushNews(living, { kind: "develop", text, cell: state.center, stateId: state.i });
   }
 
   /** Once a year: old grudges fade and the war weariness of the court eases. */
@@ -2115,591 +1712,12 @@ class LivingModel {
     return distances;
   }
 
-  /** Every Major Burg of a state that has a live simulation record. */
-  private majorBurgsOfState(stateId: number, living: LivingWorldState): Burg[] {
-    return pack.burgs.filter(
-      burg =>
-        burg?.i &&
-        !burg.removed &&
-        burg.state === stateId &&
-        (isMajorBurg(burg) || Boolean(living.burgs[burg.i]?.isMajor)) &&
-        Boolean(living.burgs[burg.i])
-    );
-  }
-
   /** Is this state engaged in any war this tick? */
   private stateAtWar(state: State): boolean {
     if (!state.diplomacy) return false;
     return pack.states.some(
       other => other?.i && other.i !== state.i && !other.removed && state.diplomacy?.[other.i] === "Enemy"
     );
-  }
-
-  /** Pantheon + religion belief ids held by a state (Slice 6 fills the religion record). */
-  private stateBeliefs(state: State, living: LivingWorldState): Set<string> {
-    const ids = new Set<string>();
-    const sSim = living.states[state.i];
-    if (sSim?.pantheonId) ids.add(sSim.pantheonId);
-    const religionId = sSim?.religionId;
-    const religion = religionId ? living.religions?.[religionId] : undefined;
-    if (religion) {
-      if (religion.pantheonId) ids.add(religion.pantheonId);
-      if (religion.founderBeliefId) ids.add(religion.founderBeliefId);
-      if (religion.enhancerBeliefId) ids.add(religion.enhancerBeliefId);
-      for (const id of religion.followerBeliefIds ?? []) ids.add(id);
-    }
-    return ids;
-  }
-
-  /** A ruler's temperament weights which cells a city works (martial/civic/pious). */
-  private cityWorkWeight(yields: YieldValues, state: State, living: LivingWorldState): number {
-    const sSim = living.states[state.i];
-    const bias = sSim ? this.traitBias(state, sSim) : { martial: 0.1, civic: 0.1, pious: 0.1, cruel: 0 };
-    return (
-      yields.food +
-      yields.production * (1 + bias.martial) +
-      (yields.gold + yields.science) * (1 + bias.civic) +
-      (yields.faith + yields.culture) * (1 + bias.pious) +
-      yields.happiness * 0.5
-    );
-  }
-
-  /** A cell that can host a Major Burg's centre or a citizen worker. */
-  private isCityWorkable(cell: number): boolean {
-    if (getCellTerrainInfo(cell).isWorkable) return true;
-    return Number(pack.cells.harbor?.[cell] ?? 0) > 0;
-  }
-
-  /**
-   * §4.1: assign citizens to worked cells (centre free, then Food floor, then
-   * ruler-weighted total yield) and sum the OpenCiv city yields.
-   */
-  private updateWorkedCells(
-    burg: Burg,
-    bSim: BurgSimState,
-    state: State,
-    living: LivingWorldState,
-    globalWorkedCells?: Set<number>
-  ): YieldValues {
-    const citizens = Math.max(1, Math.floor(bSim.citizens ?? citizensFromPopulation(burg.population ?? 0)));
-    bSim.citizens = citizens;
-
-    const centerYields = getCellYields(burg.cell, state.i, living);
-    if (centerYields.food < 2) centerYields.food = 2;
-
-    const taken = new Set<number>(globalWorkedCells);
-    for (const other of this.majorBurgsOfState(state.i, living)) {
-      if (other.i === burg.i) continue;
-      for (const cell of living.burgs[other.i]?.workedCells ?? []) taken.add(cell);
-    }
-
-    const distances = this.cellHopDistances(burg.cell, MAX_WORK_DISTANCE);
-    const candidates: { cell: number; hops: number; yields: YieldValues; weight: number }[] = [];
-    for (const [cell, hops] of distances) {
-      if (cell === burg.cell || taken.has(cell)) continue;
-      if (pack.cells.state?.[cell] !== state.i) continue;
-      if (!this.isCityWorkable(cell)) continue;
-      const yields = getCellYields(cell, state.i, living);
-      candidates.push({ cell, hops, yields, weight: this.cityWorkWeight(yields, state, living) });
-    }
-
-    const worked: number[] = [];
-    const assigned = new Set<number>();
-    let food = centerYields.food;
-    const consumption = FOOD_PER_CITIZEN * citizens;
-    const foodFloorReached = () => food - consumption >= DEFAULT_FOCUS_GROWTH_TARGET;
-
-    // Ruler-pinned cells are worked first, exactly as the player left them.
-    for (const cell of bSim.lockedCells ?? []) {
-      if (worked.length >= citizens) break;
-      if (assigned.has(cell) || !candidates.some(candidate => candidate.cell === cell)) continue;
-      worked.push(cell);
-      assigned.add(cell);
-      food += getCellYields(cell, state.i, living).food;
-    }
-
-    // Phase 1: Food floor, highest Food first, then nearest, then lowest id.
-    const byFood = [...candidates].sort((a, b) => b.yields.food - a.yields.food || a.hops - b.hops || a.cell - b.cell);
-    for (const candidate of byFood) {
-      if (worked.length >= citizens || foodFloorReached()) break;
-      if (assigned.has(candidate.cell) || candidate.yields.food <= 0) continue;
-      worked.push(candidate.cell);
-      assigned.add(candidate.cell);
-      food += candidate.yields.food;
-    }
-
-    // Phase 2: ruler-weighted total yield for the remaining citizens.
-    const byWeight = [...candidates].sort((a, b) => b.weight - a.weight || a.hops - b.hops || a.cell - b.cell);
-    for (const candidate of byWeight) {
-      if (worked.length >= citizens) break;
-      if (assigned.has(candidate.cell)) continue;
-      if (candidate.weight <= 0) break;
-      worked.push(candidate.cell);
-      assigned.add(candidate.cell);
-    }
-
-    const total = { ...centerYields };
-    for (const cell of worked) {
-      if (globalWorkedCells) globalWorkedCells.add(cell);
-      const yields = getCellYields(cell, state.i, living);
-      for (const key of CIV_YIELD_KEYS) total[key] += yields[key];
-    }
-    for (const id of bSim.civBuildings ?? []) {
-      const def = CIV_BUILDING_BY_ID[id];
-      if (!def) continue;
-      for (const key of CIV_YIELD_KEYS) total[key] += def.stats[key] ?? 0;
-    }
-
-    bSim.workedCells = worked;
-    return total;
-  }
-
-  /** Food as a percentage of the bucket kept on growth (Aqueduct / Hospital). */
-  private cityFoodCarryover(bSim: BurgSimState): number {
-    const held = new Set(bSim.civBuildings ?? []);
-    let percent = 0;
-    if (held.has("aqueduct")) percent += 40;
-    if (held.has("hospital")) percent += 25;
-    return percent / 100;
-  }
-
-  /** Mutate a city's citizen count and mirror it onto `burg.population`. */
-  private changeCitizens(
-    state: State,
-    burg: Burg,
-    bSim: BurgSimState,
-    living: LivingWorldState,
-    nextCitizens: number
-  ): void {
-    const previous = bSim.citizens ?? 1;
-    const next = minmax(Math.floor(nextCitizens), 1, MAX_CITIZENS);
-    bSim.citizens = next;
-
-    const target = populationFromCitizens(next);
-    const current = Number(burg.population ?? 0);
-    // Growth never shrinks an existing population; starvation sets it back.
-    burg.population = next >= previous ? Math.max(current, target) : target;
-    if (next > previous) this.growMinorBurgs(state, burg, living);
-  }
-
-  /** A growing Major Burg pulls its satellite villages up by 6%. */
-  private growMinorBurgs(state: State, parent: Burg, _living: LivingWorldState): void {
-    const provinceId = Number(pack.cells.province?.[parent.cell] ?? 0);
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || burg.i === parent.i || burg.state !== state.i) continue;
-      if (!isMinorBurg(burg)) continue;
-      if (provinceId && Number(pack.cells.province?.[burg.cell] ?? 0) !== provinceId) continue;
-      burg.population = Math.round(Number(burg.population ?? 0) * 1.06 * 10) / 10;
-    }
-  }
-
-  /**
-   * §4.2: Food consumption, growth multipliers, bucket carryover and
-   * starvation. Returns Production converted from surplus Food by a queued
-   * Settler.
-   */
-  private applyFoodGrowth(
-    burg: Burg,
-    bSim: BurgSimState,
-    state: State,
-    living: LivingWorldState,
-    cityYields: YieldValues
-  ): number {
-    const sSim = living.states[state.i];
-    const citizens = Math.max(1, bSim.citizens ?? 1);
-    const surplus = cityYields.food - FOOD_PER_CITIZEN * citizens;
-
-    const top = bSim.productionQueue?.[0];
-    if (top?.kind === "unit" && top.id === SETTLER_UNIT_ID) {
-      return surplus > 0 ? surplus * SETTLER_FOOD_TO_PRODUCTION_FACTOR : 0;
-    }
-
-    if (surplus > 0) {
-      let multiplier = happinessGrowthFactor(sSim?.happiness ?? 0);
-      if (multiplier > 0) {
-        const beliefs = this.stateBeliefs(state, living);
-        if (beliefs.has("fertility_rites")) multiplier *= 1.1;
-        if (beliefs.has("swords_into_plowshares") && !this.stateAtWar(state)) multiplier *= 1.15;
-        if ((bSim.civBuildings ?? []).includes("temple_of_artemis")) multiplier *= 1.1;
-      }
-      bSim.foodStored = (bSim.foodStored ?? 0) + surplus * multiplier;
-    }
-
-    const needed = foodNeededForGrowth(citizens);
-    const stored = bSim.foodStored ?? 0;
-    if (stored >= needed) {
-      const carryover = this.cityFoodCarryover(bSim);
-      bSim.foodStored = stored - needed + needed * carryover;
-      this.changeCitizens(state, burg, bSim, living, citizens + 1);
-    } else if (stored < 0) {
-      bSim.foodStored = 0;
-      this.changeCitizens(state, burg, bSim, living, Math.max(1, citizens - 1));
-    }
-    return 0;
-  }
-
-  /** Best unowned, workable cell to claim next: lowest influence score wins. */
-  private pickBorderClaimCell(burg: Burg, state: State, living: LivingWorldState): number | null {
-    let best: { cell: number; score: number } | null = null;
-    const distances = this.cellHopDistances(burg.cell, MAX_ACQUIRE_DISTANCE);
-    for (const [cell, hops] of distances) {
-      if (cell === burg.cell) continue;
-      if (pack.cells.state?.[cell] !== 0) continue;
-      if (!this.isCityWorkable(cell)) continue;
-      const bordersState = (pack.cells.c?.[cell] ?? []).some(neighbor => pack.cells.state?.[neighbor] === state.i);
-      if (!bordersState) continue;
-      const score = borderInfluenceScore(cell, hops, state.i, living);
-      if (!best || score < best.score || (score === best.score && cell < best.cell)) best = { cell, score };
-    }
-    return best?.cell ?? null;
-  }
-
-  /**
-   * §4.3: accumulate Culture and claim the best unowned cell. Claims go
-   * through `States.setCells` where the pack is complete, and fall back to a
-   * direct assignment on stripped saves.
-   */
-  private applyBorderGrowth(
-    burg: Burg,
-    bSim: BurgSimState,
-    state: State,
-    living: LivingWorldState,
-    cityYields: YieldValues
-  ): boolean {
-    // realm states hold no surface territory: only surface burgs grow borders
-    if (!isSurfaceBurg(burg) || state.cells === 0) return false;
-    const tiles = bSim.tilesAcquired ?? 0;
-    const held = new Set(bSim.civBuildings ?? []);
-    const costFactor = held.has("angkor_wat") ? 0.75 : 1;
-    const speedFactor = this.stateBeliefs(state, living).has("religious_settlements") ? 1.15 : 1;
-    const needed = borderCultureNeeded(tiles, costFactor, speedFactor);
-
-    bSim.cultureStored = (bSim.cultureStored ?? 0) + Math.max(0, cityYields.culture);
-    if (bSim.cultureStored < needed) return false;
-
-    const target = this.pickBorderClaimCell(burg, state, living);
-    if (target === null) {
-      // Keep the bucket full but clamped until there is land worth claiming.
-      bSim.cultureStored = needed;
-      bSim.nextBorderCell = null;
-      return false;
-    }
-
-    const burgId = Number(pack.cells.burg?.[target] ?? 0);
-    const encountered = burgId ? pack.burgs?.[burgId] : undefined;
-    const previousOwner = encountered?.state ?? 0;
-    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
-
-    // Claim directly: `States.setCells()` recomputes poles and statistics on
-    // every call, which is far too heavy inside a per-city seasonal loop.
-    // `stepCities` refreshes the aggregate state statistics once per tick.
-    pack.cells.state[target] = state.i;
-    if (provinceId && pack.cells.province) pack.cells.province[target] = provinceId;
-    if (encountered?.i) encountered.state = state.i;
-
-    bSim.cultureStored -= needed;
-    bSim.tilesAcquired = tiles + 1;
-    bSim.nextBorderCell = null;
-
-    if (encountered?.i && !encountered.removed) {
-      this.handleFreeBurgEncounter(state, encountered, previousOwner, living);
-    }
-    return true;
-  }
-
-  /** Border growth reaching a Free Burg triggers the kinship/faith check. */
-  private handleFreeBurgEncounter(state: State, burg: Burg, previousOwner: number, living: LivingWorldState): void {
-    if (previousOwner) return;
-    const bSim = living.burgs[burg.i];
-    const kin = this.sharesKinshipOrFaith(state.i, burg.i);
-
-    if (kin) {
-      if (bSim) {
-        bSim.unrest = 0;
-        bSim.conqueredBy = undefined;
-        bSim.originalOwner = state.i;
-        bSim.originalCulture ??= burg.culture;
-        bSim.originalReligion ??= pack.cells.religion?.[burg.cell] ?? 0;
-      }
-      this.logConquest(state, burg, false);
-      return;
-    }
-
-    if (bSim) {
-      bSim.conqueredBy = state.i;
-      bSim.unrest = Math.max(bSim.unrest ?? 0, 6 + (bSim.citizens ?? citizensFromPopulation(burg.population ?? 0)));
-    }
-    this.logConquest(state, burg, true);
-  }
-
-  /** Can this Major Burg start this OpenCiv building or wonder? */
-  private cityCanBuild(
-    burg: Burg,
-    state: State,
-    def: CivBuildingDef,
-    techs: Set<string>,
-    held: Set<string>,
-    living: LivingWorldState
-  ): boolean {
-    if (def.uniqueTo) return false;
-    if (def.factionCategory) return false;
-    if (held.has(def.id)) return false;
-    if (def.requiredTech && !techs.has(def.requiredTech)) return false;
-    if (def.requiresBuilding && !held.has(def.requiresBuilding)) return false;
-    if (def.requiresRiver && !hasFreshWater(burg.cell)) return false;
-    if (def.requiresMountain) {
-      const nearMountain = (pack.cells.c?.[burg.cell] ?? []).some(cell => getCellTerrainInfo(cell).isMountain);
-      if (!nearMountain) return false;
-    }
-    if (def.coastal) {
-      const coastal = (pack.cells.c?.[burg.cell] ?? []).some(cell => Number(pack.cells.h?.[cell] ?? 0) < SEA_LEVEL);
-      if (!coastal) return false;
-    }
-    if (def.isWonder) {
-      const owner = living.worldWonders?.[def.id];
-      if (owner && owner.burgId !== burg.i) return false;
-    }
-    if (def.nationalWonder) {
-      const alreadyBuilt = this.majorBurgsOfState(state.i, living).some(other =>
-        (living.burgs[other.i]?.civBuildings ?? []).includes(def.id)
-      );
-      if (alreadyBuilt) return false;
-    }
-    return true;
-  }
-
-  /**
-   * §4.4: the autonomous governor picks the next project. Units are deferred
-   * to Slice 5 (1UPT tacticals), so this queue holds buildings and wonders.
-   */
-  private chooseCityProduction(
-    burg: Burg,
-    bSim: BurgSimState,
-    state: State,
-    living: LivingWorldState
-  ): ProductionItem | null {
-    const sSim = living.states[state.i];
-    const techs = new Set(sSim?.researchedTechs ?? []);
-    const held = new Set(bSim.civBuildings ?? []);
-    const canBuild = (def: CivBuildingDef | undefined): def is CivBuildingDef =>
-      def !== undefined && this.cityCanBuild(burg, state, def, techs, held, living);
-
-    // 1. Emergency defence: a war or restive city without walls raises them first.
-    if ((this.stateAtWar(state) || (bSim.unrest ?? 0) > 0) && !held.has("walls")) {
-      const walls = CIV_BUILDING_BY_ID.walls;
-      if (canBuild(walls)) return { kind: "building", id: "walls" };
-    }
-
-    // 2. Economic and science core.
-    for (const id of CITY_ECONOMY_BUILDINGS) {
-      const def = CIV_BUILDING_BY_ID[id];
-      if (canBuild(def)) return { kind: "building", id };
-    }
-
-    // 3. Expansion: a Builder while owned tiles sit unimproved, then a Settler.
-    const unitAvailable = (id: string): boolean => {
-      const def = CIV_CIVILIAN_BY_ID[id];
-      if (!def) return false;
-      return !def.requiredTech || techs.has(def.requiredTech);
-    };
-    if (this.stateUnitCount(state.i, "builder") === 0 && this.countUnimprovedCells(state.i, living) >= 2) {
-      if (unitAvailable("builder")) return { kind: "unit", id: "builder" };
-    }
-    if (
-      (sSim?.happiness ?? 0) >= 4 &&
-      (bSim.citizens ?? 1) >= 3 &&
-      this.stateUnitCount(state.i, "settler") === 0 &&
-      unitAvailable("settler")
-    ) {
-      return { kind: "unit", id: "settler" };
-    }
-
-    // 4. Military: a war without a field army raises the cheapest roster melee.
-    if (this.stateAtWar(state)) {
-      const roster = Military.getRoster(state);
-      const hasArmy = (state.military ?? []).some(regiment => living.armies?.[this.unitKey(state.i, regiment.i)]);
-      if (roster && !hasArmy) {
-        const melee = pickRosterUnit(roster, "melee", [...techs]);
-        if (melee) return { kind: "unit", id: melee.id };
-      }
-    }
-
-    // 5. National and World Wonders, cheapest first, deterministic on ties.
-    const wonders = CIV_BUILDINGS.filter(def => (def.isWonder || def.nationalWonder) && canBuild(def)).sort(
-      (a, b) => (a.cost ?? 0) - (b.cost ?? 0) || a.id.localeCompare(b.id)
-    );
-    if (wonders.length) return { kind: "wonder", id: wonders[0]!.id };
-    return null;
-  }
-
-  /** Production price: civilians keep their Civ cost, combat blocks use the roster's. */
-  private productionCost(state: State, item: ProductionItem): number {
-    if (item.kind === "trouble") {
-      // Environmental-trouble work order (Phase E): progress like a building.
-      return 80;
-    }
-    if (item.kind === "operation") {
-      if (item.id !== FACTION_SUPPRESSION_OPERATION_ID) return 1;
-      const target = this.resolveFactionSuppressionTarget(state, item);
-      const tier = target ? (target.isHq ? 2 : "tier" in target.node ? target.node.tier : 2) : 2;
-      return factionSuppressionProductionCost({ tier });
-    }
-    const cost =
-      item.kind === "unit"
-        ? isCivilianUnit(item.id)
-          ? CIV_CIVILIAN_BY_ID[item.id]?.cost
-          : Military.getRoster(state)?.units[item.id]?.cost
-        : CIV_BUILDING_BY_ID[item.id]?.cost;
-    return Math.max(1, Math.floor(cost ?? 1));
-  }
-
-  /** §4.4: advance the top queue item by this tick's Production. */
-  private applyProduction(
-    burg: Burg,
-    bSim: BurgSimState,
-    state: State,
-    living: LivingWorldState,
-    cityYields: YieldValues,
-    bonusProduction: number
-  ): void {
-    bSim.productionQueue ??= [];
-    bSim.productionProgress ??= {};
-
-    let production = Math.max(0, cityYields.production) + Math.max(0, bonusProduction);
-    let guard = 0;
-    while (production > 0 && guard++ < 8) {
-      if (bSim.productionQueue.length === 0) {
-        const next = this.chooseCityProduction(burg, bSim, state, living);
-        if (!next) return;
-        bSim.productionQueue.push(next);
-      }
-
-      const item = bSim.productionQueue[0]!;
-      const key = `${item.kind}:${item.id}`;
-      const cost = this.productionCost(state, item);
-      const total = (bSim.productionProgress[key] ?? 0) + production;
-      if (total < cost) {
-        bSim.productionProgress[key] = total;
-        return;
-      }
-
-      production = total - cost;
-      delete bSim.productionProgress[key];
-      bSim.productionQueue.shift();
-      this.completeProductionItem(state, burg, bSim, item, living);
-    }
-  }
-
-  /** Finish a queued unit, building or wonder and reconcile every mirror. */
-  private completeProductionItem(
-    state: State,
-    burg: Burg,
-    bSim: BurgSimState,
-    item: ProductionItem,
-    living: LivingWorldState
-  ): void {
-    const year = options.map?.lore?.calendar?.year ?? 1000;
-    bSim.civBuildings ??= [];
-
-    if (item.kind === "trouble") {
-      // Phase E: the burg worked off an environmental affliction.
-      const provinceId = pack.cells.province?.[burg.cell] ?? 0;
-      const province = pack.provinces?.[provinceId];
-      const pSim = provinceId ? living.provinces[provinceId] : undefined;
-      if (pSim?.trouble) {
-        const troubleName = pSim.trouble.name ?? "trouble";
-        pSim.trouble = null;
-        pSim.order = Math.min(100, pSim.order + 10);
-        pSim.stability += 1;
-        const name = province?.name ?? "the province";
-        this.pushNews(living, {
-          kind: "trouble",
-          text: `${burg.name ?? state.name} worked through ${name}'s afflictions.`,
-          cell: burg.cell,
-          stateId: state.i,
-          burgId: burg.i
-        });
-        this.pushHistory(
-          "deed",
-          [{ kind: "state", id: state.i }],
-          burg.cell,
-          `${burg.name ?? state.name} cleared the ${troubleName} afflicting ${name}.`
-        );
-      }
-      return;
-    }
-
-    if (item.kind === "operation") {
-      this.completeSuppressionOperation(state, bSim, item, living);
-      return;
-    }
-
-    if (item.kind === "building" || item.kind === "wonder") {
-      if (!bSim.civBuildings.includes(item.id)) bSim.civBuildings.push(item.id);
-      syncCivFlagsFromBuildings(burg, bSim.civBuildings);
-    }
-
-    if (item.kind === "building" || item.kind === "wonder") {
-      const sSim = living.states[state.i];
-      const freeTechs = CIV_BUILDING_BY_ID[item.id]?.effects?.freeTechs ?? 0;
-      if (sSim && freeTechs > 0) sSim.freeTechs = (sSim.freeTechs ?? 0) + freeTechs;
-    }
-
-    if (item.kind === "wonder") {
-      living.worldWonders ??= {};
-      living.worldWonders[item.id] = { burgId: burg.i, stateId: state.i, year };
-      this.refundRivalWonders(item.id, burg.i, living);
-      const name = CIV_BUILDING_BY_ID[item.id]?.name ?? item.id;
-      this.pushNews(living, {
-        kind: "build",
-        text: `${burg.name ?? state.name} raised the ${name}.`,
-        cell: burg.cell,
-        stateId: state.i,
-        burgId: burg.i
-      });
-      return;
-    }
-
-    if (item.kind === "building") {
-      const name = CIV_BUILDING_BY_ID[item.id]?.name ?? item.id;
-      this.pushNews(living, {
-        kind: "build",
-        text: `${burg.name ?? state.name} completed the ${name}.`,
-        cell: burg.cell,
-        stateId: state.i,
-        burgId: burg.i
-      });
-      return;
-    }
-
-    if (this.hasCityTerrain()) {
-      this.spawnUnit(state, burg, item.id);
-      return;
-    }
-    this.muster(state.i);
-  }
-
-  /** Administrative suppression pressure after a host-city operation finishes. */
-  private completeSuppressionOperation(
-    state: State,
-    _bSim: BurgSimState,
-    item: ProductionItem,
-    living: LivingWorldState
-  ): void {
-    if (item.id !== FACTION_SUPPRESSION_OPERATION_ID) return;
-    const target = this.resolveFactionSuppressionTarget(state, item);
-    if (!target) return;
-    const sSim = living.states[state.i];
-    if (this.factionNodeHasGuard(target.faction, target.node)) {
-      // Guarded node stalls the campaign; repeated stalls strain the state.
-      const agenda = sSim?.agenda?.kind === "suppress_faction" ? sSim.agenda : undefined;
-      if (sSim && (!agenda?.stallUntilTick || agenda.stallUntilTick <= living.tick)) {
-        sSim.unravel = Math.min(100, (sSim.unravel ?? 0) + 2);
-      }
-      if (agenda) agenda.stallUntilTick = living.tick + 4;
-      return;
-    }
-    this.applyFactionSuppressionPressure(state, target, living);
   }
 
   /** Whether a non-civilian faction regiment is defending this node cell. */
@@ -2749,23 +1767,6 @@ class LivingModel {
     node.pillaged = true;
     if ("influence" in node || isHq) (node as FactionHq | FactionOutpost).influence = 0;
 
-    // Drop any partial suppression work queued for this node.
-    if (burg?.i) {
-      const bSim = living.burgs[burg.i];
-      if (bSim?.productionQueue) {
-        bSim.productionQueue = bSim.productionQueue.filter(
-          item =>
-            !(
-              item.kind === "operation" &&
-              item.id === FACTION_SUPPRESSION_OPERATION_ID &&
-              item.targetFactionId === faction.i &&
-              item.targetNodeKey === target.nodeKey
-            )
-        );
-        if (bSim.productionProgress) delete bSim.productionProgress[`operation:${FACTION_SUPPRESSION_OPERATION_ID}`];
-      }
-    }
-
     if (!isHq && burg?.i) {
       this.pushNews(living, {
         kind: "faction",
@@ -2786,7 +1787,7 @@ class LivingModel {
 
     if (isHq) this.relocateOrDissolveFaction(state, faction, living);
 
-    // Retarget or cancel the suppressing state's agenda.
+    // Drop any partial suppression work the agenda still names.
     const sSim = living.states[state.i];
     const agenda = sSim?.agenda;
     if (agenda?.kind === "suppress_faction" && agenda.targetFactionId === faction.i) {
@@ -2850,28 +1851,18 @@ class LivingModel {
   factionGarrisonBlocks(faction: Faction, node: FactionHq | FactionOutpost, isHq: boolean): ArmyBlock[] {
     const types = Military.getUnitTypes();
     const roster = faction.rosterId ? Military.getRoster(faction) : undefined;
-    const techs = new Set(faction.researchedTechs ?? []);
+    const development = this.factionDevelopment(faction);
     const melee =
-      (roster ? pickRosterUnit(roster, "melee", [...techs]) : undefined) ??
+      (roster ? pickRosterUnit(roster, "melee", development) : undefined) ??
       Object.values(types).find(type => type.category === "melee") ??
       Object.values(types)[0];
     if (!melee) return [];
 
     const nodeTier = "tier" in node ? node.tier : 2;
-    const citizens = Math.max(1, Math.floor(node.sim?.citizens ?? (isHq ? 2 : nodeTier)));
     const tier = isHq ? 2 : nodeTier;
     const fortified = isHq && "fortified" in node && node.fortified ? 1 : 0;
-    const count = Math.min(FACTION_GARRISON_BLOCK_CAP, Math.max(2, citizens + tier + fortified * 2));
+    const count = Math.min(FACTION_GARRISON_BLOCK_CAP, Math.max(2, (isHq ? 3 : tier) + tier + fortified * 2));
     return Array.from({ length: count }, () => ({ type: melee.id, hp: 1, exp: 0 }));
-  }
-
-  /** Whether an unguarded node can be stormed directly (low influence or fortified). */
-  private factionNodeAssaultable(node: FactionHq | FactionOutpost, isHq: boolean): boolean {
-    const influence = node.influence ?? 70;
-    if (influence <= FACTION_SUPPRESSION_ASSAULT_THRESHOLD) return true;
-    if (isHq && "fortified" in node && node.fortified) return true;
-    if (!isHq && "tier" in node && node.tier >= 3) return true;
-    return false;
   }
 
   /**
@@ -2935,9 +1926,6 @@ class LivingModel {
         labels: [fortified ? `${burg?.name ?? "stronghold"} (fortified)` : (burg?.name ?? "stronghold")],
         ...(this.stateCombatMult(sSim.stateId, living) !== 1
           ? { attackerLordMult: this.stateCombatMult(sSim.stateId, living) }
-          : {}),
-        ...(happinessCombatMultiplier(faction.happiness ?? 0) !== 1
-          ? { defenderLordMult: happinessCombatMultiplier(faction.happiness ?? 0) }
           : {})
       }
     });
@@ -3004,202 +1992,6 @@ class LivingModel {
     return false;
   }
 
-  /** Queue one suppression operation for the target's host city, if not already queued. */
-  private enqueueFactionSuppression(target: FactionSuppressionTarget, living: LivingWorldState): boolean {
-    if (!target.burg?.i) return false; // Wilderness strongholds have no host city queue.
-    const bSim = living.burgs[target.burg.i!];
-    if (!bSim?.isMajor) return false;
-    bSim.productionQueue ??= [];
-    bSim.productionProgress ??= {};
-    const queued = bSim.productionQueue.some(
-      item =>
-        item.kind === "operation" &&
-        item.id === FACTION_SUPPRESSION_OPERATION_ID &&
-        item.targetFactionId === target.faction.i &&
-        item.targetNodeKey === target.nodeKey
-    );
-    if (queued) return false;
-    bSim.productionQueue.push({
-      kind: "operation",
-      id: FACTION_SUPPRESSION_OPERATION_ID,
-      targetFactionId: target.faction.i,
-      targetNodeKey: target.nodeKey
-    });
-    return true;
-  }
-
-  /** Resolve an operation/stale agenda target into its live faction node and host burg. */
-  private resolveFactionSuppressionTarget(
-    state: State,
-    item: { targetFactionId?: number; targetNodeKey?: string }
-  ): FactionSuppressionTarget | null {
-    const factionId = item.targetFactionId;
-    const faction = factionId !== undefined ? pack.factions?.[factionId] : undefined;
-    if (!faction?.i || faction.removed) return null;
-
-    const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
-    if (faction.hq && !faction.hq.pillaged) nodes.push({ node: faction.hq, isHq: true });
-    for (const outpost of faction.outposts ?? []) {
-      if (!outpost.pillaged) nodes.push({ node: outpost, isHq: false });
-    }
-
-    for (const { node, isHq } of nodes) {
-      if (item.targetNodeKey !== undefined && item.targetNodeKey !== factionSuppressionNodeKey(node, isHq)) continue;
-      const candidateBurg = node.burgId ? pack.burgs[node.burgId] : undefined;
-      if (candidateBurg?.i && !candidateBurg.removed) {
-        if (candidateBurg.state !== state.i) continue;
-        return {
-          faction,
-          node,
-          isHq,
-          burg: candidateBurg,
-          cell: candidateBurg.cell,
-          wilderness: false,
-          nodeKey: factionSuppressionNodeKey(node, isHq),
-          score: 0
-        };
-      }
-      // Wilderness HQ: HQ without a burg, anchored to a state-owned cell.
-      if (isHq && node.cell !== undefined && node.cell >= 0 && Number(pack.cells.state?.[node.cell] ?? 0) === state.i) {
-        return {
-          faction,
-          node,
-          isHq,
-          burg: null,
-          cell: node.cell,
-          wilderness: true,
-          nodeKey: factionSuppressionNodeKey(node, isHq),
-          score: 0
-        };
-      }
-    }
-    return null;
-  }
-
-  /** Hurry a city-node suppression operation without changing the gold reserve rule. */
-  hurryFactionSuppression(burgId: number): boolean {
-    const living = this.getState();
-    const burg = pack.burgs[burgId];
-    const bSim = living.burgs[burgId];
-    if (!burg?.i || burg.removed || !burg.state || !bSim?.productionQueue?.[0]) return false;
-
-    const item = bSim.productionQueue[0]!;
-    if (item.kind !== "operation" || item.id !== FACTION_SUPPRESSION_OPERATION_ID) return false;
-
-    const state = pack.states[burg.state];
-    if (!state?.i || state.removed) return false;
-    if (!this.resolveFactionSuppressionTarget(state, item)) return false;
-
-    const key = `${item.kind}:${item.id}`;
-    const remaining = Math.max(0, this.productionCost(state, item) - (bSim.productionProgress?.[key] ?? 0));
-    if (remaining <= 0) return false;
-
-    const price = hurryGoldCost(remaining, false, (bSim.civBuildings ?? []).includes("big_ben"));
-    if (Number(state.economy.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
-
-    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) - price) * 100) / 100;
-    if (bSim.productionProgress) delete bSim.productionProgress[key];
-    bSim.productionQueue.shift();
-    this.completeProductionItem(state, burg, bSim, item, living);
-    return true;
-  }
-
-  /** A wonder winner refunds 1 Gold per 1 Production invested by every rival. */
-  private refundRivalWonders(wonderId: string, winnerBurgId: number, living: LivingWorldState): void {
-    const key = `wonder:${wonderId}`;
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || burg.i === winnerBurgId) continue;
-      const bSim = living.burgs[burg.i];
-      if (!bSim?.productionQueue?.length) continue;
-
-      const index = bSim.productionQueue.findIndex(item => item.kind === "wonder" && item.id === wonderId);
-      if (index === -1) continue;
-
-      const invested = Math.floor(bSim.productionProgress?.[key] ?? 0);
-      bSim.productionQueue.splice(index, 1);
-      if (bSim.productionProgress) delete bSim.productionProgress[key];
-
-      const owner = pack.states[burg.state ?? 0];
-      if (invested > 0 && owner?.i && !owner.removed) {
-        owner.economy.treasury = Number(owner.economy.treasury ?? 0) + invested;
-      }
-    }
-  }
-
-  /** One seasonal OpenCiv tick for every owned Major Burg and every Faction HQ/Outpost node. */
-  private stepCities(living: LivingWorldState): void {
-    if (!this.hasCityTerrain()) return;
-    living.worldWonders ??= {};
-    let bordersChanged = false;
-    const globalWorkedCells = new Set<number>();
-    const draftedFactionNodes = new Set<BurgSimState>();
-    const factionNodes = this.collectFactionNodes();
-
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || !burg.state) continue;
-      const state = pack.states[burg.state];
-      if (!state?.i || state.removed) continue;
-      if (!isMajorBurg(burg)) continue;
-
-      const bSim = living.burgs[burg.i];
-      if (!bSim) continue;
-
-      // AER development can outgrow the stored citizen count; adopt the higher.
-      const derived = citizensFromPopulation(burg.population ?? 0);
-      bSim.citizens = Math.max(1, bSim.citizens ?? derived, derived);
-
-      const residentNodes = factionNodes.filter(entry => entry.node.burgId === burg.i || entry.node.cell === burg.cell);
-
-      let yields: YieldValues;
-      if (residentNodes.length === 0) {
-        yields = this.updateWorkedCells(burg, bSim, state, living, globalWorkedCells);
-      } else {
-        yields = this.allocateCompetitiveBurgCells(
-          burg,
-          bSim,
-          state,
-          residentNodes,
-          living,
-          globalWorkedCells,
-          draftedFactionNodes
-        );
-      }
-      bSim.cityYields = yields;
-
-      const bonusProduction = this.applyFoodGrowth(burg, bSim, state, living, yields);
-      if (this.applyBorderGrowth(burg, bSim, state, living, yields)) bordersChanged = true;
-      this.applyProduction(burg, bSim, state, living, yields, bonusProduction);
-    }
-
-    // Run OpenCiv city loop for all Faction HQs and Outposts (Major Burg residents, Minor Burg residents, and Wilderness HQs)
-    for (const entry of factionNodes) {
-      if (!draftedFactionNodes.has(entry.sim)) {
-        entry.sim.cityYields = this.updateFactionNodeWorkedCells(
-          entry.faction,
-          entry.node,
-          entry.sim,
-          entry.isHq,
-          living,
-          globalWorkedCells
-        );
-      }
-      const yields = entry.sim.cityYields ?? emptyYields();
-      const bonusProd = this.applyFactionFoodGrowth(entry.faction, entry.node, entry.sim, entry.isHq, yields);
-      if (this.applyFactionBorderGrowth(entry.faction, entry.node, entry.sim, entry.isHq, living, yields)) {
-        bordersChanged = true;
-      }
-      this.applyFactionProduction(entry.faction, entry.node, entry.sim, entry.isHq, living, yields, bonusProd);
-    }
-
-    if (bordersChanged && pack.cells.area) {
-      try {
-        States.collectStatistics();
-      } catch {
-        // Stripped test packs have no full statistics grid; borders still moved.
-      }
-    }
-  }
-
   /** Collect all active Faction HQ and Outpost BurgSimState nodes ordered by draft priority. */
   private collectFactionNodes(): {
     faction: Faction;
@@ -3226,740 +2018,39 @@ class LivingModel {
     return entries;
   }
 
-  /** Classify how a Faction Node competes with a host State. */
-  private factionCompetitionMode(
-    faction: Faction,
-    hostStateId: number
-  ): "predatory" | "autonomous" | "chartered" | "cooperative" {
-    const rel = hostStateId > 0 ? faction.stateRelations?.[hostStateId] : undefined;
-    if (faction.allegiance === "clandestine" || faction.allegiance === "hostile" || rel === "Enemy") {
-      return "predatory";
-    }
-    if (faction.allegiance === "state_arm" || (rel === "Ally" && faction.patronStateId === hostStateId)) {
-      return "cooperative";
-    }
-    if (faction.allegiance === "chartered" || rel === "Friendly") {
-      return "chartered";
-    }
-    return "autonomous";
-  }
-
-  /** Weight a candidate cell's yields for a Faction based on its category. */
-  private factionWorkWeight(yields: YieldValues, faction: Faction): number {
-    switch (faction.category) {
-      case "commercial":
-        return yields.food + yields.gold * 1.6 + yields.production * 1.2 + yields.science + yields.culture;
-      case "martial":
-        return yields.food * 1.2 + yields.production * 1.6 + yields.gold + yields.culture;
-      case "adventuring":
-        return yields.food + yields.science * 1.6 + yields.gold * 1.3 + yields.culture * 1.2;
-      case "religious":
-        return yields.food + yields.faith * 1.6 + yields.culture * 1.4 + yields.gold;
-      case "underworld":
-        return yields.food + yields.gold * 1.8 + yields.production * 1.2 + yields.happiness;
-      default:
-        return yields.food + yields.production * 1.4 + yields.gold * 1.4 + yields.science * 1.2;
-    }
-  }
-
-  /**
-   * Competitive Worked-Cell Draft between a State Major Burg and resident Faction HQs/Outposts.
-   * Implements predatory pre-draft + gold siphon, autonomous influence-vs-order interleaving,
-   * chartered alternating draft + 15% tithe, and state_arm cooperative residual draft.
-   */
-  private allocateCompetitiveBurgCells(
-    burg: Burg,
-    bSim: BurgSimState,
-    state: State,
-    residentNodes: { faction: Faction; node: FactionHq | FactionOutpost; sim: BurgSimState; isHq: boolean }[],
-    living: LivingWorldState,
-    globalWorkedCells: Set<number>,
-    draftedFactionNodes: Set<BurgSimState>
-  ): YieldValues {
-    const stateCitizens = Math.max(1, Math.floor(bSim.citizens ?? citizensFromPopulation(burg.population ?? 0)));
-    bSim.citizens = stateCitizens;
-
-    const stateCenterYields = getCellYields(burg.cell, state.i, living);
-    if (stateCenterYields.food < 2) stateCenterYields.food = 2;
-
-    const taken = new Set<number>(globalWorkedCells);
-    for (const other of this.majorBurgsOfState(state.i, living)) {
-      if (other.i === burg.i) continue;
-      for (const cell of living.burgs[other.i]?.workedCells ?? []) taken.add(cell);
-    }
-
-    const distances = this.cellHopDistances(burg.cell, MAX_WORK_DISTANCE);
-    const stateCandidates: { cell: number; hops: number; yields: YieldValues; weight: number }[] = [];
-    const factionCandidateCells: { cell: number; hops: number }[] = [];
-    for (const [cell, hops] of distances) {
-      if (cell === burg.cell || taken.has(cell)) continue;
-      if (!this.isCityWorkable(cell)) continue;
-      factionCandidateCells.push({ cell, hops });
-      if (pack.cells.state?.[cell] === state.i) {
-        const yields = getCellYields(cell, state.i, living);
-        stateCandidates.push({ cell, hops, yields, weight: this.cityWorkWeight(yields, state, living) });
-      }
-    }
-
-    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
-    const localOrder = provinceId ? (living.provinces?.[provinceId]?.order ?? 70) : 70;
-
-    type NodeDraftState = {
-      faction: Faction;
-      node: FactionHq | FactionOutpost;
-      sim: BurgSimState;
-      isHq: boolean;
-      mode: "predatory" | "autonomous" | "chartered" | "cooperative";
-      influence: number;
-      citizens: number;
-      worked: number[];
-      food: number;
-      centerYields: YieldValues;
-    };
-
-    const nodeStates: NodeDraftState[] = residentNodes.map(entry => {
-      const citizens = Math.max(1, Math.floor(entry.sim.citizens ?? (entry.isHq ? 2 : 1)));
-      entry.sim.citizens = citizens;
-      const influence = entry.node.influence ?? 70;
-      const centerYields: YieldValues = {
-        food: 2,
-        production: 1,
-        gold: 1,
-        science: 0,
-        culture: 0,
-        faith: 0,
-        happiness: 0
-      };
-      return {
-        ...entry,
-        mode: this.factionCompetitionMode(entry.faction, state.i),
-        influence,
-        citizens,
-        worked: [],
-        food: centerYields.food,
-        centerYields
-      };
-    });
-
-    const assigned = new Set<number>();
-    const pickBestForFaction = (ns: NodeDraftState, preferValue: boolean): boolean => {
-      if (ns.worked.length >= ns.citizens) return false;
-      const needsFood = !preferValue && ns.food - FOOD_PER_CITIZEN * ns.citizens < DEFAULT_FOCUS_GROWTH_TARGET;
-      let best: { cell: number; hops: number; score: number; food: number } | null = null;
-      for (const cand of factionCandidateCells) {
-        if (assigned.has(cand.cell) || taken.has(cand.cell)) continue;
-        const yields = getCellYields(cand.cell, state.i, living);
-        if (needsFood && yields.food <= 0) continue;
-        const score = needsFood
-          ? yields.food * 100 - cand.hops
-          : preferValue
-            ? yields.gold * 2.5 +
-              yields.production * 1.8 +
-              yields.food * 1.2 +
-              yields.science +
-              yields.culture +
-              yields.happiness * 2
-            : this.factionWorkWeight(yields, ns.faction);
-        if (score <= 0) continue;
-        if (
-          !best ||
-          score > best.score ||
-          (score === best.score && cand.hops < best.hops) ||
-          (score === best.score && cand.hops === best.hops && cand.cell < best.cell)
-        ) {
-          best = { cell: cand.cell, hops: cand.hops, score, food: yields.food };
-        }
-      }
-      if (!best) return false;
-      ns.worked.push(best.cell);
-      assigned.add(best.cell);
-      ns.food += best.food;
-      return true;
-    };
-
-    const stateWorked: number[] = [];
-    let stateFood = stateCenterYields.food;
-    const stateConsumption = FOOD_PER_CITIZEN * stateCitizens;
-    const stateFoodFloorReached = () => stateFood - stateConsumption >= DEFAULT_FOCUS_GROWTH_TARGET;
-    const stateByFood = [...stateCandidates].sort(
-      (a, b) => b.yields.food - a.yields.food || a.hops - b.hops || a.cell - b.cell
-    );
-    const stateByWeight = [...stateCandidates].sort(
-      (a, b) => b.weight - a.weight || a.hops - b.hops || a.cell - b.cell
-    );
-
-    const pickNextForState = (foodMode: boolean): boolean => {
-      if (stateWorked.length >= stateCitizens) return false;
-      const list = foodMode ? stateByFood : stateByWeight;
-      for (const cand of list) {
-        if (assigned.has(cand.cell) || taken.has(cand.cell)) continue;
-        if (foodMode && cand.yields.food <= 0) continue;
-        if (!foodMode && cand.weight <= 0) return false;
-        stateWorked.push(cand.cell);
-        assigned.add(cand.cell);
-        stateFood += cand.yields.food;
-        return true;
-      }
-      return false;
-    };
-
-    // Phase A: Predatory (clandestine / hostile / Enemy) pre-draft before the host State Burg
-    const predatoryNodes = nodeStates
-      .filter(n => n.mode === "predatory")
-      .sort((a, b) => b.influence - a.influence || a.faction.i - b.faction.i);
-    for (const ns of predatoryNodes) {
-      const preDraftQuota = Math.min(ns.citizens, Math.max(1, Math.ceil(ns.influence / 25)));
-      while (ns.worked.length < preDraftQuota) {
-        if (!pickBestForFaction(ns, true)) break;
-      }
-    }
-
-    // Phase B: Locked cells (State Burg first, then Faction Nodes)
-    for (const cell of bSim.lockedCells ?? []) {
-      if (stateWorked.length >= stateCitizens) break;
-      if (assigned.has(cell) || !stateCandidates.some(c => c.cell === cell)) continue;
-      stateWorked.push(cell);
-      assigned.add(cell);
-      stateFood += getCellYields(cell, state.i, living).food;
-    }
-    for (const ns of nodeStates) {
-      for (const cell of ns.sim.lockedCells ?? []) {
-        if (ns.worked.length >= ns.citizens) break;
-        if (assigned.has(cell) || !factionCandidateCells.some(c => c.cell === cell)) continue;
-        ns.worked.push(cell);
-        assigned.add(cell);
-        ns.food += getCellYields(cell, state.i, living).food;
-      }
-    }
-
-    const highAutonomous = nodeStates
-      .filter(n => n.mode === "autonomous" && n.influence >= localOrder)
-      .sort((a, b) => b.influence - a.influence || a.faction.i - b.faction.i);
-    const lowAutonomous = nodeStates
-      .filter(n => n.mode === "autonomous" && n.influence < localOrder)
-      .sort((a, b) => b.influence - a.influence || a.faction.i - b.faction.i);
-    const charteredNodes = nodeStates
-      .filter(n => n.mode === "chartered")
-      .sort((a, b) => b.influence - a.influence || a.faction.i - b.faction.i);
-    const cooperativeNodes = nodeStates
-      .filter(n => n.mode === "cooperative")
-      .sort((a, b) => b.influence - a.influence || a.faction.i - b.faction.i);
-
-    // Phase C: State Food Floor (interleaved with high-influence autonomous factions)
-    while (stateWorked.length < stateCitizens && !stateFoodFloorReached()) {
-      for (const ns of highAutonomous) pickBestForFaction(ns, false);
-      if (!pickNextForState(true)) break;
-    }
-
-    // Phase D: Interleaved Round-Robin between State Burg, Chartered, and Autonomous Factions
-    let progressed = true;
-    while (progressed) {
-      progressed = false;
-      for (const ns of highAutonomous) {
-        if (pickBestForFaction(ns, false)) progressed = true;
-      }
-      if (pickNextForState(false)) progressed = true;
-      for (const ns of charteredNodes) {
-        if (pickBestForFaction(ns, false)) progressed = true;
-      }
-      for (const ns of lowAutonomous) {
-        if (pickBestForFaction(ns, false)) progressed = true;
-      }
-    }
-
-    // Phase E: Cooperative (state_arm) & remaining predatory citizens work remaining cells
-    let coopProgressed = true;
-    while (coopProgressed) {
-      coopProgressed = false;
-      for (const ns of cooperativeNodes) {
-        if (pickBestForFaction(ns, false)) coopProgressed = true;
-      }
-      for (const ns of predatoryNodes) {
-        if (pickBestForFaction(ns, false)) coopProgressed = true;
-      }
-    }
-
-    // Phase F: Sum yields, apply building stats, Charter Tax (15%), and Clandestine/Hostile Gold Siphon
-    const stateTotal = { ...stateCenterYields };
-    for (const cell of stateWorked) {
-      globalWorkedCells.add(cell);
-      const yields = getCellYields(cell, state.i, living);
-      for (const key of CIV_YIELD_KEYS) stateTotal[key] += yields[key];
-    }
-    for (const id of bSim.civBuildings ?? []) {
-      const def = CIV_BUILDING_BY_ID[id];
-      if (!def) continue;
-      for (const key of CIV_YIELD_KEYS) stateTotal[key] += def.stats[key] ?? 0;
-    }
-
-    for (const ns of nodeStates) {
-      const fTotal = { ...ns.centerYields };
-      for (const cell of ns.worked) {
-        globalWorkedCells.add(cell);
-        const yields = getCellYields(cell, state.i, living);
-        for (const key of CIV_YIELD_KEYS) fTotal[key] += yields[key];
-      }
-      for (const id of ns.sim.civBuildings ?? []) {
-        const def = CIV_BUILDING_BY_ID[id];
-        if (!def) continue;
-        for (const key of CIV_YIELD_KEYS) fTotal[key] += def.stats[key] ?? 0;
-      }
-
-      if (ns.mode === "chartered" && fTotal.gold > 0) {
-        const charterTax = Math.round(fTotal.gold * 0.15 * 100) / 100;
-        fTotal.gold = Math.round((fTotal.gold - charterTax) * 100) / 100;
-        stateTotal.gold = Math.round((stateTotal.gold + charterTax) * 100) / 100;
-      } else if (ns.mode === "predatory" && stateTotal.gold > 0) {
-        const siphonShare = Math.min(0.5, ns.influence / 200);
-        const siphonedGold = Math.round(stateTotal.gold * siphonShare * 100) / 100;
-        stateTotal.gold = Math.round(Math.max(0, stateTotal.gold - siphonedGold) * 100) / 100;
-        fTotal.gold = Math.round((fTotal.gold + siphonedGold) * 100) / 100;
-      }
-
-      ns.sim.workedCells = ns.worked;
-      ns.sim.cityYields = fTotal;
-      ns.sim.isMajor = true;
-      draftedFactionNodes.add(ns.sim);
-    }
-
-    bSim.workedCells = stateWorked;
-    bSim.isMajor = true;
-    return stateTotal;
-  }
-
-  /** Allocate worked cells within 3 hops for a Wilderness Faction HQ or Minor-Burg Faction Node. */
-  private updateFactionNodeWorkedCells(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    nodeSim: BurgSimState,
-    isHq: boolean,
-    living: LivingWorldState,
-    globalWorkedCells: Set<number>
-  ): YieldValues {
-    const citizens = Math.max(1, Math.floor(nodeSim.citizens ?? (isHq ? 2 : 1)));
-    nodeSim.citizens = citizens;
-
-    const hostStateId = node.burgId ? (pack.burgs[node.burgId]?.state ?? 0) : (pack.cells.state?.[node.cell] ?? 0);
-    const centerYields = node.burgId
-      ? { food: 2, production: 1, gold: 1, science: 0, culture: 0, faith: 0, happiness: 0 }
-      : getCellYields(node.cell, hostStateId, living);
-    if (centerYields.food < 2) centerYields.food = 2;
-    if (centerYields.production < 1) centerYields.production = 1;
-
-    const distances = this.cellHopDistances(node.cell, MAX_WORK_DISTANCE);
-    const candidates: { cell: number; hops: number; yields: YieldValues; weight: number }[] = [];
-    for (const [cell, hops] of distances) {
-      if (cell === node.cell || globalWorkedCells.has(cell)) continue;
-      if (!this.isCityWorkable(cell)) continue;
-      const yields = getCellYields(cell, hostStateId, living);
-      candidates.push({ cell, hops, yields, weight: this.factionWorkWeight(yields, faction) });
-    }
-
-    const worked: number[] = [];
-    const assigned = new Set<number>();
-    let food = centerYields.food;
-    const consumption = FOOD_PER_CITIZEN * citizens;
-    const foodFloorReached = () => food - consumption >= DEFAULT_FOCUS_GROWTH_TARGET;
-
-    for (const cell of nodeSim.lockedCells ?? []) {
-      if (worked.length >= citizens) break;
-      if (assigned.has(cell) || !candidates.some(c => c.cell === cell)) continue;
-      worked.push(cell);
-      assigned.add(cell);
-      food += getCellYields(cell, hostStateId, living).food;
-    }
-
-    const byFood = [...candidates].sort((a, b) => b.yields.food - a.yields.food || a.hops - b.hops || a.cell - b.cell);
-    for (const candidate of byFood) {
-      if (worked.length >= citizens || foodFloorReached()) break;
-      if (assigned.has(candidate.cell) || candidate.yields.food <= 0) continue;
-      worked.push(candidate.cell);
-      assigned.add(candidate.cell);
-      food += candidate.yields.food;
-    }
-
-    const byWeight = [...candidates].sort((a, b) => b.weight - a.weight || a.hops - b.hops || a.cell - b.cell);
-    for (const candidate of byWeight) {
-      if (worked.length >= citizens) break;
-      if (assigned.has(candidate.cell)) continue;
-      if (candidate.weight <= 0) break;
-      worked.push(candidate.cell);
-      assigned.add(candidate.cell);
-    }
-
-    const total = { ...centerYields };
-    for (const cell of worked) {
-      globalWorkedCells.add(cell);
-      const yields = getCellYields(cell, hostStateId, living);
-      for (const key of CIV_YIELD_KEYS) total[key] += yields[key];
-    }
-    for (const id of nodeSim.civBuildings ?? []) {
-      const def = CIV_BUILDING_BY_ID[id];
-      if (!def) continue;
-      for (const key of CIV_YIELD_KEYS) total[key] += def.stats[key] ?? 0;
-    }
-
-    nodeSim.workedCells = worked;
-    nodeSim.isMajor = true;
-    return total;
-  }
-
-  /** Food consumption, growth bucket, and Settler/Envoy food-to-production conversion for a Faction Node. */
-  private applyFactionFoodGrowth(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    nodeSim: BurgSimState,
-    _isHq: boolean,
-    cityYields: YieldValues
-  ): number {
-    const citizens = Math.max(1, nodeSim.citizens ?? 1);
-    const surplus = cityYields.food - FOOD_PER_CITIZEN * citizens;
-
-    const top = nodeSim.productionQueue?.[0];
-    if (top?.kind === "unit" && top.id === SETTLER_UNIT_ID) {
-      return surplus > 0 ? surplus * SETTLER_FOOD_TO_PRODUCTION_FACTOR : 0;
-    }
-
-    if (surplus > 0) {
-      let multiplier = happinessGrowthFactor(faction.happiness ?? 0);
-      if (multiplier > 0 && (nodeSim.civBuildings ?? []).includes("temple_of_artemis")) {
-        multiplier *= 1.1;
-      }
-      nodeSim.foodStored = (nodeSim.foodStored ?? 0) + surplus * multiplier;
-    } else if (surplus < 0) {
-      nodeSim.foodStored = (nodeSim.foodStored ?? 0) + surplus;
-    }
-
-    const needed = foodNeededForGrowth(citizens);
-    const stored = nodeSim.foodStored ?? 0;
-    if (stored >= needed) {
-      const carryover = this.cityFoodCarryover(nodeSim);
-      nodeSim.foodStored = stored - needed + needed * carryover;
-      nodeSim.citizens = minmax(citizens + 1, 1, MAX_CITIZENS);
-      if ("tier" in node) {
-        node.tier = Math.min(3, Math.max(1, Math.floor(nodeSim.citizens / 2))) as 1 | 2 | 3;
-      }
-    } else if (stored < 0) {
-      nodeSim.foodStored = 0;
-      nodeSim.citizens = Math.max(1, citizens - 1);
-      if ("tier" in node) {
-        node.tier = Math.min(3, Math.max(1, Math.floor(nodeSim.citizens / 2))) as 1 | 2 | 3;
-      }
-    }
-    return 0;
-  }
-
-  /** Culture bucket growth for a Faction Node: boosts local Influence in Burgs or claims territory for Wilderness HQs. */
-  private applyFactionBorderGrowth(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    nodeSim: BurgSimState,
-    _isHq: boolean,
-    living: LivingWorldState,
-    cityYields: YieldValues
-  ): boolean {
-    const tiles = nodeSim.tilesAcquired ?? 0;
-    const held = new Set(nodeSim.civBuildings ?? []);
-    const costFactor = held.has("angkor_wat") ? 0.75 : 1;
-    const needed = borderCultureNeeded(tiles, costFactor, 1);
-
-    nodeSim.cultureStored = (nodeSim.cultureStored ?? 0) + Math.max(0, cityYields.culture);
-    if (nodeSim.cultureStored < needed) return false;
-
-    nodeSim.cultureStored -= needed;
-    nodeSim.tilesAcquired = tiles + 1;
-
-    if (node.burgId) {
-      if ("tier" in node) {
-        node.influence = Math.min(100, (node.influence ?? 30) + 10);
-      } else {
-        node.influence = Math.min(100, (node.influence ?? 70) + 10);
-      }
-      // Reduce rival faction outpost influence in the same Burg
-      for (const rival of Factions.active()) {
-        if (rival.i === faction.i) continue;
-        for (const rOutpost of rival.outposts ?? []) {
-          if (rOutpost.pillaged) continue;
-          if (rOutpost.burgId === node.burgId) {
-            rOutpost.influence = Math.max(5, (rOutpost.influence ?? 20) - 5);
-          }
-        }
-      }
-      // Clandestine/hostile cultural growth erodes host province order
-      if (faction.allegiance === "clandestine" || faction.allegiance === "hostile") {
-        const burg = pack.burgs[node.burgId];
-        const provinceId = burg ? Number(pack.cells.province?.[burg.cell] ?? 0) : 0;
-        const pSim = provinceId ? living.provinces?.[provinceId] : undefined;
-        if (pSim) pSim.order = Math.max(0, pSim.order - 2);
-      }
-      return false;
-    }
-
-    return false;
-  }
-
-  /** Check whether a Faction Node can construct a given OpenCiv or Faction-track building. */
-  private factionNodeCanBuild(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    def: CivBuildingDef,
-    techs: Set<string>,
-    held: Set<string>
-  ): boolean {
-    if (def.uniqueTo) return false;
-    if (held.has(def.id)) return false;
-    if (def.isWonder || def.nationalWonder) return false;
-    if (def.factionCategory) {
-      const catMatch =
-        def.factionCategory === faction.category ||
-        (def.factionCategory === "scholarly" &&
-          ["academic", "religious", "secret", "adventuring"].includes(faction.category)) ||
-        (def.factionCategory === "wilder" && (!node.burgId || ["martial", "adventuring"].includes(faction.category)));
-      if (!catMatch) return false;
-      if (def.factionLocation === "burg" && !node.burgId) return false;
-      if (def.factionLocation === "wilderness" && node.burgId) return false;
-    }
-    if (def.requiredTech && !techs.has(def.requiredTech)) return false;
-    if (def.requiresBuilding && !held.has(def.requiresBuilding)) return false;
-    if (def.requiresRiver && !hasFreshWater(node.cell)) return false;
-    if (def.requiresMountain) {
-      const nearMountain = (pack.cells.c?.[node.cell] ?? []).some(cell => getCellTerrainInfo(cell).isMountain);
-      if (!nearMountain) return false;
-    }
-    if (def.coastal) {
-      const coastal = (pack.cells.c?.[node.cell] ?? []).some(cell => Number(pack.cells.h?.[cell] ?? 0) < SEA_LEVEL);
-      if (!coastal) return false;
-    }
-    return true;
-  }
-
-  /** Autonomous governor for a Faction HQ or Outpost production queue. */
-  private chooseFactionNodeProduction(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    nodeSim: BurgSimState,
-    _isHq: boolean,
-    living: LivingWorldState
-  ): ProductionItem | null {
-    const techs = new Set(faction.researchedTechs ?? []);
-    const held = new Set(nodeSim.civBuildings ?? []);
-    const canBuild = (def: CivBuildingDef | undefined): def is CivBuildingDef =>
-      def !== undefined && this.factionNodeCanBuild(faction, node, def, techs, held);
-
-    // 1. Defense: hostile factions or restive nodes prioritize walls
-    if ((faction.allegiance === "hostile" || (nodeSim.unrest ?? 0) > 0) && !held.has("walls")) {
-      if (canBuild(CIV_BUILDING_BY_ID.walls)) return { kind: "building", id: "walls" };
-    }
-
-    // 2. Faction specialized category buildings (Tier 1 -> Tier 2 -> Tier 3)
-    const factionBuildings = CIV_BUILDINGS.filter(def => Boolean(def.factionCategory) && canBuild(def)).sort(
-      (a, b) => (a.factionTier ?? 1) - (b.factionTier ?? 1) || (a.cost ?? 0) - (b.cost ?? 0) || a.id.localeCompare(b.id)
-    );
-    if (factionBuildings.length > 0) {
-      return { kind: "building", id: factionBuildings[0]!.id };
-    }
-
-    // 3. Economic and science core buildings
-    for (const id of CITY_ECONOMY_BUILDINGS) {
-      const def = CIV_BUILDING_BY_ID[id];
-      if (canBuild(def)) return { kind: "building", id };
-    }
-
-    // 4. Utility units: Builder for unimproved worked cells, Settler/Envoy for new Outpost expansion
-    const unitAvailable = (id: string): boolean => {
-      const def = CIV_CIVILIAN_BY_ID[id];
-      if (!def) return false;
-      return !def.requiredTech || techs.has(def.requiredTech);
-    };
-    if (
-      this.factionUnitCount(faction, "builder", living) === 0 &&
-      this.countFactionUnimprovedCells(faction, living) >= 1
-    ) {
-      if (unitAvailable("builder")) return { kind: "unit", id: "builder" };
-    }
-    if (
-      (faction.happiness ?? 0) >= 0 &&
-      (nodeSim.citizens ?? 1) >= 2 &&
-      this.factionUnitCount(faction, "settler", living) === 0 &&
-      this.hasFactionOutpostTarget(faction) &&
-      unitAvailable("settler")
-    ) {
-      return { kind: "unit", id: "settler" };
-    }
-
-    // 5. Roster combat units (ArmyBlock)
-    const desiredRegiments =
-      1 +
-      Math.floor((faction.outposts?.length ?? 0) / 2) +
-      (faction.allegiance === "hostile" || faction.category === "martial" || faction.sovereignAmbition ? 1 : 0);
-    const combatRegiments = (faction.military ?? []).filter(r => !isCivilianUnit((r.type ?? "").toLowerCase()));
-    if (combatRegiments.length < desiredRegiments) {
-      const roster = Military.getRoster(faction);
-      if (roster) {
-        const melee = pickRosterUnit(roster, "melee", [...techs]);
-        if (melee) return { kind: "unit", id: melee.id };
-      }
-    }
-
-    return null;
-  }
-
-  /** Production cost of a queued item for a Faction. */
-  private factionProductionCost(faction: Faction, item: ProductionItem): number {
-    const cost =
-      item.kind === "unit"
-        ? isCivilianUnit(item.id)
-          ? CIV_CIVILIAN_BY_ID[item.id]?.cost
-          : Military.getRoster(faction)?.units[item.id]?.cost
-        : CIV_BUILDING_BY_ID[item.id]?.cost;
-    return Math.max(1, Math.floor(cost ?? 1));
-  }
-
-  /** Advance a Faction Node's production queue by this tick's Production. */
-  private applyFactionProduction(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    nodeSim: BurgSimState,
-    isHq: boolean,
-    living: LivingWorldState,
-    cityYields: YieldValues,
-    bonusProduction: number
-  ): void {
-    nodeSim.productionQueue ??= [];
-    nodeSim.productionProgress ??= {};
-
-    let production = Math.max(0, cityYields.production) + Math.max(0, bonusProduction);
-    let guard = 0;
-    while (production > 0 && guard++ < 8) {
-      if (nodeSim.productionQueue.length === 0) {
-        const next = this.chooseFactionNodeProduction(faction, node, nodeSim, isHq, living);
-        if (!next) return;
-        nodeSim.productionQueue.push(next);
-      }
-
-      const item = nodeSim.productionQueue[0]!;
-      const key = `${item.kind}:${item.id}`;
-      const cost = this.factionProductionCost(faction, item);
-      const total = (nodeSim.productionProgress[key] ?? 0) + production;
-      if (total < cost) {
-        nodeSim.productionProgress[key] = total;
-        return;
-      }
-
-      production = total - cost;
-      delete nodeSim.productionProgress[key];
-      nodeSim.productionQueue.shift();
-      this.completeFactionProductionItem(faction, node, nodeSim, isHq, item, living);
-    }
-  }
-
-  /** Complete a queued building or unit at a Faction HQ or Outpost. */
-  private completeFactionProductionItem(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    nodeSim: BurgSimState,
-    isHq: boolean,
-    item: ProductionItem,
-    living: LivingWorldState
-  ): void {
-    nodeSim.civBuildings ??= [];
-    node.assets ??= [];
-
-    if (item.kind === "building" || item.kind === "wonder") {
-      if (!nodeSim.civBuildings.includes(item.id)) nodeSim.civBuildings.push(item.id);
-      if (!node.assets.includes(item.id)) node.assets.push(item.id);
-
-      const def = CIV_BUILDING_BY_ID[item.id];
-      if (def?.cityHealth) {
-        nodeSim.maxHp = (nodeSim.maxHp ?? (isHq ? 200 : 100)) + def.cityHealth;
-        nodeSim.hp = Math.min(nodeSim.maxHp, (nodeSim.hp ?? 100) + def.cityHealth);
-      }
-      if (isHq && (item.id === "walls" || item.id === "war_citadel")) {
-        (node as FactionHq).fortified = true;
-      }
-      const freeTechs = def?.effects?.freeTechs ?? 0;
-      if (freeTechs > 0) faction.freeTechs = (faction.freeTechs ?? 0) + freeTechs;
-
-      const name = def?.name ?? item.id;
-      const locName = node.burgId ? (pack.burgs[node.burgId]?.name ?? faction.name) : faction.name;
-      this.pushNews(living, {
-        kind: "build",
-        text: `${faction.name} completed the ${name} at ${locName}.`,
-        cell: node.cell,
-        ...(node.burgId ? { burgId: node.burgId } : {})
-      });
-      return;
-    }
-
-    if (this.hasCityTerrain()) {
-      this.spawnFactionUnit(faction, node, nodeSim, item.id, living);
-    }
-  }
-
-  /** Tactical unit key for a Faction regiment in `living.units` and `living.armies`. */
+  /** Tactical unit key for a Faction regiment in `living.armies`. */
   factionUnitKey(factionId: number, regimentId: number): string {
     return `f${factionId}-${regimentId}`;
   }
 
-  /** Spawn a civilian utility unit (`builder` / `settler`) or combat `ArmyBlock` for a Faction. */
-  private spawnFactionUnit(
-    faction: Faction,
-    node: FactionHq | FactionOutpost,
-    nodeSim: BurgSimState,
-    unitTypeId: string,
-    living: LivingWorldState
-  ): Regiment | null {
-    faction.military ??= [];
-    const def = this.civilianDefinition(unitTypeId);
-    const pt = pack.cells.p?.[node.cell] ?? [0, 0];
-    const nextRegId = faction.military.reduce((max, r) => Math.max(max, r.i ?? 0), 0) + 1;
+  /** Factions keep a small standing guard: muster one roster block per season while under strength and funded. */
+  private musterFactionBlock(faction: Faction, living: LivingWorldState): void {
+    const desired =
+      1 +
+      Math.floor((faction.outposts ?? []).length / 2) +
+      (faction.allegiance === "hostile" || faction.category === "martial" || faction.sovereignAmbition ? 1 : 0);
+    const combatRegiments = (faction.military ?? []).filter(r => !isCivilianUnit((r.type ?? "").toLowerCase()));
+    if (combatRegiments.length >= desired) return;
 
-    if (def?.isUtility || isCivilianUnit(unitTypeId)) {
-      if (!def) return null;
-      const regiment: Regiment = {
-        i: nextRegId,
-        a: UNIT_MAX_HP,
-        cell: node.cell,
-        x: pt[0],
-        y: pt[1],
-        bx: pt[0],
-        by: pt[1],
-        u: { [def.id]: UNIT_MAX_HP },
-        units: [],
-        n: (def.domain ?? "land") === "sea" ? 1 : 0,
-        name: `${faction.name} ${def.name}`,
-        state: 0,
-        icon: def.id === "settler" ? "⛺" : "🔨",
-        type: def.id,
-        rosterId: faction.rosterId
-      };
-      faction.military.push(regiment);
-
-      const unit = this.createUtilitySim(regiment, def);
-      living.units ??= {};
-      living.units[this.factionUnitKey(faction.i, regiment.i)] = unit;
-      return regiment;
-    }
-
-    const unitTypes = Military.getUnitTypes();
     const roster = Military.getRoster(faction);
-    const typeId = unitTypes[unitTypeId]
-      ? unitTypeId
-      : roster
-        ? matchRosterUnitByCategory(roster, def?.unitClass ?? "melee")?.id
-        : undefined;
-    if (!typeId || !unitTypes[typeId]) return null;
+    if (!roster) return;
+    const unit = pickRosterUnit(roster, "melee", this.factionDevelopment(faction));
+    if (!unit) return;
 
+    const cost = Math.max(1, Math.round(unit.cost ?? 0));
+    if (Number(faction.treasury ?? 0) < cost) return;
+    const node = faction.hq && !faction.hq.pillaged ? faction.hq : (faction.outposts ?? []).find(o => !o.pillaged);
+    if (!node) return;
+
+    faction.treasury = Math.round((Number(faction.treasury ?? 0) - cost) * 100) / 100;
+    const unitTypes = Military.getUnitTypes();
     const maxSlots = currentContent().config.military.maxUnitsPerArmy;
-    const trainingCount = (nodeSim.civBuildings ?? []).filter(id =>
-      ["barracks", "armory", "military_academy", "muster_camp", "armory_forge", "war_citadel"].includes(id)
-    ).length;
-    const exp = Math.min(9, trainingCount);
-
-    let regiment = faction.military.find(
+    const pt = pack.cells.p?.[node.cell] ?? [0, 0];
+    let regiment = (faction.military ?? []).find(
       r => r.cell === node.cell && !isCivilianUnit((r.type ?? "").toLowerCase()) && (r.units?.length ?? 0) < maxSlots
     );
     if (!regiment) {
+      const nextRegId = (faction.military ?? []).reduce((max, r) => Math.max(max, r.i ?? 0), 0) + 1;
       regiment = {
         i: nextRegId,
         a: 0,
@@ -3980,397 +2071,20 @@ class LivingModel {
     }
 
     regiment.units ??= [];
-    regiment.units.push({ type: typeId, hp: 1, exp });
+    regiment.units.push({ type: unit.id, hp: 1, exp: 0 });
     normalizeArmy(regiment, maxSlots, unitTypes);
     syncRegimentTotals(regiment, unitTypes);
-
     const speed = armySpeed(regiment, unitTypes);
     const key = this.factionUnitKey(faction.i, regiment.i);
     living.armies ??= {};
     living.armies[key] ??= { movement: speed, maxMovement: speed, stance: "fortify", hasFought: false };
-    return regiment;
-  }
 
-  /** Count active utility units of `unitTypeId` held by a Faction. */
-  private factionUnitCount(faction: Faction, unitTypeId: string, living: LivingWorldState): number {
-    let count = 0;
-    for (const reg of faction.military ?? []) {
-      if ((reg.type ?? "").toLowerCase() === unitTypeId) {
-        count += 1;
-        continue;
-      }
-      const unit = living.units?.[this.factionUnitKey(faction.i, reg.i)];
-      if (unit && unit.unitTypeId === unitTypeId && unit.hp > 0) count += 1;
-    }
-    return count;
-  }
-
-  /** Count unimproved workable cells currently worked by any of a Faction's nodes. */
-  private countFactionUnimprovedCells(faction: Faction, living: LivingWorldState): number {
-    let count = 0;
-    const nodes = [faction.hq, ...(faction.outposts ?? [])].filter(node => node && !node.pillaged);
-    for (const node of nodes) {
-      if (!node?.sim?.workedCells) continue;
-      for (const cell of node.sim.workedCells) {
-        if (!getCellTerrainInfo(cell).isWorkable) continue;
-        if (living.cells?.[cell]?.improvement) continue;
-        count += 1;
-      }
-    }
-    return count;
-  }
-
-  /** Check whether there is any valid Burg on the map where this Faction does not yet have an HQ or Outpost. */
-  private hasFactionOutpostTarget(faction: Faction): boolean {
-    const existing = new Set<number>();
-    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) existing.add(faction.hq.burgId);
-    for (const o of faction.outposts ?? []) if (!o.pillaged) existing.add(o.burgId);
-    return (pack.burgs ?? []).some(b => b?.i && !b.removed && !existing.has(b.i));
-  }
-
-  // -------------------------------------------------------------------------
-  // Slice 4: OpenCiv empire rollup — Science, Gold, Happiness & Unravel.
-  // -------------------------------------------------------------------------
-
-  /** Detailed breakdown of yields for a state and each of its major cities. */
-  getStateYieldBreakdown(state: State, livingState?: LivingWorldState): StateYieldBreakdown {
-    const living = livingState ?? this.getState();
-    const cities: StateCityYieldBreakdown[] = [];
-    const totals = emptyYields();
-    let totalGrossGold = 0;
-    let totalMaintenance = 0;
-    let totalScience = 0;
-    let totalCitizens = 0;
-    let totalWorkedCells = 0;
-    let capitalBreakdown: StateCityYieldBreakdown | null = null;
-
-    for (const burg of this.majorBurgsOfState(state.i, living)) {
-      const bSim = living.burgs[burg.i];
-      if (!bSim) continue;
-
-      let cityYields = bSim.cityYields;
-      if (
-        !cityYields ||
-        (cityYields.food === 0 &&
-          cityYields.production === 0 &&
-          cityYields.gold === 0 &&
-          cityYields.science === 0 &&
-          cityYields.culture === 0 &&
-          cityYields.faith === 0)
-      ) {
-        cityYields = this.refreshStateBurgYields(state, burg);
-      }
-
-      let maintenance = 0;
-      for (const id of bSim.civBuildings ?? []) {
-        maintenance += CIV_BUILDING_BY_ID[id]?.maintenance ?? 0;
-      }
-
-      const grossGold = cityYields.gold;
-      const cityScience = this.citySciencePerTick(bSim) + this.scholarScienceBonus(burg.i);
-      const netGold = Math.round((grossGold - maintenance) * 100) / 100;
-      const roundedScience = Math.round(cityScience * 100) / 100;
-      const citizens = bSim.citizens ?? citizensFromPopulation(burg.population ?? 0);
-      const workedCells = bSim.workedCells?.length ?? 1;
-      const isCapital = state.capital === burg.i;
-
-      const nodeYields: YieldValues = {
-        food: cityYields.food,
-        production: cityYields.production,
-        gold: netGold,
-        science: roundedScience,
-        culture: cityYields.culture,
-        faith: cityYields.faith,
-        happiness: 0
-      };
-
-      const breakdown: StateCityYieldBreakdown = {
-        burgId: burg.i,
-        name: burg.name || `Burg ${burg.i}`,
-        isCapital,
-        yields: nodeYields,
-        grossGold,
-        maintenance,
-        science: roundedScience,
-        citizens,
-        workedCells,
-        buildings: [...(bSim.civBuildings ?? [])]
-      };
-
-      cities.push(breakdown);
-      if (isCapital) capitalBreakdown = breakdown;
-
-      totals.food += cityYields.food;
-      totals.production += cityYields.production;
-      totals.culture += cityYields.culture;
-      totals.faith += cityYields.faith;
-      totalGrossGold += grossGold;
-      totalMaintenance += maintenance;
-      totalScience += cityScience;
-      totalCitizens += citizens;
-      totalWorkedCells += workedCells;
-    }
-
-    // Belief yields (pantheon, founder, follower, enhancer).
-    for (const id of this.stateBeliefs(state, living)) {
-      const def = CIV_BELIEF_BY_ID[id];
-      if (!def?.yields) continue;
-      for (const key of CIV_YIELD_KEYS) {
-        if (key === "happiness") continue;
-        totals[key] += def.yields[key] ?? 0;
-      }
-    }
-
-    // §3.3: a court fully served with luxury goods feeds culture and faith
-    const court = StateOrders.getProvision(state, "court");
-    if (court > 0) {
-      totals.culture += COURT_PROVISION_YIELD * court;
-      totals.faith += COURT_PROVISION_YIELD * court;
-    }
-
-    const unitTypes = Military.getUnitTypes();
-    let blockUpkeep = 0;
-    let civilianUpkeep = 0;
-    for (const regiment of state.military ?? []) {
-      if (isCivilianUnit((regiment.type ?? "").toLowerCase())) {
-        civilianUpkeep += CIVILIAN_UPKEEP;
-        continue;
-      }
-      for (const block of regiment.units ?? []) {
-        if (block.hp > 0) blockUpkeep += (unitTypes[block.type]?.upkeep ?? 0) * block.hp;
-      }
-    }
-    const upkeep = Math.max(0, blockUpkeep + civilianUpkeep - UPKEEP_FREE);
-
-    totals.science = Math.round(totalScience * 100) / 100;
-    totals.gold = Math.round((totalGrossGold - totalMaintenance - upkeep) * 100) / 100;
-    totals.happiness = 0;
-
-    return {
-      total: totals,
-      totalCitizens,
-      totalWorkedCells,
-      upkeep,
-      maintenance: totalMaintenance,
-      cities,
-      capital: capitalBreakdown
-    };
-  }
-
-  /** Recalculate worked cells and cityYields for a single state major burg. */
-  refreshStateBurgYields(state: State, burg: Burg): YieldValues {
-    const living = this.getState();
-    const bSim = living.burgs[burg.i];
-    if (!bSim) return emptyYields();
-    if (!pack?.cells?.c || !pack?.cells?.state) {
-      bSim.cityYields ??= emptyYields();
-      return bSim.cityYields;
-    }
-    const yields = this.updateWorkedCells(burg, bSim, state, living);
-    bSim.cityYields = yields;
-    return yields;
-  }
-
-  /** Empire-wide yields for every state: city totals, science multipliers, upkeep and maintenance. */
-  recomputeStateYields(state: State, living?: LivingWorldState): YieldValues {
-    return this.getStateYieldBreakdown(state, living).total;
-  }
-
-  /** §6.1 Science per city: flat yields plus the Library / School / University / Observatory multipliers. */
-  private citySciencePerTick(bSim: BurgSimState): number {
-    const held = new Set(bSim.civBuildings ?? []);
-    const citizens = bSim.citizens ?? 1;
-    let science = bSim.cityYields?.science ?? 0;
-
-    if (held.has("library")) science += citizens * 0.5;
-    if (held.has("public_school")) science += citizens * 0.5 + 3;
-    if (held.has("university")) {
-      science *= 1.33;
-      const jungle = (bSim.workedCells ?? []).filter(cell => Number(pack.cells.biome?.[cell] ?? 0) === 7).length;
-      science += 2 * jungle;
-    }
-    if (held.has("observatory")) science *= 1.5;
-    if (held.has("national_college")) science = science * 1.5 + 3;
-
-    return Math.round(science * 100) / 100;
-  }
-
-  /** §3.3: consuming scholarly goods adds a capped science bonus to the city. */
-  private scholarScienceBonus(burgId: number): number {
-    if (!this.canReadUpstreamEconomy()) return 0;
-    const consumed = UpstreamProsperity.getConsumption(burgId);
-    const units = SCHOLARLY_GOODS.reduce((total, name) => {
-      const good = options.map.goods.find(entry => entry.name === name);
-      return total + (good ? (consumed[good.i] ?? 0) : 0);
-    }, 0);
-    return Math.min(SCHOLAR_SCIENCE_CAP, Math.round(units * 2) / 2);
-  }
-
-  /** §7.2 Empire Happiness: base + luxuries + buildings/religion − cities − citizens − unrest. */
-  private recomputeEmpireHappiness(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
-    const breakdown: HappinessBreakdown = {
-      base: BASE_EMPIRE_HAPPINESS,
-      luxuries: 0,
-      buildings: 0,
-      religion: 0,
-      cityUnhappiness: 0,
-      citizenUnhappiness: 0,
-      unrestUnhappiness: 0
-    };
-    breakdown.luxuries = LUXURY_HAPPINESS * this.uniqueLuxuries(state, living).size;
-
-    let localHappiness = 0;
-    for (const burg of this.majorBurgsOfState(state.i, living)) {
-      const bSim = living.burgs[burg.i];
-      if (!bSim) continue;
-      const citizens = bSim.citizens ?? 1;
-
-      let local = 0;
-      for (const id of bSim.civBuildings ?? []) {
-        const def = CIV_BUILDING_BY_ID[id];
-        const happiness = def?.stats.happiness ?? 0;
-        if (happiness === 0) continue;
-        if (def?.isWonder) breakdown.buildings += happiness;
-        else local += happiness;
-      }
-
-      // Local city happiness is capped by the city's citizens, exactly as in OpenCiv.
-      localHappiness += Math.min(local, citizens);
-      breakdown.cityUnhappiness += 3;
-      breakdown.citizenUnhappiness += citizens;
-      if (bSim.conqueredBy !== undefined) breakdown.unrestUnhappiness += Math.ceil((bSim.unrest ?? 0) / 2);
-    }
-    breakdown.buildings += localHappiness;
-    breakdown.religion = this.beliefHappiness(state, living);
-
-    // §3.3: upstream Prosperity of the people sways the court; 0.5 is neutral
-    const prosperity = this.upstreamAccounts(state.i)?.prosperity;
-    if (prosperity != null) breakdown.prosperity = Math.round((prosperity - 0.5) * 10);
-
-    sSim.happinessBreakdown = breakdown;
-    sSim.happiness =
-      breakdown.base +
-      breakdown.luxuries +
-      breakdown.buildings +
-      breakdown.religion +
-      (breakdown.prosperity ?? 0) -
-      breakdown.cityUnhappiness -
-      breakdown.citizenUnhappiness -
-      breakdown.unrestUnhappiness;
-  }
-
-  /** Unique improved Luxury goods inside a state's borders, one +4 Happiness each. */
-  private uniqueLuxuries(state: State, living: LivingWorldState): Set<string> {
-    const luxuries = new Set<string>();
-    const cells = pack.cells.state?.length ?? 0;
-    for (let cell = 0; cell < cells; cell++) {
-      if (pack.cells.state?.[cell] !== state.i) continue;
-      const resource = getCellResource(cell, state.i, living);
-      if (resource?.class !== "luxury") continue;
-
-      const cellSim = living.cells?.[cell];
-      const improved = Boolean(cellSim?.improvement && !cellSim.pillaged);
-      const burgId = Number(pack.cells.burg?.[cell] ?? 0);
-      const burg = burgId ? pack.burgs?.[burgId] : undefined;
-      const village = Boolean(burg?.i && !burg.removed && !isBurgPillaged(burg, living));
-      if (!improved && !village) continue;
-
-      luxuries.add(resource.resourceId ?? resource.goodName);
-    }
-    return luxuries;
-  }
-
-  /** Happiness from pantheon / founder / follower beliefs (Slice 6 fills religion records). */
-  private beliefHappiness(state: State, living: LivingWorldState): number {
-    let happiness = 0;
-    for (const id of this.stateBeliefs(state, living)) {
-      happiness += CIV_BELIEF_BY_ID[id]?.yields?.happiness ?? 0;
-    }
-    return happiness;
-  }
-
-  /** §6.1 Research: bank Science into the current tech, then pick the next project. */
-  private applyResearch(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
-    const theme = activeCivThemeId();
-    sSim.researchedTechs ??= [];
-    sSim.researchedProgress ??= {};
-    sSim.researchQueue ??= [];
-    const researched = new Set(sSim.researchedTechs);
-
-    let freeTechs = sSim.freeTechs ?? 0;
-    while (freeTechs > 0) {
-      const free = this.nextTech(researched, theme);
-      if (!free) break;
-      this.completeTech(state, sSim, free, living, true);
-      researched.add(free.id);
-      freeTechs -= 1;
-    }
-    sSim.freeTechs = freeTechs;
-
-    let current: CivTechDef | undefined = sSim.currentTechId ? CIV_TECH_BY_ID[sSim.currentTechId] : undefined;
-    if (!current || !isTechSelectable(current, researched, theme)) {
-      const queued = sSim.researchQueue
-        .map(id => CIV_TECH_BY_ID[id])
-        .find(tech => tech !== undefined && isTechSelectable(tech, researched, theme));
-      current = queued ?? this.nextTech(researched, theme) ?? undefined;
-      sSim.currentTechId = current?.id ?? null;
-    }
-    if (!current) return;
-
-    const science = Math.max(0, sSim.yieldsPerTurn?.science ?? 0);
-    const cost = Math.max(1, current.cost);
-    const banked = (sSim.researchedProgress[current.id] ?? 0) + science;
-    if (banked < cost) {
-      sSim.researchedProgress[current.id] = Math.round(banked * 100) / 100;
-      return;
-    }
-    this.completeTech(state, sSim, current, living, false);
-
-    // Keep the research queue moving: pick the next project immediately.
-    const advanced = new Set(sSim.researchedTechs ?? []);
-    const queued = sSim.researchQueue
-      .map(id => CIV_TECH_BY_ID[id])
-      .find(tech => tech !== undefined && isTechSelectable(tech, advanced, theme));
-    sSim.currentTechId = (queued ?? this.nextTech(advanced, theme))?.id ?? null;
-  }
-
-  /** Cheapest selectable technology, deterministic on ties. */
-  private nextTech(researched: ReadonlySet<string>, theme: CivThemeId): CivTechDef | null {
-    const available = CIV_TECHS.filter(tech => isTechSelectable(tech, researched, theme)).sort(
-      (a, b) => a.cost - b.cost || a.row - b.row || a.slot - b.slot || a.id.localeCompare(b.id)
-    );
-    return available[0] ?? null;
-  }
-
-  private completeTech(
-    state: State,
-    sSim: StatePolitySim,
-    tech: CivTechDef,
-    living: LivingWorldState,
-    free: boolean
-  ): void {
-    sSim.researchedTechs ??= [];
-    if (!sSim.researchedTechs.includes(tech.id)) sSim.researchedTechs.push(tech.id);
-    if (sSim.researchedProgress) delete sSim.researchedProgress[tech.id];
-    if (sSim.researchQueue) sSim.researchQueue = sSim.researchQueue.filter(id => id !== tech.id);
-    sSim.currentTechId = null;
-
-    const name = resolveCivTechName(activeCivThemeId(), tech);
     this.pushNews(living, {
-      kind: "tech",
-      text: `${state.name} discovered ${name}${free ? " through foreign scholars" : ""}.`,
-      cell: state.center,
-      stateId: state.i
+      kind: "muster",
+      text: `${faction.name} mustered ${unit.name}.`,
+      cell: node.cell,
+      ...(node.burgId ? { burgId: node.burgId } : {})
     });
-
-    this.raiseTechDevelopment(living, sSim.researchedTechs ?? [], this.settlementCells(state.i));
-  }
-
-  /** §7.1 Bank net Gold into the treasury; a negative balance disbands a regiment. */
-  private applyTreasury(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
-    const goldPerTurn = sSim.yieldsPerTurn?.gold ?? 0;
-    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) + goldPerTurn) * 100) / 100;
-    if (state.economy.treasury < 0) this.settleDebt(state, living);
   }
 
   /** §7.1 Bankruptcy: reset the treasury and disband the newest block, not the whole regiment. */
@@ -4411,7 +2125,6 @@ class LivingModel {
     if (blocks.length === 0) {
       military.pop();
       const key = this.unitKey(state.i, newest.i);
-      if (living.units) delete living.units[key];
       if (living.armies) delete living.armies[key];
     }
 
@@ -4421,16 +2134,6 @@ class LivingModel {
       cell: newest.cell,
       stateId: state.i
     });
-  }
-
-  /** §7.2 Content empires pacify, unhappy ones breed unravel, very unhappy ones spiral. */
-  private applyHappinessPressure(sSim: StatePolitySim): void {
-    const happiness = sSim.happiness ?? 0;
-    let delta: number;
-    if (happiness <= VERY_UNHAPPY_HAPPINESS) delta = 6;
-    else if (happiness < 0) delta = 2;
-    else delta = -(2 + Math.floor(happiness / 5));
-    sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
   }
 
   /** Active HQ/outpost nodes of a faction, skipping pillaged nodes. */
@@ -4444,15 +2147,161 @@ class LivingModel {
     return nodes;
   }
 
-  /** Detailed breakdown of yields for a faction and each of its nodes. */
+  /** A faction's next work: advance it, or commission the best asset its track and purse allow. */
+  private stepFactionProject(faction: Faction, living: LivingWorldState): void {
+    if (faction.project) {
+      if (faction.project.turnsLeft > 1) {
+        faction.project.turnsLeft -= 1;
+        return;
+      }
+      this.completeFactionProject(faction, living);
+      return;
+    }
+
+    const treasury = Number(faction.treasury ?? 0);
+    const development = this.factionDevelopment(faction);
+    const candidates = getAllFactionAssets()
+      .filter(def => factionCanBuildAsset(faction, def, development))
+      .filter(def => treasury >= def.cost + FACTION_PROJECT_RESERVE)
+      .filter(def => this.pickFactionAssetNode(faction, def) !== null)
+      .sort((a, b) => a.tier - b.tier || a.cost - b.cost || a.id.localeCompare(b.id));
+    const next = candidates[0];
+    if (next) this.commissionFactionAsset(faction.i, next.id);
+  }
+
+  /** God mode / editor: pay for and begin one faction asset at a node. */
+  commissionFactionAsset(factionId: number, assetId: string, nodeKey?: FactionNodeKey): boolean {
+    const faction = Factions.active().find(entry => entry.i === factionId);
+    const def = getFactionAsset(assetId);
+    if (!faction?.i || faction.removed || !def || faction.project) return false;
+    if (Number(faction.treasury ?? 0) < def.cost) return false;
+    if (!factionCanBuildAsset(faction, def, this.factionDevelopment(faction))) return false;
+
+    const target = nodeKey ? this.factionNodeByKey(faction, nodeKey) : this.pickFactionAssetNode(faction, def);
+    if (!target || (target.node.assets ?? []).includes(assetId)) return false;
+
+    faction.treasury = Math.round((Number(faction.treasury) - def.cost) * 100) / 100;
+    faction.project = {
+      assetId,
+      nodeKey: factionSuppressionNodeKey(target.node, target.isHq),
+      turnsLeft: def.tier
+    };
+    if (pack.history?.living) pack.history.living.economyDirty = true;
+    return true;
+  }
+
+  /** Finish a faction work: add it to the node and let the host town feel it. */
+  private completeFactionProject(faction: Faction, living: LivingWorldState): void {
+    const active = faction.project;
+    if (!active) return;
+    const def = getFactionAsset(active.assetId);
+    const target = this.factionNodeByKey(faction, active.nodeKey);
+    if (!def || !target) {
+      faction.project = undefined;
+      return;
+    }
+
+    target.node.assets = [...(target.node.assets ?? []), def.id];
+    if (target.node.sim) target.node.sim.civBuildings = [...target.node.assets];
+    this.applyFactionAssetImpacts(target.node, def);
+    faction.influence = minmax((faction.influence ?? 0) + 2, 0, 100);
+    faction.project = undefined;
+    living.economyDirty = true;
+
+    const location = target.node.burgId ? (pack.burgs[target.node.burgId]?.name ?? "a burg") : "the wilds";
+    const text = `${faction.name} completes its ${def.name} in ${location}.`;
+    this.pushNews(living, {
+      kind: "faction",
+      text,
+      cell: target.node.cell,
+      ...(target.node.burgId ? { burgId: target.node.burgId } : {})
+    });
+    this.pushHistory("deed", [{ kind: "state", id: faction.patronStateId ?? 0 }], target.node.cell, text);
+  }
+
+  /** Order and unrest bites at once; money lines are rebuilt by `syncFactionLines`. */
+  private applyFactionAssetImpacts(node: FactionHq | FactionOutpost, def: FactionAssetDef): void {
+    const burg = node.burgId ? pack.burgs[node.burgId] : undefined;
+    if (!burg?.i) return;
+    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
+    const pSim = provinceId ? this.getState().provinces[provinceId] : undefined;
+    if (pSim && def.burgImpact?.order) {
+      pSim.order = minmax(pSim.order + def.burgImpact.order * 3, 0, 100);
+    }
+    if (def.burgImpact?.unrest) {
+      const bSim = this.getState().burgs[burg.i];
+      if (bSim) bSim.unrest = minmax(bSim.unrest + Math.max(0, def.burgImpact.unrest) * 3, 0, 100);
+    }
+  }
+
+  /** Rebuild every faction money line on its host towns: one per asset with a gold bite. */
+  private syncFactionLines(living: LivingWorldState): void {
+    const prefix = "Faction: ";
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed) continue;
+      const current = burg.simAdjustments ?? [];
+      const kept = current.filter(line => !line.name.startsWith(prefix));
+      const lines: { name: string; value: number }[] = [];
+
+      for (const faction of Factions.active()) {
+        for (const { node } of this.factionNodes(faction)) {
+          if (!node.burgId || node.burgId !== burg.i) continue;
+          for (const assetId of node.assets ?? []) {
+            const def = getFactionAsset(assetId);
+            const value = def?.burgImpact?.gold ?? 0;
+            if (!def || !value) continue;
+            lines.push({ name: `${prefix}${faction.name} ${def.name}`, value });
+          }
+        }
+      }
+
+      const next = [...kept, ...lines];
+      if (JSON.stringify(next) === JSON.stringify(current)) continue;
+      burg.simAdjustments = next;
+      living.economyDirty = true;
+    }
+  }
+
+  /** A faction's live nodes, HQ first. */
+  private factionNodes(faction: Faction): { node: FactionHq | FactionOutpost; isHq: boolean }[] {
+    const nodes: { node: FactionHq | FactionOutpost; isHq: boolean }[] = [];
+    if (faction.hq && !faction.hq.pillaged) nodes.push({ node: faction.hq, isHq: true });
+    for (const outpost of faction.outposts ?? []) {
+      if (!outpost.pillaged) nodes.push({ node: outpost, isHq: false });
+    }
+    return nodes;
+  }
+
+  private factionNodeByKey(
+    faction: Faction,
+    key: FactionNodeKey
+  ): { node: FactionHq | FactionOutpost; isHq: boolean } | null {
+    for (const entry of this.factionNodes(faction)) {
+      if (factionSuppressionNodeKey(entry.node, entry.isHq) === key) return entry;
+    }
+    return null;
+  }
+
+  /** The node a new asset can be built at, honouring its location rule. */
+  private pickFactionAssetNode(
+    faction: Faction,
+    def: FactionAssetDef
+  ): { node: FactionHq | FactionOutpost; isHq: boolean } | null {
+    const nodes = this.factionNodes(faction);
+    const fits = (entry: { node: FactionHq | FactionOutpost; isHq: boolean }) => {
+      if (!entry.isHq && def.location === "hq_only") return false;
+      if (def.location === "burg" && !entry.node.burgId) return false;
+      if (def.location === "wilderness" && entry.node.burgId) return false;
+      if ((entry.node.assets ?? []).includes(def.id)) return false;
+      return true;
+    };
+    const candidates = nodes.filter(fits);
+    return candidates.find(entry => entry.isHq) ?? candidates[0] ?? null;
+  }
+
+  /** §5.1 upstream-only faction income: trade commissions, graft, retainers and tithes per node. */
   getFactionYieldBreakdown(faction: Faction): FactionYieldBreakdown {
     const nodes: FactionNodeYieldBreakdown[] = [];
-    const totals = emptyYields();
-    let totalGrossGold = 0;
-    let totalMaintenance = 0;
-    let totalScience = 0;
-    let totalCitizens = 0;
-    let totalWorkedCells = 0;
     let totalUpstreamGold = 0;
     let totalCharterTithe = 0;
     let charterPatronId = 0;
@@ -4461,73 +2310,16 @@ class LivingModel {
     const outpostsBreakdown: FactionNodeYieldBreakdown[] = [];
 
     for (const { node, isHq } of this.factionEmpireNodes(faction)) {
-      const sim = ensureFactionNodeSim(node, isHq);
-      let cityYields = sim.cityYields;
-      if (
-        !cityYields ||
-        (cityYields.food === 0 &&
-          cityYields.production === 0 &&
-          cityYields.gold === 0 &&
-          cityYields.science === 0 &&
-          cityYields.culture === 0 &&
-          cityYields.faith === 0)
-      ) {
-        cityYields = this.refreshFactionNodeYields(faction, node, isHq);
-      }
-
-      let maintenance = 0;
-      for (const id of sim.civBuildings ?? []) {
-        maintenance += CIV_BUILDING_BY_ID[id]?.maintenance ?? 0;
-      }
-
-      // §5.1: the node also earns off the host burg's upstream product, trade and graft
       const upstream = factionUpstreamIncome(faction, node);
-      const grossGold = cityYields.gold + upstream.gold;
-      const nodeScience = this.citySciencePerTick(sim);
-      const netGold = Math.round((grossGold - maintenance) * 100) / 100;
-      const roundedScience = Math.round(nodeScience * 100) / 100;
-      const citizens = sim.citizens ?? (isHq ? 2 : 1);
-      const workedCells = sim.workedCells?.length ?? (node.cell >= 0 ? 1 : 0);
-
-      const nodeYields: YieldValues = {
-        food: cityYields.food,
-        production: cityYields.production,
-        gold: netGold,
-        science: roundedScience,
-        culture: cityYields.culture,
-        faith: cityYields.faith,
-        happiness: 0
-      };
-
       const breakdown: FactionNodeYieldBreakdown = {
         node,
         isHq,
-        yields: nodeYields,
-        grossGold,
-        maintenance,
-        science: roundedScience,
-        citizens,
-        workedCells,
         upstreamGold: upstream.gold,
         charterTithe: upstream.charterTithe
       };
-
       nodes.push(breakdown);
-      if (isHq) {
-        hqBreakdown = breakdown;
-      } else {
-        outpostsBreakdown.push(breakdown);
-      }
-
-      totals.food += cityYields.food;
-      totals.production += cityYields.production;
-      totals.culture += cityYields.culture;
-      totals.faith += cityYields.faith;
-      totalGrossGold += grossGold;
-      totalMaintenance += maintenance;
-      totalScience += nodeScience;
-      totalCitizens += citizens;
-      totalWorkedCells += workedCells;
+      if (isHq) hqBreakdown = breakdown;
+      else outpostsBreakdown.push(breakdown);
       totalUpstreamGold += upstream.gold;
       totalInfluence += upstream.influence;
       if (upstream.charterTithe > 0) {
@@ -4536,30 +2328,7 @@ class LivingModel {
       }
     }
 
-    const unitTypes = Military.getUnitTypes();
-    let blockUpkeep = 0;
-    let civilianUpkeep = 0;
-    for (const regiment of faction.military ?? []) {
-      if (isCivilianUnit((regiment.type ?? "").toLowerCase())) {
-        civilianUpkeep += CIVILIAN_UPKEEP;
-        continue;
-      }
-      for (const block of regiment.units ?? []) {
-        if (block.hp > 0) blockUpkeep += (unitTypes[block.type]?.upkeep ?? 0) * block.hp;
-      }
-    }
-    const upkeep = Math.max(0, blockUpkeep + civilianUpkeep - UPKEEP_FREE);
-
-    totals.science = Math.round(totalScience * 100) / 100;
-    totals.gold = Math.round((totalGrossGold - totalMaintenance - upkeep) * 100) / 100;
-    totals.happiness = 0;
-
     return {
-      total: totals,
-      totalCitizens,
-      totalWorkedCells,
-      upkeep,
-      maintenance: totalMaintenance,
       nodes,
       hq: hqBreakdown,
       outposts: outpostsBreakdown,
@@ -4570,174 +2339,25 @@ class LivingModel {
     };
   }
 
-  /** Recalculate worked cells and cityYields for a single faction node. */
-  refreshFactionNodeYields(faction: Faction, node: FactionHq | FactionOutpost, isHq: boolean): YieldValues {
-    const sim = ensureFactionNodeSim(node, isHq);
-    if (!pack?.cells?.c || !pack?.cells?.state) {
-      sim.cityYields ??= emptyYields();
-      return sim.cityYields;
-    }
-    const living = this.getState();
-    const globalWorkedCells = new Set<number>();
-    const yields = this.updateFactionNodeWorkedCells(faction, node, sim, isHq, living, globalWorkedCells);
-    sim.cityYields = yields;
-    return yields;
+  /** The faction's season on the upstream economy: node income less its forces' upkeep. */
+  private factionSeasonalGold(faction: Faction): number {
+    const upstream = this.getFactionYieldBreakdown(faction);
+    const unitTypes = Military.getUnitTypes();
+    const blockUpkeep = (faction.military ?? []).reduce(
+      (total, regiment) =>
+        total +
+        (regiment.units ?? []).reduce(
+          (sum, block) => sum + (block.hp > 0 ? (unitTypes[block.type]?.upkeep ?? 0) * block.hp : 0),
+          0
+        ),
+      0
+    );
+    return upstream.upstreamGold - blockUpkeep;
   }
 
-  /** Empire-wide yields for a faction: sum of city-node yields plus science multipliers minus upkeep. */
-  recomputeFactionYields(faction: Faction): YieldValues {
-    return this.getFactionYieldBreakdown(faction).total;
-  }
-
-  /** Unique luxury resources worked by any faction node, for Empire Happiness. */
-  private factionUniqueLuxuries(faction: Faction, living: LivingWorldState): Set<string> {
-    const luxuries = new Set<string>();
-    for (const { node, isHq } of this.factionEmpireNodes(faction)) {
-      const sim = ensureFactionNodeSim(node, isHq);
-      const worked = [...(sim.workedCells ?? [])];
-      if (!worked.includes(node.cell)) worked.push(node.cell);
-      const hostStateId = node.burgId ? (pack.burgs[node.burgId]?.state ?? 0) : (pack.cells.state?.[node.cell] ?? 0);
-      for (const cell of worked) {
-        const resource = getCellResource(cell, hostStateId, living);
-        if (resource?.class !== "luxury") continue;
-        const cellSim = living.cells?.[cell];
-        const improved = Boolean(cellSim?.improvement && !cellSim.pillaged);
-        const burgId = Number(pack.cells.burg?.[cell] ?? 0);
-        const burg = burgId ? pack.burgs?.[burgId] : undefined;
-        const village = Boolean(burg?.i && !isBurgPillaged(burg, living));
-        if (!improved && !village) continue;
-        luxuries.add(resource.resourceId ?? resource.goodName);
-      }
-    }
-    return luxuries;
-  }
-
-  /** Faction Empire Happiness: base + luxuries + buildings − nodes − citizens. */
-  private recomputeFactionHappiness(faction: Faction, living: LivingWorldState): void {
-    const breakdown: HappinessBreakdown = {
-      base: BASE_EMPIRE_HAPPINESS,
-      luxuries: 0,
-      buildings: 0,
-      religion: 0,
-      cityUnhappiness: 0,
-      citizenUnhappiness: 0,
-      unrestUnhappiness: 0
-    };
-    breakdown.luxuries = LUXURY_HAPPINESS * this.factionUniqueLuxuries(faction, living).size;
-
-    let localHappiness = 0;
-    for (const { node, isHq } of this.factionEmpireNodes(faction)) {
-      const sim = ensureFactionNodeSim(node, isHq);
-      const citizens = sim.citizens ?? 1;
-      let local = 0;
-      for (const id of sim.civBuildings ?? []) {
-        const def = CIV_BUILDING_BY_ID[id];
-        const happiness = def?.stats.happiness ?? 0;
-        if (happiness === 0) continue;
-        if (def?.isWonder) breakdown.buildings += happiness;
-        else local += happiness;
-      }
-      localHappiness += Math.min(local, citizens);
-      breakdown.cityUnhappiness += 3;
-      breakdown.citizenUnhappiness += citizens;
-      breakdown.unrestUnhappiness += Math.ceil((sim.unrest ?? 0) / 2);
-    }
-    breakdown.buildings += localHappiness;
-
-    faction.happinessBreakdown = breakdown;
-    faction.happiness =
-      breakdown.base +
-      breakdown.luxuries +
-      breakdown.buildings +
-      breakdown.religion -
-      breakdown.cityUnhappiness -
-      breakdown.citizenUnhappiness -
-      breakdown.unrestUnhappiness;
-  }
-
-  /** Host state used for the +25% research spillover. */
-  private factionHostStateId(faction: Faction): number {
-    if (faction.patronStateId) return faction.patronStateId;
-    if (faction.hq && !faction.hq.pillaged && faction.hq.burgId) return pack.burgs[faction.hq.burgId]?.state ?? 0;
-    const first = (faction.outposts ?? []).find(outpost => !outpost.pillaged);
-    if (first?.burgId) return pack.burgs[first.burgId]?.state ?? 0;
-    return 0;
-  }
-
-  private completeFactionTech(faction: Faction, tech: CivTechDef, living: LivingWorldState, free: boolean): void {
-    faction.researchedTechs ??= [];
-    if (!faction.researchedTechs.includes(tech.id)) faction.researchedTechs.push(tech.id);
-    faction.researchedProgress ??= {};
-    delete faction.researchedProgress[tech.id];
-    faction.researchQueue = (faction.researchQueue ?? []).filter(id => id !== tech.id);
-    faction.currentTechId = null;
-
-    const name = resolveCivTechName(activeCivThemeId(), tech);
-    this.pushNews(living, {
-      kind: "faction",
-      text: `${faction.name} discovered ${name}${free ? " through foreign scholars" : ""}.`,
-      cell: faction.hq?.cell,
-      ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
-    });
-
-    this.raiseTechDevelopment(living, faction.researchedTechs, this.factionSettlementCells(faction));
-  }
-
-  /** Research with +25% spillover when the host state already knows the tech. */
-  private applyFactionResearch(faction: Faction, living: LivingWorldState): void {
-    const theme = activeCivThemeId();
-    faction.researchedTechs ??= [];
-    faction.researchedProgress ??= {};
-    faction.researchQueue ??= [];
-    const researched = new Set(faction.researchedTechs);
-
-    let freeTechs = faction.freeTechs ?? 0;
-    while (freeTechs > 0) {
-      const free = this.nextTech(researched, theme);
-      if (!free) break;
-      this.completeFactionTech(faction, free, living, true);
-      researched.add(free.id);
-      freeTechs -= 1;
-    }
-    faction.freeTechs = freeTechs;
-
-    let current: CivTechDef | undefined = faction.currentTechId ? CIV_TECH_BY_ID[faction.currentTechId] : undefined;
-    if (!current || !isTechSelectable(current, researched, theme)) {
-      const queued = faction.researchQueue
-        .map(id => CIV_TECH_BY_ID[id])
-        .find(tech => tech !== undefined && isTechSelectable(tech, researched, theme));
-      current = queued ?? this.nextTech(researched, theme) ?? undefined;
-      faction.currentTechId = current?.id ?? null;
-    }
-    if (!current) return;
-
-    let science = Math.max(0, faction.yieldsPerTurn?.science ?? 0);
-    const hostId = this.factionHostStateId(faction);
-    if (hostId > 0) {
-      const hostTechs = living.states[hostId]?.researchedTechs ?? [];
-      if (hostTechs.includes(current.id)) science = Math.round(science * 1.25 * 100) / 100;
-    }
-
-    const cost = Math.max(1, current.cost);
-    const banked = (faction.researchedProgress[current.id] ?? 0) + science;
-    if (banked < cost) {
-      faction.researchedProgress[current.id] = Math.round(banked * 100) / 100;
-      return;
-    }
-    this.completeFactionTech(faction, current, living, false);
-
-    const advanced = new Set(faction.researchedTechs ?? []);
-    const queued = faction.researchQueue
-      .map(id => CIV_TECH_BY_ID[id])
-      .find(tech => tech !== undefined && isTechSelectable(tech, advanced, theme));
-    faction.currentTechId = (queued ?? this.nextTech(advanced, theme))?.id ?? null;
-  }
-
-  /** Bank net Gold into the faction treasury; a negative balance disbands a block. */
+  /** Bank the faction's season: upstream income less its forces' upkeep; debt disbands a block. */
   private applyFactionTreasury(faction: Faction, living: LivingWorldState): void {
-    const goldPerTurn = faction.yieldsPerTurn?.gold ?? 0;
-    faction.treasury = Math.round((Number(faction.treasury ?? 0) + goldPerTurn) * 100) / 100;
-    faction.science = Math.max(0, faction.yieldsPerTurn?.science ?? 0);
+    faction.treasury = Math.round((Number(faction.treasury ?? 0) + this.factionSeasonalGold(faction)) * 100) / 100;
     if (faction.treasury < 0) this.settleFactionDebt(faction, living);
   }
 
@@ -4757,7 +2377,6 @@ class LivingModel {
     if (blocks.length === 0) {
       military.pop();
       const key = this.factionUnitKey(faction.i, newest.i);
-      if (living.units) delete living.units[key];
       if (living.armies) delete living.armies[key];
     }
 
@@ -4769,25 +2388,24 @@ class LivingModel {
     });
   }
 
-  /** One seasonal faction empire tick: yields, happiness, research and treasury. */
+  /** One seasonal faction tick: upstream income, influence, charters, research, treasury and a guard. */
   stepFactionEmpire(living: LivingWorldState): void {
-    if (!this.hasCityTerrain()) return;
     const charters = new Map<number, number>();
     for (const faction of Factions.active()) {
       faction.seasonsActive = (faction.seasonsActive || 0) + 1;
       syncFactionState(faction);
       const breakdown = this.getFactionYieldBreakdown(faction);
-      faction.yieldsPerTurn = breakdown.total;
-      // §5.1: temples and chanceries grow their influence with the court's spending
+      // temples and chanceries grow their influence with the court's spending
       faction.influence = minmax((faction.influence ?? 0) + breakdown.influence, 0, 100);
       if (breakdown.charterPatronId && breakdown.charterTithe > 0) {
         const patron = breakdown.charterPatronId;
         charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
       }
-      this.recomputeFactionHappiness(faction, living);
-      this.applyFactionResearch(faction, living);
       this.applyFactionTreasury(faction, living);
+      this.musterFactionBlock(faction, living);
+      this.stepFactionProject(faction, living);
     }
+    this.syncFactionLines(living);
     this.applyCharterTithes(living, charters);
   }
 
@@ -4803,52 +2421,41 @@ class LivingModel {
     }
   }
 
-  /** One seasonal empire tick: yields, happiness, research, treasury and unravel. */
-  private stepEmpire(living: LivingWorldState): void {
-    if (!this.hasCityTerrain()) return;
-
-    for (const state of pack.states) {
-      if (!state?.i || state.removed) continue;
-      const sSim = living.states[state.i];
-      if (!sSim) continue;
-
-      sSim.yieldsPerTurn = this.recomputeStateYields(state, living);
-      this.recomputeEmpireHappiness(state, sSim, living);
-      this.applyResearch(state, sSim, living);
-      this.applyTreasury(state, sSim, living);
-      this.applyHappinessPressure(sSim);
-    }
-
-    this.stepFactionEmpire(living);
+  /** The state's fiscal posture for the HUD: current, target and pinned lines. */
+  fiscalPolicy(stateId: number): {
+    current: Record<FiscalLock, number>;
+    target: Record<FiscalLock, number>;
+    locks: FiscalLock[];
+    stride: number;
+  } | null {
+    const state = pack.states[stateId];
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    if (!state?.i || state.removed || !sSim) return null;
+    const profile = fiscalProfile(state, this.fiscalEvents(state, living));
+    if (!profile) return null;
+    const lines = [...EXPENSES, "corruption", "salesTax", "pollTax"] as FiscalLock[];
+    return {
+      current: Object.fromEntries(lines.map(line => [line, fiscalValue(state, line)])) as Record<FiscalLock, number>,
+      target: Object.fromEntries(lines.map(line => [line, fiscalTarget(profile, line)])) as Record<FiscalLock, number>,
+      locks: sSim.fiscal?.locks ?? [],
+      stride: fiscalStride(state)
+    };
   }
 
-  /** Choose the technology a state researches next (public for HUD and Sandbox controls). */
-  setResearch(stateId: number, techId: string): boolean {
+  /** God mode: pin a fiscal line so the ruler's drift leaves it alone. Returns the new lock state. */
+  toggleFiscalLock(stateId: number, line: FiscalLock, locked?: boolean): boolean {
     const living = this.getState();
-    const state = pack.states[stateId];
     const sSim = living.states[stateId];
-    const tech = CIV_TECH_BY_ID[techId];
-    if (!state?.i || state.removed || !sSim || !tech) return false;
-
-    const researched = new Set(sSim.researchedTechs ?? []);
-    if (!isTechSelectable(tech, researched, activeCivThemeId())) return false;
-
-    sSim.researchQueue = [techId, ...(sSim.researchQueue ?? []).filter(id => id !== techId)];
-    sSim.currentTechId = techId;
-    return true;
-  }
-
-  /** Grant a technology outright (wonders, Guild scrolls, Sandbox God Mode). */
-  grantTech(stateId: number, techId: string): boolean {
-    const living = this.getState();
-    const state = pack.states[stateId];
-    const sSim = living.states[stateId];
-    const tech = CIV_TECH_BY_ID[techId];
-    if (!state?.i || state.removed || !sSim || !tech) return false;
-    if ((sSim.researchedTechs ?? []).includes(techId)) return false;
-
-    this.completeTech(state, sSim, tech, living, true);
-    return true;
+    if (!sSim) return false;
+    if (!sSim.fiscal) sSim.fiscal = {};
+    const fiscal = sSim.fiscal;
+    const locks = new Set(fiscal.locks ?? []);
+    const next = locked ?? !locks.has(line);
+    if (next) locks.add(line);
+    else locks.delete(line);
+    fiscal.locks = [...locks];
+    return next;
   }
 
   /**
@@ -4918,9 +2525,6 @@ class LivingModel {
     const location = factionSuppressionLocationName(target);
     const targetCell = factionSuppressionTargetCell(target);
 
-    if (!target.wilderness && target.burg?.i) {
-      if (!this.enqueueFactionSuppression(target, living)) return false;
-    }
     sSim.agenda = {
       kind: "suppress_faction",
       label: `Suppressing ${target.faction.name} in ${location}`,
@@ -4979,15 +2583,10 @@ class LivingModel {
           continue;
         }
 
-        const yields = node.sim?.cityYields;
         const burgPoint = pack.cells.p?.[cell];
         const distance =
           burgPoint && statePoint ? Math.hypot(burgPoint[0] - statePoint[0], burgPoint[1] - statePoint[1]) : 0;
-        const score =
-          (burg?.capital ? 1000 : 0) +
-          ((yields?.gold ?? 0) + (yields?.production ?? 0) + (yields?.culture ?? 0)) * 10 +
-          ((node.sim?.citizens ?? 1) + (node.influence ?? node.secrecy)) -
-          distance * 0.1;
+        const score = (burg?.capital ? 1000 : 0) + (node.influence ?? node.secrecy) - distance * 0.1;
 
         targets.push({
           faction,
@@ -5011,31 +2610,6 @@ class LivingModel {
     return this.eligibleFactionSuppressionTargets(state.i)[0] ?? null;
   }
 
-  /** Gold-hurry the top production item in a Major Burg (GoldPurchase). */
-  hurryProduction(burgId: number): boolean {
-    const living = this.getState();
-    const burg = pack.burgs[burgId];
-    const bSim = living.burgs[burgId];
-    if (!burg?.i || burg.removed || !burg.state || !bSim?.productionQueue?.length) return false;
-
-    const state = pack.states[burg.state];
-    if (!state?.i || state.removed) return false;
-
-    const item = bSim.productionQueue[0]!;
-    const key = `${item.kind}:${item.id}`;
-    const remaining = Math.max(0, this.productionCost(state, item) - (bSim.productionProgress?.[key] ?? 0));
-    if (remaining <= 0) return false;
-
-    const price = hurryGoldCost(remaining, item.kind === "unit", (bSim.civBuildings ?? []).includes("big_ben"));
-    if (Number(state.economy.treasury ?? 0) < price + GOLD_PURCHASE_RESERVE) return false;
-
-    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) - price) * 100) / 100;
-    if (bSim.productionProgress) delete bSim.productionProgress[key];
-    bSim.productionQueue.shift();
-    this.completeProductionItem(state, burg, bSim, item, living);
-    return true;
-  }
-
   // -------------------------------------------------------------------------
   // Slice 5: OpenCiv 1UPT tactical layer — units, combat, builders, settlers,
   // city sieges and Gold upgrades.
@@ -5046,17 +2620,14 @@ class LivingModel {
   }
 
   /**
-   * Reconcile `living.units` (utility) and `living.armies` (combat) with the
+   * Reconcile `living.armies` (combat) with the
    * native regiments (terrain packs only). Composition stays on
    * `Regiment.units`; this only guarantees one live state record per regiment.
    */
   private syncArmies(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
-    living.units ??= {};
     living.armies ??= {};
     const unitTypes = Military.getUnitTypes();
-    const rosterCache = new Map<number, ResolvedRoster | undefined>();
-    const aliveUnits = new Set<string>();
     const aliveArmies = new Set<string>();
     const maxSlots = currentContent().config.military.maxUnitsPerArmy;
 
@@ -5066,30 +2637,9 @@ class LivingModel {
       for (const regiment of state.military ?? []) {
         const key = this.unitKey(state.i, regiment.i);
 
-        // Legacy 1UPT combat sim: convert once, then drop it (§13.1).
-        const sim = living.units[key];
-        if (sim && !sim.isUtility) {
-          const roster = this.stateRoster(state, rosterCache);
-          const unit = roster ? matchRosterUnitByCategory(roster, sim.combatClass) : undefined;
-          if (unit) {
-            regiment.units = [{ type: unit.id, hp: 1, exp: Math.min(9, Math.max(0, (sim.level ?? 1) - 1)) }];
-          }
-          delete living.units[key];
-        }
-
-        // Utility regiment: its civilian type is authoritative (living-openciv-armies.md §11).
-        const civilianType = (regiment.type ?? "").toLowerCase();
-        if (isCivilianUnit(civilianType)) {
-          const def = this.civilianDefinition(civilianType);
-          if (!def?.isUtility) continue;
-          regiment.units = [];
-          const unit = living.units[key] ?? this.createUtilitySim(regiment, def);
-          this.applyUnitDefinition(unit, def);
-          if (unit.domain === "sea") regiment.n = 1;
-          regiment.a = Math.max(0, Math.round(unit.hp));
-          regiment.u = { [def.id]: regiment.a };
-          living.units[key] = unit;
-          aliveUnits.add(key);
+        // Phase 1 strips the civilians: old saves' utility regiments disband.
+        if (isCivilianUnit((regiment.type ?? "").toLowerCase())) {
+          this.removeRegiment(state, regiment, living);
           continue;
         }
 
@@ -5116,20 +2666,10 @@ class LivingModel {
 
     for (const faction of Factions.active()) {
       syncFactionState(faction);
-      for (const regiment of faction.military ?? []) {
+      for (const regiment of [...(faction.military ?? [])]) {
         const key = this.factionUnitKey(faction.i, regiment.i);
-        const civilianType = (regiment.type ?? "").toLowerCase();
-        if (isCivilianUnit(civilianType)) {
-          const def = this.civilianDefinition(civilianType);
-          if (!def?.isUtility) continue;
-          regiment.units = [];
-          const unit = living.units[key] ?? this.createUtilitySim(regiment, def);
-          this.applyUnitDefinition(unit, def);
-          if (unit.domain === "sea") regiment.n = 1;
-          regiment.a = Math.max(0, Math.round(unit.hp));
-          regiment.u = { [def.id]: regiment.a };
-          living.units[key] = unit;
-          aliveUnits.add(key);
+        if (isCivilianUnit((regiment.type ?? "").toLowerCase())) {
+          this.removeFactionRegiment(faction, regiment, living);
           continue;
         }
 
@@ -5154,101 +2694,35 @@ class LivingModel {
       }
     }
 
-    for (const key of Object.keys(living.units)) {
-      if (!aliveUnits.has(key)) delete living.units[key];
-    }
     for (const key of Object.keys(living.armies)) {
       if (!aliveArmies.has(key)) delete living.armies[key];
     }
   }
 
-  /** Roster for a state, cached for the duration of a sync pass. */
-  private stateRoster(state: State, cache: Map<number, ResolvedRoster | undefined>): ResolvedRoster | undefined {
-    if (!cache.has(state.i)) cache.set(state.i, Military.getRoster(state));
-    return cache.get(state.i);
-  }
-
-  /** Build a utility sim for an existing civilian regiment. */
-  private createUtilitySim(_regiment: Regiment, def: CivUnitDef): UnitSimState {
-    const unit: UnitSimState = {
-      unitTypeId: def.id,
-      domain: def.domain ?? "land",
-      combatClass: def.unitClass ?? "civilian",
-      isUtility: true,
-      hp: UNIT_MAX_HP,
-      movement: def.defaultMoveDistance ?? 2,
-      maxMovement: def.defaultMoveDistance ?? 2,
-      combatStrength: 0,
-      rangedStrength: 0,
-      range: 0,
-      xp: 0,
-      level: 1,
-      promotions: [],
-      fortified: false,
-      hasAttacked: false,
-      workOrder: null
-    };
-    return unit;
-  }
-
-  private civilianDefinition(unitTypeId: string): CivUnitDef | undefined {
-    return CIV_CIVILIAN_BY_ID[unitTypeId];
-  }
-
-  /** Copy catalog stats onto a live unit sim, keeping its current HP/XP. */
-  private applyUnitDefinition(unit: UnitSimState, def: CivUnitDef): void {
-    unit.unitTypeId = def.id;
-    unit.domain = def.domain ?? "land";
-    unit.combatClass = def.unitClass ?? (def.isUtility ? "civilian" : "melee");
-    unit.isUtility = Boolean(def.isUtility);
-    unit.combatStrength = def.combatStrength ?? 0;
-    unit.rangedStrength = def.rangedStrength ?? 0;
-    unit.range = def.range ?? 0;
-    unit.maxMovement = def.defaultMoveDistance ?? 2;
-    unit.movement = Math.min(unit.movement, unit.maxMovement);
-  }
-
-  private unitLevel(xp: number): number {
-    let level = 1;
-    while (level < 10 && xp >= xpForLevel(level + 1)) level += 1;
-    return level;
-  }
-
-  /** The 1UPT sim for a regiment, if the tactical layer is active. */
-  unitSim(stateId: number, regimentId: number): UnitSimState | undefined {
-    return pack.history?.living?.units?.[this.unitKey(stateId, regimentId)];
-  }
-
   /**
-   * Occupant registry: one combat army plus one utility regiment per polity and
-   * cell, never two polities (living-openciv-armies.md §7.1). Army granularity is
-   * the regiment, not the old 1UPT sim.
+   * Occupant registry: one combat army per polity and cell, never two polities.
    * Polity ids: state ids are positive, faction ids are negated (see `factionOwnerId`).
    */
-  private armyOccupancy(living: LivingWorldState): Map<number, { stateId: number; isUtility: boolean; key: string }[]> {
+  private armyOccupancy(
+    _living: LivingWorldState
+  ): Map<number, { stateId: number; isUtility: boolean; key: string }[]> {
     const map = new Map<number, { stateId: number; isUtility: boolean; key: string }[]>();
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
       for (const regiment of state.military ?? []) {
         const key = this.unitKey(state.i, regiment.i);
-        const unit = living.units?.[key];
-        const isUtility = Boolean(unit?.isUtility);
-        if (isUtility && (!unit || unit.hp <= 0)) continue;
-        if (!isUtility && armyIsEmpty(regiment)) continue;
+        if (armyIsEmpty(regiment)) continue;
         const list = map.get(regiment.cell) ?? [];
-        list.push({ stateId: state.i, isUtility, key });
+        list.push({ stateId: state.i, isUtility: false, key });
         map.set(regiment.cell, list);
       }
     }
     for (const faction of Factions.active()) {
       for (const regiment of faction.military ?? []) {
         const key = this.factionUnitKey(faction.i, regiment.i);
-        const unit = living.units?.[key];
-        const isUtility = Boolean(unit?.isUtility);
-        if (isUtility && (!unit || unit.hp <= 0)) continue;
-        if (!isUtility && armyIsEmpty(regiment)) continue;
+        if (armyIsEmpty(regiment)) continue;
         const list = map.get(regiment.cell) ?? [];
-        list.push({ stateId: this.factionOwnerId(faction.i), isUtility, key });
+        list.push({ stateId: this.factionOwnerId(faction.i), isUtility: false, key });
         map.set(regiment.cell, list);
       }
     }
@@ -5279,16 +2753,14 @@ class LivingModel {
       regiment.by = point[1];
     }
 
-    const unit = pack.history?.living?.units?.[key];
     const target = occupancy.get(cell) ?? [];
-    target.push({ stateId, isUtility: Boolean(unit?.isUtility), key });
+    target.push({ stateId, isUtility: false, key });
     occupancy.set(cell, target);
   }
 
   private removeRegiment(state: State, regiment: Regiment, living: LivingWorldState): void {
     state.military = (state.military ?? []).filter(entry => entry !== regiment);
     const key = this.unitKey(state.i, regiment.i);
-    if (living.units) delete living.units[key];
     if (living.armies) delete living.armies[key];
     // Lift any siege this regiment was conducting.
     for (const bSim of Object.values(living.burgs ?? {})) {
@@ -5308,7 +2780,6 @@ class LivingModel {
   private removeFactionRegiment(faction: Faction, regiment: Regiment, living: LivingWorldState): void {
     faction.military = (faction.military ?? []).filter(entry => entry !== regiment);
     const key = this.factionUnitKey(faction.i, regiment.i);
-    if (living.units) delete living.units[key];
     if (living.armies) delete living.armies[key];
   }
 
@@ -5335,7 +2806,7 @@ class LivingModel {
     return faction.factionRelations?.[other.i] === "Enemy" || other.factionRelations?.[faction.i] === "Enemy";
   }
 
-  /** One tactical tick: utility work, army orders, battles and city strikes. */
+  /** One tactical tick: army orders, battles, city strikes and replenishment. */
   private stepTactical(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
     this.syncArmies(living);
@@ -5366,28 +2837,6 @@ class LivingModel {
 
       for (const regiment of [...(state.military ?? [])]) {
         const key = this.unitKey(state.i, regiment.i);
-        const unit = living.units?.[key];
-
-        // Utility regiment: Settler/Builder/Missionary keep the 1UPT sim.
-        if (unit?.isUtility) {
-          if (unit.hp <= 0) {
-            this.removeRegiment(state, regiment, living);
-            continue;
-          }
-          this.tickUnitHealing(unit, regiment, state);
-          unit.movement = unit.maxMovement;
-          unit.hasAttacked = false;
-          let acted = false;
-          if (unit.unitTypeId === "settler") {
-            acted = this.stepSettler(state, regiment, unit, living, occupancy);
-          } else if (unit.unitTypeId === "missionary" || unit.unitTypeId === "inquisitor") {
-            acted = this.stepMissionary(state, regiment, unit, living, occupancy);
-          } else {
-            acted = this.stepBuilder(state, regiment, unit, living, occupancy);
-          }
-          unit.fortified = !acted;
-          continue;
-        }
 
         // Combat army: blocks + per-tick state.
         const army = living.armies?.[key];
@@ -5413,26 +2862,6 @@ class LivingModel {
       syncFactionState(faction);
       for (const regiment of [...(faction.military ?? [])]) {
         const key = this.factionUnitKey(faction.i, regiment.i);
-        const unit = living.units?.[key];
-
-        if (unit?.isUtility) {
-          if (unit.hp <= 0) {
-            this.removeFactionRegiment(faction, regiment, living);
-            continue;
-          }
-          this.tickFactionUnitHealing(unit, regiment, faction);
-          unit.movement = unit.maxMovement;
-          unit.hasAttacked = false;
-          let acted = false;
-          if (unit.unitTypeId === "settler") {
-            acted = this.stepFactionSettler(faction, regiment, unit, living, occupancy);
-          } else {
-            acted = this.stepFactionBuilder(faction, regiment, unit, living, occupancy);
-          }
-          unit.fortified = !acted;
-          continue;
-        }
-
         const army = living.armies?.[key];
         if (!army) continue;
         if (armyIsEmpty(regiment)) {
@@ -5483,75 +2912,6 @@ class LivingModel {
     if (!faction?.i || faction.removed) return false;
     if (faction.hq && !faction.hq.pillaged && faction.hq.burgId === burgId) return true;
     return (faction.outposts ?? []).some(outpost => outpost.burgId === burgId && !outpost.pillaged);
-  }
-
-  /** Fortification-only healing: +25 in a friendly city, +20 in friendly lands, +10 elsewhere. */
-  private tickUnitHealing(unit: UnitSimState, regiment: Regiment, state: State): void {
-    if (!unit.fortified || unit.hp <= 0 || unit.hp >= UNIT_MAX_HP) return;
-    const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
-    const inFriendlyCity = burgId > 0 && pack.burgs[burgId]?.state === state.i;
-    const inFriendlyLands = pack.cells.state?.[regiment.cell] === state.i;
-    const heal = inFriendlyCity ? 25 : inFriendlyLands ? 20 : 10;
-    unit.hp = Math.min(UNIT_MAX_HP, unit.hp + heal);
-  }
-
-  private tickFactionUnitHealing(unit: UnitSimState, regiment: Regiment, faction: Faction): void {
-    if (!unit.fortified || unit.hp <= 0 || unit.hp >= UNIT_MAX_HP) return;
-    const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
-    const inFriendlyCity = burgId > 0 && this.factionNodesAtBurg(faction.i, burgId);
-    const nearNode =
-      inFriendlyCity ||
-      Boolean(faction.hq && this.cellHopDistances(faction.hq.cell, MAX_WORK_DISTANCE).has(regiment.cell)) ||
-      (faction.outposts ?? []).some(outpost =>
-        this.cellHopDistances(outpost.cell, MAX_WORK_DISTANCE).has(regiment.cell)
-      );
-    const heal = inFriendlyCity ? 25 : nearNode ? 20 : 10;
-    unit.hp = Math.min(UNIT_MAX_HP, unit.hp + heal);
-  }
-
-  /** Move a unit along the cheapest descending path toward a target cell. */
-  private moveUnitToward(
-    regiment: Regiment,
-    unit: UnitSimState,
-    targetCell: number,
-    stateId: number,
-    key: string,
-    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
-  ): boolean {
-    const distances = this.cellHopDistances(targetCell, 40);
-    let moved = false;
-    let guard = 0;
-
-    while (unit.movement > 0 && guard++ < 12) {
-      const current = regiment.cell;
-      if (current === targetCell) break;
-      const currentDistance = distances.get(current) ?? Number.POSITIVE_INFINITY;
-      let best: { cell: number; distance: number; cost: number } | null = null;
-
-      for (const neighbor of pack.cells.c?.[current] ?? []) {
-        const distance = distances.get(neighbor);
-        if (distance === undefined || distance >= currentDistance) continue;
-        if (hasStackingConflict(occupancy.get(neighbor) ?? [], stateId, unit.isUtility, key)) continue;
-        if (!this.canEnterForeignCell(stateId, neighbor, unit)) continue;
-        const cost = unitMovementCost(current, neighbor, unit);
-        if (!Number.isFinite(cost) || cost > unit.movement) continue;
-        if (
-          !best ||
-          distance < best.distance ||
-          (distance === best.distance && cost < best.cost) ||
-          (distance === best.distance && cost === best.cost && neighbor < best.cell)
-        ) {
-          best = { cell: neighbor, distance, cost };
-        }
-      }
-
-      if (!best) break;
-      this.moveRegimentTo(regiment, best.cell, stateId, key, occupancy);
-      unit.movement = Math.max(0, unit.movement - best.cost);
-      moved = true;
-    }
-
-    return moved;
   }
 
   /** Army orders: engage an enemy in range, bombard a city, or march on the agenda target. */
@@ -6035,7 +3395,6 @@ class LivingModel {
     const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
     const burg = burgId ? pack.burgs[burgId] : undefined;
     const attackerLordMult = this.stateCombatMult(attackerState.i, living);
-    const defenderLordMult = happinessCombatMultiplier(defenderFaction.happiness ?? 0);
     const session = initBattleSession({
       config,
       unitTypes: toBattleTypes(types),
@@ -6061,8 +3420,7 @@ class LivingModel {
           Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0,
         defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
         labels: [],
-        ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
-        ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
+        ...(attackerLordMult !== 1 ? { attackerLordMult } : {})
       }
     });
 
@@ -6184,10 +3542,6 @@ class LivingModel {
       defenderKind === "state"
         ? (pack.states[defenderId]?.name ?? `State ${defenderId}`)
         : (pack.factions?.[defenderId]?.name ?? `Faction ${defenderId}`);
-    const defenderHappiness =
-      defenderKind === "state"
-        ? (living.states[defenderId]?.happiness ?? 0)
-        : (pack.factions?.[defenderId]?.happiness ?? 0);
     const before = {
       attackerHp: armyStrength(attackerRegiment),
       defenderHp: armyStrength(defenderRegiment),
@@ -6214,14 +3568,7 @@ class LivingModel {
       cell: defenderRegiment.cell,
       regionId: pack.cells.province?.[defenderRegiment.cell] ?? 0,
       assault: false,
-      modifiers: this.factionBattleModifiers(
-        attackerFaction,
-        attackerRegiment,
-        defenderRegiment,
-        defenderKind,
-        defenderId,
-        defenderHappiness
-      )
+      modifiers: this.factionBattleModifiers(attackerRegiment, defenderRegiment, defenderKind, defenderId)
     });
 
     const rng = this.rng("faction:army:battle", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
@@ -6325,12 +3672,10 @@ class LivingModel {
   }
 
   private factionBattleModifiers(
-    attackerFaction: Faction,
     attackerRegiment: Regiment,
     defenderRegiment: Regiment,
     defenderKind: "state" | "faction",
-    defenderId: number,
-    defenderHappiness: number
+    defenderId: number
   ): BattleModifiers {
     const living = this.getState();
     const defenderKey =
@@ -6346,11 +3691,7 @@ class LivingModel {
     const attackerCrossedRiver =
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
       Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
-    const attackerLordMult = happinessCombatMultiplier(attackerFaction.happiness ?? 0);
-    const defenderLordMult =
-      defenderKind === "state"
-        ? this.stateCombatMult(defenderId, living)
-        : happinessCombatMultiplier(defenderHappiness);
+    const defenderLordMult = defenderKind === "state" ? this.stateCombatMult(defenderId, living) : 1;
     return {
       walls,
       defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
@@ -6358,7 +3699,6 @@ class LivingModel {
       attackerCrossedRiver,
       defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
       labels: [],
-      ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
       ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
     };
   }
@@ -6411,7 +3751,7 @@ class LivingModel {
       cell: burg.cell,
       regionId: pack.cells.province?.[burg.cell] ?? 0,
       assault: true,
-      modifiers: this.factionSiegeModifiers(faction, burg)
+      modifiers: this.factionSiegeModifiers(burg)
     });
 
     const rng = this.rng("faction:city:siege", faction.i * 1000 + burg.i, living.tick);
@@ -6459,10 +3799,9 @@ class LivingModel {
     return false;
   }
 
-  private factionSiegeModifiers(faction: Faction, burg: Burg): BattleModifiers {
+  private factionSiegeModifiers(burg: Burg): BattleModifiers {
     const living = this.getState();
     const defenderId = burg.state ?? 0;
-    const attackerLordMult = happinessCombatMultiplier(faction.happiness ?? 0);
     const defenderLordMult = this.stateCombatMult(defenderId, living);
     return {
       walls: Number(burg.walls ?? 0),
@@ -6471,7 +3810,6 @@ class LivingModel {
       attackerCrossedRiver: false,
       defenderTerrain: terrainDefenseMultiplier(burg.cell) > 1,
       labels: [],
-      ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
       ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
     };
   }
@@ -6480,7 +3818,7 @@ class LivingModel {
     if (
       faction.sovereignAmbition &&
       !burg.capital &&
-      (faction.seasonsActive >= 4 || faction.researchedTechs.length >= 2)
+      (faction.seasonsActive >= 4 || this.factionDevelopment(faction) >= SOVEREIGN_DEVELOPMENT)
     ) {
       const ascStateId = this.ascendFactionToState(faction.i, burg.i);
       if (ascStateId !== null) return;
@@ -6799,405 +4137,6 @@ class LivingModel {
     return best?.cell ?? null;
   }
 
-  /** Autonomous Builder: improve the best owned tile in range, then connect roads. */
-  private stepBuilder(
-    state: State,
-    regiment: Regiment,
-    unit: UnitSimState,
-    living: LivingWorldState,
-    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
-  ): boolean {
-    const key = this.unitKey(state.i, regiment.i);
-
-    if (unit.workOrder) {
-      unit.workOrder.turnsLeft -= 1;
-      if (unit.workOrder.turnsLeft <= 0) {
-        this.completeImprovement(regiment.cell, unit.workOrder.improvementId, state, living);
-        unit.workOrder = null;
-      }
-      return true;
-    }
-
-    const target = this.pickBuilderTarget(state, regiment.cell, living);
-    if (!target) {
-      if (!Routes.isConnected(regiment.cell)) {
-        try {
-          Routes.connect(regiment.cell);
-          return true;
-        } catch {
-          return false;
-        }
-      }
-      return false;
-    }
-
-    if (regiment.cell !== target.cell) {
-      return this.moveUnitToward(regiment, unit, target.cell, state.i, key, occupancy);
-    }
-
-    unit.workOrder = {
-      improvementId: target.improvementId,
-      turnsLeft: Math.max(1, CIV_IMPROVEMENT_BY_ID[target.improvementId]?.buildTurns ?? 5)
-    };
-    return true;
-  }
-
-  /** Best unimproved owned cell within builder range and the improvement it wants. */
-  private pickBuilderTarget(
-    state: State,
-    fromCell: number,
-    living: LivingWorldState
-  ): { cell: number; improvementId: string } | null {
-    const techs = new Set(living.states[state.i]?.researchedTechs ?? []);
-    const distances = this.cellHopDistances(fromCell, BUILDER_RANGE);
-    let best: { cell: number; improvementId: string; score: number } | null = null;
-
-    for (const [cell, hops] of distances) {
-      if (pack.cells.state?.[cell] !== state.i) continue;
-      if (living.cells?.[cell]?.improvement) continue;
-      const improvementId = this.desiredImprovement(cell);
-      if (!improvementId) continue;
-      const def = CIV_IMPROVEMENT_BY_ID[improvementId];
-      if (def?.requiredTech && !techs.has(def.requiredTech)) continue;
-
-      const resource = getCellResource(cell, state.i, living);
-      const score =
-        (resource?.revealed ? 3 : resource ? 2 : 0) +
-        (getCellYields(cell, state.i, living).food + getCellYields(cell, state.i, living).production) / 10 -
-        hops / 10;
-      if (!best || score > best.score || (score === best.score && cell < best.cell)) {
-        best = { cell, improvementId, score };
-      }
-    }
-
-    return best ? { cell: best.cell, improvementId: best.improvementId } : null;
-  }
-
-  /** Improvement an unimproved owned cell wants, or null when nothing fits. */
-  private desiredImprovement(cell: number): string | null {
-    const info = getCellTerrainInfo(cell);
-    if (info.isWater) {
-      return Number(pack.cells.harbor?.[cell] ?? 0) > 0 ? "fishing_boats" : null;
-    }
-    if (!info.isWorkable) return null;
-
-    const resource = getCellResource(cell);
-    const resourceId = resource?.resourceId ?? "";
-    if (resource) {
-      if (resource.class === "luxury") return "plantation";
-      if (resource.class === "strategic") return "mine";
-      if (["stone", "marble"].includes(resourceId)) return "quarry";
-      if (["cattle", "sheep", "horses"].includes(resourceId)) return "pasture";
-      if (["ivory", "furs"].includes(resourceId)) return "camp";
-      return "farm";
-    }
-
-    const biome = Number(pack.cells.biome?.[cell] ?? 0);
-    if (biome === 6 || biome === 8 || biome === 9) return "lumber_mill";
-    if (info.isHill) return "mine";
-    return "farm";
-  }
-
-  /** Finish a tile improvement and (for roads) link the native route network. */
-  private completeImprovement(cell: number, improvementId: string, state: State, living: LivingWorldState): void {
-    living.cells ??= {};
-    living.cells[cell] = { ...(living.cells[cell] ?? {}), improvement: improvementId, pillaged: false, progress: {} };
-
-    if (CIV_IMPROVEMENT_BY_ID[improvementId]?.route && pack.cells.routes) {
-      try {
-        Routes.connect(cell);
-      } catch {
-        // stripped packs have no route grid
-      }
-    }
-
-    this.pushNews(living, {
-      kind: "develop",
-      text: `${state.name} built a ${CIV_IMPROVEMENT_BY_ID[improvementId]?.name ?? improvementId}.`,
-      cell,
-      stateId: state.i
-    });
-  }
-
-  /** Autonomous Settler: found a burg on a valid owned cell. */
-  private stepSettler(
-    state: State,
-    regiment: Regiment,
-    unit: UnitSimState,
-    living: LivingWorldState,
-    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
-  ): boolean {
-    if (this.canFoundBurg(regiment.cell, state)) {
-      if (this.foundBurg(state, regiment.cell, living) === null) return false;
-      this.removeRegiment(state, regiment, living);
-      return true;
-    }
-
-    const target = this.pickSettlerTarget(state, regiment.cell, living);
-    if (target === null) return false;
-    return this.moveUnitToward(regiment, unit, target, state.i, this.unitKey(state.i, regiment.i), occupancy);
-  }
-
-  /** Faction Builder: improve a cell worked by this faction's HQ/outposts. */
-  private stepFactionBuilder(
-    faction: Faction,
-    regiment: Regiment,
-    unit: UnitSimState,
-    living: LivingWorldState,
-    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
-  ): boolean {
-    const key = this.factionUnitKey(faction.i, regiment.i);
-    if (unit.workOrder) {
-      unit.workOrder.turnsLeft -= 1;
-      if (unit.workOrder.turnsLeft <= 0) {
-        this.completeFactionImprovement(regiment.cell, unit.workOrder.improvementId, faction, living);
-        unit.workOrder = null;
-      }
-      return true;
-    }
-
-    const target = this.pickFactionBuilderTarget(faction, regiment.cell, living);
-    if (!target) {
-      if (!Routes.isConnected(regiment.cell)) {
-        try {
-          Routes.connect(regiment.cell);
-          return true;
-        } catch {
-          return false;
-        }
-      }
-      return false;
-    }
-
-    if (regiment.cell !== target.cell) {
-      return this.moveUnitToward(regiment, unit, target.cell, this.factionOwnerId(faction.i), key, occupancy);
-    }
-
-    unit.workOrder = {
-      improvementId: target.improvementId,
-      turnsLeft: Math.max(1, CIV_IMPROVEMENT_BY_ID[target.improvementId]?.buildTurns ?? 5)
-    };
-    return true;
-  }
-
-  private pickFactionBuilderTarget(
-    faction: Faction,
-    fromCell: number,
-    living: LivingWorldState
-  ): { cell: number; improvementId: string } | null {
-    const techs = new Set(faction.researchedTechs ?? []);
-    const distances = this.cellHopDistances(fromCell, BUILDER_RANGE);
-    const worked = new Set<number>();
-    for (const node of [faction.hq, ...(faction.outposts ?? [])]) {
-      for (const cell of node?.sim?.workedCells ?? []) worked.add(cell);
-    }
-    let best: { cell: number; improvementId: string; score: number } | null = null;
-
-    for (const [cell, hops] of distances) {
-      if (living.cells?.[cell]?.improvement) continue;
-      if (worked.size > 0 && !worked.has(cell)) continue;
-      const improvementId = this.desiredImprovement(cell);
-      if (!improvementId) continue;
-      const def = CIV_IMPROVEMENT_BY_ID[improvementId];
-      if (def?.requiredTech && !techs.has(def.requiredTech)) continue;
-
-      const hostStateId = pack.cells.state?.[cell] ?? 0;
-      const resource = getCellResource(cell, hostStateId, living);
-      const score =
-        (resource?.revealed ? 3 : resource ? 2 : 0) +
-        (getCellYields(cell, hostStateId, living).food + getCellYields(cell, hostStateId, living).production) / 10 -
-        hops / 10;
-      if (!best || score > best.score || (score === best.score && cell < best.cell)) {
-        best = { cell, improvementId, score };
-      }
-    }
-
-    return best ? { cell: best.cell, improvementId: best.improvementId } : null;
-  }
-
-  private completeFactionImprovement(
-    cell: number,
-    improvementId: string,
-    faction: Faction,
-    living: LivingWorldState
-  ): void {
-    living.cells ??= {};
-    living.cells[cell] = { ...(living.cells[cell] ?? {}), improvement: improvementId, pillaged: false, progress: {} };
-
-    if (CIV_IMPROVEMENT_BY_ID[improvementId]?.route && pack.cells.routes) {
-      try {
-        Routes.connect(cell);
-      } catch {
-        // stripped packs have no route grid
-      }
-    }
-
-    this.pushNews(living, {
-      kind: "develop",
-      text: `${faction.name} built a ${CIV_IMPROVEMENT_BY_ID[improvementId]?.name ?? improvementId}.`,
-      cell,
-      ...(faction.hq?.burgId ? { burgId: faction.hq.burgId } : {})
-    });
-  }
-
-  /** Faction Settler/Envoy: march to a target burg and establish an outpost on arrival. */
-  private stepFactionSettler(
-    faction: Faction,
-    regiment: Regiment,
-    unit: UnitSimState,
-    living: LivingWorldState,
-    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
-  ): boolean {
-    const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
-    const burg = burgId ? pack.burgs?.[burgId] : undefined;
-    if (burg?.i && !burg.removed && burg.cell === regiment.cell && !this.factionNodesAtBurg(faction.i, burg.i)) {
-      if (!this.foundFactionOutpost(faction, burg, living)) return false;
-      this.removeFactionRegiment(faction, regiment, living);
-      return true;
-    }
-
-    const target = this.pickFactionSettlerTarget(faction, regiment.cell, living);
-    if (target === null) return false;
-    return this.moveUnitToward(
-      regiment,
-      unit,
-      target,
-      this.factionOwnerId(faction.i),
-      this.factionUnitKey(faction.i, regiment.i),
-      occupancy
-    );
-  }
-
-  private pickFactionSettlerTarget(faction: Faction, fromCell: number, _living: LivingWorldState): number | null {
-    const distances = this.cellHopDistances(fromCell, 40);
-    const candidates: { cell: number; score: number; distance: number }[] = [];
-    for (const burg of pack.burgs ?? []) {
-      if (!burg?.i || burg.removed) continue;
-      if (this.factionNodesAtBurg(faction.i, burg.i)) continue;
-      // Skip burgs holding a foreign combat army: the settler cannot share the cell (1UPT).
-      const occupiedByCombat = [...(pack.states ?? []), ...Factions.active()].some(polity => {
-        if (polity.i === faction.i) return false;
-        const military = (polity as { military?: Regiment[] }).military ?? [];
-        return military.some(
-          reg => reg.cell === burg.cell && !armyIsEmpty(reg) && !isCivilianUnit((reg.type ?? "").toLowerCase())
-        );
-      });
-      if (occupiedByCombat) continue;
-      const distance = distances.get(burg.cell);
-      if (distance === undefined) continue;
-      let score = (burg.population ?? 0) - distance * 2;
-      if (faction.category === "commercial" && burg.port) score += 20;
-      if (faction.category === "underworld") score += (burg.population ?? 0) * 0.5;
-      candidates.push({ cell: burg.cell, score, distance });
-    }
-    if (candidates.length === 0) return null;
-    candidates.sort((a, b) => b.score - a.score || a.distance - b.distance || a.cell - b.cell);
-    return candidates[0]!.cell;
-  }
-
-  private foundFactionOutpost(faction: Faction, burg: Burg, living: LivingWorldState): boolean {
-    const currentYear = options.map?.lore?.calendar?.year ?? 1000;
-    const startingAsset =
-      faction.category === "commercial"
-        ? "trade_depot"
-        : faction.category === "adventuring"
-          ? "chapter_lodge"
-          : faction.category === "underworld"
-            ? "safe_house"
-            : faction.category === "religious"
-              ? "wayside_shrine"
-              : "muster_camp";
-    faction.outposts ??= [];
-    faction.outposts.push({
-      burgId: burg.i,
-      cell: burg.cell,
-      tier: 1,
-      influence: 35,
-      secrecy: faction.allegiance === "clandestine" ? 60 : 0,
-      assets: [startingAsset],
-      establishedYear: currentYear
-    });
-    ensureFactionNodeSim(faction.outposts[faction.outposts.length - 1]!, false);
-
-    this.pushNews(living, {
-      kind: "faction",
-      text: `${faction.name} established a new outpost in ${burg.name ?? "a settlement"}!`,
-      cell: burg.cell,
-      burgId: burg.i
-    });
-    return true;
-  }
-
-  private canFoundBurg(cell: number, state: State): boolean {
-    if (pack.cells.state?.[cell] !== state.i) return false;
-    if (Number(pack.cells.burg?.[cell] ?? 0) > 0) return false;
-    const info = getCellTerrainInfo(cell);
-    if (!info.isWorkable || info.isWater) return false;
-
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed) continue;
-      if (this.cellHopDistances(cell, 3).has(burg.cell)) return false;
-    }
-    return true;
-  }
-
-  private pickSettlerTarget(state: State, fromCell: number, living: LivingWorldState): number | null {
-    const distances = this.cellHopDistances(fromCell, 8);
-    let best: { cell: number; score: number } | null = null;
-    for (const [cell] of distances) {
-      if (!this.canFoundBurg(cell, state)) continue;
-      const yields = getCellYields(cell, state.i, living);
-      const score = yields.food * 2 + yields.production + yields.gold;
-      if (!best || score > best.score || (score === best.score && cell < best.cell)) best = { cell, score };
-    }
-    return best?.cell ?? null;
-  }
-
-  private foundBurg(state: State, cell: number, living: LivingWorldState): number | null {
-    const point = pack.cells.p?.[cell];
-    if (!point) return null;
-
-    let burgId: number | null = null;
-    try {
-      burgId = Burgs.add(point[0], point[1]);
-    } catch {
-      // Stubbed packs have no Voronoi grid or route network; found it directly.
-      burgId = null;
-    }
-    if (burgId === null || !pack.burgs[burgId]) {
-      burgId = pack.burgs.length;
-      pack.burgs.push({
-        i: burgId,
-        cell,
-        x: point[0],
-        y: point[1],
-        state: state.i,
-        culture: state.culture,
-        name: Names.getCulture(state.culture),
-        population: 2,
-        capital: 0,
-        port: 0,
-        tags: []
-      } as Burg);
-      if (pack.cells.burg) pack.cells.burg[cell] = burgId;
-    }
-
-    const burg = pack.burgs[burgId];
-    if (!burg) return null;
-    burg.state = state.i;
-    burg.culture = state.culture;
-    burg.population = 2;
-
-    this.pushNews(living, {
-      kind: "colonize",
-      text: `${state.name} founded ${burg.name ?? "a new settlement"}.`,
-      cell,
-      stateId: state.i,
-      burgId
-    });
-    return burgId;
-  }
-
   /** OpenCiv city assault: march to the walls, then a 1UPT siege round. */
   /** Storm a city: the garrison fights as blocks, the field army is the attacker (living-openciv-armies.md §9). */
   private openCivAssault(state: State, burg: Burg): boolean {
@@ -7376,17 +4315,17 @@ class LivingModel {
   private chooseCapturePolicy(state: State, burg: Burg, living: LivingWorldState): string {
     const sSim = living.states[state.i];
     const warExhaustion = sSim?.warExhaustion ?? 0;
-    const happiness = sSim?.happiness ?? 0;
     const wasCapital = Boolean(burg.capital);
     if (wasCapital && warExhaustion > 30) return "sack";
-    if (happiness < -5) return "sack";
+    const ruler = sSim?.rulerId !== undefined ? this.findFigure(sSim.rulerId) : undefined;
+    if (ruler?.alignment === "evil" || ruler?.alignment === "chaotic") return "sack";
     if (warExhaustion > 20) return "loot";
     return "occupy";
   }
 
-  /** §4.4: a state's forces fight at happiness × battle-upkeep strength. */
-  private stateCombatMult(stateId: number, living: LivingWorldState): number {
-    return happinessCombatMultiplier(living.states[stateId]?.happiness) * Military.getLivingBattleUpkeep(stateId);
+  /** §4.4: a state's forces fight at their upkeep-funded strength. */
+  private stateCombatMult(stateId: number, _living: LivingWorldState): number {
+    return Military.getLivingBattleUpkeep(stateId);
   }
 
   /** Modifiers for a city assault: walls, bracing garrison, terrain and lord multipliers. */
@@ -7424,7 +4363,7 @@ class LivingModel {
     if (target !== undefined) this.moveRegimentTo(regiment, target, state.i, key, occupancy);
   }
 
-  /** §5.3 city capture: half the citizens, reset HP, clear queue, destroy national wonders. */
+  /** §5.3 city capture: half the people, reset HP, raze or plunder works per policy. */
   private captureCity(state: State, burg: Burg, living: LivingWorldState, policy: string = "occupy"): void {
     const previousStateId = burg.state ?? 0;
     const wasCapital = Boolean(burg.capital);
@@ -7433,18 +4372,16 @@ class LivingModel {
 
     const bSim = living.burgs[burg.i];
     if (!bSim) return;
+    bSim.civBuildings ??= [];
 
     if (wasCapital) this.relocateCapital(previousStateId, burg);
 
     // Base booty from city population.
-    const baseBooty = (bSim.citizens ?? 1) * 10;
+    const baseBooty = Math.round((burg.population ?? 1) * 10);
 
-    bSim.citizens = Math.max(1, Math.floor((bSim.citizens ?? 1) / 2));
-    burg.population = populationFromCitizens(bSim.citizens);
+    burg.population = Math.max(0.5, Math.round((burg.population ?? 1) / 2));
     bSim.maxHp = CITY_BASE_HP;
     bSim.hp = 100;
-    bSim.productionQueue = [];
-    bSim.productionProgress = {};
 
     // Apply capture policy effects.
     switch (policy) {
@@ -7455,35 +4392,19 @@ class LivingModel {
         state.economy.treasury = (state.economy.treasury ?? 0) + baseBooty * 3;
         break;
       case "sack":
-        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
-          const def = CIV_BUILDING_BY_ID[id];
-          return !def?.nationalWonder && !def?.isWonder;
-        });
-        // Destroy one additional building.
         if (bSim.civBuildings.length > 0) bSim.civBuildings.pop();
         syncCivFlagsFromBuildings(burg, bSim.civBuildings);
         bSim.unrest = 15;
         state.economy.treasury = (state.economy.treasury ?? 0) + baseBooty * 4;
         break;
       case "loot":
-        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
-          const def = CIV_BUILDING_BY_ID[id];
-          return !def?.nationalWonder && !def?.isWonder;
-        });
-        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
         bSim.unrest = 20;
         state.economy.treasury = (state.economy.treasury ?? 0) + baseBooty * 2;
         break;
       default: // occupy
-        bSim.civBuildings = (bSim.civBuildings ?? []).filter(id => {
-          const def = CIV_BUILDING_BY_ID[id];
-          return !def?.nationalWonder && !def?.isWonder;
-        });
-        syncCivFlagsFromBuildings(burg, bSim.civBuildings);
-        bSim.unrest = 6 + bSim.citizens;
+        bSim.unrest = 6 + settlementTierFromPop(burg.population);
         break;
     }
-    bSim.cityYields = undefined;
 
     // Clear siege state.
     bSim.siegeStateId = 0;
@@ -7508,108 +4429,6 @@ class LivingModel {
     );
     state.capital = next?.i ?? 0;
     if (next) state.center = next.cell;
-  }
-
-  /** Produce one unit: civilians keep a 1UPT sim, combat units add an army block. */
-  private spawnUnit(state: State, burg: Burg, unitTypeId: string): Regiment | null {
-    const living = this.getState();
-    const def = this.civilianDefinition(unitTypeId);
-
-    if (def?.isUtility || isCivilianUnit(unitTypeId)) {
-      if (!def) return null;
-      const cell = this.findSpawnCell(burg.cell, state.i, true, living);
-      if (cell === null) return null;
-
-      const regiment = this.createRegiment(state);
-      regiment.type = def.id;
-      this.moveRegimentTo(regiment, cell, state.i, this.unitKey(state.i, regiment.i), this.armyOccupancy(living));
-
-      const unit = this.createUtilitySim(regiment, def);
-      unit.xp = this.trainingXp(burg);
-      unit.level = this.unitLevel(unit.xp);
-
-      living.units ??= {};
-      living.units[this.unitKey(state.i, regiment.i)] = unit;
-      regiment.a = UNIT_MAX_HP;
-      regiment.u = { [def.id]: UNIT_MAX_HP };
-      regiment.units = [];
-      regiment.n = (def.domain ?? "land") === "sea" ? 1 : 0;
-
-      this.pushNews(living, {
-        kind: "muster",
-        text: `${state.name} trained a ${def.name} in ${burg.name ?? "a city"}.`,
-        cell,
-        stateId: state.i,
-        burgId: burg.i
-      });
-      return regiment;
-    }
-
-    // Interim roster production: map the Civ class onto the culture's roster.
-    const unitTypes = Military.getUnitTypes();
-    const roster = Military.getRoster(state);
-    const typeId = unitTypes[unitTypeId]
-      ? unitTypeId
-      : roster
-        ? matchRosterUnitByCategory(roster, def?.unitClass ?? "melee")?.id
-        : undefined;
-    if (!typeId || !unitTypes[typeId]) return null;
-    return this.spawnArmyBlock(state, burg, typeId, unitTypes[typeId].name);
-  }
-
-  /** Muster one roster block into the army at a burg, or a new regiment if it is full. */
-  private spawnArmyBlock(state: State, burg: Burg, typeId: string, label: string): Regiment | null {
-    const living = this.getState();
-    const unitTypes = Military.getUnitTypes();
-    const maxSlots = currentContent().config.military.maxUnitsPerArmy;
-    const exp = Math.min(9, Math.floor(this.trainingXp(burg) / 15));
-
-    // §4.3: a unit its state cannot equip takes the field as levies, or at half strength
-    const roster = Military.getRoster(state);
-    const resolved = this.resolveEquipment(state, roster, unitTypes, typeId, label);
-    const shortage = resolved.shortage;
-    typeId = resolved.typeId;
-    label = resolved.label;
-
-    let regiment = (state.military ?? []).find(entry => {
-      if (entry.cell !== burg.cell) return false;
-      const key = this.unitKey(state.i, entry.i);
-      return Boolean(living.armies?.[key]) && (entry.units?.length ?? 0) < maxSlots;
-    });
-    if (!regiment) {
-      const cell = this.findSpawnCell(burg.cell, state.i, false, living);
-      if (cell === null) return null;
-      regiment = this.createRegiment(state);
-      this.moveRegimentTo(regiment, cell, state.i, this.unitKey(state.i, regiment.i), this.armyOccupancy(living));
-    }
-
-    const key = this.unitKey(state.i, regiment.i);
-    regiment.units ??= [];
-    regiment.units.push({ type: typeId, hp: shortage && resolved.typeId === typeId ? 0.5 : 1, exp });
-    normalizeArmy(regiment, maxSlots, unitTypes);
-    syncRegimentTotals(regiment, unitTypes);
-
-    const speed = armySpeed(regiment, unitTypes);
-    living.armies ??= {};
-    living.armies[key] ??= { movement: speed, maxMovement: speed, stance: "fortify", hasFought: false };
-
-    this.pushNews(living, {
-      kind: "muster",
-      text: `${state.name} mustered ${label} in ${burg.name ?? "a city"}.`,
-      cell: regiment.cell,
-      stateId: state.i,
-      burgId: burg.i
-    });
-    if (shortage) {
-      this.pushNews(living, {
-        kind: "muster",
-        text: `${state.name}'s forges ran short of ${shortage}; the block took the field underequipped.`,
-        cell: regiment.cell,
-        stateId: state.i,
-        burgId: burg.i
-      });
-    }
-    return regiment;
   }
 
   /** §4.3: resolve a mustering block against the state's spare equipment kits. */
@@ -7639,67 +4458,6 @@ class LivingModel {
     return { typeId, label, shortage: missing.join(", ") };
   }
 
-  /** Barracks and similar training buildings grant +15 XP each on recruitment. */
-  private trainingXp(burg: Burg): number {
-    return (
-      (pack.history?.living?.burgs[burg.i]?.civBuildings ?? []).filter(id =>
-        ["barracks", "armory", "military_academy"].includes(id)
-      ).length * 15
-    );
-  }
-
-  /** First free cell at or around the burg that respects 1UPT stacking. */
-  private findSpawnCell(
-    burgCell: number,
-    stateId: number,
-    isUtility: boolean,
-    living: LivingWorldState
-  ): number | null {
-    const occupancy = this.armyOccupancy(living);
-    const candidates = [burgCell, ...(pack.cells.c?.[burgCell] ?? [])];
-    for (const cell of candidates) {
-      const info = getCellTerrainInfo(cell);
-      if (info.isMountain) continue;
-      if (hasStackingConflict(occupancy.get(cell) ?? [], stateId, isUtility, "")) continue;
-      return cell;
-    }
-    return null;
-  }
-
-  /** Count live units of a type held by a state. */
-  private stateUnitCount(stateId: number, unitTypeId: string): number {
-    const living = pack.history?.living;
-    if (!living?.units) return 0;
-    let count = 0;
-    for (const regiment of pack.states[stateId]?.military ?? []) {
-      const unit = living.units[this.unitKey(stateId, regiment.i)];
-      if (unit && unit.unitTypeId === unitTypeId && unit.hp > 0) count += 1;
-    }
-    return count;
-  }
-
-  /** How many owned workable cells still lack an improvement. */
-  private countUnimprovedCells(stateId: number, living: LivingWorldState): number {
-    let count = 0;
-    const cells = pack.cells.state?.length ?? 0;
-    for (let cell = 0; cell < cells; cell++) {
-      if (pack.cells.state?.[cell] !== stateId) continue;
-      if (!getCellTerrainInfo(cell).isWorkable) continue;
-      if (living.cells?.[cell]?.improvement) continue;
-      count += 1;
-    }
-    return count;
-  }
-
-  /** Recruit a specific OpenCiv unit in a Major Burg (city production, Guild, Sandbox). */
-  recruitUnit(stateId: number, burgId: number, unitTypeId: string): Regiment | null {
-    const state = pack.states[stateId];
-    const burg = pack.burgs[burgId];
-    if (!state?.i || state.removed || !burg?.i || burg.removed || burg.state !== stateId) return null;
-    if (!this.hasCityTerrain()) return null;
-    return this.spawnUnit(state, burg, unitTypeId);
-  }
-
   /**
    * Gold refit of up to `maxBlocks` blocks to their successor (living-openciv-armies.md §10.5).
    * Preserves `hp` and `exp`: the block keeps its slot, its damage and its veterans.
@@ -7718,7 +4476,7 @@ class LivingModel {
 
     const types = Military.getUnitTypes();
     const roster = Military.getRoster(state);
-    const techs = sSim.researchedTechs ?? [];
+    const development = this.stateDevelopment(state.i);
     const renames: string[] = [];
     let upgraded = 0;
 
@@ -7729,8 +4487,7 @@ class LivingModel {
       const authored = current.upgradesTo ? types[current.upgradesTo] : undefined;
       const target = authored ?? (roster ? nextRosterUnitInCategory(roster, current.id) : undefined);
       if (!target || target.id === current.id) continue;
-      const gate = roster ? requiredTechFor(target, roster) : "";
-      if (gate && !techs.includes(gate)) continue;
+      if (roster && development < requiredDevelopmentFor(target, roster)) continue;
 
       const cost = Math.max(5, Math.round((10 * target.upkeep) / BASELINE_UPKEEP));
       if (Number(state.economy.treasury ?? 0) < cost) break;
@@ -7775,6 +4532,7 @@ class LivingModel {
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
+      const camp = this.hasProject(state.i, "army_camp", living) ? PROJECT_CAMP_REPLENISH : 0;
       for (const regiment of state.military ?? []) {
         const key = this.unitKey(state.i, regiment.i);
         const army = living.armies?.[key];
@@ -7787,7 +4545,7 @@ class LivingModel {
         if (!inCity && !friendly) continue;
 
         const gain =
-          (army.stance === "encamp" ? base * config.military.encampReplenishBonus : base) * (inCity ? 1 : 0.5);
+          ((army.stance === "encamp" ? base * config.military.encampReplenishBonus : base) + camp) * (inCity ? 1 : 0.5);
         let healed = false;
         for (const block of regiment.units ?? []) {
           if (block.hp <= 0 || block.hp >= 1) continue;
@@ -7806,13 +4564,7 @@ class LivingModel {
 
         const burgId = Number(pack.cells.burg?.[regiment.cell] ?? 0);
         const inCity = burgId > 0 && this.factionNodesAtBurg(faction.i, burgId);
-        const friendly =
-          inCity ||
-          Boolean(faction.hq && this.cellHopDistances(faction.hq.cell, MAX_WORK_DISTANCE).has(regiment.cell)) ||
-          (faction.outposts ?? []).some(outpost =>
-            this.cellHopDistances(outpost.cell, MAX_WORK_DISTANCE).has(regiment.cell)
-          );
-        if (!inCity && !friendly) continue;
+        if (!inCity) continue;
 
         const gain =
           (army.stance === "encamp" ? base * config.military.encampReplenishBonus : base) * (inCity ? 1 : 0.5);
@@ -7825,348 +4577,6 @@ class LivingModel {
         if (healed) syncRegimentTotals(regiment, types);
       }
     }
-  }
-
-  // -------------------------------------------------------------------------
-  // Slice 6: dynamic religion pressure, beliefs and diplomacy timers.
-  // -------------------------------------------------------------------------
-
-  /** One seasonal religion tick: faith, pantheons, Great Prophets and pressure. */
-  private stepReligion(living: LivingWorldState): void {
-    if (!this.hasCityTerrain()) return;
-    living.religions ??= {};
-
-    for (const state of pack.states) {
-      if (!state?.i || state.removed) continue;
-      const sSim = living.states[state.i];
-      if (!sSim) continue;
-      this.stepFaithAndPantheon(state, sSim, living);
-      this.stepProphet(state, sSim, living);
-    }
-
-    this.stepReligiousPressure(living);
-  }
-
-  private usedBeliefs(living: LivingWorldState): Set<string> {
-    const used = new Set<string>();
-    for (const record of Object.values(living.religions ?? {})) {
-      if (record.pantheonId) used.add(record.pantheonId);
-      if (record.founderBeliefId) used.add(record.founderBeliefId);
-      if (record.enhancerBeliefId) used.add(record.enhancerBeliefId);
-      for (const id of record.followerBeliefIds ?? []) used.add(id);
-    }
-    for (const record of Object.values(living.states)) {
-      if (record.pantheonId) used.add(record.pantheonId);
-    }
-    return used;
-  }
-
-  private chooseBelief(catalog: readonly CivBeliefDef[], used: Set<string>, salt: number): string | null {
-    const available = catalog.filter(def => !used.has(def.id));
-    if (!available.length) return null;
-    return available[Math.abs(salt) % available.length]!.id;
-  }
-
-  /** Bank Faith and found a Pantheon once the state can afford one. */
-  private stepFaithAndPantheon(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
-    const gain = Math.max(0, sSim.yieldsPerTurn?.faith ?? 0);
-    sSim.faith = Math.round(((sSim.faith ?? 0) + gain) * 100) / 100;
-    if (sSim.pantheonId) return;
-
-    const used = this.usedBeliefs(living);
-    const founded = new Set<string>();
-    for (const record of Object.values(living.religions ?? {})) if (record.pantheonId) founded.add(record.pantheonId);
-    for (const record of Object.values(living.states)) if (record.pantheonId) founded.add(record.pantheonId);
-    const cost = pantheonFaithCost(founded.size);
-    if ((sSim.faith ?? 0) < cost) return;
-
-    const id = this.chooseBelief(CIV_PANTHEONS, used, state.i);
-    if (!id) return;
-    sSim.faith = Math.round(((sSim.faith ?? 0) - cost) * 100) / 100;
-    sSim.pantheonId = id;
-    if (sSim.religionId && living.religions?.[sSim.religionId]) {
-      living.religions[sSim.religionId].pantheonId = id;
-    }
-
-    const name = CIV_BELIEF_BY_ID[id]?.name ?? id;
-    this.pushNews(living, {
-      kind: "religion",
-      text: `${state.name} adopted the ${name} pantheon.`,
-      cell: state.center,
-      stateId: state.i
-    });
-  }
-
-  /** Birth a Great Prophet once Faith reaches the threshold, then expend it. */
-  private stepProphet(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
-    const capital = state.capital ? pack.burgs[state.capital] : undefined;
-    if (!capital?.i || capital.removed || capital.state !== state.i) return;
-
-    const beliefs = this.stateBeliefs(state, living);
-    const cost = prophetFaithCost(sSim.prophetsEarned ?? 0, beliefs.has("messiah"));
-    if ((sSim.faith ?? 0) < cost) return;
-
-    const chance = Math.min(1, 0.05 + ((sSim.faith ?? 0) - cost) / 100);
-    if (!this.rng("prophet", state.i, living.tick).chance(chance)) return;
-
-    sSim.faith = Math.round(((sSim.faith ?? 0) - cost) * 100) / 100;
-    sSim.prophetsEarned = (sSim.prophetsEarned ?? 0) + 1;
-
-    const record = sSim.religionId ? living.religions?.[sSim.religionId] : undefined;
-    if (!record) this.foundReligion(state, sSim, capital, living);
-    else if (!record.enhanced) this.enhanceReligion(state, record, capital, living);
-    else this.spreadProphetPressure(sSim, capital, living);
-  }
-
-  /** The first Great Prophet links or founds a faith and picks Founder + Follower beliefs. */
-  private foundReligion(state: State, sSim: StatePolitySim, capital: Burg, living: LivingWorldState): void {
-    living.religions ??= {};
-    const used = this.usedBeliefs(living);
-
-    let religionId = sSim.religionId ?? 0;
-    if (!religionId) {
-      const native = pack.cells.religion?.[capital.cell] ?? 0;
-      if (native > 0 && pack.religions?.[native] && !pack.religions[native].removed) religionId = native;
-    }
-    if (!religionId) {
-      religionId = pack.religions?.length ?? 0;
-      const name = CIV_RELIGION_NAMES[religionId % CIV_RELIGION_NAMES.length] ?? "New Faith";
-      const culture = pack.cultures?.[capital.culture ?? state.culture ?? 0]?.name;
-      pack.religions ??= [];
-      pack.religions.push({
-        i: religionId,
-        name: culture ? `${name} of ${culture}` : name,
-        type: "Organized",
-        form: "Faith",
-        deity: null,
-        expansion: "state",
-        expansionism: 1,
-        color: state.color ?? "#8a7f5c",
-        culture: capital.culture ?? state.culture ?? 0,
-        center: capital.cell,
-        tags: []
-      });
-    }
-
-    const record: ReligionBeliefState = {
-      religionId,
-      founderStateId: state.i,
-      holyCityBurgId: capital.i,
-      followerBeliefIds: [],
-      enhanced: false
-    };
-    if (sSim.pantheonId) record.pantheonId = sSim.pantheonId;
-    const founder = this.chooseBelief(CIV_FOUNDER_BELIEFS, used, religionId);
-    if (founder) record.founderBeliefId = founder;
-    const follower = this.chooseBelief(CIV_FOLLOWER_BELIEFS, used, religionId + 1);
-    if (follower) record.followerBeliefIds.push(follower);
-
-    living.religions[religionId] = record;
-    sSim.religionId = religionId;
-
-    const city = living.burgs[capital.i];
-    if (city) {
-      city.religionPressure = { [religionId]: Math.max(1, city.citizens ?? 1) * CONVERSION_PRESSURE };
-    }
-    this.syncReligionCells(capital, religionId, living);
-
-    this.pushNews(living, {
-      kind: "religion",
-      text: `${state.name} founded ${pack.religions[religionId]?.name ?? "a new faith"} in ${
-        capital.name ?? "its capital"
-      }.`,
-      cell: capital.cell,
-      stateId: state.i,
-      burgId: capital.i
-    });
-  }
-
-  /** The second Great Prophet adds a Follower and an Enhancer belief. */
-  private enhanceReligion(state: State, record: ReligionBeliefState, capital: Burg, living: LivingWorldState): void {
-    const used = this.usedBeliefs(living);
-    const follower = this.chooseBelief(
-      CIV_FOLLOWER_BELIEFS,
-      used,
-      record.religionId + record.followerBeliefIds.length + 1
-    );
-    if (follower) record.followerBeliefIds.push(follower);
-    const enhancer = this.chooseBelief(CIV_ENHANCER_BELIEFS, used, record.religionId);
-    if (enhancer) record.enhancerBeliefId = enhancer;
-    record.enhanced = true;
-
-    this.pushNews(living, {
-      kind: "religion",
-      text: `${state.name} enhanced ${pack.religions[record.religionId]?.name ?? "its faith"}.`,
-      cell: capital.cell,
-      stateId: state.i,
-      burgId: capital.i
-    });
-  }
-
-  /** Further Great Prophets add conversion pressure to the Holy City. */
-  private spreadProphetPressure(sSim: StatePolitySim, capital: Burg, living: LivingWorldState): void {
-    const religionId = sSim.religionId ?? 0;
-    const city = living.burgs[capital.i];
-    if (!religionId || !city) return;
-    city.religionPressure ??= {};
-    city.religionPressure[religionId] = Math.min(
-      PRESSURE_CAP,
-      (city.religionPressure[religionId] ?? 0) + PROPHET_PRESSURE
-    );
-    this.syncReligionCells(capital, religionId, living);
-  }
-
-  /** Passive pressure: 60/citizen, 6 (12 holy) per city within 10 (13) hops. */
-  private stepReligiousPressure(living: LivingWorldState): void {
-    const cities = pack.burgs.filter(
-      burg => burg?.i && !burg.removed && burg.state && isMajorBurg(burg) && Boolean(living.burgs[burg.i])
-    );
-
-    // Seed pressure from the native religion layer for cities that have none yet.
-    for (const burg of cities) {
-      const bSim = living.burgs[burg.i]!;
-      bSim.religionPressure ??= {};
-      if (Object.keys(bSim.religionPressure).length > 0) continue;
-      const native = pack.cells.religion?.[burg.cell] ?? 0;
-      if (native > 0) bSim.religionPressure[native] = Math.max(1, bSim.citizens ?? 1) * CONVERSION_PRESSURE;
-    }
-
-    const sources = cities.map(burg => {
-      const bSim = living.burgs[burg.i]!;
-      const state = pack.states[burg.state!];
-      const beliefs = state ? this.stateBeliefs(state, living) : new Set<string>();
-      const religionId = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
-      return { burg, bSim, beliefs, religionId };
-    });
-
-    for (const source of sources) {
-      if (!source.religionId) continue;
-      const record = living.religions?.[source.religionId];
-      let amount = record?.holyCityBurgId === source.burg.i ? PRESSURE_HOLY_CITY : PRESSURE_PER_CITY;
-      if (source.beliefs.has("religious_texts")) amount *= record?.enhanced ? 1.5 : 1.25;
-      if ((source.bSim.civBuildings ?? []).includes("grand_temple")) amount *= 1.25;
-
-      const radius = source.beliefs.has("itinerant_preachers") ? PRESSURE_RADIUS_PREACHERS : PRESSURE_RADIUS;
-      const distances = this.cellHopDistances(source.burg.cell, radius);
-      for (const target of cities) {
-        if (target.i === source.burg.i || !distances.has(target.cell)) continue;
-        const targetSim = living.burgs[target.i]!;
-        targetSim.religionPressure ??= {};
-        targetSim.religionPressure[source.religionId] = Math.min(
-          PRESSURE_CAP,
-          (targetSim.religionPressure[source.religionId] ?? 0) + amount
-        );
-      }
-    }
-
-    // Majority flips repaint the native religion layer across the province.
-    for (const burg of cities) {
-      const bSim = living.burgs[burg.i]!;
-      const majority = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
-      if (!majority) continue;
-      if ((pack.cells.religion?.[burg.cell] ?? 0) === majority) continue;
-      this.syncReligionCells(burg, majority, living);
-    }
-  }
-
-  /** Repaint `pack.cells.religion` across a burg's province when its faith flips. */
-  private syncReligionCells(burg: Burg, religionId: number, living: LivingWorldState): void {
-    if (!pack.cells.religion) return;
-    const provinceId = Number(pack.cells.province?.[burg.cell] ?? 0);
-    const cells = pack.cells.i?.length ?? 0;
-    const hinterland = provinceId ? null : new Set(this.burgHinterland(burg));
-
-    for (let cell = 0; cell < cells; cell++) {
-      if (provinceId) {
-        if (pack.cells.province?.[cell] !== provinceId) continue;
-      } else if (!hinterland?.has(cell)) {
-        continue;
-      }
-      if (pack.cells.state && pack.cells.state[cell] !== burg.state) continue;
-      pack.cells.religion[cell] = religionId;
-    }
-
-    this.pushNews(living, {
-      kind: "religion",
-      text: `${burg.name ?? "A city"} now follows ${pack.religions?.[religionId]?.name ?? "a new faith"}.`,
-      cell: burg.cell,
-      stateId: burg.state,
-      burgId: burg.i
-    });
-  }
-
-  /** Missionaries spread faith; Inquisitors purge rival pressure in their own cities. */
-  private stepMissionary(
-    state: State,
-    regiment: Regiment,
-    unit: UnitSimState,
-    living: LivingWorldState,
-    occupancy: Map<number, { stateId: number; isUtility: boolean; key: string }[]>
-  ): boolean {
-    const sSim = living.states[state.i];
-    const religionId = sSim?.religionId ?? 0;
-    if (!religionId) return false;
-
-    const inquisitor = unit.unitTypeId === "inquisitor";
-    if (unit.spreadCharges === undefined) {
-      unit.spreadCharges = CIV_CIVILIAN_BY_ID[unit.unitTypeId]?.spreadCharges ?? 2;
-    }
-
-    const target = this.nearestCity(state.i, regiment.cell, 6, inquisitor);
-    if (!target) return false;
-
-    if (target.cell !== regiment.cell) {
-      const moved = this.moveUnitToward(
-        regiment,
-        unit,
-        target.cell,
-        state.i,
-        this.unitKey(state.i, regiment.i),
-        occupancy
-      );
-      if (moved) return true;
-    }
-
-    const bSim = living.burgs[target.i];
-    if (!bSim) return false;
-    bSim.religionPressure ??= {};
-
-    if (inquisitor) {
-      for (const key of Object.keys(bSim.religionPressure)) {
-        const id = Number(key);
-        if (id === religionId) continue;
-        bSim.religionPressure[id] = Math.floor((bSim.religionPressure[id] ?? 0) / 2);
-      }
-    } else {
-      bSim.religionPressure[religionId] = Math.min(
-        PRESSURE_CAP,
-        (bSim.religionPressure[religionId] ?? 0) + MISSIONARY_PRESSURE
-      );
-    }
-
-    const majority = majorityReligion(bSim.religionPressure, bSim.citizens ?? 1);
-    if (majority) this.syncReligionCells(target, majority, living);
-
-    unit.spreadCharges = (unit.spreadCharges ?? 2) - 1;
-    if (unit.spreadCharges <= 0) this.removeRegiment(state, regiment, living);
-    return true;
-  }
-
-  /** Nearest Major Burg; Inquisitors stay in friendly lands, Missionaries go anywhere. */
-  private nearestCity(stateId: number, fromCell: number, maxHops: number, ownOnly: boolean): Burg | null {
-    const distances = this.cellHopDistances(fromCell, maxHops);
-    let best: { burg: Burg; distance: number } | null = null;
-    for (const burg of pack.burgs) {
-      if (!burg?.i || burg.removed || !burg.state) continue;
-      if (!isMajorBurg(burg)) continue;
-      if (ownOnly && burg.state !== stateId) continue;
-      const distance = distances.get(burg.cell);
-      if (distance === undefined) continue;
-      if (!best || distance < best.distance || (distance === best.distance && burg.cell < best.burg.cell)) {
-        best = { burg, distance };
-      }
-    }
-    return best?.burg ?? null;
   }
 
   // -------------------------------------------------------------------------
@@ -8299,16 +4709,6 @@ class LivingModel {
     return best?.cell ?? null;
   }
 
-  /** Closed borders: a unit may only enter foreign land at war or when it ignores borders. Factions ignore borders. */
-  private canEnterForeignCell(stateId: number, cell: number, unit: UnitSimState): boolean {
-    if (stateId < 0) return true;
-    const owner = pack.cells.state?.[cell] ?? 0;
-    if (!owner || owner === stateId) return true;
-    const def = CIV_CIVILIAN_BY_ID[unit.unitTypeId];
-    if (def?.entersForeignLands) return true;
-    return this.isAtWar(stateId, owner);
-  }
-
   /** Step post-conquest occupation unrest on burgs and apply unravel pressure to owning states */
   private stepBurgUnrest(living: LivingWorldState): void {
     const restiveCountByState = new Map<number, number>();
@@ -8366,21 +4766,17 @@ class LivingModel {
       if (pacifying && bSim.unrest === 0) this.assimilateBurg(ownerState, burg, bSim);
     }
 
-    // Apply seasonal unravel clock changes from unrest & stability balance
+    // Apply seasonal unravel clock changes from unrest balance
     for (const key of Object.keys(living.states)) {
       const sSim = living.states[Number(key)];
       if (!sSim) continue;
 
       const restiveCount = restiveCountByState.get(sSim.stateId) ?? 0;
-      const sDeficit = (sSim.happiness ?? 0) <= VERY_UNHAPPY_HAPPINESS;
 
       let delta = 0;
       if (restiveCount > 0) delta += restiveCount * 4;
-      if (sDeficit) delta += 4;
       if (sSim.warExhaustion >= 50) delta += 2;
-      // On terrain packs the OpenCiv happiness rollup owns the peace decay.
-      const empireManaged = sSim.happiness !== undefined;
-      if (restiveCount === 0 && !sDeficit && !empireManaged && sSim.unravel > 0) delta -= 2;
+      if (restiveCount === 0 && sSim.unravel > 0) delta -= 2;
 
       sSim.unravel = minmax(sSim.unravel + delta, 0, 100);
       sSim.warExhaustion = minmax(sSim.warExhaustion - 1, 0, 100);
@@ -9662,10 +6058,12 @@ class LivingModel {
     }
     const heldGoods = this.heldGoods(state.i);
     const maxWalls = this.maxOwnedWallTier(state.i);
+    const development = this.stateDevelopment(state.i);
 
     for (const unitId of roster.recruitable) {
       const unit = unitTypes[unitId];
       if (!unit) continue;
+      if (development < requiredDevelopmentFor(unit, roster)) continue; // the era ladder gates it
       const sources = unlockSources.get(unitId);
       if (sources && !sources.some(id => heldBuildings.has(id))) continue;
       if (unit.requiresGood !== undefined && !heldGoods.has(unit.requiresGood)) continue;
@@ -10261,7 +6659,7 @@ class LivingModel {
         }
         // Plunder: Gold to the treasury, unrest to the burg.
         const bSim = living.burgs[burg.i];
-        const booty = Math.round((bSim?.citizens ?? 1) * 2 + 10);
+        const booty = Math.round(Math.max(1, burg.population ?? 1) * 2 + 10);
         state.economy.treasury = (state.economy.treasury ?? 0) + booty;
         if (bSim) bSim.unrest = (bSim.unrest ?? 0) + 8;
         this.declareWar(state.i, burg.state);
@@ -10289,19 +6687,10 @@ class LivingModel {
           sSim.agenda = null;
           return;
         }
-        // Resolve the current node, preferring one already queued in the agenda burg.
+        // Resolve the current node, preferring the one the agenda already targets.
         let target: FactionSuppressionTarget | null = null;
         const agendaBurg = agenda.targetBurgId !== undefined ? pack.burgs[agenda.targetBurgId] : undefined;
-        const queuedItem = agendaBurg
-          ? (living.burgs[agendaBurg.i]?.productionQueue ?? []).find(
-              item =>
-                item.kind === "operation" &&
-                item.id === FACTION_SUPPRESSION_OPERATION_ID &&
-                item.targetFactionId === factionId
-            )
-          : undefined;
-        if (queuedItem) target = this.resolveFactionSuppressionTarget(state, queuedItem);
-        if (!target && agendaBurg) {
+        if (agendaBurg) {
           target =
             this.eligibleFactionSuppressionTargets(state.i).find(
               entry => entry.faction.i === factionId && entry.burg?.i === agendaBurg.i
@@ -10322,6 +6711,7 @@ class LivingModel {
         agenda.targetBurgId = target.burg?.i;
         agenda.targetCell = target.burg?.i ? undefined : target.cell;
         agenda.label = `Suppressing ${target.faction.name} in ${factionSuppressionLocationName(target)}`;
+        agenda.required = FACTION_SUPPRESSION_SEASONS;
 
         // A failed storm (or a guarded stall) pauses the campaign briefly.
         if (agenda.stallUntilTick !== undefined && living.tick < agenda.stallUntilTick) return;
@@ -10336,23 +6726,475 @@ class LivingModel {
           return;
         }
 
-        const bSim = living.burgs[target.burg!.i];
-        if (!bSim?.isMajor) return;
-        this.enqueueFactionSuppression(target, living);
-
-        // Unguarded low-influence / fortified nodes can be stormed directly; the
-        // production operation keeps running and resumes if the assault fails.
-        if (
-          !this.factionNodeHasGuard(target.faction, target.node) &&
-          this.factionNodeAssaultable(target.node, target.isHq)
-        ) {
-          this.assaultFactionNode(state.i, target.faction.i, target.nodeKey);
+        // Administrative pressure: each season costs the treasury a day-rate of the
+        // campaign (the old production plan), and a guarded node stalls it.
+        const tier = target.isHq ? 2 : "tier" in target.node ? target.node.tier : 2;
+        const cost = factionSuppressionProductionCost({ tier });
+        if (Number(state.economy.treasury ?? 0) < cost) {
+          agenda.stallUntilTick = living.tick + 2; // underfunded: the magistrates wait
+          return;
         }
+        state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) - cost) * 100) / 100;
+        agenda.progress += 1;
+        if (agenda.progress < agenda.required) return;
+
+        if (this.factionNodeHasGuard(target.faction, target.node)) {
+          agenda.stallUntilTick = living.tick + 4;
+          agenda.progress = agenda.required - 1;
+          return;
+        }
+        this.applyFactionSuppressionPressure(state, target, living);
+        agenda.progress = 0;
+        if ((target.node.influence ?? 0) <= 0) sSim.agenda = null;
         return;
       }
       default:
         sSim.agenda = null;
     }
+  }
+
+  /** God mode: commission a specific work (optionally at a target), paying its treasury cost now. */
+  commissionProject(stateId: number, projectId: string, targetId?: number): boolean {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    const sSim = living.states[stateId];
+    const def = PROJECT_BY_ID[projectId];
+    if (!state?.i || state.removed || !sSim || !def || sSim.project) return false;
+    if (this.stateDevelopment(stateId) < def.minDevelopment) return false;
+    if (Number(state.economy.treasury ?? 0) < def.treasury) return false;
+
+    if (!living.projects) living.projects = [];
+    const target = targetId ?? this.projectTarget(state, def, living);
+    if (target === null) return false;
+    if (living.projects.some(project => project.id === def.id && project.targetId === target)) return false;
+
+    state.economy.treasury = Math.round((Number(state.economy.treasury) - def.treasury) * 100) / 100;
+    sSim.project = { id: def.id, scale: def.scale, targetId: target, turnsLeft: def.seasons };
+    living.economyDirty = true;
+    return true;
+  }
+
+  /** Hazards and hostile factions drain the purse: one negative line per troubled province. */
+  private syncTroubleLines(living: LivingWorldState): void {
+    const prefixes = ["Trouble: ", "Raiders: "];
+    const isOurs = (name: string) => prefixes.some(prefix => name.startsWith(prefix));
+
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const current = state.economy.simAdjustments ?? [];
+      const kept = current.filter(line => !isOurs(line.name));
+      const lines: { name: string; value: number }[] = [];
+
+      for (const province of this.ownedProvinces(state.i)) {
+        const pSim = living.provinces[province.i];
+        if (!pSim?.trouble) continue;
+        const value = -Math.max(1, Math.round(pSim.trouble.level * 0.8 + 1));
+        lines.push({ name: `Trouble: ${pSim.trouble.name} in ${province.name ?? "the province"}`, value });
+      }
+
+      for (const faction of Factions.active()) {
+        if (faction.allegiance !== "hostile" && faction.allegiance !== "clandestine") continue;
+        const provinceId = this.factionProvinceId(faction);
+        const province = provinceId ? pack.provinces?.[provinceId] : undefined;
+        if (!province?.i || province.state !== state.i) continue;
+        const value = -Math.min(6, 2 + Math.floor((faction.seasonsActive ?? 0) / 3));
+        lines.push({ name: `Raiders: ${faction.name} in ${province.name ?? "the province"}`, value });
+      }
+
+      const next = [...kept, ...lines];
+      if (JSON.stringify(next) === JSON.stringify(current)) continue;
+      state.economy.simAdjustments = next;
+      living.economyDirty = true;
+    }
+  }
+
+  /** A cleared hazard drops a small treasure into the clearer's treasury; returns it. */
+  rewardTroubleClear(provinceId: number, level = 5): number {
+    const state = pack.states[pack.provinces?.[provinceId]?.state ?? 0];
+    if (!state?.i || state.removed) return 0;
+    const loot = 20 + level * 5;
+    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) + loot) * 100) / 100;
+    return loot;
+  }
+
+  /** Each season: advance a public work, or commission the next one the ruler favours. */
+  private stepProjects(living: LivingWorldState): void {
+    living.projects ??= [];
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+
+      if (sSim.project) {
+        if (sSim.project.turnsLeft > 1) {
+          sSim.project.turnsLeft -= 1;
+          continue;
+        }
+        this.completeProject(state, sSim, living);
+        continue;
+      }
+
+      this.startProject(state, sSim, living);
+    }
+  }
+
+  /** Pay for and begin the best work the ruler can afford and values. */
+  private startProject(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const development = this.stateDevelopment(state.i);
+    const treasury = Number(state.economy.treasury ?? 0);
+    const bias = rulerBias(state.i) ?? { martial: 0.1, civic: 0.1, pious: 0.1, cruel: 0 };
+
+    let best: { def: ProjectDef; target: number; score: number } | null = null;
+    for (const def of PROJECTS) {
+      if (development < def.minDevelopment) continue;
+      if (treasury < def.treasury + PROJECT_RESERVE) continue;
+      const target = this.projectTarget(state, def, living);
+      if (target === null) continue;
+      const score = this.projectScore(state, def, target, bias, living);
+      if (!best || score > best.score || (score === best.score && def.id < best.def.id)) {
+        best = { def, target, score };
+      }
+    }
+    if (!best) return;
+
+    state.economy.treasury = Math.round((treasury - best.def.treasury) * 100) / 100;
+    sSim.project = { id: best.def.id, scale: best.def.scale, targetId: best.target, turnsLeft: best.def.seasons };
+    living.economyDirty = true;
+
+    const where = this.projectTargetName(state, best.def, best.target);
+    this.pushNews(living, {
+      kind: "build",
+      text: `${state.name} begins ${this.withArticle(best.def.name)}${where ? ` in ${where}` : ""}.`,
+      cell: this.projectTargetCell(state, best.def, best.target),
+      stateId: state.i,
+      burgId: best.def.scale === "burg" ? best.target : undefined
+    });
+  }
+
+  /** The target id a project would build at, or null when none is valid or free. */
+  private projectTarget(state: State, def: ProjectDef, living: LivingWorldState): number | null {
+    const built = (targetId: number) =>
+      (living.projects ?? []).some(project => project.id === def.id && project.targetId === targetId) ||
+      (living.states[state.i]?.project?.id === def.id && living.states[state.i]?.project?.targetId === targetId);
+
+    if (def.scale === "state") return built(state.i) ? null : state.i;
+
+    if (def.scale === "province") {
+      const provinces = this.ownedProvinces(state.i)
+        .filter(province => province.i && !province.removed)
+        .filter(province => !built(province.i))
+        .sort((a, b) => (living.provinces[a.i]?.order ?? 70) - (living.provinces[b.i]?.order ?? 70) || a.i - b.i);
+      return provinces[0]?.i ?? null;
+    }
+
+    const burgs = this.stateBurgs(state.i).filter(burg => !built(burg.i));
+    if (!burgs.length) return null;
+    if (def.needsCoast) {
+      const coastal = burgs
+        .filter(burg => this.isCoastal(burg) && !burg.port)
+        .sort((a, b) => (b.population ?? 0) - (a.population ?? 0) || a.i - b.i);
+      if (!coastal.length) return null;
+      return coastal[0]!.i;
+    }
+    if (def.effect.market) {
+      const charterable = burgs
+        .filter(burg => !(pack.markets ?? []).some(market => market.centerBurgId === burg.i))
+        .sort((a, b) => (b.population ?? 0) - (a.population ?? 0) || a.i - b.i);
+      if (!charterable.length) return null;
+      return charterable[0]!.i;
+    }
+    if (def.effect.burgFlag === "walls") {
+      const border = burgs
+        .filter(burg => !burg.capital && this.isBorderBurg(state.i, burg))
+        .sort((a, b) => (b.population ?? 0) - (a.population ?? 0) || a.i - b.i);
+      if (border.length) return border[0]!.i;
+    }
+    return (burgs.find(burg => burg.capital) ?? burgs[0]!).i;
+  }
+
+  /** How much this ruler wants that work at that target right now. */
+  private projectScore(
+    state: State,
+    def: ProjectDef,
+    target: number,
+    bias: { martial: number; civic: number; pious: number; cruel: number },
+    living: LivingWorldState
+  ): number {
+    let score = 1;
+    for (const key of ["martial", "civic", "pious", "cruel"] as const) {
+      score += (def.affinity?.[key] ?? 0) * bias[key] * 10;
+    }
+
+    if (this.stateAtWar(state)) {
+      if (def.id === "walls" || def.id === "army_camp") score += 8;
+      if (def.id === "granary") score += 3;
+    }
+    if ((state.economy.budget.corruption ?? 0) >= 25 && def.id === "courthouse") score += 8;
+    if (def.id === "land_improvement" && this.stateDevelopment(state.i) < 27) score += 4;
+    if (def.id === "college" && this.stateDevelopment(state.i) >= 27) score += 4;
+    if (def.id === "market_charter" && this.stateBurgs(state.i).length >= 3) score += 3;
+
+    const provinceId = def.scale === "province" ? target : this.provinceOfTarget(def, target);
+    const trouble = provinceId ? living.provinces[provinceId]?.trouble : null;
+    if (trouble) {
+      if (def.id === "granary" || def.id === "courthouse") score += 6;
+    }
+    const order = provinceId ? (living.provinces[provinceId]?.order ?? 70) : 70;
+    if (order < 50 && (def.id === "courthouse" || def.id === "granary")) score += 4;
+
+    return score;
+  }
+
+  /** Finish a work: buy its goods from the market, write its effects, chronicle it. */
+  private completeProject(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
+    const active = sSim.project;
+    if (!active) return;
+    const def = PROJECT_BY_ID[active.id];
+    if (!def) {
+      sSim.project = undefined;
+      return;
+    }
+
+    const burgId = this.projectBurgId(state, def, active.targetId);
+    const burg = burgId ? pack.burgs[burgId] : undefined;
+    if (!def || (def.scale !== "state" && (!burg?.i || burg.removed || burg.state !== state.i))) {
+      sSim.project = undefined; // the target is no longer the ruler's
+      return;
+    }
+
+    if (!this.consumeProjectGoods(burg, def)) {
+      sSim.project = undefined;
+      this.pushNews(living, {
+        kind: "build",
+        text: `${state.name} abandons its ${def.name.toLowerCase()}: the markets cannot supply the works.`,
+        cell: burg?.cell ?? state.center,
+        stateId: state.i
+      });
+      return;
+    }
+
+    const line = this.applyProjectEffect(state, def, active.targetId, burgId);
+    const where = this.projectTargetName(state, def, active.targetId);
+    const project: LivingProject = {
+      id: def.id,
+      name: def.name,
+      stateId: state.i,
+      scale: def.scale,
+      targetId: active.targetId,
+      burgId,
+      completedTick: living.tick,
+      ...(line ? { line } : {})
+    };
+    living.projects ??= [];
+    living.projects.push(project);
+    sSim.project = undefined;
+    living.economyDirty = true;
+
+    const text = `${state.name} completes ${this.withArticle(def.name)}${where ? ` in ${where}` : ""}.`;
+    this.pushNews(living, {
+      kind: "build",
+      text,
+      cell: burg?.cell ?? state.center,
+      stateId: state.i,
+      burgId
+    });
+    this.pushHistory(
+      "deed",
+      [{ kind: "state", id: state.i }, ...(burg?.i ? [{ kind: "burg", id: burg.i } as HistRef] : [])],
+      burg?.cell ?? state.center,
+      text
+    );
+  }
+
+  /** A work buys its goods from the town's market; a stripped map without one needs none. */
+  private consumeProjectGoods(burg: Burg | undefined, def: ProjectDef): boolean {
+    if (!def.goods?.length) return true;
+    if (!pack.markets?.length) return true; // no markets on this map
+    Markets.sync();
+    const market = burg ? Markets.ofBurg(burg) : undefined;
+    if (!market) return true; // no market on this map: the work draws on the treasury alone
+
+    for (const cost of def.goods) {
+      const good = options.map.goods?.find(entry => entry.name === cost.name);
+      if (!good) continue; // the good is not traded here
+      const row = market.goods[good.i];
+      if (!row || row.stock + 0.01 < cost.units) return false;
+    }
+    for (const cost of def.goods) {
+      const good = options.map.goods?.find(entry => entry.name === cost.name);
+      const row = good ? market.goods[good.i] : undefined;
+      if (!row) continue;
+      row.stock = Math.round((row.stock - cost.units) * 100) / 100;
+    }
+    return true;
+  }
+
+  /** Write every effect of a finished work; returns the daily line it added, if any. */
+  private applyProjectEffect(
+    state: State,
+    def: ProjectDef,
+    targetId: number,
+    burgId: number | undefined
+  ): { name: string; value: number } | undefined {
+    const { effect } = def;
+    const burg = burgId ? pack.burgs[burgId] : undefined;
+    const targetName = this.projectTargetName(state, def, targetId) ?? state.name;
+    let line: { name: string; value: number } | undefined;
+
+    if (effect.line) {
+      const name = `${effect.line.label} of ${targetName}`;
+      const value = effect.line.value;
+      line = { name, value };
+      const merge = (lines: { name: string; value: number }[] | undefined) => [
+        ...(lines ?? []).filter(entry => entry.name !== name),
+        { name, value }
+      ];
+      if (def.scale === "burg" && burg) burg.simAdjustments = merge(burg.simAdjustments);
+      else state.economy.simAdjustments = merge(state.economy.simAdjustments);
+    }
+
+    if (effect.development) {
+      const provinceId = this.provinceOfTarget(def, targetId);
+      if (provinceId) this.raiseProvinceDevelopment(provinceId, effect.development, this.getState());
+    }
+
+    if (effect.corruption) {
+      const corruption = Math.max(0, Math.round((state.economy.budget.corruption ?? 0) - effect.corruption));
+      States.setCorruption(state.i, corruption);
+    }
+
+    if (effect.burgFlag && burg) {
+      switch (effect.burgFlag) {
+        case "walls":
+          burg.walls = Math.min(3, Number(burg.walls ?? 0) + 1);
+          if (burg.walls >= 2) burg.citadel = 1;
+          break;
+        case "citadel":
+          burg.citadel = 1;
+          break;
+        case "plaza":
+          burg.plaza = 1;
+          break;
+        case "temple":
+          burg.temple = 1;
+          break;
+        case "port":
+          burg.port = 1;
+          break;
+      }
+    }
+
+    if (effect.improvement) {
+      const provinceId = this.provinceOfTarget(def, targetId);
+      if (provinceId) this.improveProvince(provinceId, this.getState());
+    }
+
+    if (effect.route) {
+      for (const town of this.stateBurgs(state.i)) {
+        if (Routes.isConnected(town.cell)) continue;
+        try {
+          Routes.connect(town.cell);
+        } catch {
+          // a stripped map has no route grid
+        }
+      }
+    }
+
+    if (effect.market && burg?.i) {
+      try {
+        Markets.addMarket(burg.i);
+        Markets.expand();
+      } catch {
+        // a stripped map has no market grid
+      }
+    }
+
+    return line;
+  }
+
+  /** Lay improvements across a province's peopled cells (works that the economy can read). */
+  private improveProvince(provinceId: number, living: LivingWorldState): void {
+    living.cells ??= {};
+    for (const cell of this.provinceCells(provinceId)) {
+      if (!pack.cells.pop[cell] && !pack.cells.burg?.[cell]) continue;
+      if (pack.cells.h[cell] < 20) continue;
+      if (living.cells[cell]?.improvement) continue;
+      const improvement = this.improvementForCell(cell);
+      if (!improvement) continue;
+      living.cells[cell] = { ...(living.cells[cell] ?? {}), improvement, pillaged: false, progress: {} };
+    }
+  }
+
+  /** The land work a cell wants: forest mills, hill mines, farms elsewhere. */
+  private improvementForCell(cell: number): string | null {
+    const height = Number(pack.cells.h?.[cell] ?? 0);
+    if (height < 20) return null;
+    if (height >= 50) return "mine";
+    const biome = Number(pack.cells.biome?.[cell] ?? 0);
+    if (biome === 6 || biome === 8 || biome === 9) return "lumber_mill";
+    if (biome === 12) return "pasture";
+    return "farm";
+  }
+
+  /** Whether the state owns a finished work of this kind. */
+  private hasProject(stateId: number, id: string, living: LivingWorldState): boolean {
+    return (living.projects ?? []).some(project => project.stateId === stateId && project.id === id);
+  }
+
+  /** The burg a work is built at: the target itself, or a settlement of the province/state. */
+  private projectBurgId(state: State, def: ProjectDef, targetId: number): number | undefined {
+    if (def.scale === "burg") return targetId;
+    if (def.scale === "province") return this.pickProvinceSettlement(targetId, state.i) ?? state.capital;
+    return state.capital;
+  }
+
+  /** The province a work belongs to, for development and improvements. */
+  private provinceOfTarget(def: ProjectDef, targetId: number): number | undefined {
+    if (def.scale === "province") return targetId;
+    if (def.scale === "burg") {
+      const burg = pack.burgs[targetId];
+      const provinceId = burg ? Number(pack.cells.province?.[burg.cell] ?? 0) : 0;
+      return provinceId || undefined;
+    }
+    return undefined;
+  }
+
+  /** A work's target as a readable name. */
+  private projectTargetName(state: State, def: ProjectDef, targetId: number): string | undefined {
+    if (def.scale === "state") return state.name;
+    if (def.scale === "province") return pack.provinces?.[targetId]?.name;
+    return pack.burgs[targetId]?.name;
+  }
+
+  /** A work's target as a map cell, for news and markers. */
+  private projectTargetCell(state: State, def: ProjectDef, targetId: number): number | undefined {
+    if (def.scale === "burg") return pack.burgs[targetId]?.cell;
+    if (def.scale === "province") return pack.provinces?.[targetId]?.center;
+    return state.center;
+  }
+
+  private withArticle(name: string): string {
+    return /^[aeiou]/i.test(name) ? `an ${name}` : `a ${name}`;
+  }
+
+  /** A state's surface burgs, capital first on ties. */
+  private stateBurgs(stateId: number): Burg[] {
+    return pack.burgs
+      .filter((burg): burg is Burg => Boolean(burg?.i && !burg.removed && burg.state === stateId))
+      .sort((a, b) => Number(b.capital ?? 0) - Number(a.capital ?? 0) || a.i - b.i);
+  }
+
+  /** A burg with sea at its door. */
+  private isCoastal(burg: Burg): boolean {
+    return (pack.cells.c?.[burg.cell] ?? []).some(cell => Number(pack.cells.h?.[cell] ?? 20) < 20);
+  }
+
+  /** A burg touching another state. */
+  private isBorderBurg(stateId: number, burg: Burg): boolean {
+    return (pack.cells.c?.[burg.cell] ?? []).some(cell => {
+      const owner = Number(pack.cells.state?.[cell] ?? 0);
+      return owner > 0 && owner !== stateId;
+    });
   }
 
   private advanceDevelopment(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
@@ -10368,6 +7210,8 @@ class LivingModel {
       if (progress.turnsLeft > 0) continue;
 
       pSim.development += 1;
+      // The project's real effect is on the map: its peopled cells gain development.
+      this.raiseProvinceDevelopment(province.i, 2, living);
       const burg = pack.burgs[progress.settlementId];
       if (burg && !burg.removed) {
         const growth = this.rng("develop:growth", burg.i).range(0.05, 0.15);
@@ -10390,6 +7234,19 @@ class LivingModel {
         burgId: burg?.i
       });
     }
+  }
+
+  /** A completed develop project raises its province's peopled cells, unlocking goods tiers. */
+  private raiseProvinceDevelopment(provinceId: number, amount: number, living: LivingWorldState): void {
+    const development = pack.cells.development;
+    if (!development) return;
+    let changed = false;
+    for (const cell of this.provinceCells(provinceId)) {
+      if (!development[cell]) continue; // wild land stays wild
+      development[cell] = Math.min(100, development[cell] + amount);
+      changed = true;
+    }
+    if (changed) living.economyDirty = true;
   }
 
   private advanceConstructions(state: State, sSim: StatePolitySim, living: LivingWorldState): void {
@@ -10445,6 +7302,103 @@ class LivingModel {
     });
   }
 
+  /** Spring: faith drifts province by province on court spending, zeal and holy ground. */
+  private stepReligiousDrift(_living: LivingWorldState): void {
+    if (!pack.cells.religion) return;
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      if (!this.getStateReligion(state)) continue;
+      for (const province of this.ownedProvinces(state.i)) this.convertProvince(state.i, province.i);
+    }
+  }
+
+  /** One spring's conversion attempt in a province; returns how many cells took the state faith. */
+  convertProvince(stateId: number, provinceId: number, attempt = 0): number {
+    const living = this.getState();
+    if (!pack.cells.religion) return 0;
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed) return 0;
+    const faith = this.getStateReligion(state);
+    if (!faith) return 0;
+
+    const mix = this.provinceFaithMix(provinceId);
+    if (!mix || mix.total === 0) return 0;
+    if ((mix.counts.get(faith) ?? 0) > mix.total / 2) return 0; // already the faith's province
+
+    const pressure = this.religiousPressure(stateId, provinceId);
+    if (pressure <= 0) return 0;
+    if (!this.rng("religion:drift", provinceId * 1000 + attempt, living.tick).chance(pressure)) return 0;
+
+    const province = pack.provinces?.[provinceId];
+    const capitalCell = province?.burg ? pack.burgs[province.burg]?.cell : undefined;
+    const holdouts = mix.cells
+      .filter(cell => pack.cells.religion![cell] !== faith)
+      .sort((a, b) => {
+        const rank = (cell: number) => (cell === capitalCell ? 2 : Number(pack.cells.burg?.[cell] ?? 0) > 0 ? 1 : 0);
+        return rank(a) - rank(b) || a - b;
+      });
+    if (!holdouts.length) return 0;
+
+    const convert = Math.max(1, Math.floor(holdouts.length * (0.04 + 0.12 * pressure)));
+    for (const cell of holdouts.slice(0, convert)) pack.cells.religion[cell] = faith;
+    living.economyDirty = true; // faith feeds corruption, diversity and stability
+
+    const converted = this.provinceFaithMix(provinceId);
+    const nowMajority = converted ? (converted.counts.get(faith) ?? 0) > converted.total / 2 : false;
+    if (nowMajority) {
+      const religionName = pack.religions?.[faith]?.name ?? "the faith";
+      const text = `${province?.name ?? "A province"} now follows ${religionName} under ${state.name}.`;
+      this.pushNews(living, {
+        kind: "religion",
+        text,
+        cell: province?.center,
+        stateId,
+        ...(province?.burg ? { burgId: province.burg } : {})
+      });
+      this.pushHistory(
+        "schism",
+        [{ kind: "state", id: stateId }, ...(province?.burg ? [{ kind: "burg", id: province.burg } as HistRef] : [])],
+        province?.center,
+        text
+      );
+    }
+    return convert;
+  }
+
+  /** Chance a province's holdouts convert this spring, 0..0.85 (court spending × zeal × holy ground). */
+  religiousPressure(stateId: number, provinceId: number): number {
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed || !pack.cells.religion) return 0;
+    const faith = this.getStateReligion(state);
+    if (!faith) return 0;
+    const mix = this.provinceFaithMix(provinceId);
+    if (!mix || mix.total === 0) return 0;
+
+    const share = (mix.counts.get(faith) ?? 0) / mix.total;
+    if (share >= 1) return 0;
+    const court = StateOrders.getProvision(state, "court");
+    const zeal = minmax(rulerBias(stateId)?.pious ?? 0.1, 0, 0.8);
+    const holyCell = pack.religions?.[faith]?.center;
+    const holdsHolySite =
+      holyCell !== undefined && holyCell >= 0 && Number(pack.cells.state?.[holyCell] ?? 0) === stateId;
+    const pressure = (0.08 + 0.6 * court) * (0.5 + zeal) * (1 + share) * (holdsHolySite ? 1.25 : 1) * (1 - share * 0.8);
+    return Math.round(minmax(pressure, 0, 0.85) * 1000) / 1000;
+  }
+
+  /** A province's cells, counted by faith. */
+  private provinceFaithMix(provinceId: number): { total: number; counts: Map<number, number>; cells: number[] } | null {
+    const religion = pack.cells.religion;
+    if (!religion) return null;
+    const cells = this.provinceCells(provinceId).filter(cell => Number(religion[cell] ?? 0) > 0);
+    if (!cells.length) return null;
+    const counts = new Map<number, number>();
+    for (const cell of cells) {
+      const faith = Number(religion[cell]);
+      counts.set(faith, (counts.get(faith) ?? 0) + 1);
+    }
+    return { total: cells.length, counts, cells };
+  }
+
   /** Step province order, stability, and trouble progression. */
   /** Province a faction HQ sits in (for province-level threat pressure). */
   private factionProvinceId(faction: import("@/types/factions").Faction): number {
@@ -10496,6 +7450,29 @@ class LivingModel {
             pSim.trouble = null;
           }
         }
+
+        // A funded administration grinds a hazard down before it festers; a cleared
+        // hazard leaves a small treasure for the state that paid to end it.
+        if (pSim.trouble) {
+          const administration = pack.states[province.state]?.economy.budget.administration ?? 0;
+          const adminFunded = administration >= 15 && Number(pack.states[province.state]?.economy.treasury ?? 0) >= 0;
+          if (adminFunded && this.rng("trouble:admin", province.i, living.tick).chance(0.25)) {
+            const levelBefore = pSim.trouble.level;
+            pSim.trouble.level -= 1;
+            pSim.trouble.seasonsUnchecked = 0;
+            pSim.order = Math.min(100, pSim.order + 2);
+            if (pSim.trouble.level <= 0) {
+              pSim.trouble = null;
+              const loot = this.rewardTroubleClear(province.i, Math.max(2, levelBefore));
+              this.pushNews(living, {
+                kind: "trouble",
+                text: `${province.name ?? "The province"}'s courts cleared its troubles and recovered ${loot} gold.`,
+                cell: province.center,
+                stateId: province.state
+              });
+            }
+          }
+        }
       }
 
       const hostiles = Factions.active().filter(
@@ -10532,6 +7509,10 @@ class LivingModel {
         if (pSim.order < 25) spawnChance += 0.05;
         if (sSim && sSim.unravel > 50) spawnChance += 0.05;
         if (this.isProvinceGarrisoned(province.state, province.i)) spawnChance -= 0.05;
+        // Stock rails feed the roll: a fragile, corrupt, unprosperous land breeds trouble.
+        const stability = Stability.get(province.state)?.stability ?? null;
+        if (stability !== null && stability < 0.4) spawnChance += 0.05;
+        if ((pack.states[province.state]?.economy.budget.corruption ?? 0) >= 25) spawnChance += 0.03;
         spawnChance = minmax(spawnChance, 0.03, 0.4);
 
         if (rng.chance(spawnChance)) {
@@ -10595,13 +7576,15 @@ class LivingModel {
         faction.agenda = null;
         return;
       }
-      agenda.progress += Math.max(0, node.sim.cityYields?.production ?? 0);
+      agenda.progress += 8; // a caretaker faction's seasonal clearing effort
       if (agenda.progress >= agenda.required) {
         const troubleName = pSim.trouble.name;
         const province = pack.provinces?.[provinceId];
+        const clearedLevel = pSim.trouble.level;
         pSim.trouble = null;
         pSim.order = Math.min(100, pSim.order + 10);
         pSim.stability += 1;
+        faction.treasury = Math.round((Number(faction.treasury ?? 0) + 15 + clearedLevel * 3) * 100) / 100;
         const hostStateId = province?.state ?? 0;
         const before = hostStateId ? (faction.stateRelations[hostStateId] ?? "Neutral") : undefined;
         if (hostStateId) this.improveFactionRelation(faction, hostStateId);
@@ -10735,7 +7718,7 @@ class LivingModel {
         faction.sovereignAmbition &&
         faction.allegiance === "hostile" &&
         (faction.seasonsActive ?? 0) >= 8 &&
-        (faction.researchedTechs?.length ?? 0) >= 2
+        this.factionDevelopment(faction) >= SOVEREIGN_DEVELOPMENT
       ) {
         const provId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
         const pSim = provId ? living.provinces?.[provId] : undefined;

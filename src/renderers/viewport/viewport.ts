@@ -10,7 +10,8 @@ export const ZOOM_CURVES = {
   factions: (scale: number) => 100 / Math.sqrt(scale), // geometric
   characters: (scale: number) => 100 / Math.sqrt(scale), // geometric
   burgIcons: (scale: number) => 100 / (1 + (scale - 1) / 80), // near natural
-  systems: (scale: number) => 100 / (1 + (scale - 1) / 80) // near natural, like the burgs they stand for
+  systems: (scale: number) => 100 / (1 + (scale - 1) / 80), // near natural, like the burgs they stand for
+  networks: (scale: number) => 100 / (1 + (scale - 1) / 80) // near natural, like the systems they connect
 } satisfies Record<string, (scale: number) => number>;
 
 export type ZoomedLayer = keyof typeof ZOOM_CURVES;

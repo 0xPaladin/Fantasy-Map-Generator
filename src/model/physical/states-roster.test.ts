@@ -122,4 +122,43 @@ describe("Phase 1: State Roster Binding", () => {
       expect(globalThis.pack.states[1].rosterId).toBe("dwarfBase");
     });
   });
+
+  describe("Astral & Verse roster inference", () => {
+    it("maps Verse and Astral cultures to their corresponding sci-fi rosters", async () => {
+      const { DEFAULT_ROSTER_MAP, inferRosterForCulture, assignAstralStateRoster, ASTRAL_ROSTER_IDS } = await import(
+        "@/data/roster-content"
+      );
+
+      expect(inferRosterForCulture("Celestial Accord", DEFAULT_ROSTER_MAP, "scifiFederationBase")).toBe(
+        "verseCelestialBase"
+      );
+      expect(inferRosterForCulture("Hegemony", DEFAULT_ROSTER_MAP, "scifiFederationBase")).toBe("verseHegemonyBase");
+      expect(inferRosterForCulture("Mechanicus", DEFAULT_ROSTER_MAP, "scifiFederationBase")).toBe(
+        "verseTechnocratBase"
+      );
+      expect(inferRosterForCulture("Xothian", DEFAULT_ROSTER_MAP, "scifiFederationBase")).toBe("verseXothianBase");
+      expect(inferRosterForCulture("High Gothic", DEFAULT_ROSTER_MAP, "scifiFederationBase")).toBe("scifiImperialBase");
+      expect(inferRosterForCulture("Terran", DEFAULT_ROSTER_MAP, "scifiImperialBase")).toBe("scifiFederationBase");
+
+      const cultures = [
+        undefined,
+        { i: 1, base: "VRCEL", type: "Generic" },
+        { i: 2, base: "VRHEG", type: "Generic" },
+        { i: 3, base: "VRTEC", type: "Generic" },
+        { i: 4, base: "VRXOT", type: "Generic" },
+        { i: 5, base: "ENGLI", type: "Naval" }
+      ] as any;
+
+      const celRoster = assignAstralStateRoster({ culture: 1, type: "Generic" }, cultures);
+      expect(celRoster).toBe("verseCelestialBase");
+      expect(ASTRAL_ROSTER_IDS.has(celRoster)).toBe(true);
+
+      expect(assignAstralStateRoster({ culture: 2, type: "Generic" }, cultures)).toBe("verseHegemonyBase");
+      expect(assignAstralStateRoster({ culture: 3, type: "Generic" }, cultures)).toBe("verseTechnocratBase");
+      expect(assignAstralStateRoster({ culture: 4, type: "Generic" }, cultures)).toBe("verseXothianBase");
+      expect(assignAstralStateRoster({ culture: 5, rosterId: "empireBase", type: "Naval" }, cultures)).toBe(
+        "scifiImperialBase"
+      );
+    });
+  });
 });

@@ -2,7 +2,7 @@
 
 A cell's technological **development**: how advanced its people are, from hunter-gatherers to a post-human civilization. It is set by the cultures and varies over the land, and it decides what the land can produce and how much, who picks a trade first in the economy's day, and whether a state is a kingdom or a tribe. The user guide is the [Development wiki page](../wiki/Development.md).
 
-Development is a world-building lever, not a clock: it does not grow over time by itself. A culture set decides a map's development: a medieval set gives a medieval world with a few leaders and a few laggards, the Antique set a classical one. Under the seasonal [Living World](#the-living-world) simulation a people's research raises it.
+Development is a world-building lever, not a clock: it does not grow over time by itself. A culture set decides a map's development: a medieval set gives a medieval world with a few leaders and a few laggards, the Antique set a classical one. Under the seasonal [Living World](#the-living-world) simulation it moves with the state's mean: diffusion, develop projects and works raise it, razing and pillage lower it.
 
 ## Elements
 
@@ -18,7 +18,7 @@ Development is a world-building lever, not a clock: it does not grow over time b
 | State titles                       | `States.getTribalForm` ([states-generator.ts](../../src/model/political/states-generator.ts))                           | `state.formName`                            |
 | Editor, statistics and brush       | `DevelopmentEditor` ([development-editor.ts](../../src/controllers/society/development-editor.ts))                      | nothing                                     |
 | Era names                          | `ErasEditor` ([eras-editor.ts](../../src/controllers/society/eras-editor.ts))                                           |                                             |
-| Living World research and diffusion | `Living` ([living-generator.ts](../../src/model/physical/living-generator.ts)), `CIV_TECH_ROW_DEVELOPMENT` ([living-civ-techs.ts](../../src/data/living-civ-techs.ts)) | `pack.history.living.states[].researchedTechs`, `pack.cells.development`, `living.economyDirty` |
+| Living World drift and projects | `Living` ([living-generator.ts](../../src/model/physical/living-generator.ts)), `living-eras.ts`, `living-projects.ts` | `pack.cells.development`, `living.economyDirty` |
 
 ## The scale
 
@@ -95,9 +95,10 @@ The States, Provinces and Cultures editors and the Burgs Overview each have a De
 
 The seasonal [Living World](../wiki/Living-World.md) research tells on the land, in both directions ([upstream-economy-alignment.md](../plans/upstream-economy-alignment.md) §2.4):
 
-- **Seeding.** When a state's or faction's research first initializes, its mean development decides how much of the `CIV_TECHS` tree it already knows: `Development.getAverages(pack.cells.state)` for a state, the HQ and outpost cells' average for a faction, `developmentToTechRow` for the band and `seedTechsFromDevelopment` for the technologies and banked progress. A High Fantasy dwarven state at 53 starts with its historical tier, a tribal one at 12 in the Bronze Age. A map with no development field seeds nothing, and an existing simulation is never reseeded.
-- **Research raises it.** `CIV_TECH_ROW_DEVELOPMENT` maps 17 contiguous bands of the tech tree onto `6..100` (row 0 `6..11` … row 16 `97..100`). Completing a technology raises the cells of the polity's capital and every state burg, and every faction HQ and outpost cell, toward `computePolityTechDevelopment(researched)` plus 2 where a `library`, `university` or `public_school` stands; a level is never lowered, and cells nobody lives on (`development === 0`) are skipped.
-- **Seasonal diffusion.** `Living` then steps peopled owned cells by ±1 a season toward `polityTarget + biome.development + river + harbor`, clamped `1..100`. Rural cells may slip up to 3 points above that ceiling before decaying, and burg cells never decay, so the uplift sticks. Each uplift and diffusion raises `living.economyDirty`, so the next economy run unlocks the newly reachable `good.development` tiers and pays the productivity multiplier that comes with them.
+- **Diffusion.** Each season, peopled owned cells step by 1 a season (2 in post-scarcity regimes) toward their state's mean development plus the land's `biome.development`, river and harbor bonuses, clamped `1..100`. Rural cells may slip up to 3 points above that ceiling before decaying; burg cells never decay, so the uplift sticks. There is no research: the mean is the target.
+- **Projects.** A completed `develop` project raises the province's peopled cells by 2 development; a College raises its burg's cells by 3; a Land Improvement lays farms, mills and mines the economy reads for output. Razing, pillage and the Development brush move it directly.
+- **Gates.** `Development.getAverages` sets a state's mean development, which gates unit tiers (each roster unit opens at a development threshold), faction ascension (18) and the public-works catalog. A state's era is the stock era its mean falls in.
+- Every change raises `living.economyDirty`, so the next economy run unlocks the newly reachable `good.development` tiers and pays the productivity multiplier that comes with them.
 
 Running `Development.generate()` or painting with the Development Editor afterwards overrides what the simulation did; the simulation then resumes from the painted field.
 

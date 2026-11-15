@@ -34,12 +34,16 @@ const IMPROVEMENT_BOOST: Record<string, number> = {
   lumber_mill: 0.4,
   fishing_boats: 0.4
 };
-const IMPROVEMENT_TECH_BOOST: Record<string, readonly string[]> = {
-  farm: ["civil_service", "fertilizer"],
-  pasture: ["fertilizer"],
-  mine: ["chemistry", "dynamite"]
+/**
+ * The extra a project's land improvement gains at a development level.
+ * (Phase 4 of living-fmg-native.md turns improvements into funded projects;
+ * the old tech unlocks now read as era thresholds.)
+ */
+const IMPROVEMENT_DEVELOPMENT_BOOST: Record<string, readonly [number, number]> = {
+  farm: [29, 0.15],
+  pasture: [67, 0.15],
+  mine: [56, 0.2]
 };
-const IMPROVEMENT_TECH_EXTRA: Record<string, number> = { farm: 0.15, pasture: 0.15, mine: 0.2 };
 export const TRADING_POST_EARNINGS = 1.2; // a trading post lifts rural earnings in its cell by a fifth
 
 /** What the land yields at the map's people and good rules: rural output, deposits and their multipliers */
@@ -122,10 +126,8 @@ class OutputModule {
     const names = IMPROVEMENT_GOODS[improvement];
     let boost = names?.includes(good.name) ? (IMPROVEMENT_BOOST[improvement] ?? 0) : 0;
     if (boost > 0) {
-      const techs = sim.states?.[pack.cells.state[cellId]]?.researchedTechs ?? [];
-      if ((IMPROVEMENT_TECH_BOOST[improvement] ?? []).some(tech => techs.includes(tech))) {
-        boost += IMPROVEMENT_TECH_EXTRA[improvement] ?? 0;
-      }
+      const [gate, extra] = IMPROVEMENT_DEVELOPMENT_BOOST[improvement] ?? [0, 0];
+      if (gate && Development.ofCell(cellId) >= gate) boost += extra;
     }
     return 1 + boost;
   }

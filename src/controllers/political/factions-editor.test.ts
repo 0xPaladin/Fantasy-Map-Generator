@@ -136,10 +136,10 @@ describe("FactionsEditor", () => {
     const outpostRows = document.querySelectorAll("#outpostsTable > .states");
     expect(outpostRows.length).toBe(2);
     expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("Oakhaven");
-    expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("🌾");
+    expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("Trade");
   });
 
-  it("computes faction yield breakdown and populates outpost table data", () => {
+  it("computes the upstream faction yield breakdown and populates the outpost trade column", () => {
     const faction = Factions.add({
       name: "Iron Bank",
       category: "commercial",
@@ -159,48 +159,24 @@ describe("FactionsEditor", () => {
     });
     syncFactionState(faction);
 
-    // Provide node yields to simulate computed tick
-    faction.hq.sim!.cityYields = {
-      food: 4,
-      production: 3,
-      gold: 5,
-      science: 2,
-      culture: 1,
-      faith: 0,
-      happiness: 0
-    };
-    faction.outposts[0].sim!.cityYields = {
-      food: 3,
-      production: 2,
-      gold: 4,
-      science: 1,
-      culture: 0,
-      faith: 1,
-      happiness: 0
-    };
-
     const breakdown = Living.getFactionYieldBreakdown(faction);
+    expect(breakdown.nodes.length).toBe(2);
     expect(breakdown.hq).not.toBeNull();
     expect(breakdown.hq?.isHq).toBe(true);
-    expect(breakdown.hq?.yields.food).toBe(4);
+    expect(breakdown.hq?.node).toBe(faction.hq);
     expect(breakdown.outposts.length).toBe(1);
     expect(breakdown.outposts[0].isHq).toBe(false);
-    expect(breakdown.outposts[0].yields.food).toBe(3);
-
-    expect(breakdown.total.food).toBe(7);
-    expect(breakdown.total.production).toBe(5);
-    expect(breakdown.totalCitizens).toBeGreaterThanOrEqual(3);
-
-    const recomputed = Living.recomputeFactionYields(faction);
-    expect(recomputed).toEqual(breakdown.total);
+    expect(breakdown.outposts[0].node).toBe(faction.outposts[0]);
+    expect(breakdown.upstreamGold).toBeGreaterThanOrEqual(0);
+    expect(breakdown.charterTithe).toBeGreaterThanOrEqual(0);
 
     openOutpostsDialog(faction.i);
     const dialog = document.querySelector("#factionOutpostsDialog")!;
-    expect(dialog.innerHTML).toContain("🌾 4 · 🔨 3");
-    expect(dialog.innerHTML).toContain("🌾 3 · 🔨 2");
     expect(dialog.innerHTML).toContain("Trade");
     expect(dialog.innerHTML).toContain("trade a season");
     expect(dialog.innerHTML).toContain("🪙 100");
+    expect(dialog.innerHTML).not.toContain("Citizens");
+    expect(dialog.innerHTML).not.toContain("yields");
   });
 
   it("supports tab switching between HQ & Outposts, Assets, and Forces", () => {
@@ -246,13 +222,15 @@ describe("FactionsEditor", () => {
     expect(assetsPanel.style.display).toBe("none");
   });
 
-  it("supports adding and dismantling assets in the Assets tab", () => {
+  it("supports commissioning and dismantling assets in the Assets tab", () => {
     const faction = Factions.add({
       name: "Silver Vault",
       category: "commercial",
       type: "merchant_consortium",
-      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] },
+      treasury: 500
     });
+    pack.cells.development = new Uint8Array([0, 30, 30]);
 
     openOutpostsDialog(faction.i, "assets");
 
@@ -264,12 +242,19 @@ describe("FactionsEditor", () => {
     assetSelect.value = "trade_depot";
     addAssetBtn.click();
 
-    expect(faction.hq.assets).toContain("trade_depot");
+    // A work is commissioned: paid from the treasury, built over seasons (phase 6).
+    expect(faction.project).toMatchObject({ assetId: "trade_depot", nodeKey: "hq" });
+    expect(faction.treasury).toBe(450);
+    expect(faction.hq.assets).not.toContain("trade_depot");
+
+    // A finished asset can still be dismantled from the node.
+    faction.project = undefined;
+    faction.hq.assets = ["trade_depot"];
+    openOutpostsDialog(faction.i, "assets");
     const assetRows = document.querySelectorAll("#assetsTable > .states");
     expect(assetRows.length).toBe(1);
     expect(document.querySelector("#assetsTable")?.innerHTML).toContain("Trade Depot");
 
-    // Dismantle asset
     const removeBtn = document.querySelector<HTMLButtonElement>('.removeAssetBtn[data-node="hq"][data-index="0"]')!;
     expect(removeBtn).not.toBeNull();
     removeBtn.click();

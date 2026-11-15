@@ -31,6 +31,7 @@ export function drawRoutes(layer: Layer): void {
   log.time("drawRoutes");
   const shapes: RouteShape[] = [];
   for (const route of pack.routes) {
+    if (route.networkId !== undefined) continue; // network links draw on their own layer
     const shape = buildShape(route);
     if (shape) shapes.push(shape);
   }
@@ -57,7 +58,23 @@ export function redrawRoute(route: Route): void {
 /** Bounding box of the rendered route, available whether or not the route is currently materialized */
 export function getRouteBox(routeId: number): DOMRect | null {
   const shape = scene.get(`route${routeId}`);
-  return shape ? new DOMRect(shape.x0, shape.y0, shape.x1 - shape.x0, shape.y1 - shape.y0) : null;
+  if (shape) return new DOMRect(shape.x0, shape.y0, shape.x1 - shape.x0, shape.y1 - shape.y0);
+
+  // network links are not in the routes scene, but their overview still locates them
+  const route = pack.routes.find(candidate => candidate.i === routeId);
+  if (!route?.points?.length) return null;
+
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const [x, y] of route.points) {
+    if (x < x0) x0 = x;
+    if (y < y0) y0 = y;
+    if (x > x1) x1 = x;
+    if (y > y1) y1 = y;
+  }
+  return new DOMRect(x0, y0, x1 - x0, y1 - y0);
 }
 
 export function setEditedRoute(routeId: number | null): void {

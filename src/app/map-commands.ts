@@ -465,6 +465,12 @@ export const MAP_COMMANDS: MapCommand[] = [
   },
   { id: "addRoute", name: t("Add Route"), aliases: "road trail path", run: () => Controllers.RouteCreator.open() },
   {
+    id: "addNetwork",
+    name: t("Add Network"),
+    aliases: "astral wormhole hyperspace lane relay communication network",
+    run: () => Controllers.AstralNetworks.open()
+  },
+  {
     id: "selectHeightmap",
     name: t("Select Heightmap Template"),
     aliases: "precreated generation options",

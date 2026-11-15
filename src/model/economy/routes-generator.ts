@@ -272,6 +272,8 @@ export interface Route {
   label?: Label;
   note?: string;
   tags?: string[];
+  /** the astral network this link belongs to; such routes draw on the networks layer */
+  networkId?: number;
 }
 
 type RiverEdge = { riverId: number; fromIndex: number };

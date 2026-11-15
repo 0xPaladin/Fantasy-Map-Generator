@@ -25,9 +25,9 @@ describe("the Astral layer profiles", () => {
     for (const preset of Object.values(ASTRAL_PRESETS)) expect(preset.layers).not.toContain("nebulae");
   });
 
-  it("shows only empires, hyperlanes, systems, labels and the scale bar by default", () => {
+  it("shows only empires, hyperlanes, networks, systems, labels and the scale bar by default", () => {
     const ids = ASTRAL_PRESETS[ASTRAL_DEFAULT_PRESET].layers;
-    expect([...ids].sort()).toEqual(["labels", "routes", "scaleBar", "states", "systems"]);
+    expect([...ids].sort()).toEqual(["labels", "networks", "routes", "scaleBar", "states", "systems"]);
   });
 
   it("keeps no vignette in any Astral profile", () => {

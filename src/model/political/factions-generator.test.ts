@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Burg } from "@/model/political/burgs-generator";
-import { Factions } from "@/model/political/factions-generator";
+import { ensureFactionNodeSim, Factions } from "@/model/political/factions-generator";
 import type { State } from "@/model/political/states-generator";
 import type { Marker } from "@/model/story/markers-generator";
+import type { FactionOutpost } from "@/types/factions";
 import type { PackedGraph } from "@/types/packed-graph";
 
 describe("FactionsGenerator", () => {
@@ -135,8 +136,7 @@ describe("FactionsGenerator", () => {
       outposts: [
         { burgId: 2, cell: 20, tier: 1, influence: 50, secrecy: 0, assets: ["trade_depot"], establishedYear: 990 },
         { burgId: 3, cell: 30, tier: 1, influence: 50, secrecy: 0, assets: [], establishedYear: 995 }
-      ],
-      researchedTechs: ["pottery", "currency"]
+      ]
     });
 
     expect(added.i).toBeGreaterThan(0);
@@ -149,25 +149,49 @@ describe("FactionsGenerator", () => {
     expect(Factions.active().length).toBe(initialCount);
   });
 
+  it("ensureFactionNodeSim creates a node sim with civBuildings and hp", () => {
+    const outpost: FactionOutpost = {
+      burgId: 2,
+      cell: 20,
+      tier: 1,
+      influence: 50,
+      secrecy: 0,
+      assets: ["trade_depot"],
+      establishedYear: 990
+    };
+
+    const sim = ensureFactionNodeSim(outpost, false);
+    expect(sim.burgId).toBe(2);
+    expect(sim.baseTier).toBe(1);
+    expect(sim.civBuildings).toEqual(["trade_depot"]);
+    expect(sim.hp).toBe(100);
+    expect(sim.maxHp).toBe(100);
+    expect(sim.isMajor).toBe(true);
+
+    outpost.assets.push("vault");
+    const reconciled = ensureFactionNodeSim(outpost, false);
+    expect(reconciled).toBe(sim);
+    expect(reconciled.civBuildings).toEqual(["trade_depot", "vault"]);
+  });
+
   it("initializes BurgSimState on HQs/Outposts and ArmyBlock[] on military regiments", () => {
     Factions.generate();
     for (const faction of Factions.active()) {
       expect(faction.rosterId).toBeDefined();
-      expect(faction.yieldsPerTurn).toBeDefined();
 
       // HQ BurgSimState
       expect(faction.hq.sim).toBeDefined();
-      expect(faction.hq.sim?.citizens).toBeGreaterThanOrEqual(2);
       expect(faction.hq.sim?.civBuildings).toEqual(faction.hq.assets);
-      expect(faction.hq.sim?.workedCells).toContain(faction.hq.cell);
       expect(faction.hq.sim?.hp).toBeGreaterThan(0);
+      expect(faction.hq.sim?.maxHp).toBeGreaterThanOrEqual(faction.hq.sim?.hp ?? 0);
+      expect(faction.hq.sim?.isMajor).toBe(true);
 
       // Outpost BurgSimState
       for (const outpost of faction.outposts) {
         expect(outpost.sim).toBeDefined();
-        expect(outpost.sim?.citizens).toBeGreaterThanOrEqual(1);
         expect(outpost.sim?.civBuildings).toEqual(outpost.assets);
-        expect(outpost.sim?.workedCells).toContain(outpost.cell);
+        expect(outpost.sim?.hp).toBeGreaterThan(0);
+        expect(outpost.sim?.maxHp).toBeGreaterThanOrEqual(outpost.sim?.hp ?? 0);
       }
 
       // Military regiments have ArmyBlock[] populated

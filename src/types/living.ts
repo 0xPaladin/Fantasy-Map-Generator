@@ -1,5 +1,19 @@
 // Living World simulation state types. See docs/plans/living-world.md
 
+import type { Expense } from "@/data/expenses";
+
+/** A line of a state's fiscal policy the ruler can be pinned away from. */
+export type FiscalLock = Expense | "corruption" | "salesTax" | "pollTax";
+
+/** The ruler's fiscal steering: who set the target, pinned lines, and dispatch state. */
+export interface FiscalPolicyState {
+  rulerId?: number;
+  locks?: FiscalLock[];
+  /** values when the ruler took the throne, for the "what changed" dispatch */
+  baseline?: Partial<Record<FiscalLock, number>>;
+  logged?: Partial<Record<FiscalLock, boolean>>;
+}
+
 export type SeasonId = 0 | 1 | 2 | 3;
 
 export const SEASON_NAMES = ["Spring", "Summer", "Autumn", "Winter"] as const;
@@ -158,6 +172,28 @@ export interface StateAgenda {
 
 export type GrudgeReason = "conquest" | "sacked" | "slain_ruler" | "slain_general" | "repulsed";
 
+/** A funded public work: where it stands and what it pays a day. */
+export type ProjectScale = "state" | "province" | "burg";
+
+export interface ActiveProject {
+  id: string;
+  scale: ProjectScale;
+  targetId: number;
+  turnsLeft: number;
+}
+
+export interface LivingProject {
+  id: string;
+  name: string;
+  stateId: number;
+  scale: ProjectScale;
+  targetId: number;
+  burgId?: number;
+  completedTick: number;
+  /** the daily line it writes into the target's simAdjustments */
+  line?: { name: string; value: number };
+}
+
 export interface GrudgeRecord {
   id: number;
   againstStateId?: number;
@@ -193,25 +229,14 @@ export interface BurgSimState {
   originalOwner?: number;
   originalCulture?: number;
   originalReligion?: number;
-  // OpenCiv city fields; lazily initialized by later Living World 2.0 slices.
+  /** a major burg: anchors siege HP, city strikes and garrison regeneration */
   isMajor?: boolean;
-  citizens?: number;
-  foodStored?: number;
-  cultureStored?: number;
-  tilesAcquired?: number;
-  nextBorderCell?: number | null;
-  workedCells?: number[];
-  lockedCells?: number[];
-  productionQueue?: ProductionItem[];
-  productionProgress?: Record<string, number>;
   /**
-   * OpenCiv building & wonder ids produced by the autonomous city loop.
-   * Kept apart from the legacy AER `buildings` list so the seasonal AER
-   * capacity math keeps working until Slice 4 retires it.
+   * Flag-synced asset ids (walls/market/temple/harbor families, palace).
+   * Reconciled from the native Burg flags; feeds siege HP. Projects (Phase 4
+   * of living-fmg-native.md) will grow this list again.
    */
   civBuildings?: string[];
-  /** last computed OpenCiv city yields, cached for the Living inspector */
-  cityYields?: YieldValues;
   hp?: number;
   maxHp?: number;
   /** state besieging this burg (0 = none) */
@@ -221,9 +246,6 @@ export interface BurgSimState {
   /** siege supply HD remaining (buffers attrition) */
   siegeSupplies?: number;
   hasStruckThisTurn?: boolean;
-  soldBuildingThisTurn?: boolean;
-  religionPressure?: Record<number, number>;
-  pantheonId?: string | null;
   pillaged?: boolean;
   /** accumulated seasonal reserves (Living ledger); upstream `burg.treasury` stays a day's net */
   treasury?: number;
@@ -253,23 +275,14 @@ export interface StatePolitySim {
   warExhaustion: number;
   claims: ClaimRecord[];
   grudges: GrudgeRecord[];
-  // OpenCiv empire fields; lazily initialized by later Living World 2.0 slices.
-  faith?: number;
-  prophetsEarned?: number;
-  pantheonId?: string | null;
-  religionId?: number | null;
-  happiness?: number;
-  happinessBreakdown?: HappinessBreakdown;
-  yieldsPerTurn?: YieldValues;
-  currentTechId?: string | null;
-  researchQueue?: string[];
-  researchedTechs?: string[];
-  researchedProgress?: Record<string, number>;
-  freeTechs?: number;
   warTurns?: Record<number, number>;
   peaceTreatyTurns?: Record<number, number>;
   /** Diplomatic treaties (Phase D): other-state id → active treaty kinds. Symmetric. */
   treaties?: Record<number, TreatyKind[]>;
+  /** the ruler's fiscal steering: targets drift the real budget each spring */
+  fiscal?: FiscalPolicyState;
+  /** the public work under construction, one at a time */
+  project?: ActiveProject;
   /** accumulated seasonal reserves (Living ledger); mirrored onto `state.economy.treasury` */
   treasury?: number;
 }
@@ -323,97 +336,26 @@ export interface LivingWorldState {
   eschaton?: number;
   /** one-time legacy trouble/lair -> faction migration has run (faction-trouble conversion) */
   threatsMigrated?: boolean;
-  /** completed World Wonder id -> owner and year; later Living World 2.0 slices */
-  worldWonders?: Record<string, { burgId: number; stateId: number; year: number }>;
-  /** 1UPT tactical unit state, keyed by `${stateId}-${regimentId}`; Slice 5.
-   *  After the armies migration this holds **utility regiments only**
-   *  (Settler, Builder, Work Boat, Caravan, Cargo Ship, Missionary, Inquisitor,
-   *  Great Prophet) — combat regiments are blocks + `armies` below. */
-  units?: Record<string, UnitSimState>;
-  /** Per-tick combat-army state, keyed by `${stateId}-${regimentId}` (living-openciv-armies.md §5.2).
+  /** Per-tick combat-army state, keyed by `${stateId}-${regimentId}`.
    *  Composition itself lives on `Regiment.units`; lazily initialized in `syncArmies`. */
   armies?: Record<string, ArmySimState>;
-  /** religion belief state, keyed by `pack.religions` id; lazily initialized by Slice 6 */
-  religions?: Record<number, ReligionBeliefState>;
+  /** completed public works (living-fmg-native.md phase 4) */
+  projects?: LivingProject[];
   activeTroubles?: Record<string, ProvinceTrouble>;
   /** upstream economy is stale after a development, market or border change; re-run `Production.produce()` */
   economyDirty?: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Living World 2.0 (OpenCiv) catalogs and simulation types. See docs/plans/living-openciv.md.
+// OpenCiv catalog types. The tile economy is removed (living-fmg-native.md
+// Phase 1); only the buildings catalog (flag families, siege HP) and the
+// improvement names survive, and the tech tree lasts until Phase 2.
 // ---------------------------------------------------------------------------
 
 export type CivYieldId = "food" | "production" | "gold" | "science" | "culture" | "faith" | "happiness";
 
 export type YieldValues = Record<CivYieldId, number>;
 export type YieldDelta = Partial<YieldValues>;
-
-export interface StateCityYieldBreakdown {
-  burgId: number;
-  name: string;
-  isCapital: boolean;
-  yields: YieldValues;
-  grossGold: number;
-  maintenance: number;
-  science: number;
-  citizens: number;
-  workedCells: number;
-  buildings: string[];
-}
-
-export interface StateYieldBreakdown {
-  total: YieldValues;
-  totalCitizens: number;
-  totalWorkedCells: number;
-  upkeep: number;
-  maintenance: number;
-  cities: StateCityYieldBreakdown[];
-  capital: StateCityYieldBreakdown | null;
-}
-
-export type CivEraId =
-  | "ancient"
-  | "classical"
-  | "medieval"
-  | "renaissance"
-  | "industrial"
-  | "modern"
-  | "atomic"
-  | "information";
-
-export type CivThemeId = "fantasy" | "historical" | "astral";
-
-export interface CivEraDef {
-  id: CivEraId;
-  name: string;
-  rows: readonly number[];
-}
-
-export interface CivTechNote {
-  text: string;
-  icon: string;
-}
-
-export interface CivTechTileBonus {
-  tileType: string;
-  freshWater?: boolean;
-  stats: YieldDelta;
-}
-
-export interface CivTechDef {
-  id: string;
-  name: string;
-  cost: number;
-  prerequisites: readonly string[];
-  row: number;
-  slot: number;
-  era: CivEraId;
-  description: string;
-  assetName?: string;
-  notes?: readonly CivTechNote[];
-  tileBonuses?: readonly CivTechTileBonus[];
-}
 
 export type UnitDomain = "land" | "sea";
 
@@ -607,105 +549,10 @@ export interface CivPromotionDef {
   notYet?: readonly string[];
 }
 
-export interface CivBeliefBuildingEffect {
-  building: string;
-  minFollowers?: number;
-  stats: YieldDelta;
-}
-
-export interface CivBeliefCityEffect {
-  minPopulation?: number;
-  river?: boolean;
-  stats: YieldDelta;
-}
-
-export interface CivBeliefEffects {
-  tileYields?: readonly CivTileYieldEffect[];
-  buildingYields?: readonly CivBeliefBuildingEffect[];
-  cityYields?: readonly CivBeliefCityEffect[];
-  wonderYields?: YieldDelta;
-  growthPercent?: number;
-  borderGrowthPercent?: number;
-  cityRangedPercent?: number;
-  wonderProduction?: { percent: number; eras: readonly CivEraId[] };
-  healNearCity?: number;
-  faithFromKills?: { range: number };
-  goldPerCity?: number;
-  happinessPerCities?: { per: number };
-  goldPerFollowers?: { per: number };
-  goldOnConversion?: number;
-  happinessPerForeignFollowers?: { per: number };
-  faithPerForeignCity?: number;
-  culturePerForeignFollowers?: { per: number };
-  faithBuildings?: readonly { building: string; faithCost: number }[];
-  faithUnits?: { beforeEra: CivEraId };
-  sciencePerOtherFollower?: number;
-  productionPercentPerFollower?: { percent: number; max: number };
-  growthPercentAtPeace?: number;
-  spreadRangePercent?: number;
-  spreadPressurePercent?: { percent: number; withTech?: { tech: string; percent: number } };
-  prophetCostPercent?: number;
-  prophetStrengthPercent?: number;
-  missionaryCostPercent?: number;
-  missionaryStrengthPercent?: number;
-  combatNearFriendlyPercent?: number;
-  combatNearEnemyPercent?: number;
-  faithOnGreatPerson?: number;
-}
-
-export interface CivBeliefDef {
-  id: string;
-  name: string;
-  text: string;
-  description: string;
-  yields?: YieldDelta;
-  effects?: CivBeliefEffects;
-  notYet?: readonly string[];
-}
-
-export interface CivThemeProfile {
-  id: CivThemeId;
-  label: string;
-  eraCap: CivEraId;
-  eraNames: Readonly<Record<CivEraId, string>>;
-  techNames: Readonly<Record<string, string>>;
-  unitNames: Readonly<Record<string, string>>;
-  buildingNames: Readonly<Record<string, string>>;
-  improvementNames: Readonly<Record<string, string>>;
-}
-
-export interface ProductionItem {
-  kind: "unit" | "building" | "wonder" | "trouble" | "operation";
-  id: string;
-  targetFactionId?: number;
-  targetNodeKey?: string;
-}
-
 export interface CellSimState {
   improvement?: string | null;
   pillaged?: boolean;
   progress?: Record<string, number>;
-}
-
-export type CellYieldSourceKind = "terrain" | "resource" | "improvement" | "minor_burg" | "tech";
-
-/** One additive contribution to a cell's OpenCiv yields, shown in the Living inspector. */
-export interface CellYieldSource {
-  kind: CellYieldSourceKind;
-  id: string;
-  label: string;
-  yields: YieldDelta;
-}
-
-/** An `options.map.goods` entry classified into OpenCiv's resource taxonomy. */
-export interface CellResourceInfo {
-  goodId: number;
-  goodName: string;
-  /** matching OpenCiv resource id, when the FMG good name maps cleanly */
-  resourceId: string | null;
-  class: CivResourceClass;
-  /** strategic resources stay hidden until their reveal tech is known */
-  revealed: boolean;
 }
 
 export interface CellTerrainInfo {
@@ -717,50 +564,6 @@ export interface CellTerrainInfo {
   elevation: 0 | 1 | 2;
   movementCost: number;
   hasFreshWater: boolean;
-}
-
-export interface ReligionBeliefState {
-  religionId: number;
-  founderStateId: number;
-  holyCityBurgId: number;
-  pantheonId?: string;
-  founderBeliefId?: string;
-  followerBeliefIds: string[];
-  enhancerBeliefId?: string;
-  enhanced: boolean;
-}
-
-export interface HappinessBreakdown {
-  base: number;
-  luxuries: number;
-  buildings: number;
-  religion: number;
-  /** upstream Prosperity of the state's people, when the economy has run */
-  prosperity?: number;
-  cityUnhappiness: number;
-  citizenUnhappiness: number;
-  unrestUnhappiness: number;
-}
-
-export interface UnitSimState {
-  unitTypeId: string;
-  domain: UnitDomain;
-  combatClass: UnitCombatClass;
-  isUtility: boolean;
-  hp: number;
-  movement: number;
-  maxMovement: number;
-  combatStrength: number;
-  rangedStrength: number;
-  range: number;
-  xp: number;
-  level: number;
-  promotions: string[];
-  fortified: boolean;
-  hasAttacked: boolean;
-  spreadCharges?: number;
-  conversionStrength?: number;
-  workOrder?: { improvementId: string; turnsLeft: number } | null;
 }
 
 // ---------------------------------------------------------------------------

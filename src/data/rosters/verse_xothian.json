@@ -1,0 +1,131 @@
+{
+  "id": "verseXothianBase",
+  "name": "Xothian Void-Broods & Star-Spawn",
+  "roster": {
+    "id": "verseXothianBase",
+    "units": {
+      "chitin_reavers": {
+        "name": "Xothian Chitin-Claw Reavers",
+        "category": "melee",
+        "quantity": 180,
+        "attack": 13,
+        "defense": 9,
+        "charge": 10,
+        "missile": 0,
+        "cost": 16,
+        "upkeep": 0.12,
+        "capacityCost": { "m": 3, "w": 1, "s": 1, "c": 0 }
+      },
+      "bile_symbiotes": {
+        "name": "Bio-Plasma Symbiote Gunners",
+        "category": "ranged",
+        "quantity": 120,
+        "attack": 6,
+        "defense": 8,
+        "charge": 3,
+        "missile": 15,
+        "cost": 18,
+        "upkeep": 0.14,
+        "capacityCost": { "m": 2, "w": 2, "s": 1, "c": 0 }
+      },
+      "void_swarmer_pods": {
+        "name": "Chitinous Void-Swarmer Boarding Pods",
+        "category": "cavalry",
+        "quantity": 30,
+        "attack": 14,
+        "defense": 9,
+        "charge": 16,
+        "missile": 8,
+        "cost": 26,
+        "upkeep": 0.21,
+        "capacityCost": { "m": 3, "w": 2, "s": 1, "c": 0 }
+      },
+      "bio_plasma_cruisers": {
+        "name": "Living Bio-Plasma Spore Cruisers",
+        "category": "artillery",
+        "quantity": 10,
+        "attack": 11,
+        "defense": 13,
+        "charge": 5,
+        "missile": 18,
+        "cost": 42,
+        "upkeep": 0.34,
+        "capacityCost": { "m": 3, "w": 3, "s": 2, "c": 0 },
+        "powers": { "terror": 0.07 }
+      },
+      "star_spawn_leviathan": {
+        "name": "Void-Born Star-Spawn World-Devourer",
+        "category": "monster",
+        "quantity": 2,
+        "attack": 22,
+        "defense": 17,
+        "charge": 16,
+        "missile": 14,
+        "cost": 66,
+        "upkeep": 0.53,
+        "capacityCost": { "m": 4, "w": 3, "s": 4, "c": 0 },
+        "powers": { "terror": 0.12, "heal": 8 }
+      },
+      "brood_synapse_chorus": {
+        "name": "Xothian Telepathic Brood-Chorus",
+        "category": "spellcaster",
+        "quantity": 16,
+        "attack": 6,
+        "defense": 8,
+        "charge": 2,
+        "missile": 16,
+        "cost": 38,
+        "upkeep": 0.3,
+        "capacityCost": { "m": 1, "w": 2, "s": 4, "c": 1 },
+        "powers": { "hex": 0.08, "terror": 0.06 }
+      },
+      "cultist_thralls": {
+        "name": "Void-Crazed Cultist Thralls",
+        "category": "melee",
+        "quantity": 200,
+        "attack": 4,
+        "defense": 4,
+        "charge": 3,
+        "missile": 0,
+        "cost": 4,
+        "upkeep": 0.025,
+        "capacityCost": { "m": 1, "w": 0, "s": 0, "c": 0 }
+      },
+      "spore_slingers": {
+        "name": "Mutant Spore-Slingers",
+        "category": "ranged",
+        "quantity": 150,
+        "attack": 2,
+        "defense": 4,
+        "charge": 1,
+        "missile": 7,
+        "cost": 4,
+        "upkeep": 0.025,
+        "capacityCost": { "m": 1, "w": 0, "s": 0, "c": 0 }
+      }
+    },
+    "recruitable": [
+      "chitin_reavers",
+      "bile_symbiotes",
+      "void_swarmer_pods",
+      "bio_plasma_cruisers",
+      "star_spawn_leviathan",
+      "brood_synapse_chorus"
+    ],
+    "garrison": { "melee": "cultist_thralls", "ranged": "spore_slingers" },
+    "regimentMap": {
+      "infantry": "chitin_reavers",
+      "archers": "bile_symbiotes",
+      "cavalry": "void_swarmer_pods",
+      "artillery": "bio_plasma_cruisers"
+    },
+    "caps": {
+      "void_swarmer_pods": 4,
+      "bio_plasma_cruisers": 3,
+      "star_spawn_leviathan": 2,
+      "brood_synapse_chorus": 2
+    }
+  },
+  "tech": [],
+  "buildings": []
+}

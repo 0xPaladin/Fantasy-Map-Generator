@@ -38,11 +38,6 @@ describe("Factions .map Serialization and Legacy Migration", () => {
         establishedYear: 140
       }
     ],
-    science: 3,
-    currentTechId: "banking",
-    researchQueue: ["banking", "economics"],
-    researchedTechs: ["pottery", "currency", "sailing"],
-    researchedProgress: { banking: 45 },
     treasury: 450,
     influence: 120,
     military: [],

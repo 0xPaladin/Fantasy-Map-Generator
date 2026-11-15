@@ -1452,6 +1452,86 @@
           "filter": null,
           "mask": null
         }
+      },
+      "networks": {
+        "attrs": {
+          "opacity": 0.85,
+          "stroke": "#3dff9e",
+          "stroke-opacity": null,
+          "stroke-width": 0.45,
+          "stroke-dasharray": "5 4",
+          "stroke-linecap": "round",
+          "stroke-linejoin": null,
+          "filter": null,
+          "mask": null
+        }
+      }
+    }
+  },
+  "networks": {
+    "groups": {
+      "wormhole": {
+        "attrs": {
+          "opacity": 1,
+          "fill": "#c46bff",
+          "fill-opacity": 1,
+          "stroke": "#8e44ad",
+          "stroke-opacity": 1,
+          "stroke-width": 0.15,
+          "stroke-dasharray": null,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "filter": null
+        },
+        "options": {
+          "size": 1.2,
+          "linkColor": "#c46bff",
+          "linkWidth": 0.45,
+          "linkOpacity": 0.9,
+          "linkDash": "6 4"
+        }
+      },
+      "hyperlane": {
+        "attrs": {
+          "opacity": 1,
+          "fill": "#7ef9ff",
+          "fill-opacity": 1,
+          "stroke": "#0aa5c9",
+          "stroke-opacity": 1,
+          "stroke-width": 0.15,
+          "stroke-dasharray": null,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "filter": null
+        },
+        "options": {
+          "size": 1.1,
+          "linkColor": "#7ef9ff",
+          "linkWidth": 0.5,
+          "linkOpacity": 0.9,
+          "linkDash": "2 2"
+        }
+      },
+      "relay": {
+        "attrs": {
+          "opacity": 1,
+          "fill": "#3dff9e",
+          "fill-opacity": 1,
+          "stroke": "#17b977",
+          "stroke-opacity": 1,
+          "stroke-width": 0.15,
+          "stroke-dasharray": null,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "filter": null
+        },
+        "options": {
+          "size": 0.9,
+          "linkColor": "#3dff9e",
+          "linkWidth": 0.35,
+          "linkOpacity": 0.85,
+          "linkDash": "1.2 3"
+        }
       }
     }
   },

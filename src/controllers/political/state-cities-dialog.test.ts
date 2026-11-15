@@ -14,12 +14,18 @@ vi.mock("@/controllers", () => ({
 }));
 
 import { Controllers } from "@/controllers";
+import { Accounts } from "@/model/economy/accounts";
+import { Prosperity } from "@/model/economy/prosperity";
 import { Living } from "@/model/physical/living-generator";
+import { Stability } from "@/model/political/stability";
 import type { State } from "@/model/political/states-generator";
 import { openStateCitiesDialog, STATE_CITIES_DIALOG_ID } from "./state-cities-dialog";
 
-describe("StateCitiesDialog & getStateYieldBreakdown", () => {
+describe("State Cities & Economy dialog", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+
     document.body.innerHTML = /* html */ `<div id="dialogs"></div><svg id="viewbox"></svg>`;
 
     vi.stubGlobal("options", {
@@ -77,9 +83,7 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
       unravel: 0,
       warExhaustion: 0,
       claims: [],
-      grudges: [],
-      happiness: 10,
-      researchedTechs: ["pottery"]
+      grudges: []
     };
 
     living.burgs[1] = {
@@ -87,25 +91,14 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
       baseTier: 2,
       development: 0,
       developmentProgress: 0,
-      buildings: [],
+      buildings: ["library"],
       civBuildings: ["library"],
       construction: null,
       unrest: 0,
       originalOwner: 1,
       originalCulture: 1,
       originalReligion: 0,
-      isMajor: true,
-      citizens: 3,
-      workedCells: [1],
-      cityYields: {
-        food: 5,
-        production: 4,
-        gold: 6,
-        science: 3,
-        culture: 2,
-        faith: 1,
-        happiness: 0
-      }
+      isMajor: true
     };
 
     living.burgs[2] = {
@@ -113,44 +106,15 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
       baseTier: 1,
       development: 0,
       developmentProgress: 0,
-      buildings: [],
+      buildings: ["granary"],
       civBuildings: ["granary"],
       construction: null,
       unrest: 0,
       originalOwner: 1,
       originalCulture: 1,
       originalReligion: 0,
-      isMajor: true,
-      citizens: 2,
-      workedCells: [2],
-      cityYields: {
-        food: 4,
-        production: 2,
-        gold: 3,
-        science: 1,
-        culture: 1,
-        faith: 0,
-        happiness: 0
-      }
+      isMajor: true
     };
-  });
-
-  it("computes accurate state yield breakdown across cities and matches recomputeStateYields", () => {
-    const state = pack.states[1];
-    const breakdown = Living.getStateYieldBreakdown(state);
-
-    expect(breakdown.cities.length).toBe(2);
-    expect(breakdown.capital).not.toBeNull();
-    expect(breakdown.capital?.burgId).toBe(1);
-    expect(breakdown.capital?.isCapital).toBe(true);
-
-    expect(breakdown.total.food).toBe(9);
-    expect(breakdown.total.production).toBe(6);
-    expect(breakdown.totalCitizens).toBe(5);
-    expect(breakdown.totalWorkedCells).toBe(2);
-
-    const recomputed = Living.recomputeStateYields(state);
-    expect(recomputed).toEqual(breakdown.total);
   });
 
   it("shows the state's development and links each city's upstream economy", () => {
@@ -166,6 +130,9 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     openStateCitiesDialog(1);
 
     const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`) as HTMLElement;
+    expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}-dialog-title`)?.textContent).toContain(
+      "State Cities & Economy"
+    );
     expect(dialog.innerHTML).toContain("Development");
     expect(dialog.innerHTML).toContain("Renaissance");
     expect(dialog.querySelector("#stateCitiesBudgetBtn")).not.toBeNull();
@@ -176,7 +143,32 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     expect(Controllers.BurgEconomyOverview.open).toHaveBeenCalledWith(1);
   });
 
-  it("renders State Cities & Yields dialog with header, wide table, scroll styling, add city and add asset controls", () => {
+  it("shows prosperity and stability badges when the upstream economy is readable", () => {
+    pack.deals = [[1, 1]] as never;
+    pack.cells.market = Uint16Array.from([0, 0, 0, 0]);
+    options.map.goods = [{}] as never;
+
+    vi.spyOn(Accounts, "ofState").mockReturnValue({ prosperity: 0.62 } as never);
+    vi.spyOn(Stability, "get").mockReturnValue({ stability: 0.81 } as never);
+    vi.spyOn(Prosperity, "getBurg").mockReturnValue({ prosperity: 0.55 } as never);
+
+    openStateCitiesDialog(1);
+
+    const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`) as HTMLElement;
+    expect(dialog.innerHTML).toContain("Prosperity: 62%");
+    expect(dialog.innerHTML).toContain("Stability: 81%");
+    expect(dialog.querySelector("#stateCitiesTable")?.innerHTML).toContain("55%");
+    expect(dialog.innerHTML).not.toContain("Research");
+
+    (dialog.querySelector("#stateCitiesEconomyBtn") as HTMLButtonElement).click();
+    expect(Controllers.EconomyOverview.open).toHaveBeenCalledWith("state", 1);
+
+    (dialog.querySelector("#stateCitiesStabilityBtn") as HTMLButtonElement).click();
+    expect(Controllers.StabilityOverview.open).toHaveBeenCalledWith(1);
+  });
+
+  it("renders the Cities & Economy dialog with header, cities, assets and add city controls", () => {
+    Living.getState().burgs[2].construction = { buildingId: "monument", turnsLeft: 2 };
     openStateCitiesDialog(1);
 
     const dialog = document.querySelector(`#${STATE_CITIES_DIALOG_ID}`) as HTMLElement;
@@ -186,12 +178,17 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     expect(dialog?.innerHTML).toContain("Capital: Aelor");
     expect(dialog?.innerHTML).toContain("Aelor");
     expect(dialog?.innerHTML).toContain("Oakhaven");
-    expect(dialog?.innerHTML).toContain("Library");
-    expect(dialog?.innerHTML).toContain("Granary");
 
     // Dialog styling has width and y-axis scroll
     expect(dialog?.style.overflowY).toBe("auto");
     expect(dialog?.style.minWidth).toContain("860px");
+
+    // Cities table has the rewritten City/Pop/Prosperity/Actions columns
+    const cityHeader = dialog.querySelector("#stateCitiesTable .header")?.innerHTML ?? "";
+    expect(cityHeader).toContain("City");
+    expect(cityHeader).toContain("Pop");
+    expect(cityHeader).toContain("Prosperity");
+    expect(cityHeader).toContain("Actions");
 
     // Cities table has 2 rows for initial major cities
     let cityRows = dialog?.querySelectorAll("#stateCitiesTable > .states");
@@ -212,15 +209,14 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     expect(addCityBtn).not.toBeNull();
     expect(citySelect?.innerHTML).toContain("Riverbend");
 
-    // Add asset controls
-    const assetCitySelect = document.querySelector<HTMLSelectElement>("#newStateAssetCitySelect");
-    const assetSelect = document.querySelector<HTMLSelectElement>("#newStateAssetSelect");
-    const addAssetBtn = document.querySelector<HTMLButtonElement>("#addStateAssetBtn");
-    expect(assetCitySelect).not.toBeNull();
-    expect(assetSelect).not.toBeNull();
-    expect(addAssetBtn).not.toBeNull();
-    expect(assetCitySelect?.innerHTML).toContain("Aelor");
-    expect(assetSelect?.innerHTML).toContain("Monument");
+    // Assets tab lists completed buildings and works under way, with no picker
+    const assetsTableText = dialog.querySelector("#stateAssetsTable")?.textContent?.toLowerCase() ?? "";
+    expect(assetsTableText).toContain("library");
+    expect(assetsTableText).toContain("granary");
+    expect(assetsTableText).toContain("monument");
+    expect(assetsTableText).toContain("2 seasons left");
+    expect(dialog.querySelector("#newStateAssetSelect")).toBeNull();
+    expect(dialog.querySelector("#addStateAssetBtn")).toBeNull();
 
     // Test adding Riverbend as a major city
     citySelect!.value = "3";
@@ -229,27 +225,8 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     // Dialog re-renders with 3 major cities
     cityRows = document.querySelectorAll("#stateCitiesTable > .states");
     expect(cityRows?.length).toBe(3);
+    expect(Living.getState().burgs[3]?.isMajor).toBe(true);
     expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).toContain("Riverbend");
-
-    // Test adding an asset (Monument) to Aelor
-    const assetCitySelAfter = document.querySelector<HTMLSelectElement>("#newStateAssetCitySelect");
-    const assetSelAfter = document.querySelector<HTMLSelectElement>("#newStateAssetSelect");
-    const addAssetBtnAfter = document.querySelector<HTMLButtonElement>("#addStateAssetBtn");
-    assetCitySelAfter!.value = "1";
-    assetSelAfter!.value = "monument";
-    addAssetBtnAfter!.click();
-
-    let assetRows = document.querySelectorAll("#stateAssetsTable > .states");
-    expect(assetRows?.length).toBe(3);
-    expect(document.querySelector(`#${STATE_CITIES_DIALOG_ID}`)?.innerHTML).toContain("Monument");
-
-    // Test dismantling the newly added Monument
-    const removeMonumentBtn = document.querySelector<HTMLButtonElement>('.removeAssetBtn[data-building-id="monument"]');
-    expect(removeMonumentBtn).not.toBeNull();
-    removeMonumentBtn!.click();
-
-    assetRows = document.querySelectorAll("#stateAssetsTable > .states");
-    expect(assetRows?.length).toBe(2);
 
     // Test removing Riverbend from major cities
     const removeRiverbendBtn = document.querySelector<HTMLButtonElement>('.removeCityBtn[data-burg-id="3"]');
@@ -258,6 +235,7 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
 
     cityRows = document.querySelectorAll("#stateCitiesTable > .states");
     expect(cityRows?.length).toBe(2);
+    expect(Living.getState().burgs[3]?.isMajor).toBe(false);
     // the cities table drops Riverbend; it re-appears only in the add-city select
     expect(document.querySelector("#stateCitiesTable")?.innerHTML).not.toContain("Riverbend");
   });
@@ -315,7 +293,7 @@ describe("StateCitiesDialog & getStateYieldBreakdown", () => {
     const addBtn = document.querySelector<HTMLButtonElement>("#addStateForceBtn")!;
 
     expect(locSelect).not.toBeNull();
-    locSelect.value = "burg:1";
+    locSelect.value = "1";
     nameInput.value = "Royal Guard";
     troopsInput.value = "200";
     addBtn.click();

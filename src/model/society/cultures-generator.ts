@@ -1188,7 +1188,7 @@ class CulturesGenerator {
         {
           name: "The One (Nexus)",
           development: 90,
-          base: "VRFRN",
+          base: "VRONE",
           odd: 0.8,
           sort: (i: number) => n(i) / td(i, -10),
           shield: "square"

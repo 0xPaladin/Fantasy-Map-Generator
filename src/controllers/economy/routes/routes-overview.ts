@@ -309,7 +309,7 @@ function triggerRouteRemove(this: HTMLElement): void {
       const route = pack.routes.find((r: Route) => r.i === routeId) as Route;
       Dialog.close("routeEditor"); // it may be editing this route
       Routes.remove(route.i);
-      Layers.draw("routes", "labels", "goods", "trade");
+      Layers.draw("routes", "networks", "labels", "goods", "trade");
       routesTable.refresh();
     }
   });
@@ -350,7 +350,7 @@ function triggerAllRoutesRemove(): void {
       }
       Dialog.close("routeEditor"); // it may be editing one of them
       Routes.remove(...routesToRemove.map(route => route.i));
-      Layers.draw("routes", "labels", "goods", "trade");
+      Layers.draw("routes", "networks", "labels", "goods", "trade");
       routesTable.refresh();
     }
   });
@@ -372,7 +372,7 @@ async function uploadRoutesCsv(text: string): Promise<void> {
   );
   if (!updated) return;
 
-  Layers.draw("routes", "labels", "trade");
+  Layers.draw("routes", "networks", "labels", "trade");
   routesTable.refresh();
 }
 
