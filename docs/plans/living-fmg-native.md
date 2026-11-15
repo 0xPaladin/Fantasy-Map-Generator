@@ -1,6 +1,6 @@
 # Plan — Living World on FMG Rails (OpenCiv removal & native dynamism)
 
-**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), Phase 3 done (rulers govern the purse), Phase 4 done (public works), Phase 5 done (trouble economics), **Phase 6 done** (factions ride the rails: no city loop, income on the upstream hooks, asset works funded from treasury and paid into host towns).
+**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), Phase 3 done (rulers govern the purse), Phase 4 done (public works), Phase 5 done (trouble economics), Phase 6 done (factions ride the rails), **Phase 7 done** (unitless religious drift on court spending, zeal and holy ground).
 **Companions:** [upstream-economy-alignment.md](upstream-economy-alignment.md) (the bridge this plan builds on), [living-world.md](living-world.md) (original vision), [living-openciv.md](living-openciv.md) (superseded), [living-openciv-armies.md](living-openciv-armies.md) (partially superseded), [factions-civ-engine.md](factions-civ-engine.md) (partially superseded), [remove-living-guild.md](remove-living-guild.md)
 
 ## Execution policy
@@ -223,7 +223,7 @@ Factions lose their node economies, keep their soul:
 | 4 | **Projects**: catalog, funding via orders + treasury, effects into `simAdjustments`/flags/development/output seams, Projects tab UI; Royal Road draws real route links and Market Charter converts a burg into a market center. | a granary consumes real stone and shows as a line ✅ |
 | 5 | **Trouble economics**: hazard → negative lines, clearing paths wired, ruins rewards | a hazard drains a treasury and is cleared ✅ |
 | 6 | **Factions re-anchored**: delete node loop; income/forces/raids/suppression/ascension on rails; faction project lines | faction sheet shows income & lines, no city fields ✅ |
-| 7 | **Religious drift**: unitless conversions, chronicle, holy-site pressure | province flips over ~decades on a test map |
+| 7 | **Religious drift**: unitless conversions, chronicle, holy-site pressure | province flips over ~decades on a test map ✅ |
 | 8 | **Polish & docs**: HUD/card rebuild final pass, wiki/data-model/economy docs, test refresh, save compat sweep, delete superseded plan docs | full suite green, docs current |
 
 Each phase lands independently buildable with its completion record appended here, mirroring `upstream-economy-alignment.md`.
@@ -235,6 +235,16 @@ Each phase lands independently buildable with its completion record appended her
 - **KPI drift**: hazard drains and project income shift economy KPIs 11/14 (states' cut, treasury concentration) — re-measure with the tuner after phases 4–5.
 - **Mobile burgs**: verified in Phase 1 — live wandering reads `pack.cells`/`Burgs.move`/`Routes`, never the stripped fields.
 - **Astral mode**: post-scarcity hooks read development/prosperity, not OpenCiv fields — audited in Phase 2: the astral regime still shapes diffusion caps (`ANCIENT_SUPPRESSED_CAP`) and `Output`/`Prosperity` read development unchanged.
+
+### Phase 7 completion record (done)
+
+**Shipped:** `src/model/physical/living-generator.ts` (spring drift, pressure model, conversion); tests in the generator suite. `tsc` clean, Biome clean, **3,728 tests passing**, Vite build green.
+
+- **No units, no beliefs**: the old prophets/missionaries/pressure engine is gone (Phase 1). Faith now moves only through the seasonal drift: each spring, a state's provinces whose majority is not the state's faith may convert.
+- **Pressure model** (`Living.religiousPressure`): `(0.08 + 0.6 × court provision) × (0.5 + ruler zeal) × (1 + co-religionist share) × (1.25 if the state holds the faith's holy site) × (1 − 0.8 × holdout share)`, clamped to 0–0.85. Court provision comes from stock `StateOrders.getProvision(state, "court")`, zeal from the ruler's (and magistrate's) pious bias; a tolerant ruler simply presses less.
+- **Conversion** (`Living.convertProvince`): on a successful roll, 4–12% of holdout cells take the state faith — **rural cells first, then other burgs, the province capital last**. A strict majority is required to stop; ties keep drifting. Every conversion marks the economy dirty, so the next run's corruption, diversity and stability read the new faith mix.
+- **Chronicle**: when a province's majority flips, a `religion` dispatch and a `schism` history entry name the province, faith and state. Ruins and conquest are unchanged; a zealous conqueror assimilates over decades on the stock rails, a tolerant one carries the diversity penalty.
+- **Tests**: four drift tests — pressure rises with court spending and zeal and falls with tolerance; 20 attempts flip the rural holdout and chronicle the flip; a held holy site raises pressure; no state faith means no drift.
 
 ### Phase 6 completion record (done)
 

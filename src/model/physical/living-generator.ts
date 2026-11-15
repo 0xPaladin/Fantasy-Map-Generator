@@ -31,6 +31,7 @@ import { garrisonUnits, minorGarrisonUnits } from "@/model/battle/garrisons";
 import { Markets } from "@/model/economy/markets-generator";
 import { Production } from "@/model/economy/production-generator";
 import { Routes } from "@/model/economy/routes-generator";
+import { StateOrders } from "@/model/economy/state-orders";
 import { type FigureBias, figureBias } from "@/model/physical/figure-bias";
 import {
   armyHp,
@@ -895,6 +896,7 @@ class LivingModel {
         if (currentEra) currentEra.to = options.map.lore.calendar.year;
         this.stepRulers(living);
         this.stepFiscalPolicy(living);
+        this.stepReligiousDrift(living);
         this.stepGrudges(living);
         this.captureSnapshot(living);
       }
@@ -7298,6 +7300,103 @@ class LivingModel {
       stateId: state.i,
       burgId: burg.i
     });
+  }
+
+  /** Spring: faith drifts province by province on court spending, zeal and holy ground. */
+  private stepReligiousDrift(_living: LivingWorldState): void {
+    if (!pack.cells.religion) return;
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      if (!this.getStateReligion(state)) continue;
+      for (const province of this.ownedProvinces(state.i)) this.convertProvince(state.i, province.i);
+    }
+  }
+
+  /** One spring's conversion attempt in a province; returns how many cells took the state faith. */
+  convertProvince(stateId: number, provinceId: number, attempt = 0): number {
+    const living = this.getState();
+    if (!pack.cells.religion) return 0;
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed) return 0;
+    const faith = this.getStateReligion(state);
+    if (!faith) return 0;
+
+    const mix = this.provinceFaithMix(provinceId);
+    if (!mix || mix.total === 0) return 0;
+    if ((mix.counts.get(faith) ?? 0) > mix.total / 2) return 0; // already the faith's province
+
+    const pressure = this.religiousPressure(stateId, provinceId);
+    if (pressure <= 0) return 0;
+    if (!this.rng("religion:drift", provinceId * 1000 + attempt, living.tick).chance(pressure)) return 0;
+
+    const province = pack.provinces?.[provinceId];
+    const capitalCell = province?.burg ? pack.burgs[province.burg]?.cell : undefined;
+    const holdouts = mix.cells
+      .filter(cell => pack.cells.religion![cell] !== faith)
+      .sort((a, b) => {
+        const rank = (cell: number) => (cell === capitalCell ? 2 : Number(pack.cells.burg?.[cell] ?? 0) > 0 ? 1 : 0);
+        return rank(a) - rank(b) || a - b;
+      });
+    if (!holdouts.length) return 0;
+
+    const convert = Math.max(1, Math.floor(holdouts.length * (0.04 + 0.12 * pressure)));
+    for (const cell of holdouts.slice(0, convert)) pack.cells.religion[cell] = faith;
+    living.economyDirty = true; // faith feeds corruption, diversity and stability
+
+    const converted = this.provinceFaithMix(provinceId);
+    const nowMajority = converted ? (converted.counts.get(faith) ?? 0) > converted.total / 2 : false;
+    if (nowMajority) {
+      const religionName = pack.religions?.[faith]?.name ?? "the faith";
+      const text = `${province?.name ?? "A province"} now follows ${religionName} under ${state.name}.`;
+      this.pushNews(living, {
+        kind: "religion",
+        text,
+        cell: province?.center,
+        stateId,
+        ...(province?.burg ? { burgId: province.burg } : {})
+      });
+      this.pushHistory(
+        "schism",
+        [{ kind: "state", id: stateId }, ...(province?.burg ? [{ kind: "burg", id: province.burg } as HistRef] : [])],
+        province?.center,
+        text
+      );
+    }
+    return convert;
+  }
+
+  /** Chance a province's holdouts convert this spring, 0..0.85 (court spending × zeal × holy ground). */
+  religiousPressure(stateId: number, provinceId: number): number {
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed || !pack.cells.religion) return 0;
+    const faith = this.getStateReligion(state);
+    if (!faith) return 0;
+    const mix = this.provinceFaithMix(provinceId);
+    if (!mix || mix.total === 0) return 0;
+
+    const share = (mix.counts.get(faith) ?? 0) / mix.total;
+    if (share >= 1) return 0;
+    const court = StateOrders.getProvision(state, "court");
+    const zeal = minmax(rulerBias(stateId)?.pious ?? 0.1, 0, 0.8);
+    const holyCell = pack.religions?.[faith]?.center;
+    const holdsHolySite =
+      holyCell !== undefined && holyCell >= 0 && Number(pack.cells.state?.[holyCell] ?? 0) === stateId;
+    const pressure = (0.08 + 0.6 * court) * (0.5 + zeal) * (1 + share) * (holdsHolySite ? 1.25 : 1) * (1 - share * 0.8);
+    return Math.round(minmax(pressure, 0, 0.85) * 1000) / 1000;
+  }
+
+  /** A province's cells, counted by faith. */
+  private provinceFaithMix(provinceId: number): { total: number; counts: Map<number, number>; cells: number[] } | null {
+    const religion = pack.cells.religion;
+    if (!religion) return null;
+    const cells = this.provinceCells(provinceId).filter(cell => Number(religion[cell] ?? 0) > 0);
+    if (!cells.length) return null;
+    const counts = new Map<number, number>();
+    for (const cell of cells) {
+      const faith = Number(religion[cell]);
+      counts.set(faith, (counts.get(faith) ?? 0) + 1);
+    }
+    return { total: cells.length, counts, cells };
   }
 
   /** Step province order, stability, and trouble progression. */

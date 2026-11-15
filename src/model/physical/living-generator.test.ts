@@ -4189,4 +4189,58 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(Number(faction.treasury)).toBeLessThan(500);
     });
   });
+
+  describe("Religious drift (living-fmg-native Phase 7)", () => {
+    /** State 1 with a zealous, well-funded court and one foreign-faith holdout in its province. */
+    function faithWorld() {
+      const living = Living.init();
+      const state = pack.states[1];
+      state.urban = 100;
+      state.rural = 100;
+      state.economy.spent = { court: 16, administration: 0, infrastructure: 0, military: 0 } as never;
+      const ruler = pack.history.figures!.find(figure => figure.i === living.states[1]!.rulerId)!;
+      ruler.virtues = ["reverent", "zealous", "faithful"];
+      ruler.vices = [];
+      ruler.alignment = "lawful";
+      pack.cells.religion = new Uint8Array([0, 1, 2, 2, 2, 3]);
+      pack.religions![1] = { i: 1, name: "Solar Church" } as never;
+      return { living, state };
+    }
+
+    it("reads court spending and a pious ruler as conversion pressure", () => {
+      const { living, state } = faithWorld();
+      const zealot = Living.religiousPressure(1, 1);
+      expect(zealot).toBeGreaterThan(0.2);
+
+      const ruler = pack.history.figures!.find(figure => figure.i === living.states[1]!.rulerId)!;
+      ruler.virtues = [];
+      ruler.alignment = "neutral";
+      const tolerant = Living.religiousPressure(1, 1);
+      expect(tolerant).toBeLessThan(zealot);
+
+      state.economy.spent = { court: 0, administration: 0, infrastructure: 0, military: 0 } as never;
+      expect(Living.religiousPressure(1, 1)).toBeLessThan(tolerant);
+    });
+
+    it("converts rural holdouts first and chronicles the province's flip", () => {
+      const { living } = faithWorld();
+      for (let attempt = 0; attempt < 20; attempt++) Living.convertProvince(1, 1, attempt);
+
+      expect(pack.cells.religion![2]).toBe(1); // the rural holdout took the state faith
+      expect(living.recentNews.some(item => item.kind === "religion" && item.text.includes("Solar Church"))).toBe(true);
+    });
+
+    it("gives a state holding the faith's holy site more pull", () => {
+      faithWorld();
+      const plain = Living.religiousPressure(1, 1);
+      pack.religions![1] = { i: 1, name: "Solar Church", center: 1 } as never; // the capital cell is the holy site
+      expect(Living.religiousPressure(1, 1)).toBeGreaterThan(plain);
+    });
+
+    it("never drifts a province without a state faith", () => {
+      faithWorld();
+      pack.cells.religion![1] = 0; // the capital holds no faith
+      expect(Living.religiousPressure(1, 1)).toBe(0);
+    });
+  });
 });
