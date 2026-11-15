@@ -1,5 +1,19 @@
 // Living World simulation state types. See docs/plans/living-world.md
 
+import type { Expense } from "@/data/expenses";
+
+/** A line of a state's fiscal policy the ruler can be pinned away from. */
+export type FiscalLock = Expense | "corruption" | "salesTax" | "pollTax";
+
+/** The ruler's fiscal steering: who set the target, pinned lines, and dispatch state. */
+export interface FiscalPolicyState {
+  rulerId?: number;
+  locks?: FiscalLock[];
+  /** values when the ruler took the throne, for the "what changed" dispatch */
+  baseline?: Partial<Record<FiscalLock, number>>;
+  logged?: Partial<Record<FiscalLock, boolean>>;
+}
+
 export type SeasonId = 0 | 1 | 2 | 3;
 
 export const SEASON_NAMES = ["Spring", "Summer", "Autumn", "Winter"] as const;
@@ -243,6 +257,8 @@ export interface StatePolitySim {
   peaceTreatyTurns?: Record<number, number>;
   /** Diplomatic treaties (Phase D): other-state id → active treaty kinds. Symmetric. */
   treaties?: Record<number, TreatyKind[]>;
+  /** the ruler's fiscal steering: targets drift the real budget each spring */
+  fiscal?: FiscalPolicyState;
   /** accumulated seasonal reserves (Living ledger); mirrored onto `state.economy.treasury` */
   treasury?: number;
 }

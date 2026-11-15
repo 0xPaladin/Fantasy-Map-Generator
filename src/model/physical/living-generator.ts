@@ -2,6 +2,7 @@
 
 import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { ANCIENT_SUPPRESSED_CAP } from "@/data/development";
+import { EXPENSES, type Expense } from "@/data/expenses";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
 import { RESOURCE_FACTION_IDS } from "@/data/living-troubles";
@@ -51,6 +52,18 @@ import {
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
 import { factionUpstreamIncome, SEASON_DAYS } from "@/model/physical/living-faction-economy";
+import {
+  CORRUPTION_DRIFT,
+  CORRUPTION_NEWS_THRESHOLD,
+  FISCAL_DRIFT,
+  FISCAL_NEWS_THRESHOLD,
+  type FiscalEvents,
+  fiscalProfile,
+  fiscalStride,
+  fiscalTarget,
+  fiscalValue,
+  TAX_DRIFT
+} from "@/model/physical/living-fiscal";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
@@ -82,6 +95,7 @@ import type {
   BurgSimState,
   CellTerrainInfo,
   CivResourceClass,
+  FiscalLock,
   GrudgeReason,
   HeroDoctrine,
   HeroGuildState,
@@ -112,6 +126,20 @@ const GIANT_PROVINCE_LIMIT = 3;
 const DEVELOPMENT_DECAY_SLACK = 3; // rural cells keep a little more than their land allows
 const CHARTER_TITHE = "Chartered Faction Tithes"; // the state budget line charters pay
 const SABOTAGE_ORDER = 15; // public order a ruined working costs its province
+
+/** What a move in one fiscal line reads like, as [raised, lowered] predicate completions. */
+const FISCAL_PHRASES: Record<FiscalLock, readonly [string, string]> = {
+  military: ["musters a greater share of its taxes for the army.", "lets its army's share of the taxes wither."],
+  court: ["gilds its court while the provinces wait.", "tightens its court's belt."],
+  administration: [
+    "grows its chancery: more clerks and fewer bribes.",
+    "thins its chancery, and the clerks grow greedy."
+  ],
+  infrastructure: ["lays roads and granaries across its provinces.", "shelves its public works for another year."],
+  corruption: ["lets graft spread among its officials.", "reins in its officials' cut."],
+  salesTax: ["raises the sales tax.", "eases the sales tax."],
+  pollTax: ["raises the head tax.", "eases the head tax."]
+};
 
 const ERA_EPITHETS = ["Ash", "the Compact", "Drowned Kings", "Iron and Salt", "Quiet Stars", "Broken Crowns"] as const;
 const ERA_ORDINALS = [
@@ -845,6 +873,7 @@ class LivingModel {
         const currentEra = pack.history?.eras?.at(-1);
         if (currentEra) currentEra.to = options.map.lore.calendar.year;
         this.stepRulers(living);
+        this.stepFiscalPolicy(living);
         this.stepGrudges(living);
         this.captureSnapshot(living);
       }
@@ -1363,6 +1392,118 @@ class LivingModel {
     return ["cruel", "greedy", "slothful", "cowardly", "vengeful", "wrathful", "paranoid"].some(vice =>
       vices.has(vice)
     );
+  }
+
+  /** Spring: the ruler's fiscal target pulls the real budget, taxes and graft. */
+  private stepFiscalPolicy(living: LivingWorldState): void {
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+      const stride = Math.min(fiscalStride(state), FISCAL_DRIFT);
+      if (!stride) continue;
+      const profile = fiscalProfile(state, this.fiscalEvents(state, living));
+      if (!profile) continue;
+
+      this.ensureFiscalBaseline(state, sSim);
+      const locks = new Set(sSim.fiscal?.locks ?? []);
+      let changed = false;
+
+      const budget: Partial<Record<Expense, number>> = {};
+      for (const line of EXPENSES) {
+        if (locks.has(line)) continue;
+        const next = this.driftNumber(fiscalValue(state, line), fiscalTarget(profile, line), stride);
+        if (next !== fiscalValue(state, line)) budget[line] = next;
+      }
+      if (Object.keys(budget).length) {
+        States.setBudget(state.i, budget);
+        changed = true;
+      }
+
+      if (!locks.has("corruption")) {
+        const current = state.economy.budget.corruption;
+        const next = this.driftNumber(current, profile.corruption, CORRUPTION_DRIFT);
+        if (next !== current) {
+          States.setCorruption(state.i, next);
+          changed = true;
+        }
+      }
+
+      if (!locks.has("salesTax") || !locks.has("pollTax")) {
+        const sales = locks.has("salesTax")
+          ? state.economy.salesTax
+          : this.driftNumber(state.economy.salesTax, profile.salesTax, TAX_DRIFT, 4);
+        const poll = locks.has("pollTax")
+          ? state.economy.pollTax
+          : this.driftNumber(state.economy.pollTax, profile.pollTax, TAX_DRIFT, 4);
+        if (sales !== state.economy.salesTax || poll !== state.economy.pollTax) {
+          States.setTaxes(state.i, sales, poll);
+          changed = true;
+        }
+      }
+
+      if (!changed) continue;
+      living.economyDirty = true; // the run's taxes, spending and graft follow the purse
+      this.pushFiscalNews(state, sSim, locks, living);
+    }
+  }
+
+  /** The political weather the purse must answer this spring. */
+  private fiscalEvents(state: State, living: LivingWorldState): FiscalEvents {
+    return {
+      war: this.stateAtWar(state),
+      rebellion: (living.states[state.i]?.unravel ?? 0) >= 50,
+      hazard: this.ownedProvinces(state.i).some(province => Boolean(living.provinces[province.i]?.trouble)),
+      bankrupt: Number(state.economy.treasury ?? 0) < 0
+    };
+  }
+
+  /** Each ruler starts with a baseline so a later dispatch can say what changed. */
+  private ensureFiscalBaseline(state: State, sSim: StatePolitySim): void {
+    if (!sSim.fiscal) sSim.fiscal = {};
+    const fiscal = sSim.fiscal;
+    if (fiscal.rulerId === sSim.rulerId && fiscal.baseline) return;
+    fiscal.rulerId = sSim.rulerId;
+    fiscal.logged = {};
+    fiscal.baseline = Object.fromEntries(
+      [...EXPENSES, "corruption", "salesTax", "pollTax"].map(line => [line, fiscalValue(state, line as FiscalLock)])
+    ) as Partial<Record<FiscalLock, number>>;
+  }
+
+  /** Move one value toward its target by at most `stride`, rounded to `decimals`. */
+  private driftNumber(current: number, target: number, stride: number, decimals = 0): number {
+    const step = Math.min(stride, Math.abs(target - current));
+    const next = current + Math.sign(target - current) * step;
+    const scale = 10 ** decimals;
+    return Math.round(next * scale) / scale;
+  }
+
+  /** One dispatch per spring at most: the line the ruler moved furthest from accession. */
+  private pushFiscalNews(state: State, sSim: StatePolitySim, locks: Set<FiscalLock>, living: LivingWorldState): void {
+    const baseline = sSim.fiscal?.baseline;
+    if (!baseline) return;
+    let best: { line: FiscalLock; deviation: number; value: number } | null = null;
+    for (const line of [...EXPENSES, "corruption", "salesTax", "pollTax"] as FiscalLock[]) {
+      if (locks.has(line) || sSim.fiscal?.logged?.[line]) continue;
+      const start = baseline[line];
+      if (start === undefined) continue;
+      const value = fiscalValue(state, line);
+      const deviation =
+        line === "salesTax" || line === "pollTax" ? Math.abs(value - start) * 100 : Math.abs(value - start);
+      const threshold =
+        line === "corruption"
+          ? CORRUPTION_NEWS_THRESHOLD
+          : line === "salesTax" || line === "pollTax"
+            ? 1
+            : FISCAL_NEWS_THRESHOLD;
+      if (deviation < threshold) continue;
+      if (!best || deviation > best.deviation) best = { line, deviation, value };
+    }
+    if (!best) return;
+    sSim.fiscal!.logged = { ...sSim.fiscal!.logged, [best.line]: true };
+    const up = best.value > (baseline[best.line] ?? 0);
+    const text = `${state.name} ${FISCAL_PHRASES[best.line][up ? 0 : 1]}`;
+    this.pushNews(living, { kind: "develop", text, cell: state.center, stateId: state.i });
   }
 
   /** Once a year: old grudges fade and the war weariness of the court eases. */
@@ -2099,6 +2240,43 @@ class LivingModel {
       state.economy.adjustments = value > 0 ? [...others, { name: CHARTER_TITHE, value }] : others;
       living.economyDirty = true;
     }
+  }
+
+  /** The state's fiscal posture for the HUD: current, target and pinned lines. */
+  fiscalPolicy(stateId: number): {
+    current: Record<FiscalLock, number>;
+    target: Record<FiscalLock, number>;
+    locks: FiscalLock[];
+    stride: number;
+  } | null {
+    const state = pack.states[stateId];
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    if (!state?.i || state.removed || !sSim) return null;
+    const profile = fiscalProfile(state, this.fiscalEvents(state, living));
+    if (!profile) return null;
+    const lines = [...EXPENSES, "corruption", "salesTax", "pollTax"] as FiscalLock[];
+    return {
+      current: Object.fromEntries(lines.map(line => [line, fiscalValue(state, line)])) as Record<FiscalLock, number>,
+      target: Object.fromEntries(lines.map(line => [line, fiscalTarget(profile, line)])) as Record<FiscalLock, number>,
+      locks: sSim.fiscal?.locks ?? [],
+      stride: fiscalStride(state)
+    };
+  }
+
+  /** God mode: pin a fiscal line so the ruler's drift leaves it alone. Returns the new lock state. */
+  toggleFiscalLock(stateId: number, line: FiscalLock, locked?: boolean): boolean {
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    if (!sSim) return false;
+    if (!sSim.fiscal) sSim.fiscal = {};
+    const fiscal = sSim.fiscal;
+    const locks = new Set(fiscal.locks ?? []);
+    const next = locked ?? !locks.has(line);
+    if (next) locks.add(line);
+    else locks.delete(line);
+    fiscal.locks = [...locks];
+    return next;
   }
 
   /**

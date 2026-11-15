@@ -3897,4 +3897,69 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(remnant!.sovereignAmbition).toBe(true);
     expect(remnant!.stateRelations[2]).toBe("Enemy");
   });
+
+  describe("Fiscal policy (living-fmg-native Phase 3)", () => {
+    /** Give state 1 a known martial ruler and a clean purse. */
+    function martialPurse(form = "Monarchy") {
+      const living = Living.init();
+      const state = pack.states[1];
+      const ruler = pack.history.figures!.find(figure => figure.i === living.states[1]!.rulerId)!;
+      ruler.virtues = ["brave", "decisive", "wrathful"];
+      ruler.vices = ["cruel", "greedy"];
+      ruler.alignment = "evil";
+      state.form = form;
+      state.economy.budget = { court: 20, administration: 10, infrastructure: 8, military: 25, corruption: 15 };
+      state.economy.salesTax = 0.08;
+      state.economy.pollTax = 0.07;
+      state.economy.treasury = 100;
+      state.diplomacy = [];
+      return { living, state, ruler };
+    }
+
+    it("drifts the real budget toward the ruler's target each spring", () => {
+      const { state } = martialPurse();
+      Living.tick(4); // the fourth season is a spring
+      expect(state.economy.budget.military).toBe(27);
+      expect(state.economy.budget.corruption).toBeGreaterThan(15); // a cruel ruler tolerates graft
+      expect(state.economy.pollTax).toBeGreaterThan(0.07); // and leans on the head tax
+    });
+
+    it("moves a republic one point a season and an anarchy not at all", () => {
+      const republic = martialPurse("Republic");
+      Living.tick(4);
+      expect(republic.state.economy.budget.military).toBe(26);
+
+      const anarchy = martialPurse("Anarchy");
+      Living.tick(4);
+      expect(anarchy.state.economy.budget.military).toBe(25);
+    });
+
+    it("logs a dispatch once a line drifts far from accession", () => {
+      const { living, state } = martialPurse();
+      Living.tick(12); // three springs hold the same ruler
+      const dispatches = living.recentNews.filter(item => item.text.startsWith(state.name));
+      expect(dispatches.length).toBeGreaterThan(0);
+      expect(dispatches.some(item => /army|court|chancery|graft|tax/.test(item.text))).toBe(true);
+    });
+
+    it("pins a line away from the ruler's drift, and unpins it", () => {
+      const { state } = martialPurse();
+      expect(Living.toggleFiscalLock(1, "military")).toBe(true);
+      Living.tick(4);
+      expect(state.economy.budget.military).toBe(25);
+
+      expect(Living.toggleFiscalLock(1, "military")).toBe(false);
+      Living.tick(4);
+      expect(state.economy.budget.military).toBeGreaterThan(25);
+    });
+
+    it("exposes current and target values for the inspector", () => {
+      martialPurse();
+      const policy = Living.fiscalPolicy(1)!;
+      expect(policy.current.military).toBe(25);
+      expect(policy.target.military).toBeGreaterThan(25);
+      expect(policy.stride).toBe(2);
+      expect(policy.locks).toEqual([]);
+    });
+  });
 });

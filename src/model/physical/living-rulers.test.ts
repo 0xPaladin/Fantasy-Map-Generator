@@ -95,17 +95,15 @@ describe("Ruler economy modifiers (economy alignment Phase 5 §5.2)", () => {
       expect(stateEconomyModifiers(1)).toEqual(identity);
     });
 
-    it("moves the official corruption budget within 0..100", () => {
+    it("reads the stored corruption budget without a transient ruler mark", () => {
       const state = pack.states[1];
-      expect(stateCorruption(state)).toBeCloseTo(20 + stateEconomyModifiers(1).corruption, 6);
+      // Phase 3: rulers move the stored number over the seasons; reading adds nothing.
+      expect(stateCorruption(state)).toBe(20);
 
       state.economy.budget.corruption = 2;
       expect(stateCorruption(state)).toBeGreaterThanOrEqual(0);
 
-      pack.history.figures![0].virtues = [];
-      pack.history.figures![0].alignment = "evil";
-      pack.history.figures![0].vices = ["cruel", "greedy", "selfish", "merciless"];
-      state.economy.budget.corruption = 99;
+      state.economy.budget.corruption = 120;
       expect(stateCorruption(state)).toBe(100);
     });
   });

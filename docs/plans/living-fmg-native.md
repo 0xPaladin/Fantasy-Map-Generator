@@ -1,6 +1,6 @@
 # Plan — Living World on FMG Rails (OpenCiv removal & native dynamism)
 
-**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv civilians, city loop, queues, wonders, yields, happiness and religion engine stripped; interim bridges in place), **Phase 2 done** (tech tree removed; the era ladder from development now gates unit tiers, and development moves by diffusion and develop projects).
+**Status:** In progress — Phase 0 done (scope locked), Phase 1 done (OpenCiv stripped), Phase 2 done (era ladder), **Phase 3 done** (rulers govern: fiscal targets drift the real budget, taxes and corruption each spring, with event re-targets, dispatches and God-mode pins).
 **Companions:** [upstream-economy-alignment.md](upstream-economy-alignment.md) (the bridge this plan builds on), [living-world.md](living-world.md) (original vision), [living-openciv.md](living-openciv.md) (superseded), [living-openciv-armies.md](living-openciv-armies.md) (partially superseded), [factions-civ-engine.md](factions-civ-engine.md) (partially superseded), [remove-living-guild.md](remove-living-guild.md)
 
 ## Execution policy
@@ -218,7 +218,7 @@ Factions lose their node economies, keep their soul:
 | 0 | This plan reviewed, seams agreed (`simAdjustments`, projects catalog list) | plan merged |
 | 1 | **Strip civilians**: delete city loop, civilians, queues, wonders, yields/happiness; slim HUD cards; build/lint/tests green; mobile burgs verified | tick runs without OpenCiv fields |
 | 2 | **Era ladder**: delete `CIV_TECHS`; era from `Development.getAverages`; roster/project gates switched; save migration | old saves load, era shown ✅ |
-| 3 | **Fiscal policy**: profiles from traits, spring drift through `setBudget`/`setCorruption`, event re-targets, news, God-mode locks; replace transient corruption modifier | two seeded states diverge measurably |
+| 3 | **Fiscal policy**: profiles from traits, spring drift through `setBudget`/`setCorruption`, event re-targets, news, God-mode locks; replace transient corruption modifier | two seeded states diverge measurably ✅ |
 | 4 | **Projects**: catalog, funding via orders + treasury, effects into `simAdjustments`/flags/development/output seams, Projects tab UI; Royal Road draws real route links and Market Charter converts a burg into a market center. | a granary consumes real stone and shows as a line |
 | 5 | **Trouble economics**: hazard → negative lines, clearing paths wired, ruins rewards | a hazard drains a treasury and is cleared |
 | 6 | **Factions re-anchored**: delete node loop; income/forces/raids/suppression/ascension on rails; faction project lines | faction sheet shows income & lines, no city fields |
@@ -234,6 +234,18 @@ Each phase lands independently buildable with its completion record appended her
 - **KPI drift**: hazard drains and project income shift economy KPIs 11/14 (states' cut, treasury concentration) — re-measure with the tuner after phases 4–5.
 - **Mobile burgs**: verified in Phase 1 — live wandering reads `pack.cells`/`Burgs.move`/`Routes`, never the stripped fields.
 - **Astral mode**: post-scarcity hooks read development/prosperity, not OpenCiv fields — audited in Phase 2: the astral regime still shapes diffusion caps (`ANCIENT_SUPPRESSED_CAP`) and `Output`/`Prosperity` read development unchanged.
+
+### Phase 3 completion record (done)
+
+**Shipped:** `src/model/physical/living-fiscal.ts` (new), `living-fiscal.test.ts` (new), `living-generator.ts`, `living-rulers.ts`, `src/controllers/living-hud.ts`, `src/types/living.ts`; tests added in `living-generator.test.ts` and `living-rulers.test.ts`. `tsc` clean, Biome clean, unit suite green, Vite build green.
+
+- **Fiscal profiles** (`living-fiscal.ts`): the ruler's bias (plus half their magistrate's, as before) maps to a target budget (martial → military, pious → court, civic → administration/infrastructure), a corruption tendency (cruel vs civic), and a tax lean (civic toward sales tax, martial toward the poll tax). Targets are relative to the state's own current lines, clamped 0–100 (corruption too) and taxes to three times their form's base.
+- **Event re-targets**: war adds +20 military and trims the court; a rebellion (unravel ≥ 50) adds +10 administration; any provincial trouble adds +10 infrastructure; a negative treasury forces austerity (−10 court, −10 military) and tolerates +5 corruption.
+- **Spring drift through the stock rails**: each spring, after succession, every line moves at most its stride toward the target via `States.setBudget`, `States.setCorruption` and `States.setTaxes`, and marks `living.economyDirty`. Form resists: Monarchy/Theocracy stride 2, Republic/Union 1, Anarchy 0 (levies nothing).
+- **One mechanism for graft**: `stateCorruption` now returns the stored `budget.corruption` with no transient trait addition; rulers move that number over the seasons instead. `rulerEconomyModifiers().corruption` remains as a pure helper for the profile only.
+- **Dispatches**: each ruler gets a baseline on accession; once a line drifts past its threshold (8 budget points, 4 corruption points, 1 tax point) the largest move is logged once as a news item ("Aeloria gilds its court while the provinces wait.").
+- **God-mode pins**: `Living.fiscalPolicy(stateId)` exposes current vs target values with the stride, and `Living.toggleFiscalLock(stateId, line)` pins any of the four budget lines, corruption, sales tax or poll tax; the HUD state card gained a *Fiscal policy* chip row showing `current→target` with click-to-pin (🔒), wired to a new `fiscal-lock` intervention.
+- **Tests**: `living-fiscal.test.ts` covers stride by form, profile lean by traits, event re-targets, clamps and accessor symmetry; the generator suite adds five spring-drift tests (Monarchy drift, Republic 1-point vs Anarchy 0, dispatch after accession, lock/unlock, inspector values), and the ruler suite asserts the corruption read is stored-only.
 
 ### Phase 2 completion record (done)
 

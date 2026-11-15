@@ -27,15 +27,16 @@ import { getCellPoint } from "@/model/story/journeys/journey-places";
 import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
 import type { HistoricalFigure } from "@/types/history";
-import {
-  type HeroDoctrine,
-  type HeroGuildState,
-  type LivingNewsItem,
-  type MissionTag,
-  type ProvinceSimState,
-  SEASON_NAMES,
-  type StatePolitySim
+import type {
+  FiscalLock,
+  HeroDoctrine,
+  HeroGuildState,
+  LivingNewsItem,
+  MissionTag,
+  ProvinceSimState,
+  StatePolitySim
 } from "@/types/living";
+import { SEASON_NAMES } from "@/types/living";
 import { dialogState } from "@/ui/dialog/state";
 import { zoomTo } from "@/ui/map/zoom";
 import { escapeHtml, findEl, getPointer } from "@/utils";
@@ -742,6 +743,7 @@ function renderStateCard(stateId: number): string {
   return /* html */ `
     <button type="button" class="livingInspectorTitle" data-open="states" data-id="${stateId}" title="States editor">${escapeHtml(state.fullName ?? state.name ?? "State")}</button>
     ${renderRuler(ruler, age)}
+    ${renderFiscal(stateId)}
     ${renderUpstreamState(stateId)}
     ${renderStateProvinces(stateId)}
     ${renderAgenda(sSim, living)}
@@ -799,6 +801,36 @@ function renderRuler(ruler: HistoricalFigure | undefined, _age?: number): string
 }
 
 const percent = (value: number | null | undefined): string => (value == null ? "—" : `${Math.round(value * 100)}%`);
+
+const FISCAL_LINES: readonly [FiscalLock, string, string][] = [
+  ["military", "⚔️", "Military"],
+  ["court", "👑", "Court"],
+  ["administration", "🖋️", "Administration"],
+  ["infrastructure", "🏗️", "Infrastructure"],
+  ["corruption", "🤝", "Corruption"],
+  ["salesTax", "🧾", "Sales tax"],
+  ["pollTax", "👥", "Poll tax"]
+];
+
+/** Phase 3: the ruler's fiscal target against the real budget, with pin buttons. */
+function renderFiscal(stateId: number): string {
+  const policy = Living.fiscalPolicy?.(stateId);
+  if (!policy) return "";
+  const chips = FISCAL_LINES.map(([line, icon, label]) => {
+    const locked = policy.locks.includes(line);
+    const current = policy.current[line];
+    const target = policy.target[line];
+    const isTax = line === "salesTax" || line === "pollTax";
+    const format = (value: number) => (isTax ? `${Math.round(value * 1000) / 10}%` : `${Math.round(value)}%`);
+    const title = `${label}: ${Math.round(current)} → ${Math.round(target)} (drift ${policy.stride}/spring). Click to ${locked ? "unpin" : "pin"}.`;
+    return `<button type="button" class="livingCivChip" data-god="fiscal-lock" data-state="${stateId}" data-line="${line}" title="${escapeHtml(title)}"${locked ? ' style="outline:1px solid #c4a000;"' : ""}>${icon} ${format(current)}→${format(target)}${locked ? " 🔒" : ""}</button>`;
+  }).join("");
+
+  return `<div class="livingSection">
+    <div class="livingSectionTitle">Fiscal policy <span class="livingMuted">· ruler's target, drifting ${policy.stride}/spring</span></div>
+    <div class="livingPoolVitals">${chips}</div>
+  </div>`;
+}
 
 /** The era a development level falls in, as the upstream schema names it */
 function eraOf(level: number): string {
@@ -1433,6 +1465,18 @@ function runIntervention(button: HTMLElement): void {
       ok = Living.smiteRuler(stateId);
       message = ok ? "The ruler has been struck down." : "There is no living ruler to smite.";
       break;
+    case "fiscal-lock": {
+      const line = button.dataset.line as FiscalLock | undefined;
+      if (!line) {
+        message = "The fiscal line could not be pinned.";
+        break;
+      }
+      ok = Living.toggleFiscalLock(stateId, line);
+      message = ok
+        ? `The ${line} line is pinned; the ruler cannot drift it.`
+        : `The ${line} line drifts with the ruler again.`;
+      break;
+    }
     case "war":
       ok = Living.forceWar(stateId);
       message = ok ? "War has been declared." : "No rival could be found.";

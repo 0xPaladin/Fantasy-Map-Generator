@@ -86,8 +86,9 @@ export function stateEconomyModifiers(stateId: number): RulerEconomyModifiers {
 
 /** The state's official corruption budget as its ruler leaves it */
 export function stateCorruption(state: State): number {
-  const { corruption } = stateEconomyModifiers(state.i);
-  return minmax((state.economy?.budget?.corruption ?? 0) + corruption, 0, 100);
+  // Phase 3: the ruler's mark moves the stored budget over the seasons (living-fiscal),
+  // so reading adds nothing here — one mechanism, no double count.
+  return minmax(state.economy?.budget?.corruption ?? 0, 0, 100);
 }
 
 /** A ruler's audit: officials' rate cut, the graft they held recovered as a day's money */
