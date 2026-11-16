@@ -6,7 +6,14 @@ import { EXPENSES, type Expense } from "@/data/expenses";
 import { getAllFactionAssets, getFactionAsset } from "@/data/faction-assets";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { SOVEREIGN_DEVELOPMENT, UNIT_TECH_DEVELOPMENT } from "@/data/living-eras";
-import { PROJECT_BY_ID, PROJECTS, type ProjectDef } from "@/data/living-projects";
+import {
+  PROJECT_BY_ID,
+  PROJECTS,
+  type ProjectDef,
+  projectGoods,
+  projectLineLabel,
+  projectName
+} from "@/data/living-projects";
 import { RESOURCE_FACTION_IDS } from "@/data/living-troubles";
 import {
   assignStateRoster,
@@ -82,6 +89,7 @@ import { Stability } from "@/model/political/stability";
 import { noFinance, type State, States } from "@/model/political/states-generator";
 import { type AstralTechRegime, classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
+import { getMoneyUnit } from "@/model/units";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type { Good } from "@/types/economy";
 import type {
@@ -3834,7 +3842,7 @@ class LivingModel {
     if (bSim) bSim.hp = 1;
     this.pushNews(living, {
       kind: "faction",
-      text: `${faction.name} pillaged ${burg.name ?? "a settlement"} and seized ${loot} gold!`,
+      text: `${faction.name} pillaged ${burg.name ?? "a settlement"} and seized ${loot} ${getMoneyUnit(loot !== 1)}!`,
       cell: burg.cell,
       burgId: burg.i
     });
@@ -6864,7 +6872,7 @@ class LivingModel {
     const where = this.projectTargetName(state, best.def, best.target);
     this.pushNews(living, {
       kind: "build",
-      text: `${state.name} begins ${this.withArticle(best.def.name)}${where ? ` in ${where}` : ""}.`,
+      text: `${state.name} begins ${this.withArticle(projectName(best.def))}${where ? ` in ${where}` : ""}.`,
       cell: this.projectTargetCell(state, best.def, best.target),
       stateId: state.i,
       burgId: best.def.scale === "burg" ? best.target : undefined
@@ -6966,7 +6974,7 @@ class LivingModel {
       sSim.project = undefined;
       this.pushNews(living, {
         kind: "build",
-        text: `${state.name} abandons its ${def.name.toLowerCase()}: the markets cannot supply the works.`,
+        text: `${state.name} abandons its ${projectName(def).toLowerCase()}: the markets cannot supply the works.`,
         cell: burg?.cell ?? state.center,
         stateId: state.i
       });
@@ -6977,7 +6985,7 @@ class LivingModel {
     const where = this.projectTargetName(state, def, active.targetId);
     const project: LivingProject = {
       id: def.id,
-      name: def.name,
+      name: projectName(def),
       stateId: state.i,
       scale: def.scale,
       targetId: active.targetId,
@@ -6990,7 +6998,7 @@ class LivingModel {
     sSim.project = undefined;
     living.economyDirty = true;
 
-    const text = `${state.name} completes ${this.withArticle(def.name)}${where ? ` in ${where}` : ""}.`;
+    const text = `${state.name} completes ${this.withArticle(projectName(def))}${where ? ` in ${where}` : ""}.`;
     this.pushNews(living, {
       kind: "build",
       text,
@@ -7008,19 +7016,20 @@ class LivingModel {
 
   /** A work buys its goods from the town's market; a stripped map without one needs none. */
   private consumeProjectGoods(burg: Burg | undefined, def: ProjectDef): boolean {
-    if (!def.goods?.length) return true;
+    const goods = projectGoods(def);
+    if (!goods?.length) return true;
     if (!pack.markets?.length) return true; // no markets on this map
     Markets.sync();
     const market = burg ? Markets.ofBurg(burg) : undefined;
     if (!market) return true; // no market on this map: the work draws on the treasury alone
 
-    for (const cost of def.goods) {
+    for (const cost of goods) {
       const good = options.map.goods?.find(entry => entry.name === cost.name);
       if (!good) continue; // the good is not traded here
       const row = market.goods[good.i];
       if (!row || row.stock + 0.01 < cost.units) return false;
     }
-    for (const cost of def.goods) {
+    for (const cost of goods) {
       const good = options.map.goods?.find(entry => entry.name === cost.name);
       const row = good ? market.goods[good.i] : undefined;
       if (!row) continue;
@@ -7042,7 +7051,8 @@ class LivingModel {
     let line: { name: string; value: number } | undefined;
 
     if (effect.line) {
-      const name = `${effect.line.label} of ${targetName}`;
+      const label = projectLineLabel(def) ?? effect.line.label;
+      const name = `${label} of ${targetName}`;
       const value = effect.line.value;
       line = { name, value };
       const merge = (lines: { name: string; value: number }[] | undefined) => [
@@ -7466,7 +7476,7 @@ class LivingModel {
               const loot = this.rewardTroubleClear(province.i, Math.max(2, levelBefore));
               this.pushNews(living, {
                 kind: "trouble",
-                text: `${province.name ?? "The province"}'s courts cleared its troubles and recovered ${loot} gold.`,
+                text: `${province.name ?? "The province"}'s courts cleared its troubles and recovered ${loot} ${getMoneyUnit(loot !== 1)}.`,
                 cell: province.center,
                 stateId: province.state
               });

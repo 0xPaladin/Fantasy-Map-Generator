@@ -10,7 +10,7 @@ import { Prosperity } from "@/model/economy/prosperity";
 import type { SourceOption } from "@/model/economy/trade";
 import { Icons } from "@/model/icons";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
-import { formatPrice } from "@/model/units";
+import { formatPrice, getMoneySymbol } from "@/model/units";
 import { goodBadge } from "@/renderers/draw-goods";
 import { Csv } from "@/services/io/csv";
 import type { Deal, DealKind, Good, Transaction } from "@/types/economy";
@@ -692,7 +692,7 @@ function renderBalance(burg: Burg): string {
     ? sentences(EconomyTerms.treasury(), t("As its market's center, it also takes the market margin"))
     : EconomyTerms.treasury();
 
-  return /* html */ `<h4><span>${t("Revenue and expenses")}</span><span>🟡</span></h4>
+  return /* html */ `<h4><span>${t("Revenue and expenses")}</span><span>${getMoneySymbol()}</span></h4>
     ${line(t("Ingredients"), t("Paid for goods bought to make others"), flows.ingredients)}
     ${line(t("Sales"), t("Got for goods sold, carriage and sales tax taken off"), flows.sales, true)}
     ${line(t("Consumption"), t("Paid for goods the people bought"), flows.consumption)}

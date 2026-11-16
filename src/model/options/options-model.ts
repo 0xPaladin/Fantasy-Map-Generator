@@ -105,6 +105,16 @@ class OptionsModel {
         transports: Transports.getDefaults(),
         eras: Development.getDefaultEras(),
         networks: [],
+        routeCarriage: {
+          roads: 1,
+          trails: 1,
+          searoutes: 0.2,
+          airroutes: 0.2,
+          underdarkroutes: 1,
+          undersearoutes: 0.2,
+          transit: 0.2,
+          portal: 0.05
+        },
         customIcons: [],
         goods: [],
         coastline: Coastline.getDefaultSettings(),

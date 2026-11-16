@@ -5,6 +5,7 @@ import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { Living } from "@/model/physical/living-generator";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import type { Regiment } from "@/model/political/military-generator";
+import { getMoneySymbol } from "@/model/units";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
 import type { Faction, FactionAllegiance, FactionCategory, FactionOutpost } from "@/types/factions";
@@ -46,7 +47,7 @@ const CSV_COLUMNS = [
 
 /** Gold a node draws from the upstream economy this season, before upkeep */
 function formatTrade(gold: number | undefined): string {
-  return gold ? `🪙 ${Math.round(gold * 10) / 10}` : "—";
+  return gold ? `${getMoneySymbol("🪙")} ${Math.round(gold * 10) / 10}` : "—";
 }
 
 export function formatAssetBenefits(assetId?: string): string {
@@ -54,7 +55,7 @@ export function formatAssetBenefits(assetId?: string): string {
   const def = getFactionAsset(assetId);
   if (!def) return "—";
   const parts: string[] = [];
-  if (def.yields?.gold) parts.push(`+${def.yields.gold} 🪙`);
+  if (def.yields?.gold) parts.push(`+${def.yields.gold} ${getMoneySymbol("🪙")}`);
   if (def.yields?.science) parts.push(`+${def.yields.science} 🔬`);
   if (def.yields?.influence) parts.push(`+${def.yields.influence} 🎭`);
   if (def.yields?.militaryCap) parts.push(`+${def.yields.militaryCap} ⚔️`);
@@ -66,7 +67,7 @@ export function formatAssetBenefits(assetId?: string): string {
   if (parts.length === 0) {
     const civ = CIV_BUILDING_BY_ID[assetId];
     if (civ?.stats) {
-      if (civ.stats.gold) parts.push(`+${civ.stats.gold} 🪙`);
+      if (civ.stats.gold) parts.push(`+${civ.stats.gold} ${getMoneySymbol("🪙")}`);
       if (civ.stats.production) parts.push(`+${civ.stats.production} 🔨`);
       if (civ.stats.food) parts.push(`+${civ.stats.food} 🌾`);
       if (civ.stats.science) parts.push(`+${civ.stats.science} 🔬`);
@@ -287,7 +288,7 @@ function renderDialog(): void {
           ${t("Factions")}:&nbsp;<span id="factionsFooterCount">${t("{{shown}} of {{total}}", { shown: 0, total: 0 })}</span>
         </div>
         <div data-tip="${t("Average treasury (upstream income minus upkeep)")}" style="margin-left: 12px">
-          ${t("Avg treasury")}:&nbsp;<span id="factionsFooterTreasury">0</span> 🟡
+          ${t("Avg treasury")}:&nbsp;<span id="factionsFooterTreasury">0</span> ${getMoneySymbol()}
         </div>
         <div data-tip="${t("Total outposts")}" style="margin-left: 12px">
           ${t("Outposts")}:&nbsp;<span id="factionsFooterOutposts">0</span>
@@ -857,7 +858,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.category)}</span>
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.allegiance)}</span>
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.alignment)}</span>
-        <span class="badge" style="margin-right: 4px;">🪙 ${Math.round(faction.treasury ?? 0)}</span>
+        <span class="badge" style="margin-right: 4px;">${getMoneySymbol("🪙")} ${Math.round(faction.treasury ?? 0)}</span>
         <span class="badge" style="margin-right: 4px;">📈 ${Math.round(breakdown.upstreamGold * 10) / 10} trade a season</span>
         ${breakdown.charterTithe ? `<span class="badge">🏛️ ${Math.round(breakdown.charterTithe * 10) / 10} tithes a season</span>` : ""}
       </div>
@@ -868,7 +869,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
           🏛️ ${t("HQ & Outposts")} (${1 + faction.outposts.length})
         </button>
         <button type="button" class="tabBtn ${activeTab === "assets" ? "active" : ""}" data-tab="assets">
-          🪙 ${t("Assets")} (${assetEntries.length})
+          ${getMoneySymbol("🪙")} ${t("Assets")} (${assetEntries.length})
         </button>
         <button type="button" class="tabBtn ${activeTab === "forces" ? "active" : ""}" data-tab="forces">
           ⚔️ ${t("Forces")} (${faction.military?.length ?? 0})

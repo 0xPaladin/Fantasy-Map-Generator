@@ -143,7 +143,7 @@ const columns: EditorColumn<Culture>[] = [
   {
     key: "values",
     label: "Values",
-    width: "9em",
+    width: "18em",
     mobileHidden: true,
     sortBy: culture => valuesText(culture.values),
     sortType: "alpha"
@@ -630,12 +630,13 @@ function getValuesCell(culture: Culture): string {
   const regen = culture.alignment
     ? `<span class="icon-cw pointer cultureRegenerateValues" data-tip="${t("Regenerate values from alignment")}"></span>`
     : "";
-  if (!values.length) return /* html */ `<div data-col="values" class="cultureTraitsEmpty">—${regen}</div>`;
+  if (!values.length)
+    return /* html */ `<div data-col="values" class="cultureTraitsEmpty" style="display: flex; align-items: center; gap: 0.25em;">${regen}<span>—</span></div>`;
 
   const text = escapeHtml(valuesText(values));
   const rendered = values.length === 1 ? `<b>${text}</b>` : text;
   const hint = values.length === 1 ? "The value this culture holds above all others" : "The values this culture prizes";
-  return /* html */ `<div data-col="values" data-tip="${hint}"><span class="cultureValues">${rendered}</span>${regen}</div>`;
+  return /* html */ `<div data-col="values" data-tip="${hint}" style="display: flex; align-items: center; gap: 0.25em;">${regen}<span class="cultureValues" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${rendered}</span></div>`;
 }
 
 function getTypeOptions(type: string): string {

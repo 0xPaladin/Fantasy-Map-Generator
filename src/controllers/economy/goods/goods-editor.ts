@@ -9,6 +9,7 @@ import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import { States } from "@/model/political/states-generator";
 import { Tags } from "@/model/tags";
+import { getMoneySymbol } from "@/model/units";
 import { goodBadge } from "@/renderers/draw-goods";
 import { Layers } from "@/renderers/layers";
 import { LegendBoxes } from "@/renderers/legend-boxes";
@@ -341,8 +342,8 @@ function renderGoodsPage(view: TableView<Good>) {
           <div style="display: inline-block; width: 3em">${percentage ? `${rn(totalStock ? (stock / totalStock) * 100 : 0, 2)}%` : stock}</div>
           <div style="display: inline-block; width: 0.4em; font-size: 1.2em;">⛁</div>
         </div>
-        <div data-col="price" data-tip="${sentences(t("Base (initial) price"), t("Click to compare prices across markets"))}" class="goodBasePrice pointer">🟡 ${good.value}</div>
-        <div data-col="carriage" data-tip="${t("Carriage: price of one unit per decima")}">🟡 ${good.carriage}</div>
+        <div data-col="price" data-tip="${sentences(t("Base (initial) price"), t("Click to compare prices across markets"))}" class="goodBasePrice pointer">${getMoneySymbol()} ${good.value}</div>
+        <div data-col="carriage" data-tip="${t("Carriage: price of one unit per decima")}">${getMoneySymbol()} ${good.carriage}</div>
         <div data-col="development" data-tip="${good.development ? developmentTip(good.development) : t("Needs no development")}">${good.development ?? 0}</div>
         <div data-col="deposits" data-tip="${t("Deposits placed, and their range")} (${formatDeposits(good)})">${good.distribution ? (depositsByGood[good.i] ?? 0) : ""}</div>
         <div data-col="coverage" data-tip="${t("How much of each demand category one unit covers")}">${renderCoverage(good)}</div>

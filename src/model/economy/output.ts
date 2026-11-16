@@ -15,14 +15,39 @@ const PILLAGED_OUTPUT = 0.25; // pillaged land loses most of its commercial outp
 
 // Living World Builder improvements boost the goods their land grows (docs/plans/upstream-economy-alignment.md §3.1)
 const IMPROVEMENT_GOODS: Record<string, readonly string[]> = {
-  farm: ["Grain", "Wine", "Olives", "Dates", "Hemp", "Sugar", "Tea", "Tobacco"],
-  pasture: ["Cattle", "Wool", "Horses", "Camels", "Cheese", "Leather"],
-  mine: ["Iron", "Copper", "Tin", "Silver", "Gold", "Coal", "Salt", "Saltpeter", "Gemstones"],
-  quarry: ["Stone", "Marble", "Clay", "White sand"],
-  plantation: ["Silk", "Spices", "Dyes", "Incense", "Sugar", "Tea", "Tobacco", "Wine", "Olives"],
-  camp: ["Game", "Furs", "Ivory", "Honey", "Amber"],
-  lumber_mill: ["Wood", "Mahogany", "Tar"],
-  fishing_boats: ["Fish", "Pearls", "Blubber"]
+  farm: ["Grain", "Wine", "Olives", "Dates", "Hemp", "Sugar", "Tea", "Tobacco", "Metawheat", "Drugs, Raw Materials"],
+  pasture: ["Cattle", "Wool", "Horses", "Camels", "Cheese", "Leather", "Livestock, Common", "Livestock, Gengineered"],
+  mine: [
+    "Iron",
+    "Copper",
+    "Tin",
+    "Silver",
+    "Gold",
+    "Coal",
+    "Salt",
+    "Saltpeter",
+    "Gemstones",
+    "Metal Ingots, Common",
+    "Metal Ingots, Rare Alloys",
+    "Exotic Jewels",
+    "Pretech Junk"
+  ],
+  quarry: ["Stone", "Marble", "Clay", "White sand", "Colonial Materials", "Postech Building Material"],
+  plantation: [
+    "Silk",
+    "Spices",
+    "Dyes",
+    "Incense",
+    "Sugar",
+    "Tea",
+    "Tobacco",
+    "Wine",
+    "Olives",
+    "Drugs, Raw Materials"
+  ],
+  camp: ["Game", "Furs", "Ivory", "Honey", "Amber", "Livestock, Luxury Pets", "Pretech Junk"],
+  lumber_mill: ["Wood", "Mahogany", "Tar", "Colonial Materials"],
+  fishing_boats: ["Fish", "Pearls", "Blubber", "Livestock, Gengineered"]
 };
 const IMPROVEMENT_BOOST: Record<string, number> = {
   farm: 0.35,

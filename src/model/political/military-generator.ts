@@ -1012,12 +1012,6 @@ class MilitaryModule {
   /** Share of each unit's conscripts what the state consumes of its goods equips; 1 with no goods or before the run */
   getEquipped(stateId: number, demand: Record<string, number>): Record<string, number> {
     const units = options.map.military.units;
-    const state = pack.states?.[stateId];
-    const isPostScarcity =
-      isAstralMilitaryUnits(units) &&
-      state &&
-      ((pack.cells?.development?.[state.center] ?? 0) >= POST_SCARCITY_DEVELOPMENT ||
-        classifyAstralRegime(pack.cultures?.[state.culture ?? 0]) === "postScarcity");
     const consumed = Accounts.getConsumption(stateId);
     const goodsOf = (unit: MilitaryUnit) => (unit.goods ?? []).flatMap(goodId => Goods.get(goodId) ?? []);
     const needing = (goodId: number) => sum(units, unit => (unit.goods?.includes(goodId) ? demand[unit.name] || 0 : 0));
@@ -1026,7 +1020,7 @@ class MilitaryModule {
     for (const unit of units) {
       const troops = demand[unit.name] || 0;
       const goods = goodsOf(unit);
-      if (isPostScarcity || !troops || !goods.length || !pack.deals?.length) {
+      if (!troops || !goods.length || !pack.deals?.length) {
         equipped[unit.name] = 1;
         continue;
       }

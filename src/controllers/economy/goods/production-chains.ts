@@ -1,6 +1,7 @@
 import { type Selection, select, zoom, zoomIdentity } from "d3";
 import { Goods } from "@/model/economy/goods-generator";
 import { Icons } from "@/model/icons";
+import { getMoneySymbol } from "@/model/units";
 import { goodIconLines } from "@/renderers/draw-goods";
 import type { Good } from "@/types/economy";
 import { Dialog } from "@/ui/dialog/dialog";
@@ -772,7 +773,7 @@ function renderNodeContent(node: GraphNode, displayName: string): string {
     width="${ICON_RADIUS * 2}" height="${ICON_RADIUS * 2}"${goodIconLines()}/>
   <text x="${textX}" y="${iconY - 2}" font-size="10" font-family="sans-serif"
     fill="#111" font-weight="600">${escapeHtml(displayName)}</text>
-  <text x="${textX}" y="${iconY + 8}" font-size="8.5" font-family="sans-serif" fill="#888">🟡 ${node.good.value}</text>`;
+  <text x="${textX}" y="${iconY + 8}" font-size="8.5" font-family="sans-serif" fill="#888">${getMoneySymbol()} ${node.good.value}</text>`;
 }
 
 function renderNode(node: GraphNode, positions: Map<number, Position>): string {

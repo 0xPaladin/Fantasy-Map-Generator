@@ -16,7 +16,7 @@ vi.mock("@/model/icons", () => ({
 const network: Network = {
   i: 1,
   name: "The Veil Run",
-  kind: "wormhole",
+  kind: "portal",
   scope: { kind: "land" },
   seed: "seed",
   target: 2,
@@ -50,7 +50,7 @@ beforeEach(() => {
   document.body.innerHTML = '<svg id="map"><g id="networks"></g></svg>';
   globalThis.options = { map: { graph: { width: 100, height: 100 }, networks: [network] } } as never;
   globalThis.pack = { routes: [route] } as never;
-  globalThis.styles = { networks: { groups: { wormhole: style } } } as never;
+  globalThis.styles = { networks: { groups: { portal: style } } } as never;
   Object.assign(Routes, { getPath: () => "M10,10L90,90" });
   network.nodes = [
     { cell: 1, x: 10, y: 10 },
@@ -69,7 +69,7 @@ test("draws each network's links and nodes under one styled group", () => {
   expect(group?.querySelector(".links #route10")?.getAttribute("stroke")).toBe("#a855f7");
   expect(group?.querySelector(".links #route10")?.getAttribute("stroke-dasharray")).toBe("6 4");
   expect(group?.querySelector("#networkNode1-0 use")?.getAttribute("href")).toBe("#glyph");
-  expect(group?.querySelector("[data-group='wormhole']")).not.toBeNull();
+  expect(group?.querySelector("[data-group='portal']")).not.toBeNull();
 });
 
 test("culls nodes outside the viewport", () => {

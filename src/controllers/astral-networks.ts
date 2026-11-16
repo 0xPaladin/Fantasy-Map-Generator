@@ -239,22 +239,6 @@ function renderEditor(): void {
       </div>
       <div class="label">${t("Nodes")}:</div>
       <input id="networkTarget" type="number" min="${MIN_TARGET}" max="${MAX_TARGET}" step="1" />
-      <div class="label">${t("Links")}:</div>
-      <label style="display: flex; gap: 0.4em; align-items: center">
-        <input id="networkConnect" type="checkbox" />
-        ${t("Connect with direct routes")}
-      </label>
-      <div class="label">${t("Trade")}:</div>
-      <div style="display: flex; gap: 0.6em; align-items: center">
-        <label style="display: flex; gap: 0.4em; align-items: center">
-          <input id="networkTradeEnabled" type="checkbox" />
-          ${t("Use in trade")}
-        </label>
-        <label style="display: flex; gap: 0.4em; align-items: center" data-tip="${t("Multiplies the travel cost of every link: below 1 is faster than a normal route")}">
-          ${t("Friction")}:
-          <input id="networkTradeFriction" type="number" min="0" max="5" step="0.1" style="width: 4.5em" />
-        </label>
-      </div>
     </div>
     <div id="networkSummary" class="totalLine"></div>
     <div id="networkBottom" class="editorToolbar">
@@ -272,8 +256,6 @@ function renderEditor(): void {
   applyForm(network);
 
   ensureEl("networkScope").addEventListener("change", syncFields);
-  ensureEl("networkConnect").addEventListener("change", syncFields);
-  ensureEl("networkTradeEnabled").addEventListener("change", syncFields);
   ensureEl("networkSave").addEventListener("click", saveNetwork);
   ensureEl("networkCancel").addEventListener("click", () => Dialog.close(editorId));
   if (editingId !== null) {
@@ -324,12 +306,9 @@ function fillOwnerSelect(id: string, items: { i: number; name?: string }[], sele
 
 function applyForm(network?: Network): void {
   ensureEl<HTMLInputElement>("networkName").value = network?.name ?? "";
-  ensureEl<HTMLSelectElement>("networkKind").value = network?.kind ?? "wormhole";
+  ensureEl<HTMLSelectElement>("networkKind").value = network?.kind ?? "transit";
   ensureEl<HTMLSelectElement>("networkScope").value = network?.scope.kind ?? "land";
   ensureEl<HTMLInputElement>("networkTarget").value = String(network?.target ?? DEFAULT_TARGET);
-  ensureEl<HTMLInputElement>("networkConnect").checked = network?.connect ?? true;
-  ensureEl<HTMLInputElement>("networkTradeEnabled").checked = network?.trade.enabled ?? true;
-  ensureEl<HTMLInputElement>("networkTradeFriction").value = String(network?.trade.friction ?? 1);
 
   syncFields();
   updateSummary();
@@ -338,14 +317,9 @@ function applyForm(network?: Network): void {
 
 function syncFields(): void {
   const scope = ensureEl<HTMLSelectElement>("networkScope").value;
-  const connect = ensureEl<HTMLInputElement>("networkConnect").checked;
-  const trade = ensureEl<HTMLInputElement>("networkTradeEnabled");
-  const friction = ensureEl<HTMLInputElement>("networkTradeFriction");
 
   ensureEl("networkCulture").style.display = scope === "culture" ? "" : "none";
   ensureEl("networkState").style.display = scope === "state" ? "" : "none";
-  trade.disabled = !connect;
-  friction.disabled = !connect || !trade.checked;
   updateSummary();
 }
 
@@ -357,10 +331,13 @@ function updateSummary(): void {
   }
 
   const links = Networks.routesOf(network.i).length;
-  ensureEl("networkSummary").textContent = t("{{nodes}} nodes, {{links}} links", {
-    nodes: network.nodes.length,
-    links
-  });
+  ensureEl("networkSummary").textContent =
+    network.kind === "communication"
+      ? t("{{nodes}} nodes", { nodes: network.nodes.length })
+      : t("{{nodes}} nodes, {{links}} links", {
+          nodes: network.nodes.length,
+          links
+        });
 }
 
 function readForm(): {
@@ -368,8 +345,6 @@ function readForm(): {
   kind: NetworkKind;
   scope: NetworkScope;
   target: number;
-  connect: boolean;
-  trade: { enabled: boolean; friction: number };
 } | null {
   const name = ensureEl<HTMLInputElement>("networkName").value.trim();
   if (!name) {
@@ -391,19 +366,11 @@ function readForm(): {
     return null;
   }
 
-  const friction = +ensureEl<HTMLInputElement>("networkTradeFriction").value;
-  if (!Number.isFinite(friction) || friction < 0) {
-    tip(t("Trade friction must not be negative"), true, "error", 6000);
-    return null;
-  }
-
   return {
     name,
     kind,
     scope,
-    target,
-    connect: ensureEl<HTMLInputElement>("networkConnect").checked,
-    trade: { enabled: ensureEl<HTMLInputElement>("networkTradeEnabled").checked, friction }
+    target
   };
 }
 

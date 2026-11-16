@@ -1465,17 +1465,43 @@
           "filter": null,
           "mask": null
         }
+      },
+      "transit": {
+        "attrs": {
+          "opacity": 0.85,
+          "stroke": "#22d3ee",
+          "stroke-opacity": null,
+          "stroke-width": 0.45,
+          "stroke-dasharray": "4 2",
+          "stroke-linecap": "round",
+          "stroke-linejoin": null,
+          "filter": null,
+          "mask": null
+        }
+      },
+      "portal": {
+        "attrs": {
+          "opacity": 0.9,
+          "stroke": "#a855f7",
+          "stroke-opacity": null,
+          "stroke-width": 0.5,
+          "stroke-dasharray": "1.5 1.5",
+          "stroke-linecap": "round",
+          "stroke-linejoin": null,
+          "filter": null,
+          "mask": null
+        }
       }
     }
   },
   "networks": {
     "groups": {
-      "wormhole": {
+      "communication": {
         "attrs": {
           "opacity": 1,
-          "fill": "#c46bff",
+          "fill": "#3dff9e",
           "fill-opacity": 1,
-          "stroke": "#8e44ad",
+          "stroke": "#17b977",
           "stroke-opacity": 1,
           "stroke-width": 0.15,
           "stroke-dasharray": null,
@@ -1484,14 +1510,14 @@
           "filter": null
         },
         "options": {
-          "size": 1.2,
-          "linkColor": "#c46bff",
-          "linkWidth": 0.45,
-          "linkOpacity": 0.9,
-          "linkDash": "6 4"
+          "size": 0.9,
+          "linkColor": "#3dff9e",
+          "linkWidth": 0.35,
+          "linkOpacity": 0.85,
+          "linkDash": "1.2 3"
         }
       },
-      "hyperlane": {
+      "transit": {
         "attrs": {
           "opacity": 1,
           "fill": "#7ef9ff",
@@ -1512,12 +1538,12 @@
           "linkDash": "2 2"
         }
       },
-      "relay": {
+      "portal": {
         "attrs": {
           "opacity": 1,
-          "fill": "#3dff9e",
+          "fill": "#c46bff",
           "fill-opacity": 1,
-          "stroke": "#17b977",
+          "stroke": "#8e44ad",
           "stroke-opacity": 1,
           "stroke-width": 0.15,
           "stroke-dasharray": null,
@@ -1526,11 +1552,11 @@
           "filter": null
         },
         "options": {
-          "size": 0.9,
-          "linkColor": "#3dff9e",
-          "linkWidth": 0.35,
-          "linkOpacity": 0.85,
-          "linkDash": "1.2 3"
+          "size": 1.2,
+          "linkColor": "#c46bff",
+          "linkWidth": 0.45,
+          "linkOpacity": 0.9,
+          "linkDash": "6 4"
         }
       }
     }

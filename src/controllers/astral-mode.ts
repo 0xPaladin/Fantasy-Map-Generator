@@ -21,7 +21,7 @@ import {
 } from "@/model/political/military-units";
 import { Provinces } from "@/model/political/provinces-generator";
 import { States, type TariffRule } from "@/model/political/states-generator";
-import { Development } from "@/model/society/development-generator";
+import { classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { Layers, type LayersState } from "@/renderers/layers";
 import { applyPerformanceSettings, setHaloOwnedByBorders } from "@/renderers/performance";
@@ -156,6 +156,7 @@ interface Profile extends StoredProfile {
   cellsDevelopment?: Uint8Array;
   culturesDevelopment?: { i: number; development?: number }[];
   militaryUnits?: MilitaryUnit[];
+  moneyUnit?: string;
 }
 
 let profile: Profile | null = null;
@@ -244,6 +245,14 @@ function applyAstralDevelopment(): void {
     }
   }
   Development.generateAstral();
+}
+
+function applyAstralMoneyUnit(): void {
+  const money = options.map?.units?.money;
+  if (!money || (money.unit && money.unit !== "uncia")) return;
+  const cultures = (pack?.cultures ?? []).filter(c => c.i && !c.removed);
+  const postScarcityCount = cultures.filter(c => classifyAstralRegime(c) === "postScarcity").length;
+  money.unit = cultures.length > 0 && postScarcityCount > cultures.length / 2 ? "exajoule" : "credit";
 }
 
 function applyAstralGoods(): void {
@@ -395,6 +404,15 @@ function reverseAstralState(previous: Profile | null): void {
   }
   Layers.draw("markers");
 
+  const money = options.map?.units?.money;
+  if (money) {
+    if (previous?.moneyUnit !== undefined) {
+      money.unit = previous.moneyUnit;
+    } else if (["credit", "energy credit", "exajoule", "quantum"].includes(money.unit)) {
+      money.unit = "uncia";
+    }
+  }
+
   refreshEditors();
 }
 
@@ -509,7 +527,8 @@ async function enter(): Promise<void> {
     eras: erasSnapshot,
     cellsDevelopment: cellsDevSnapshot,
     culturesDevelopment: culturesDevSnapshot,
-    militaryUnits: militaryUnitsSnapshot
+    militaryUnits: militaryUnitsSnapshot,
+    moneyUnit: options.map?.units?.money?.unit
   };
   profile = next;
   saveProfile({ stylePreset: next.stylePreset, styled: next.styled, layers: next.layers });
@@ -526,6 +545,7 @@ async function enter(): Promise<void> {
 
   applyAstralNames();
   applyAstralDevelopment();
+  applyAstralMoneyUnit();
   applyAstralGoods();
   applyAstralMilitary();
   applyAstralMarkers();

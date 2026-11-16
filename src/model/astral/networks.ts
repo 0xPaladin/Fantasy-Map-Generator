@@ -60,16 +60,18 @@ class NetworksModule {
   }
 
   create(input: NetworkInput): Network {
+    const kind = requireOneOf(input.kind, NETWORK_KINDS, "The network kind");
+    const connect = kind !== "communication";
     const network: Network = {
       i: this.nextId(),
       name: requireName(input.name),
-      kind: requireOneOf(input.kind, NETWORK_KINDS, "The network kind"),
+      kind,
       scope: this.normalizeScope(input.scope),
       seed: input.seed || generateSeed(),
       target: targetOf(input.target),
       nodes: [],
-      connect: input.connect ?? true,
-      trade: tradeOf(input.trade)
+      connect,
+      trade: tradeOf({ enabled: connect, friction: 1, ...input.trade })
     };
 
     network.nodes = this.sampleNodes(network);
@@ -92,10 +94,13 @@ class NetworksModule {
       network.name = requireName(patch.name);
       for (const route of this.routesOf(network.i)) route.name = network.name;
     }
+    const prevKind = network.kind;
     if (patch.kind !== undefined) network.kind = requireOneOf(patch.kind, NETWORK_KINDS, "The network kind");
-    if (patch.trade !== undefined) network.trade = tradeOf(patch.trade);
+    const kindChanged = network.kind !== prevKind;
+    const connect = network.kind !== "communication";
+    if (patch.trade !== undefined) network.trade = tradeOf({ ...patch.trade, enabled: connect });
+    else if (kindChanged) network.trade = { ...network.trade, enabled: connect };
 
-    const connect = patch.connect ?? network.connect;
     if (nodesChanged) {
       this.disconnect(network);
       network.scope = scope;
@@ -109,9 +114,13 @@ class NetworksModule {
 
     const wasConnected = network.connect;
     network.connect = connect;
-    if (connect !== wasConnected) {
-      if (connect) this.connect(network);
-      else this.disconnect(network);
+    if (!connect) {
+      if (wasConnected) this.disconnect(network);
+    } else if (!wasConnected) {
+      this.connect(network);
+    } else if (kindChanged) {
+      const group = this.ensureRouteGroup(network.kind);
+      for (const route of this.routesOf(network.i)) route.group = group;
     }
     return network;
   }
@@ -190,10 +199,11 @@ class NetworksModule {
   }
 
   private connect(network: Network): void {
+    if (network.kind === "communication") return;
     const points = network.nodes.map(node => [node.x, node.y] as [number, number]);
     if (points.length < 2) return;
 
-    const group = this.ensureRouteGroup();
+    const group = this.ensureRouteGroup(network.kind);
     const edges = Routes.calculateUrquhartEdges(points, isWrapEnabled(), graphWidth());
     for (const [from, to] of edges) {
       const routeId = Routes.create([points[from], points[to]], group);
@@ -211,15 +221,15 @@ class NetworksModule {
     if (ids.length) Routes.remove(...ids);
   }
 
-  /** `Routes.create` validates its group against the styles, so a stock group has to exist first */
-  private ensureRouteGroup(): string {
+  /** `Routes.create` validates its group against the styles, so the kind's route group must exist first */
+  private ensureRouteGroup(group: string): string {
     const groups = styles.routes.groups;
-    if (groups.networks) return "networks";
+    if (groups[group]) return group;
 
-    const template = groups.airroutes ?? groups.roads ?? Object.values(groups)[0];
+    const template = groups.searoutes ?? groups.airroutes ?? groups.roads ?? Object.values(groups)[0];
     if (!template) throw new Error("No route group to base the networks group on");
-    groups.networks = structuredClone(template);
-    return "networks";
+    groups[group] = structuredClone(template);
+    return group;
   }
 }
 

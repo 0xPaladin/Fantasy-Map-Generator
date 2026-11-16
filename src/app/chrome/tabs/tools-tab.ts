@@ -97,6 +97,13 @@ const TEMPLATE = /* html */ `
     <button id="openStarSystems" class="astral-only" data-tip="${t("Click to open the Star Systems overview")}">
       ${t("Star Systems")}
     </button>
+    <button
+      id="addNetwork"
+      class="astral-only"
+      data-tip="${t("Manage astral communication, transit and portal networks")}"
+    >
+      ${t("Network")}
+    </button>
     <button id="editStatesButton" data-tip="${t("States Editor")}" data-shortcut="Shift + S">
       ${t("States")}
     </button>
@@ -213,13 +220,6 @@ const TEMPLATE = /* html */ `
       ${t("River")}
     </button>
     <button id="addRoute" data-tip="${t("Open route creation dialog")}" data-shortcut="Shift + 5">${t("Route")}</button>
-    <button
-      id="addNetwork"
-      class="astral-only"
-      data-tip="${t("Create an astral network of wormholes, hyperspace lanes or relays")}"
-    >
-      ${t("Network")}
-    </button>
   </div>
   <div class="separator">${t("Show")}</div>
   <div class="grid">

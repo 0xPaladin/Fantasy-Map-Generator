@@ -6,7 +6,7 @@ import type { Burg, BurgRealm } from "@/model/political/burgs-generator";
 import { Burgs, getBurgRealm, isSurfaceBurg } from "@/model/political/burgs-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
-import { convertTemperature, getHeight, getTemperatureLikeness } from "@/model/units";
+import { convertTemperature, getHeight, getMoneySymbol, getTemperatureLikeness } from "@/model/units";
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
@@ -291,13 +291,13 @@ function renderDialog(): void {
           ${t("Avg prosperity")}:&nbsp;<span id="burgsFooterProsperity">0</span>
         </div>
         <div data-tip="${EconomyTerms.product()}" style="margin-left: 12px" data-col="grossproduct">
-          ${t("Avg product")}:&nbsp;<span id="burgsFooterGrossProduct">0</span> 🟡
+          ${t("Avg product")}:&nbsp;<span id="burgsFooterGrossProduct">0</span> ${getMoneySymbol()}
         </div>
         <div data-tip="${EconomyTerms.wealth()}" style="margin-left: 12px" data-col="productpercapita">
-          ${t("Avg wealth")}:&nbsp;<span id="burgsFooterProductPerCapita">0</span> 🟡
+          ${t("Avg wealth")}:&nbsp;<span id="burgsFooterProductPerCapita">0</span> ${getMoneySymbol()}
         </div>
         <div data-tip="${EconomyTerms.treasury()}" style="margin-left: 12px" data-col="treasury">
-          ${t("Avg balance")}:&nbsp;<span id="burgsFooterTreasury">0</span> 🟡
+          ${t("Avg balance")}:&nbsp;<span id="burgsFooterTreasury">0</span> ${getMoneySymbol()}
         </div>
       </div>
       <div id="burgsBottom" class="editorToolbar">
@@ -533,7 +533,7 @@ function renderBurgsPage(view: TableView<Burg>): void {
           <input data-tip="${t("Burg population")}" value=${si(population)} disabled />
         </div>
         <div data-col="grossproduct" class="burgEconomy pointer" data-tip="${sentences(EconomyTerms.product(), openTip)}">
-          <span>🟡</span>
+          <span>${getMoneySymbol()}</span>
           <input class="pointer" value=${grossProduct} readonly />
         </div>
         <div data-col="prosperity" class="burgEconomy pointer" data-tip="${living ? sentences(prosperityTip(living.prosperity), openTip) : EconomyTerms.noData()}">
@@ -545,11 +545,11 @@ function renderBurgsPage(view: TableView<Burg>): void {
             : `<div class="placeholder" data-col="development"></div>`
         }
         <div data-col="productpercapita" class="burgEconomy pointer" data-tip="${sentences(EconomyTerms.wealth(), openTip)}">
-          <span>🟡</span>
+          <span>${getMoneySymbol()}</span>
           <input class="pointer" value=${productPerCapita} readonly />
         </div>
         <div data-col="treasury" class="burgEconomy pointer" data-tip="${sentences(treasuryTip, openTip)}">
-          <span>🟡</span>
+          <span>${getMoneySymbol()}</span>
           <input class="pointer" value=${treasury} readonly />
         </div>
         <span data-col="capital"

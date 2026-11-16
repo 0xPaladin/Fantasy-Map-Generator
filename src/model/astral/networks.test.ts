@@ -61,18 +61,16 @@ describe("Networks.create", () => {
   test("places land nodes only, deterministically for the same seed", () => {
     const first = Networks.create({
       name: "The Veil Run",
-      kind: "wormhole",
+      kind: "portal",
       scope: { kind: "land" },
       target: 12,
-      connect: false,
       seed: "seed-1"
     });
     const second = Networks.create({
       name: "Second",
-      kind: "relay",
+      kind: "communication",
       scope: { kind: "land" },
       target: 12,
-      connect: false,
       seed: "seed-1"
     });
 
@@ -85,13 +83,14 @@ describe("Networks.create", () => {
   test("places burgs-only nodes on systems", () => {
     const network = Networks.create({
       name: "Courier Chain",
-      kind: "relay",
+      kind: "communication",
       scope: { kind: "burgs" },
       target: 3,
-      connect: false,
       seed: "seed-2"
     });
 
+    expect(network.connect).toBe(false);
+    expect(Networks.routesOf(network.i)).toHaveLength(0);
     expect(network.nodes.length).toBeGreaterThan(0);
     for (const node of network.nodes) {
       const burg = pack.burgs[node.burg!];
@@ -100,79 +99,81 @@ describe("Networks.create", () => {
     }
   });
 
-  test("creates locked routes in the Routes store and links their cells", () => {
+  test("creates locked routes in the Routes store for transit and portal networks", () => {
     const network = Networks.create({
       name: "The Bright Lanes",
-      kind: "hyperlane",
+      kind: "transit",
       scope: { kind: "any" },
       target: 9,
-      connect: true,
       seed: "seed-3"
     });
 
+    expect(network.connect).toBe(true);
     const routes = Networks.routesOf(network.i);
     expect(routes.length).toBeGreaterThan(1);
     for (const route of routes) {
-      expect(route.group).toBe("networks");
+      expect(route.group).toBe("transit");
       expect(route.networkId).toBe(network.i);
       expect(route.name).toBe(network.name);
       expect(route.lock).toBe(true);
       expect(route.points).toHaveLength(2);
       expect(pack.cells.routes[route.points[0][2]]?.[route.points[1][2]]).toBe(route.i);
     }
-    expect(styles.routes.groups.networks).toBeDefined();
+    expect(styles.routes.groups.transit).toBeDefined();
   });
 
-  test("never joins the economy when trade is off, and keeps its friction", () => {
+  test("communication networks never create routes", () => {
     const network = Networks.create({
       name: "The Quiet Line",
-      kind: "relay",
+      kind: "communication",
       scope: { kind: "land" },
       target: 6,
-      connect: true,
-      trade: { enabled: false, friction: 0.25 },
       seed: "seed-4"
     });
 
-    expect(network.trade).toEqual({ enabled: false, friction: 0.25 });
+    expect(network.connect).toBe(false);
+    expect(network.trade.enabled).toBe(false);
+    expect(Networks.routesOf(network.i)).toHaveLength(0);
   });
 });
 
 describe("Networks.update", () => {
-  test("turning links off removes the routes, and on creates them again", () => {
+  test("switching kind between portal/transit and communication manages routes automatically", () => {
     const network = Networks.create({
       name: "Test",
-      kind: "wormhole",
+      kind: "portal",
       scope: { kind: "land" },
       target: 8,
-      connect: true,
       seed: "seed-5"
     });
     expect(Networks.routesOf(network.i).length).toBeGreaterThan(0);
+    expect(Networks.routesOf(network.i).every(r => r.group === "portal")).toBe(true);
 
-    Networks.update(network.i, { connect: false });
+    Networks.update(network.i, { kind: "transit" });
+    expect(Networks.routesOf(network.i).every(r => r.group === "transit")).toBe(true);
+
+    Networks.update(network.i, { kind: "communication" });
     expect(Networks.routesOf(network.i)).toHaveLength(0);
     expect(pack.cells.routes).toEqual({});
 
-    Networks.update(network.i, { connect: true });
+    Networks.update(network.i, { kind: "portal" });
     expect(Networks.routesOf(network.i).length).toBeGreaterThan(0);
+    expect(Networks.routesOf(network.i).every(r => r.group === "portal")).toBe(true);
   });
 
   test("changing placement resamples without touching other networks", () => {
     const first = Networks.create({
       name: "First",
-      kind: "relay",
+      kind: "communication",
       scope: { kind: "land" },
       target: 6,
-      connect: false,
       seed: "seed-6"
     });
     const second = Networks.create({
       name: "Second",
-      kind: "relay",
+      kind: "communication",
       scope: { kind: "land" },
       target: 6,
-      connect: false,
       seed: "seed-7"
     });
     const secondNodes = structuredClone(second.nodes);
@@ -186,10 +187,9 @@ describe("Networks.update", () => {
   test("renaming the network renames its links", () => {
     const network = Networks.create({
       name: "Old name",
-      kind: "relay",
+      kind: "transit",
       scope: { kind: "land" },
       target: 6,
-      connect: true,
       seed: "seed-12"
     });
 
@@ -201,10 +201,9 @@ describe("Networks.update", () => {
   test("a placement with no candidates throws and leaves the network alone", () => {
     const network = Networks.create({
       name: "Kept",
-      kind: "relay",
+      kind: "communication",
       scope: { kind: "land" },
       target: 6,
-      connect: false,
       seed: "seed-8"
     });
     const nodes = structuredClone(network.nodes);
@@ -219,10 +218,9 @@ describe("Networks.update", () => {
   test("regenerate replaces the nodes and the routes", () => {
     const network = Networks.create({
       name: "Rotating",
-      kind: "relay",
+      kind: "portal",
       scope: { kind: "land" },
       target: 8,
-      connect: true,
       seed: "seed-9"
     });
     const oldNodes = structuredClone(network.nodes);
@@ -241,10 +239,9 @@ describe("Networks.remove", () => {
   test("removes the network and its routes", () => {
     const network = Networks.create({
       name: "Gone",
-      kind: "wormhole",
+      kind: "portal",
       scope: { kind: "land" },
       target: 8,
-      connect: true,
       seed: "seed-11"
     });
 
@@ -267,13 +264,13 @@ describe("networks schema", () => {
     const valid = {
       i: 1,
       name: "Good",
-      kind: "relay",
+      kind: "communication",
       scope: { kind: "land" },
       seed: "x",
       target: 4,
       nodes: [{ cell: 0, x: 0, y: 0 }],
       connect: false,
-      trade: { enabled: true, friction: 1 }
+      trade: { enabled: false, friction: 1 }
     };
     const parsed = mapSchema.parse({
       ...Options.getDefaultOptions().map,

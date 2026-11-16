@@ -141,17 +141,37 @@ const networkScope = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("state"), state: count })
 ]);
 
-const network = z.strictObject({
-  i: count,
-  name: z.string().min(1),
-  kind: z.enum(NETWORK_KINDS),
-  scope: networkScope,
-  seed: z.string(),
-  target: count.min(1),
-  nodes: z.array(networkNode),
-  connect: z.boolean(),
-  trade: z.strictObject({ enabled: z.boolean(), friction: nonNegative })
-});
+const LEGACY_NETWORK_KINDS: Record<string, (typeof NETWORK_KINDS)[number]> = {
+  wormhole: "portal",
+  hyperlane: "transit",
+  relay: "communication"
+};
+
+const network = z.preprocess(
+  value => {
+    if (!value || typeof value !== "object") return value;
+    const obj = value as Record<string, unknown>;
+    const kind = typeof obj.kind === "string" ? (LEGACY_NETWORK_KINDS[obj.kind] ?? obj.kind) : obj.kind;
+    return kind === obj.kind ? value : { ...obj, kind };
+  },
+  z.strictObject({
+    i: count,
+    name: z.string().min(1),
+    kind: z.enum(NETWORK_KINDS),
+    scope: networkScope,
+    seed: z.string(),
+    target: count.min(1),
+    nodes: z.array(networkNode),
+    connect: z.boolean(),
+    trade: z.strictObject({ enabled: z.boolean(), friction: nonNegative })
+  })
+);
+
+/** route group carriage multipliers; absent in older maps, which take defaults */
+const routeCarriage = z.preprocess(
+  value => (value && typeof value === "object" && !Array.isArray(value) ? value : {}),
+  z.record(z.string(), nonNegative)
+);
 
 /** a broken network is dropped on its own, so it never costs the map its other networks */
 const networks = z.preprocess(value => {
@@ -274,6 +294,7 @@ export const mapSchema = z.strictObject({
   transports: z.array(transport),
   eras,
   networks,
+  routeCarriage,
   customIcons,
   goods,
   coastline: coastlineSettings,
