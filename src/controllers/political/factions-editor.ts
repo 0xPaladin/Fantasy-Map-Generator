@@ -903,8 +903,10 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         }
         #${dialogDomId} .factionLedger.columns {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr));
-          column-gap: 1.4em;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          align-items: start;
+          width: 100%;
+          column-gap: 1.8em;
           margin-bottom: 10px;
           font-size: 0.92em;
         }
