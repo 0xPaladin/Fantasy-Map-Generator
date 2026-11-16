@@ -5,7 +5,12 @@ import { Prosperity } from "@/model/economy/prosperity";
 import { Taxes } from "@/model/economy/taxes";
 import { noFinance } from "@/model/political/states-generator";
 import type { Faction, FactionOutpost } from "@/types/factions";
-import { canReadUpstreamEconomy, factionUpstreamIncome, SEASON_DAYS } from "./living-faction-economy";
+import {
+  canReadUpstreamEconomy,
+  computeFactionEconomy,
+  factionUpstreamIncome,
+  SEASON_DAYS
+} from "./living-faction-economy";
 
 const HQ_ASSETS: string[] = [];
 
@@ -171,5 +176,22 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
     };
     expect(factionUpstreamIncome(wild, wild.hq).gold).toBe(0);
     expect(factionUpstreamIncome(wild, outpost).gold).toBe(0);
+  });
+
+  it("computes category revenue lines, 4 expense buckets, corruption, and day balance", () => {
+    const charter = faction({ allegiance: "chartered", patronStateId: 1, alignment: "lawful" });
+    const nodeInc = factionUpstreamIncome(charter, charter.hq);
+    expect(nodeInc.lines.length).toBe(2);
+
+    const economy = computeFactionEconomy(charter, [nodeInc], 0);
+    expect(economy.collectedDaily).toBeCloseTo(8 * 0.2 + turnover * 0.05, 2);
+    expect(economy.expenses.map(e => e.bucket)).toEqual(["court", "administration", "infrastructure", "military"]);
+    expect(economy.corruptionRate).toBe(7); // 10 base - 3 lawful
+    expect(economy.charterTitheDaily).toBeCloseTo(economy.collectedDaily * 0.15, 2);
+    const spent = economy.expenses.reduce((s, e) => s + e.daily, 0);
+    expect(economy.dayBalance).toBeCloseTo(
+      economy.collectedDaily - spent - economy.corruptionDaily - economy.charterTitheDaily,
+      2
+    );
   });
 });

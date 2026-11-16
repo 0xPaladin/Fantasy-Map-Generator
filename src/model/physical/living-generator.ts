@@ -62,7 +62,12 @@ import {
   toBattleUnits,
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
-import { factionUpstreamIncome, SEASON_DAYS } from "@/model/physical/living-faction-economy";
+import {
+  computeFactionEconomy,
+  factionUpstreamIncome,
+  type FactionUpstreamIncome,
+  SEASON_DAYS
+} from "@/model/physical/living-faction-economy";
 import {
   CORRUPTION_DRIFT,
   CORRUPTION_NEWS_THRESHOLD,
@@ -2307,9 +2312,10 @@ class LivingModel {
     return candidates.find(entry => entry.isHq) ?? candidates[0] ?? null;
   }
 
-  /** §5.1 upstream-only faction income: trade commissions, graft, retainers and tithes per node. */
+  /** §5.1 upstream-only faction income & state-style expense breakdown per node and empire. */
   getFactionYieldBreakdown(faction: Faction): FactionYieldBreakdown {
     const nodes: FactionNodeYieldBreakdown[] = [];
+    const nodeIncomes: FactionUpstreamIncome[] = [];
     let totalUpstreamGold = 0;
     let totalCharterTithe = 0;
     let charterPatronId = 0;
@@ -2319,6 +2325,7 @@ class LivingModel {
 
     for (const { node, isHq } of this.factionEmpireNodes(faction)) {
       const upstream = factionUpstreamIncome(faction, node);
+      nodeIncomes.push(upstream);
       const breakdown: FactionNodeYieldBreakdown = {
         node,
         isHq,
@@ -2336,20 +2343,6 @@ class LivingModel {
       }
     }
 
-    return {
-      nodes,
-      hq: hqBreakdown,
-      outposts: outpostsBreakdown,
-      upstreamGold: Math.round(totalUpstreamGold * 100) / 100,
-      charterTithe: Math.round(totalCharterTithe * 100) / 100,
-      charterPatronId,
-      influence: Math.round(totalInfluence * 100) / 100
-    };
-  }
-
-  /** The faction's season on the upstream economy: node income less its forces' upkeep. */
-  private factionSeasonalGold(faction: Faction): number {
-    const upstream = this.getFactionYieldBreakdown(faction);
     const unitTypes = Military.getUnitTypes();
     const blockUpkeep = (faction.military ?? []).reduce(
       (total, regiment) =>
@@ -2360,7 +2353,24 @@ class LivingModel {
         ),
       0
     );
-    return upstream.upstreamGold - blockUpkeep;
+    const economy = computeFactionEconomy(faction, nodeIncomes, blockUpkeep);
+
+    return {
+      nodes,
+      hq: hqBreakdown,
+      outposts: outpostsBreakdown,
+      upstreamGold: Math.round(totalUpstreamGold * 100) / 100,
+      charterTithe: Math.round(totalCharterTithe * 100) / 100,
+      charterPatronId,
+      influence: Math.round(totalInfluence * 100) / 100,
+      economy
+    };
+  }
+
+  /** The faction's season on the upstream economy: Day Balance × SEASON_DAYS. */
+  private factionSeasonalGold(faction: Faction): number {
+    const upstream = this.getFactionYieldBreakdown(faction);
+    return Math.round(upstream.economy.dayBalance * SEASON_DAYS * 100) / 100;
   }
 
   /** Bank the faction's season: upstream income less its forces' upkeep; debt disbands a block. */

@@ -8,7 +8,7 @@ Factions unify peaceful commercial guilds, religious inquisitions, knightly orde
 
 ### Categories and Archetypes
 
-Factions span six broad categories and 24 archetypes:
+Factions span six broad categories and 59 archetypes:
 
 | Category | Archetypes | Typical Legality | Typical HQ | Primary Focus |
 | :--- | :--- | :--- | :--- | :--- |
@@ -25,10 +25,10 @@ Factions span six broad categories and 24 archetypes:
 
 A faction carries no scale of its own; what it wants and how far it reaches are data it keeps, and its real footprint is read from the map:
 
-* **Expansion scope** (`expansionScope`) — `local`, `province`, `state`, `culture`, `religion` or `global`: the ground it seeks and where it plants outposts.
-* **Expansionism** (`expansionism`, 0.2–2.0) — how hard it pushes, folded into its agenda odds.
-* **Sovereign ambition** (`sovereignAmbition`) — whether a successful siege can ascend it to a state, with the `stateForm` and culture roster it takes then.
-* **Its real footprint** — active outposts and their tiers, constructed assets, known technologies and treasury. The _Faction Outposts_ dialog lists them, and nothing is asserted beyond what the map holds.
+* **Expansion scope** (`expansionScope`) â€” `local`, `province`, `state`, `culture`, `religion` or `global`: the ground it seeks and where it plants outposts.
+* **Expansionism** (`expansionism`, 0.2â€“2.0) â€” how hard it pushes, folded into its agenda odds.
+* **Sovereign ambition** (`sovereignAmbition`) â€” whether a successful siege can ascend it to a state, with the `stateForm` and culture roster it takes then.
+* **Its real footprint** â€” active outposts and their tiers, constructed assets, known technologies and treasury. The _Faction Outposts_ dialog lists them, and nothing is asserted beyond what the map holds.
 
 Rival factions and their host states watch that footprint: a busy faction draws suppression, a weak one loses its outposts to rivals.
 
@@ -42,7 +42,7 @@ Every HQ and outpost is an anchor on the map: a `FactionHq` or `FactionOutpost` 
 
 A faction expands into settlements within its reach by establishing **Burg Outposts**. Multiple factions can co-exist within the same settlement, competing for influence:
 * **Outpost Tier**: Tiers 1 through 3, unlocking additional asset slots and resilience.
-* **Influence (0–100%)**: The faction's share of local political, economic, or shadow leverage in the burg.
+* **Influence (0â€“100%)**: The faction's share of local political, economic, or shadow leverage in the burg.
 * **Secrecy**: Clandestine outposts operate covertly to avoid detection and state crackdowns.
 
 ---
@@ -53,16 +53,16 @@ Factions build works at their HQ and outposts from a catalog of faction assets (
 
 A work is **commissioned**, not bought: the faction pays the cost up front and builds it over a number of seasons equal to the asset's tier. On completion the asset joins the node, and its money bite becomes a daily line in the host burg's simAdjustments - a consortium enriches its town (+1 to +4 a day per commercial asset), a thieves' den drains it. Order and unrest bites apply to the host province and burg at completion. God mode and the editor commission specific works via Living.commissionFactionAsset(factionId, assetId, nodeKey?).
 
-The _Faction Outposts_ dialog lists each node's **Trade** (its season's upstream income) and **Lines** (what the faction's works write into the host town); its header shows the empire's trade a season and, for a charter, its tithes.
+The _Faction Outposts_ dialog lists each node's **Income** (its season's upstream income) and **Lines** (what the faction's works write into the host town); its header shows the empire's income a season, charter tithes, and a two-column **Revenue | Expenses** daily ledger above the tabs.
 
 ---
 
 ### The Living World Simulation
 
-Factions ride the same rails as states - no city loop, no citizens, worked cells, queues or yields. Each season (Living.tick()):
+Factions ride the same rails as states - no city loop, no citizens, worked cells, queues or yields. Each season (`Living.tick()`):
 
-1. **Income** - every HQ and outpost earns from the [economy underneath](Living-World.md#the-economy-underneath) (see the table below), and its money lines are rebuilt on the host burg.
-2. **Treasury** - income less its forces' block upkeep is banked into action.treasury; a negative balance disbands the newest block.
+1. **Revenue & Expenses (`Day Balance`)** - every HQ and outpost earns category-specific daily revenue streams (commercial manufacturing & market commissions, underworld graft & smuggling, martial retainers & hostile tribute, religious/political court & admin shares, adventuring guild charters & bounties). Each faction automatically allocates shares across four expense buckets (**Court and patronage**, **Administration**, **Infrastructure**, **Military**—at least covering regiment block upkeep) plus **Corruption** and **Charter tithe** (15% for `chartered`/`state_arm`).
+2. **Treasury** - `Day Balance × 90` (`SEASON_DAYS`) is banked into `faction.treasury`; a negative balance disbands the newest block.
 3. **Works** - the faction advances its commissioned asset, or commissions the best one its track, era and purse allow (see above).
 4. **Muster** - a faction under strength and funded musters one roster block per season, gated on goods like a state's.
 5. **Influence** - temples and chanceries grow influence with the court's spending; charters pay their patron.
@@ -73,13 +73,13 @@ The legacy flat economy (instant asset purchases, teleport raids) is retired - a
 
 ### State Suppression of Hostile Factions
 
-States counter hostile or clandestine factions in-world instead of only through editor removal. A state whose burgs host a hostile faction node — or whose territory contains a wilderness HQ — can run a **suppression campaign**: the `suppress_faction` agenda, picked in `chooseAgenda()` after lair/trouble emergencies, or started from the Inspector's **Suppress faction** button.
+States counter hostile or clandestine factions in-world instead of only through editor removal. A state whose burgs host a hostile faction node â€” or whose territory contains a wilderness HQ â€” can run a **suppression campaign**: the `suppress_faction` agenda, picked in `chooseAgenda()` after lair/trouble emergencies, or started from the Inspector's **Suppress faction** button.
 
 Auditing one node at a time:
 
-* **Urban nodes** are pressured administratively: each funded season costs the suppressing state `6 + tier � 4` gold from its treasury and, after three funded seasons, deals influence damage based on province order vs the node's secrecy, raises province order, burg unrest and state unravel. A defending faction guard pauses pressure (and repeated stalls strain the state); unguarded low-influence (= 25) or fortified nodes can be stormed directly by the field army through the shared battle engine � victory pillages, failure retreats and delays the campaign.
+* **Urban nodes** are pressured administratively: each funded season costs the suppressing state `6 + tier × 4` gold from its treasury and, after three funded seasons, deals influence damage based on province order vs the node's secrecy, raises province order, burg unrest and state unravel. A defending faction guard pauses pressure (and repeated stalls strain the state); unguarded low-influence (= 25) or fortified nodes can be stormed directly by the field army through the shared battle engine — victory pillages, failure retreats and delays the campaign.
 * **Wilderness strongholds** (HQ with no burg on a state-owned cell) are military-only: there is no host city to queue in, so the field army marches to the HQ cell and storms it once adjacent, under the same guard-first and pillage rules.
-* **Pillage consequences:** a razed outpost is skipped from yields/production/culture; a razed HQ relocates to the faction's strongest surviving outpost or dissolves the faction when none remain. Pillaged nodes show a slate crest with a 💀 badge and a "Pillaged" tooltip; the Outposts & Assets dialog shows per-node influence while the campaign runs.
+* **Pillage consequences:** a razed outpost is skipped from yields/production/culture; a razed HQ relocates to the faction's strongest surviving outpost or dissolves the faction when none remain. Pillaged nodes show a slate crest with a ðŸ’€ badge and a "Pillaged" tooltip; the Outposts & Assets dialog shows per-node influence while the campaign runs.
 
 Lawful `state_arm`, `chartered` and non-hostile factions are never eligible. Schedules, tuning and tests: [`faction-suppression.md`](../plans/faction-suppression.md).
 
@@ -97,9 +97,9 @@ Factions can evolve into recognized sovereign nations:
 
 ### User Interface and Tools
 
-* **Factions Overview** (_Tools_ → _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV. Columns show yields (Food/Prod/Gold/Sci/Cult/Faith/Hap), total citizens, worked cells, and the HQ production queue head.
+* **Factions Overview** (_Tools_ â†’ _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV. Columns show yields (Food/Prod/Gold/Sci/Cult/Faith/Hap), total citizens, worked cells, and the HQ production queue head.
 * **State Inspector suppression**: for a state, the _Suppression_ section lists every eligible hostile faction node (with influence and a wilderness tag for burg-less HQs) and a **Suppress faction** command; the agenda reads "Suppressing {faction} in {burg or the wildlands}".
-* **Faction Editor Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The Outposts & Assets dialog shows per-node citizens, worked cells, city yields, upstream trade and the full production queue for the HQ and each outpost, with the faction's treasury, trade a season and charter tithes in its header.
-* **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect all resident faction HQs/outposts at that burg — citizens, worked cells, city yields and production queue, plus local influence and secrecy.
+* **Faction Editor & Manage Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The **Manage Outposts & Assets** dialog displays a state-style daily **Revenue | Expenses** ledger (category revenue streams, 4 expense buckets, **Day Balance**, **Corruption**, and **Charter tithe**) above the **HQ & Outposts**, **Assets** (with FMG-native host town, market-cut, order, and unrest effects), and **Forces** tabs.
+* **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect all resident faction HQs/outposts at that burg â€” citizens, worked cells, city yields and production queue, plus local influence and secrecy.
 * **Map Layer (`#factions`, Hotkey: `Shift+F`)**: Displays faction HQ badges, outpost pins, and field regiments on the SVG map.
-* **Living HUD**: The god-mode inspector intervenes in the simulation — spark rebellions, smite rulers, resolve troubles, assault lairs, promote emergent states — and the **Suppression** section orders a state to campaign against a hostile faction.
+* **Living HUD**: The god-mode inspector intervenes in the simulation â€” spark rebellions, smite rulers, resolve troubles, assault lairs, promote emergent states â€” and the **Suppression** section orders a state to campaign against a hostile faction.

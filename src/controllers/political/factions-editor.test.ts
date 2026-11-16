@@ -14,7 +14,7 @@ import { Living } from "@/model/physical/living-generator";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import type { Faction } from "@/types/factions";
 import { dialogState } from "@/ui/dialog/state";
-import { FactionsEditor, openOutpostsDialog } from "./factions-editor";
+import { FactionsEditor, formatAssetBenefits, openOutpostsDialog } from "./factions-editor";
 
 describe("FactionsEditor", () => {
   beforeEach(() => {
@@ -136,10 +136,10 @@ describe("FactionsEditor", () => {
     const outpostRows = document.querySelectorAll("#outpostsTable > .states");
     expect(outpostRows.length).toBe(2);
     expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("Oakhaven");
-    expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("Trade");
+    expect(document.querySelector("#outpostsTable")?.innerHTML).toContain("Income");
   });
 
-  it("computes the upstream faction yield breakdown and populates the outpost trade column", () => {
+  it("computes the upstream faction yield breakdown and populates the outpost income column", () => {
     const faction = Factions.add({
       name: "Iron Bank",
       category: "commercial",
@@ -172,11 +172,22 @@ describe("FactionsEditor", () => {
 
     openOutpostsDialog(faction.i);
     const dialog = document.querySelector("#factionOutpostsDialog")!;
-    expect(dialog.innerHTML).toContain("Trade");
-    expect(dialog.innerHTML).toContain("trade a season");
+    expect(dialog.innerHTML).toContain("Income");
+    expect(dialog.innerHTML).toContain("income a season");
     expect(dialog.innerHTML).toContain("🪙 100");
+    expect(dialog.innerHTML).toContain("Revenue");
+    expect(dialog.innerHTML).toContain("Expenses");
+    expect(dialog.innerHTML).toContain("Court and patronage");
+    expect(dialog.innerHTML).toContain("Day Balance");
+    expect(dialog.innerHTML).toContain("Corruption");
     expect(dialog.innerHTML).not.toContain("Citizens");
     expect(dialog.innerHTML).not.toContain("yields");
+  });
+
+  it("formats asset benefits using FMG-native simulation effects", () => {
+    expect(formatAssetBenefits("trade_depot")).toBe("+1 🪙/day Host, +3% Market Cut");
+    expect(formatAssetBenefits("safe_house")).toBe("-1 🪙/day Host, -3 Order");
+    expect(formatAssetBenefits("shadow_court")).toBe("-12 Order, +6 Unrest");
   });
 
   it("supports tab switching between HQ & Outposts, Assets, and Forces", () => {

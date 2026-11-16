@@ -169,6 +169,46 @@ export interface FactionArchetypeDef {
   defaultValues: readonly string[];
 }
 
+export type FactionExpenseBucket = "court" | "administration" | "infrastructure" | "military";
+
+export interface FactionRevenueLine {
+  key: string;
+  label: string;
+  /** Daily gold earned by this stream (before corruption and charter tithe) */
+  daily: number;
+}
+
+export interface FactionExpenseLine {
+  bucket: FactionExpenseBucket;
+  label: string;
+  /** Percentage share of collected daily revenue (0..100) */
+  share: number;
+  /** Daily gold spent in this bucket */
+  daily: number;
+}
+
+export interface FactionEconomyBreakdown {
+  /** Daily revenue lines across all active nodes, grouped by stream */
+  revenueLines: FactionRevenueLine[];
+  /** Total daily revenue collected across active nodes (before expenses, corruption, and charter tithe) */
+  collectedDaily: number;
+  /** Share of host burgs' product (%) */
+  hostProductShare: number;
+  /** Four state-style expense buckets */
+  expenses: FactionExpenseLine[];
+  /** Total percentage of collected revenue spent across the 4 buckets */
+  spentShare: number;
+  /** Corruption / skimming percentage (0..100) and daily gold lost */
+  corruptionRate: number;
+  corruptionDaily: number;
+  /** Charter tithe paid to patron state (daily) */
+  charterTitheDaily: number;
+  /** Net daily balance: collectedDaily - expenses - corruptionDaily - charterTitheDaily */
+  dayBalance: number;
+  /** Net balance as % of collectedDaily */
+  dayBalanceShare: number;
+}
+
 export interface FactionNodeYieldBreakdown {
   node: FactionHq | FactionOutpost;
   isHq: boolean;
@@ -189,4 +229,6 @@ export interface FactionYieldBreakdown {
   charterPatronId: number;
   /** influence the court's spending lends its temples and its chancery */
   influence: number;
+  /** daily state-style Revenue & Expenses breakdown */
+  economy: FactionEconomyBreakdown;
 }
