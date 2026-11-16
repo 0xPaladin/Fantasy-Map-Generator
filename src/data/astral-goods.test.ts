@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ASTRAL_GOODS_DATA, isAstralGoodsCatalogue } from "@/data/astral-goods";
+import { PROJECTS } from "@/data/living-projects";
 
 describe("astral goods data", () => {
   it("defines 36 sci-fi & post-scarcity commodities with valid properties, deposits, TL gating, and recipes", () => {
@@ -11,6 +12,7 @@ describe("astral goods data", () => {
       expect(good.name).toBeTruthy();
       expect(good.unit).toBe("ton");
       expect(good.value).toBeGreaterThan(0);
+      expect(good.value).toBeLessThanOrEqual(24);
       expect(good.carriage).toBeGreaterThan(0);
       expect(good.color).toMatch(/^#[0-9a-fA-F]{6}$/);
       expect(good.icon).toBeTruthy();
@@ -21,15 +23,35 @@ describe("astral goods data", () => {
         for (const recipe of good.recipes) {
           const ingredientIds = Object.keys(recipe).map(Number);
           expect(ingredientIds.length).toBeGreaterThan(0);
+          let inputCost = 0;
           for (const ingId of ingredientIds) {
             expect(ingId).toBeGreaterThanOrEqual(1);
             expect(ingId).toBeLessThanOrEqual(36);
             expect(recipe[ingId]).toBeGreaterThan(0);
+            inputCost += ASTRAL_GOODS_DATA[ingId - 1].value * recipe[ingId];
           }
+          expect(good.value).toBeGreaterThan(inputCost);
         }
       } else {
         expect(good.deposits).toBeDefined();
         expect(good.distribution).toBeTruthy();
+      }
+    }
+
+    // Exo-biomes 13..27 produce primary resources
+    const exoCovered = new Set<number>();
+    for (const good of ASTRAL_GOODS_DATA) {
+      for (const biomeId of Object.keys(good.biomeOutput ?? {}).map(Number)) {
+        if (biomeId >= 13 && biomeId <= 27) exoCovered.add(biomeId);
+      }
+    }
+    expect(exoCovered.size).toBe(15);
+
+    // Every Astral public work good cost resolves to a valid Astral commodity
+    const byName = new Set(ASTRAL_GOODS_DATA.map(g => g.name));
+    for (const project of PROJECTS) {
+      for (const cost of project.astralGoods ?? []) {
+        expect(byName.has(cost.name)).toBe(true);
       }
     }
 

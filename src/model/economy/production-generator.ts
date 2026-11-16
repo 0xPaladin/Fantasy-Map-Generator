@@ -35,8 +35,34 @@ export const WORKFORCE_SHARE = 0.32; // townspeople working in trades; the rest 
 
 // Living World city buildings multiply the burg's manufactures (docs/plans/upstream-economy-alignment.md §3.1)
 const MANUFACTURING_BUILDINGS: Record<string, number> = { workshop: 1.15, windmill: 1.1, factory: 1.35 };
-const FORGE_GOODS = new Set(["Arms", "Artillery", "Tools", "Bronze", "Gunpowder", "Coins"]);
-const ARMORY_GOODS = new Set(["Arms", "Artillery"]);
+const FORGE_GOODS = new Set([
+  "Arms",
+  "Artillery",
+  "Tools",
+  "Bronze",
+  "Gunpowder",
+  "Coins",
+  "Parts, Basic Industry",
+  "Parts, Starship Maintenance",
+  "Parts, Pretech Industry",
+  "Tools, Basic Hand Tools",
+  "Tools, Industrial",
+  "Tools, Astronautic",
+  "Fusion Plants",
+  "Small Arms, Projectile",
+  "Small Arms, Energy",
+  "Small Arms, Pretech",
+  "Matter Compiler Matrix",
+  "Esoteric Circuitry & VI Cores"
+]);
+const ARMORY_GOODS = new Set([
+  "Arms",
+  "Artillery",
+  "Small Arms, Projectile",
+  "Small Arms, Energy",
+  "Small Arms, Pretech",
+  "Fusion Plants"
+]);
 const FORGE_BOOST = 1.2; // forge works metal and arms a fifth faster
 const ARMORY_BOOST = 1.25; // the armory forge arms and guns a quarter faster
 

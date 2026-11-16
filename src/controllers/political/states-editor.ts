@@ -13,7 +13,7 @@ import { STATE_FORMS, type State, States } from "@/model/political/states-genera
 import { Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
-import { getArea, getAreaUnit } from "@/model/units";
+import { getArea, getAreaUnit, getMoneySymbol } from "@/model/units";
 import { redrawEmblem, removeEmblem } from "@/renderers/draw-emblems";
 import { EmblemRenderer } from "@/renderers/emblems/renderer";
 import { Layers } from "@/renderers/layers";
@@ -594,8 +594,8 @@ function renderStatesPage(view: TableView<State>): void {
           s.cells || s.burgs
             ? /* html */ `<div data-tip="${sentences(EconomyTerms.prosperity(), EconomyTerms.open())}" class="stateEconomy stateProsperity pointer" data-col="prosperity">${neutrals?.prosperity == null ? "—" : renderProsperityPercent(neutrals.prosperity)}</div>
         <div data-tip="${t("Neutral lands have no government")}" class="placeholder" data-col="stability"></div>
-        <div data-tip="${sentences(EconomyTerms.stateProduct(), EconomyTerms.open())}" class="stateEconomy stateProduct pointer" data-col="product">🟡 ${si(neutrals?.product ?? 0)}</div>
-        <div data-tip="${sentences(EconomyTerms.wealth(), EconomyTerms.open())}" class="stateEconomy stateWealth pointer" data-col="wealth">🟡 ${rn(neutrals?.wealth ?? 0, 2)}</div>`
+        <div data-tip="${sentences(EconomyTerms.stateProduct(), EconomyTerms.open())}" class="stateEconomy stateProduct pointer" data-col="product">${getMoneySymbol()} ${si(neutrals?.product ?? 0)}</div>
+        <div data-tip="${sentences(EconomyTerms.wealth(), EconomyTerms.open())}" class="stateEconomy stateWealth pointer" data-col="wealth">${getMoneySymbol()} ${rn(neutrals?.wealth ?? 0, 2)}</div>`
             : `<div class="stateProsperity placeholder" data-col="prosperity"></div>
         <div class="placeholder" data-col="stability"></div>
         <div class="stateProduct placeholder" data-col="product"></div>
@@ -674,14 +674,14 @@ function renderStatesPage(view: TableView<State>): void {
         <span data-tip="${populationTip}" class="icon-male"></span>
         <div data-tip="${populationTip}" class="statePopulation pointer">${si(population)}</div>
       </div>
-      <div data-tip="${treasuryTip}" class="stateTreasury stateEconomy pointer" data-col="treasury">🟡 ${si(s.economy.treasury)}</div>
+      <div data-tip="${treasuryTip}" class="stateTreasury stateEconomy pointer" data-col="treasury">${getMoneySymbol()} ${si(s.economy.treasury)}</div>
       <div data-tip="${sentences(t("Tax burden: the taxes' share of the product"), EconomyTerms.open())}" class="stateEconomy pointer" data-col="burden">${burden === null ? "—" : `${rn(burden, 1)}%`}</div>
       <div data-tip="${sentences(EconomyTerms.corruption(), t("Before administration: {{rate}}%", { rate: rn(Corruption.getStateTendency(s)) }), EconomyTerms.open())}" class="stateEconomy pointer" data-col="corruption">${rn(Corruption.ofState(s, s.economy.collected))}%</div>
       ${EXPENSES.map(expense => `<div data-tip="${sentences(EconomyTerms.expenseTip(expense), EconomyTerms.open())}" class="stateEconomy pointer" data-col="${expense}">${expenses[expense]}%</div>`).join("")}
       <div data-tip="${accounts?.prosperity == null ? EconomyTerms.noData() : sentences(prosperityTip(accounts.prosperity), EconomyTerms.open())}" class="stateEconomy stateProsperity pointer" data-col="prosperity">${accounts?.prosperity == null ? "—" : renderProsperityPercent(accounts.prosperity)}</div>
       <div data-tip="${stability ? sentences(EconomyTerms.stability(), t("Click to open the stability overview")) : EconomyTerms.noData()}" class="stateStability pointer" data-col="stability">${stability ? `${rn(stability.stability * 100)}%` : "—"}</div>
-      <div data-tip="${sentences(EconomyTerms.stateProduct(), EconomyTerms.open())}" class="stateEconomy stateProduct pointer" data-col="product">🟡 ${si(accounts?.product ?? 0)}</div>
-      <div data-tip="${sentences(EconomyTerms.wealth(), EconomyTerms.open())}" class="stateEconomy stateWealth pointer" data-col="wealth">🟡 ${rn(accounts?.wealth ?? 0, 2)}</div>
+      <div data-tip="${sentences(EconomyTerms.stateProduct(), EconomyTerms.open())}" class="stateEconomy stateProduct pointer" data-col="product">${getMoneySymbol()} ${si(accounts?.product ?? 0)}</div>
+      <div data-tip="${sentences(EconomyTerms.wealth(), EconomyTerms.open())}" class="stateEconomy stateWealth pointer" data-col="wealth">${getMoneySymbol()} ${rn(accounts?.wealth ?? 0, 2)}</div>
       ${renderDevelopmentCell(development[s.i])}
       <select data-tip="${sentences(t("State type"), t("Defines growth model"), t("Click to change"))}" class="cultureType" data-col="type">${getTypeOptions(
         s.type
@@ -722,7 +722,7 @@ function renderStatesPage(view: TableView<State>): void {
   ensureEl("statesFooterPopulation").dataset.population = String(totalPopulation);
   const shown = view.all.filter(s => s.i && !s.removed);
   const treasury = shown.reduce((sum, s) => sum + (s.economy.treasury || 0), 0);
-  ensureEl("statesFooterTreasury").innerHTML = `🟡 ${si(shown.length ? treasury / shown.length : 0)}`;
+  ensureEl("statesFooterTreasury").innerHTML = `${getMoneySymbol()} ${si(shown.length ? treasury / shown.length : 0)}`;
   // by people, as a state's own prosperity is
   const lived = shown.flatMap(s => {
     const accounts = Accounts.ofState(s.i);

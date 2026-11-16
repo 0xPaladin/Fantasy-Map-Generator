@@ -81,7 +81,7 @@ class DevelopmentGenerator {
 
   /** Sci-fi & Verse development spread: node-based, regime-aware (Post-Scarcity, Bimodal Ancient, Feral) */
   generateAstral(): void {
-    const { cells, cultures, burgs, states } = pack;
+    const { cells, cultures, burgs, states, biomes } = pack;
     const n = cells.i.length;
     const development = new Uint8Array(n);
     const seedPrefix = `${options?.map?.seed ?? ""}/astral/dev`;
@@ -147,13 +147,24 @@ class DevelopmentGenerator {
         } else {
           level = baseDev - 4 + (cells.r?.[cell] ? 2 : 0) + (cells.harbor?.[cell] ? 1 : 0);
         }
-        level += (h % 5) - 2;
+        const biomeDev = biomes?.[cells.biome?.[cell]]?.development || 0;
+        level += Math.round(biomeDev * 0.5) + (h % 5) - 2;
       }
 
       const least = burg ? MIN_BURG : 1;
       development[cell] = Math.max(least, Math.min(100, Math.round(level)));
     }
-    cells.development = development;
+
+    // Light neighbor smoothing among populated cells so hubs radiate into surrounding sectors.
+    const smoothed = new Uint8Array(development);
+    for (let cell = 0; cell < n; cell++) {
+      if (!development[cell] || cells.burg?.[cell]) continue;
+      const neighbors = (cells.c?.[cell] ?? []).filter(nb => development[nb] > 0);
+      if (!neighbors.length) continue;
+      const avg = neighbors.reduce((s, nb) => s + development[nb], 0) / neighbors.length;
+      smoothed[cell] = Math.max(1, Math.min(100, Math.round(development[cell] * 0.75 + avg * 0.25)));
+    }
+    cells.development = smoothed;
   }
 
   getEraIndex(level: number): number {

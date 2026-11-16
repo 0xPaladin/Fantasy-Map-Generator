@@ -43,22 +43,37 @@ export function budgetBackground(share: number, corruption: number, color = ECON
 
 // One definition per economy term, shared by every view's tooltips
 
+const isAstral = () => Boolean(options.map?.astral);
+
 export const EconomyTerms = {
   product: () => t("Product: sales less taxes and ingredients"),
   stateProduct: () => t("Product: what the state's people make in a day"),
   wealth: () => t("Wealth: product per person"),
-  treasury: () => t("Balance: the burg's money at the end of the day"),
+  treasury: () =>
+    isAstral()
+      ? t("Reserve: the settlement's credit or energy-compute balance at the end of the day")
+      : t("Balance: the burg's money at the end of the day"),
   burgAdjustments: () => t("Adjustments: the burg's revenue or costs a day besides trade, set by you"),
-  stateTreasury: () => t("Balance: the day's taxes less the state's expenses"),
+  stateTreasury: () =>
+    isAstral()
+      ? t("Reserve: the day's levies less the state's expenses")
+      : t("Balance: the day's taxes less the state's expenses"),
   adjustments: () => t("Adjustments: the state's revenue or costs a day besides taxes, set by you"),
   budget: () => t("Expenses: the shares of its taxes the state spends"),
   expenseTip: (expense: Expense) =>
-    ({
-      court: t("Court and clergy: luxuries the state buys at its capital"),
-      administration: t("Administration: utilities the state buys at its provinces' capitals"),
-      infrastructure: t("Infrastructure: construction goods the state buys at its provinces' capitals"),
-      military: t("Military: military goods and food the state buys at its capital")
-    })[expense],
+    isAstral()
+      ? {
+          court: t("High Council & Network: ideological and luxury allocations at the capital"),
+          administration: t("Administration: compute & utility allocations at sector capitals"),
+          infrastructure: t("Infrastructure: orbital and planetary construction goods at sector capitals"),
+          military: t("Fleet & Garrison: ordnance, fuel and supplies bought at the capital")
+        }[expense]
+      : {
+          court: t("Court and clergy: luxuries the state buys at its capital"),
+          administration: t("Administration: utilities the state buys at its provinces' capitals"),
+          infrastructure: t("Infrastructure: construction goods the state buys at its provinces' capitals"),
+          military: t("Military: military goods and food the state buys at its capital")
+        }[expense],
   prosperity: () => t("Prosperity: how well the people live"),
   open: () => t("Click to open the economy overview"),
   openValue: () => t("Click a value to open the economy overview"),

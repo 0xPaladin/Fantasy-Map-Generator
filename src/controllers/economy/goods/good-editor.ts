@@ -6,7 +6,7 @@ import { DEFAULT_CARRIAGE, Goods } from "@/model/economy/goods-generator";
 import { Icons } from "@/model/icons";
 import { Options } from "@/model/options/options-model";
 import { Tags } from "@/model/tags";
-import { getDecima, getDistance, getMoneyUnit } from "@/model/units";
+import { getDecima, getDistance, getMoneySymbol, getMoneyUnit } from "@/model/units";
 import { goodIconLines } from "@/renderers/draw-goods";
 import { Layers } from "@/renderers/layers";
 import type { DemandCategory, Good } from "@/types/economy";
@@ -269,11 +269,11 @@ function open(editedGood?: Good, onUpdate?: () => void): void {
           <button id="newGoodIconEdit" type="button" class="icon-pencil ge-edit" data-tip="${t("Select the good's icon")}"></button>
 
           <label for="newGoodValue" data-tip="${t("Price of one unit in {{money}}, the price markets start from", { money: getMoneyUnit() })}">${t("Base Price")}*</label>
-          <span class="ge-inline"><input id="newGoodValue" class="ge-num" type="number" min="0" step="1" value="${editedGood?.value ?? 1}" /> 🟡</span>
+          <span class="ge-inline"><input id="newGoodValue" class="ge-num" type="number" min="0" step="1" value="${editedGood?.value ?? 1}" /> ${getMoneySymbol()}</span>
           <span></span>
 
           <label for="newGoodCarriage" data-tip="${t("Carriage: price of one unit per decima ({{distance}})", { distance: getDistance(getDecima()) })}">${t("Carriage Price")}*</label>
-          <span class="ge-inline"><input id="newGoodCarriage" class="ge-num" type="number" min="0" step="0.1" value="${editedGood?.carriage ?? DEFAULT_CARRIAGE}" /> 🟡</span>
+          <span class="ge-inline"><input id="newGoodCarriage" class="ge-num" type="number" min="0" step="0.1" value="${editedGood?.carriage ?? DEFAULT_CARRIAGE}" /> ${getMoneySymbol()}</span>
           <span></span>
 
           <label for="newGoodDevelopment" data-tip="${t("The least development, 0–100, a land needs to produce the good; 0 for none")}">${t("Development")}</label>

@@ -4,6 +4,7 @@
 
 import { EXPENSES, type Expense } from "@/data/expenses";
 import type { State } from "@/model/political/states-generator";
+import { classifyAstralRegime } from "@/model/society/development-generator";
 import type { FiscalLock } from "@/types/living";
 import { minmax } from "@/utils/number-utils";
 import { rulerBias } from "./living-rulers";
@@ -93,6 +94,23 @@ export function fiscalProfile(state: State, events: FiscalEvents): FiscalProfile
     target.budget.court -= 10;
     target.budget.military -= 10;
     target.corruption += 5; // graft tolerated to make ends meet
+  }
+
+  if (options.map?.astral) {
+    const culture = pack?.cultures?.[state.culture ?? 0];
+    const regime = classifyAstralRegime(culture);
+    if (regime === "postScarcity") {
+      // Post-scarcity polities run on VI audit cores and compiler surplus rather than poll levies.
+      target.corruption *= 0.5;
+      target.pollTax *= 0.2;
+      target.salesTax *= 0.5;
+      target.budget.administration += 12;
+      target.budget.infrastructure += 12;
+    } else if (regime === "ancientBimodal") {
+      target.pollTax *= 1.35;
+      target.budget.court += 12;
+      target.corruption += 8;
+    }
   }
 
   for (const expense of EXPENSES) target.budget[expense] = Math.round(minmax(target.budget[expense], 0, 100));

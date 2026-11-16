@@ -8,7 +8,7 @@ import { Burgs } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
-import { convertTemperature, getHeight, getTemperatureLikeness } from "@/model/units";
+import { convertTemperature, getHeight, getMoneySymbol, getTemperatureLikeness } from "@/model/units";
 import { removeEmblem } from "@/renderers/draw-emblems";
 import { EmblemRenderer } from "@/renderers/emblems/renderer";
 import { Layers } from "@/renderers/layers";
@@ -472,7 +472,8 @@ function updateBurgValues(): void {
   ensureEl<HTMLInputElement>("burgPopulation").value = String(
     rn(b.population! * options.map.units.population.scale * options.map.units.population.urbanization.rate)
   );
-  ensureEl("burgWealth").innerHTML = `🟡 ${rn(b.population! > 0 ? (b.product || 0) / b.population! : 0, 2)}`;
+  ensureEl("burgWealth").innerHTML =
+    `${getMoneySymbol()} ${rn(b.population! > 0 ? (b.product || 0) / b.population! : 0, 2)}`;
   ensureEl<HTMLInputElement>("burgTags").value = Tags.format(b.tags);
 
   // update list and select culture

@@ -8,6 +8,7 @@ import type { Burg } from "@/model/political/burgs-generator";
 import type { Regiment } from "@/model/political/military-generator";
 import { Stability } from "@/model/political/stability";
 import { Development } from "@/model/society/development-generator";
+import { getMoneySymbol } from "@/model/units";
 import { Dialog } from "@/ui/dialog/dialog";
 import { zoomTo } from "@/ui/map/zoom";
 import { t } from "@/utils/i18n";
@@ -299,7 +300,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
       <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
         <span class="badge">${t("Culture")}: ${escapeHtml(cultureName)}</span>
         <span class="badge">${t("Capital")}: ${escapeHtml(capitalName)}</span>
-        <span class="badge pointer" id="stateCitiesBudgetBtn" data-tip="${t("Open the state budget")}">${t("Treasury")}: 🪙 ${Math.round(state.economy?.treasury ?? 0)}</span>
+        <span class="badge pointer" id="stateCitiesBudgetBtn" data-tip="${t("Open the state budget")}">${t("Treasury")}: ${getMoneySymbol("🪙")} ${Math.round(state.economy?.treasury ?? 0)}</span>
         ${
           prosperity == null
             ? ""
@@ -323,7 +324,7 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
           🏛️ ${t("Major Cities")} (${cities.length})
         </button>
         <button type="button" class="tabBtn ${activeTab === "assets" ? "active" : ""}" data-tab="assets">
-          🪙 ${t("Assets")} (${assetEntries.length})
+          ${getMoneySymbol("🪙")} ${t("Assets")} (${assetEntries.length})
         </button>
         <button type="button" class="tabBtn ${activeTab === "forces" ? "active" : ""}" data-tab="forces">
           ⚔️ ${t("Forces")} (${state.military?.length ?? 0})

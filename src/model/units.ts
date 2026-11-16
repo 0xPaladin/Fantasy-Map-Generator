@@ -99,13 +99,25 @@ export function getMoneyUnit(plural = true): string {
   return plural && !name.endsWith("s") ? `${name}s` : name;
 }
 
+const ENERGY_COMPUTE_UNITS = new Set(["exajoule", "quantum"]);
+const SCIFI_CREDIT_UNITS = new Set(["credit", "energy credit"]);
+
+/** Currency symbol matching the map's money unit and theme. */
+export function getMoneySymbol(stockSymbol = "🟡"): string {
+  const unit = (options.map?.units?.money?.unit || "").toLowerCase();
+  if (ENERGY_COMPUTE_UNITS.has(unit)) return "💠";
+  if (SCIFI_CREDIT_UNITS.has(unit)) return "⚡";
+  if (options.map?.astral) return "⚡";
+  return stockSymbol;
+}
+
 /**
  * Format price value with currency symbol
  * @param value - The price value to format
  * @returns {string} - The formatted price string with money symbol
  */
 export function formatPrice(value: number): string {
-  return `🟡 ${rn(value, 2)}`;
+  return `${getMoneySymbol()} ${rn(value, 2)}`;
 }
 
 // in °C, array from -1 °C; source: https://en.wikipedia.org/wiki/List_of_city_by_average_temperature

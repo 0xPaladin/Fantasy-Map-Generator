@@ -9,6 +9,7 @@ import { HERO_DISCIPLINES } from "@/data/hero-disciplines";
 import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/hero-vitals";
 import { CIV_IMPROVEMENT_BY_ID } from "@/data/living-civ-improvements";
 import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
+import { PROJECT_BY_ID, projectName } from "@/data/living-projects";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
@@ -24,6 +25,7 @@ import { Military } from "@/model/political/military-generator";
 import { Stability } from "@/model/political/stability";
 import { Development } from "@/model/society/development-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
+import { getMoneySymbol } from "@/model/units";
 import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
 import type { HistoricalFigure } from "@/types/history";
@@ -849,8 +851,10 @@ function renderProjects(stateId: number): string {
     return pack.burgs?.[targetId]?.name ?? `Burg ${targetId}`;
   };
 
+  const activeDef = active ? PROJECT_BY_ID[active.id] : undefined;
+  const activeName = activeDef ? projectName(activeDef) : (active?.id.replace(/_/g, " ") ?? "");
   const activeRow = active
-    ? `<div class="livingMuted">🏗️ ${escapeHtml(active.id.replace(/_/g, " "))} · ${escapeHtml(
+    ? `<div class="livingMuted">🏗️ ${escapeHtml(activeName)} · ${escapeHtml(
         targetName(active.scale, active.targetId)
       )} · ${active.turnsLeft} ${t("seasons left")}</div>`
     : "";
@@ -889,7 +893,7 @@ function renderUpstreamState(stateId: number): string {
   const era = development == null ? "" : eraOf(development);
 
   const chips = [
-    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net gold: open the state budget">🪙 ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`,
+    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net balance: open the state budget">${getMoneySymbol("🪙")} ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`,
     prosperity == null
       ? ""
       : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,

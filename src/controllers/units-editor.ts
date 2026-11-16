@@ -100,6 +100,10 @@ const TEMPLATE = /* html */ `
           <option value="sovereign">${t("Sovereign")}</option>
           <option value="talent">${t("Talent")}</option>
           <option value="florin">${t("Florin")}</option>
+          <option value="credit">${t("Credit (⚡)")}</option>
+          <option value="energy credit">${t("Energy Credit (⚡)")}</option>
+          <option value="exajoule">${t("Exajoule (💠)")}</option>
+          <option value="quantum">${t("Compute Quantum (💠)")}</option>
           <option value="custom_name">${t("Custom name")}</option>
         </select>
       </div>

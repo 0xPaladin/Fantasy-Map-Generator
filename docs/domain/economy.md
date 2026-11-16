@@ -151,7 +151,7 @@ A burg's own output in its own market is taken back for its people when that is 
 
 ## Money and taxes
 
-Money exists only in `burg.treasury` and `state.economy.treasury`. Every amount is per day. A worker point works one recipe a day, making one unit before multipliers. Money is 🟡 (`formatPrice`), the **uncia** by default (`options.map.units.money.unit`); the name is words only. A market's state is its center burg's state.
+Money exists only in `burg.treasury` and `state.economy.treasury`. Every amount is per day. A worker point works one recipe a day, making one unit before multipliers. Money is 🟡 (`formatPrice` / `getMoneySymbol`), the **uncia** by default (`options.map.units.money.unit`); in Astral mode it switches to `credit` (⚡) or `exajoule` (💠) for post-scarcity maps. A market's state is its center burg's state.
 
 | Deal                                             | Sales tax goes to   | Tariff goes to                     | Paid by the burg   |
 | ------------------------------------------------ | ------------------- | ---------------------------------- | ------------------ |
