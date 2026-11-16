@@ -1,6 +1,8 @@
 import { Controllers } from "@/controllers";
 import type { Route } from "@/model/economy/routes-generator";
 import { Routes } from "@/model/economy/routes-generator";
+import { getRouteGroupCarriage } from "@/model/economy/trade-routes";
+import { Options } from "@/model/options/options-model";
 import { Layers } from "@/renderers/layers";
 import { Dialog } from "@/ui/dialog/dialog";
 
@@ -8,7 +10,7 @@ import { tip } from "@/ui/tooltips";
 import { t } from "@/utils/i18n";
 import { ensureEl, findEl } from "@/utils/node-utils";
 
-const DEFAULT_GROUPS = ["roads", "trails", "searoutes"];
+const DEFAULT_GROUPS = ["roads", "trails", "searoutes", "transit", "portal"];
 
 function open(): void {
   if (options.app.mode) return;
@@ -38,6 +40,7 @@ function renderDialog(): void {
   // add listeners — dropped together with the dialog HTML on close
   ensureEl("routeGroupsEditorAdd").addEventListener("click", addGroup);
   ensureEl("routeGroupsEditorBody").addEventListener("click", onBodyClick);
+  ensureEl("routeGroupsEditorBody").addEventListener("change", onBodyChange);
 }
 
 function closeRouteGroupsEditor(): void {
@@ -51,21 +54,57 @@ function onBodyClick(ev: Event): void {
   else if (target.classList.contains("removeGroup") && group) removeGroup(group);
 }
 
+function onBodyChange(ev: Event): void {
+  const target = ev.target as HTMLInputElement;
+  if (!target.classList.contains("groupCarriage")) return;
+  const group = target.dataset.group;
+  if (!group) return;
+
+  const value = +target.value;
+  if (!Number.isFinite(value) || value < 0) {
+    target.value = String(getRouteGroupCarriage(group));
+    return tip(t("Carriage multiplier must not be negative"), false, "error");
+  }
+
+  options.map.routeCarriage ??= {};
+  options.map.routeCarriage[group] = value;
+  Options.save();
+  Layers.draw("goods", "trade");
+}
+
 function addLines(): void {
   ensureEl("routeGroupsEditorBody").innerHTML = "";
 
+  const header = /* html */ `<div class="header" style="display: flex; justify-content: space-between; align-items: center; gap: 0.6em; font-weight: 600; padding: 0 0.2em;">
+    <span style="flex: 1;">${t("Group")}</span>
+    <span data-tip="${t("Carriage cost multiplier")}" style="width: 5.5em; text-align: center;">${t("Carriage")}</span>
+    <span style="width: 3em;"></span>
+  </div>`;
+
   const lines = Object.keys(styles.routes.groups).map(group => {
     const count = pack.routes.filter((route: Route) => route.group === group).length;
-    return /* html */ `<div data-id="${group}" class="states" style="display: flex; justify-content: space-between;">
-          <span>${group} (${count})</span>
-          <div style="width: auto; display: flex; gap: 0.4em;">
+    const carriage = getRouteGroupCarriage(group);
+    return /* html */ `<div data-id="${group}" class="states" style="display: flex; justify-content: space-between; align-items: center; gap: 0.6em;">
+          <span style="flex: 1;">${group} (${count})</span>
+          <input
+            type="number"
+            class="groupCarriage"
+            data-group="${group}"
+            data-tip="${t("Carriage cost multiplier")}"
+            min="0"
+            max="10"
+            step="0.05"
+            value="${carriage}"
+            style="width: 5em; text-align: right;"
+          />
+          <div style="width: 3em; display: flex; justify-content: flex-end; gap: 0.4em;">
             <span data-tip="${t("Edit style")}" class="editStyle icon-brush pointer" style="font-size: smaller;"></span>
             <span data-tip="${t("Remove")}" class="removeGroup icon-trash pointer"></span>
           </div>
         </div>`;
   });
 
-  ensureEl("routeGroupsEditorBody").innerHTML = lines.join("");
+  ensureEl("routeGroupsEditorBody").innerHTML = header + lines.join("");
 }
 
 function addGroup(): void {
@@ -91,6 +130,9 @@ function addGroup(): void {
       "stroke-linecap": "butt"
     });
     styles.routes.groups[group] = groupStyle;
+    options.map.routeCarriage ??= {};
+    options.map.routeCarriage[group] ??= 1;
+    Options.save();
     Layers.draw("routes"); // the layer makes the group element from the store
 
     findEl<HTMLSelectElement>("routeGroup")?.options.add(new Option(group, group));
@@ -107,7 +149,11 @@ function removeGroup(group: string): void {
     onConfirm: () => {
       Dialog.close("routeEditor"); // it may be editing one of them
       Routes.remove(...pack.routes.filter((r: Route) => r.group === group).map(route => route.i));
-      if (!DEFAULT_GROUPS.includes(group)) delete styles.routes.groups[group];
+      if (!DEFAULT_GROUPS.includes(group)) {
+        delete styles.routes.groups[group];
+        if (options.map.routeCarriage) delete options.map.routeCarriage[group];
+        Options.save();
+      }
       Layers.draw("routes", "labels", "goods", "trade");
       findEl("routesOverviewRefresh")?.click();
       addLines();

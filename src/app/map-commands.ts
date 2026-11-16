@@ -466,8 +466,8 @@ export const MAP_COMMANDS: MapCommand[] = [
   { id: "addRoute", name: t("Add Route"), aliases: "road trail path", run: () => Controllers.RouteCreator.open() },
   {
     id: "addNetwork",
-    name: t("Add Network"),
-    aliases: "astral wormhole hyperspace lane relay communication network",
+    name: t("Edit Networks"),
+    aliases: "astral communication transit portal network",
     run: () => Controllers.AstralNetworks.open()
   },
   {

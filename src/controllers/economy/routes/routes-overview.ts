@@ -117,6 +117,7 @@ function renderDialog(): void {
     <div id="routesBottom" class="editorToolbar">
       <button id="routesOverviewRefresh" data-tip="${t("Refresh")}" class="icon-cw"></button>
       <button id="routesCreateNew" data-tip="${t("Create a new route selecting route cells")}" class="icon-map-pin"></button>
+      <button id="routesGroupsEdit" data-tip="${t("Edit route groups and carriage multipliers")}" class="icon-cog"></button>
       <button id="routesExport" data-tip="${t("Save data as a CSV file")}" class="icon-download"></button>
       <button id="routesImport" data-tip="${t("Upload data from a CSV file")}" class="icon-upload"></button>
       <button id="routesLockAll" data-tip="${t("Lock or unlock all routes")}" class="icon-lock"></button>
@@ -135,6 +136,7 @@ function renderDialog(): void {
     onUpdate: () => Dialog.update(dialogId, { width: "fit-content", position })
   });
   ensureEl("routesCreateNew").addEventListener("click", createNewRoute);
+  ensureEl("routesGroupsEdit").addEventListener("click", () => void Controllers.RouteGroupsEditor.open());
   ensureEl("routesExport").addEventListener("click", downloadRoutesData);
   ensureEl("routesImport").addEventListener("click", () => Csv.pick(uploadRoutesCsv));
   ensureEl("routesLockAll").addEventListener("click", toggleLockAll);

@@ -1,7 +1,7 @@
 // Astral networks: the kinds, the placement rules, and the record stored with the map settings
 import { t } from "@/utils/i18n";
 
-export const NETWORK_KINDS = ["wormhole", "hyperlane", "relay"] as const;
+export const NETWORK_KINDS = ["communication", "transit", "portal"] as const;
 export type NetworkKind = (typeof NETWORK_KINDS)[number];
 
 export interface NetworkKindDefinition {
@@ -13,23 +13,23 @@ export interface NetworkKindDefinition {
 }
 
 export const NETWORK_KIND_DEFINITIONS: Record<NetworkKind, NetworkKindDefinition> = {
-  wormhole: {
-    id: "wormhole",
-    label: t("Wormhole"),
-    icon: "🌀",
-    tip: t("A stable passage between two distant systems")
-  },
-  hyperlane: {
-    id: "hyperlane",
-    label: t("Hyperspace lane"),
-    icon: "🛸",
-    tip: t("A fast route across the sector")
-  },
-  relay: {
-    id: "relay",
-    label: t("Communication relay"),
+  communication: {
+    id: "communication",
+    label: t("Communication"),
     icon: "📡",
-    tip: t("A chain of stations carrying signals between systems")
+    tip: t("A relay network carrying signals between nodes (no routes)")
+  },
+  transit: {
+    id: "transit",
+    label: t("Transit"),
+    icon: "🛸",
+    tip: t("A transit lane network automatically added to routes")
+  },
+  portal: {
+    id: "portal",
+    label: t("Portal"),
+    icon: "🌀",
+    tip: t("A portal network automatically added to routes")
   }
 };
 

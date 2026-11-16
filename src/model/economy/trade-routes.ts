@@ -6,6 +6,23 @@ const WATER_COST = 0.2; // per map unit; land travel costs 1
 const SWITCH_SPACINGS = 4; // loading between land and water at a port, in cell spacings
 const LANDING_SPACINGS = 40; // loading anywhere else a road meets a river route: taken only when there is no other way
 
+export const DEFAULT_ROUTE_CARRIAGE: Record<string, number> = {
+  roads: 1,
+  trails: 1,
+  searoutes: WATER_COST,
+  airroutes: WATER_COST,
+  underdarkroutes: 1,
+  undersearoutes: WATER_COST,
+  transit: WATER_COST,
+  portal: WATER_COST / 4
+};
+
+export function getRouteGroupCarriage(group: string): number {
+  const configured = typeof options === "undefined" ? undefined : options.map?.routeCarriage?.[group];
+  if (typeof configured === "number" && Number.isFinite(configured) && configured >= 0) return configured;
+  return DEFAULT_ROUTE_CARRIAGE[group] ?? 1;
+}
+
 /** A search over the route network; states are `cell * 2`, plus 1 when arriving by water */
 type RouteSearch = { cost: Float64Array; prevCell: Int32Array; prevState: Int32Array };
 
@@ -83,11 +100,15 @@ export class TradeRoutesModule {
     return { cost: new Float64Array(states), prevCell: new Int32Array(states), prevState: new Int32Array(states) };
   }
 
-  /** Each route link's travel cost: its length, a fifth of it on water */
+  /** Each route link's travel cost: its length multiplied by its group's carriage multiplier */
   buildGraph(): RouteGraph {
     const { cells, routes } = pack;
     const isWaterRoute: boolean[] = [];
-    for (const route of routes) isWaterRoute[route.i] = route.group === "searoutes";
+    const routeGroups: string[] = [];
+    for (const route of routes) {
+      isWaterRoute[route.i] = route.group === "searoutes";
+      routeGroups[route.i] = route.group;
+    }
 
     // network trade is read once per graph: a disabled network is not in the economy at all
     const networks = new Map(
@@ -116,9 +137,10 @@ export class TradeRoutesModule {
         if (trade && !trade.enabled) continue;
 
         const isWater = isWaterRoute[routeId] ?? false;
+        const carriage = getRouteGroupCarriage(routeGroups[routeId] ?? "roads");
         const [x2, y2] = this.getCellPoint(+next);
         targets.push(+next);
-        costs.push(Math.hypot(x2 - x1, y2 - y1) * (isWater ? WATER_COST : 1) * (trade?.friction ?? 1));
+        costs.push(Math.hypot(x2 - x1, y2 - y1) * carriage * (trade?.friction ?? 1));
         water.push(isWater ? 1 : 0);
       }
     }

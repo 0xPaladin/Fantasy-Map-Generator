@@ -86,7 +86,7 @@ it("drops invalid network nodes and detaches links whose network is gone", () =>
   const network = {
     i: 1,
     name: "Test",
-    kind: "wormhole",
+    kind: "portal",
     scope: { kind: "land" },
     seed: "x",
     target: 3,

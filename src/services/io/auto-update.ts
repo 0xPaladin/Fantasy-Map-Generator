@@ -2361,8 +2361,17 @@ async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacyS
     const defaults = Styles.parse(undefined);
     realmStyleRecord.routes ??= { groups: {} };
     realmStyleRecord.routes.groups ??= {};
-    for (const group of ["airroutes", "underdarkroutes", "undersearoutes"]) {
+    for (const group of ["airroutes", "underdarkroutes", "undersearoutes", "transit", "portal"]) {
       realmStyleRecord.routes.groups[group] ??= defaults.routes.groups[group];
+    }
+    if (realmStyleRecord.networks?.groups) {
+      const ng = realmStyleRecord.networks.groups;
+      if (ng.relay && !ng.communication) ng.communication = ng.relay;
+      if (ng.hyperlane && !ng.transit) ng.transit = ng.hyperlane;
+      if (ng.wormhole && !ng.portal) ng.portal = ng.wormhole;
+      delete ng.relay;
+      delete ng.hyperlane;
+      delete ng.wormhole;
     }
     realmStyleRecord.burgIcons ??= { groups: {} };
     realmStyleRecord.labels ??= { groups: {} };
