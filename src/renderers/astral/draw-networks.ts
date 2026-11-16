@@ -13,6 +13,11 @@ import { writeAttrs } from "./system-markers";
 type NetworkStyle = (typeof styles)["networks"]["groups"][string];
 
 const layer = ViewportLayers.register({ id: "networks", render: reconcileNetworks });
+let renderHook: ((container: SVGGElement) => void) | null = null;
+
+export function setNetworkRenderHook(hook: ((container: SVGGElement) => void) | null): void {
+  renderHook = hook;
+}
 
 export function drawNetworks(): void {
   layer.render();
@@ -38,6 +43,7 @@ function reconcileNetworks({ root, bounds }: ViewportRenderContext): void {
   }
 
   container.innerHTML = markup.join("");
+  renderHook?.(container);
 }
 
 function writeNetwork(network: Network, style: NetworkStyle, bounds: ViewportRenderContext["bounds"]): string {

@@ -63,7 +63,8 @@ function onBodyChange(ev: Event): void {
   const value = +target.value;
   if (!Number.isFinite(value) || value < 0) {
     target.value = String(getRouteGroupCarriage(group));
-    return tip(t("Carriage multiplier must not be negative"), false, "error");
+    tip(t("Carriage multiplier must not be negative"), false, "error");
+    return;
   }
 
   options.map.routeCarriage ??= {};

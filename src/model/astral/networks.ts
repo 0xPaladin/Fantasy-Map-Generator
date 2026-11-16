@@ -10,6 +10,7 @@ import {
   type NetworkTrade
 } from "@/data/astral-networks";
 import { graphWidth, isWrapEnabled, type Route, Routes } from "@/model/economy/routes-generator";
+import { Pack } from "@/model/graph/pack-generator";
 import { rn } from "@/utils/number-utils";
 import { poissonDiscSelect } from "@/utils/poisson-disc";
 import { generateSeed } from "@/utils/probability-utils";
@@ -129,6 +130,29 @@ class NetworksModule {
     return this.update(id, { seed });
   }
 
+  moveNode(id: number, nodeIndex: number, x: number, y: number): Network {
+    const network = this.require(id);
+    const node = network.nodes[nodeIndex];
+    if (!node) throw new Error(`Node ${nodeIndex} does not exist on network ${id}`);
+
+    const nx = rn(x, 2);
+    const ny = rn(y, 2);
+    node.x = nx;
+    node.y = ny;
+    node.cell = Pack.requireCell(nx, ny);
+    delete node.burg;
+
+    this.recomputeAll();
+    return network;
+  }
+
+  recomputeAll(): void {
+    for (const network of this.getAll()) this.disconnect(network);
+    for (const network of this.getAll()) {
+      if (network.connect) this.connect(network);
+    }
+  }
+
   remove(id: number): boolean {
     const index = options.map.networks.findIndex(network => network.i === id);
     if (index === -1) return false;
@@ -165,18 +189,45 @@ class NetworksModule {
     const candidates = this.candidates(network.scope);
     if (!candidates.length) throw new Error("No cells match this placement");
 
+    const target = Math.min(network.target, candidates.length);
+    if (target === candidates.length) {
+      return candidates.slice().sort((left, right) => left.cell - right.cell || (left.burg ?? 0) - (right.burg ?? 0));
+    }
+
+    const wrapWidth = isWrapEnabled() ? graphWidth() : undefined;
     const spacing = grid?.spacing || 10;
     const mapArea = options.map.graph.width * options.map.graph.height;
     const candidateArea = network.scope.kind === "burgs" ? mapArea : candidates.length * spacing * spacing;
-    const radius = Math.max(Math.sqrt((AREA_PER_NODE * candidateArea) / network.target), spacing * 0.75);
+    const initialRadius = Math.max(Math.sqrt((AREA_PER_NODE * candidateArea) / target), spacing * 0.75);
 
-    const nodes = poissonDiscSelect(candidates, {
-      radius,
-      random: Alea(network.seed),
-      wrapWidth: isWrapEnabled() ? graphWidth() : undefined
-    });
+    const select = (radius: number) => poissonDiscSelect(candidates, { radius, random: Alea(network.seed), wrapWidth });
 
-    return nodes.sort((left, right) => left.cell - right.cell || (left.burg ?? 0) - (right.burg ?? 0));
+    let nodes = select(initialRadius);
+    if (nodes.length < target) {
+      let low = 0;
+      let high = initialRadius;
+      for (let step = 0; step < 12; step++) {
+        const mid = (low + high) / 2;
+        if (mid <= 1e-6) break;
+        const attempt = select(mid);
+        if (attempt.length >= target) {
+          nodes = attempt;
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+    }
+
+    if (nodes.length < target) {
+      const chosen = new Set(nodes);
+      for (const candidate of candidates) {
+        if (nodes.length >= target) break;
+        if (!chosen.has(candidate)) nodes.push(candidate);
+      }
+    }
+
+    return nodes.slice(0, target).sort((left, right) => left.cell - right.cell || (left.burg ?? 0) - (right.burg ?? 0));
   }
 
   private candidates(scope: NetworkScope): NetworkNode[] {
