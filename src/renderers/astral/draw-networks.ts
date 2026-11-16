@@ -1,11 +1,10 @@
-// The Networks layer: one marker per network node and one path per direct route
+// The Networks layer: one marker per network node; network routes are drawn on the Routes layer
 import { NETWORK_KIND_DEFINITIONS, type Network } from "@/data/astral-networks";
 import { Networks } from "@/model/astral/networks";
-import { type Route, Routes } from "@/model/economy/routes-generator";
 import { Icons } from "@/model/icons";
 import { Layers } from "@/renderers/layers";
 import { zoomFontSize } from "@/renderers/viewport/viewport";
-import { boundsIntersect, ViewportLayers, type ViewportRenderContext } from "@/renderers/viewport/viewport-renderer";
+import { ViewportLayers, type ViewportRenderContext } from "@/renderers/viewport/viewport-renderer";
 import { rn } from "@/utils/number-utils";
 import { escapeHtml } from "@/utils/string-utils";
 import { writeAttrs } from "./system-markers";
@@ -68,17 +67,10 @@ function writeNetwork(network: Network, style: NetworkStyle, bounds: ViewportRen
     })
     .join("");
 
-  const links = Networks.routesOf(network.i)
-    .filter(route => routeIntersects(route, bounds))
-    .map(route => writeLink(route, style))
-    .join("");
+  if (!nodes) return "";
 
-  if (!nodes && !links) return "";
-
-  const linksGroup = links ? `<g class="links">${links}</g>` : "";
   return /* html */ `<g id="network${network.i}" data-network="${network.i}">
     <g data-group="${escapeHtml(network.kind)}" font-size="${size}%"${writeAttrs(style.attrs)}>
-      ${linksGroup}
       <g class="nodes">${nodes}</g>
     </g>
   </g>`;
@@ -86,38 +78,4 @@ function writeNetwork(network: Network, style: NetworkStyle, bounds: ViewportRen
 
 function nodeGlyph(network: Network): string {
   return Icons.href(Icons.reference(NETWORK_KIND_DEFINITIONS[network.kind].icon));
-}
-
-function writeLink(route: Route, style: NetworkStyle): string {
-  const path = Routes.getPath(route);
-  const dash = style.options.linkDash;
-  const opacity = style.options.linkOpacity ?? 1;
-  const attrs = [
-    'fill="none"',
-    `stroke="${escapeHtml(style.options.linkColor)}"`,
-    `stroke-width="${rn(style.options.linkWidth, 2)}"`,
-    `stroke-opacity="${rn(opacity, 2)}"`,
-    dash ? `stroke-dasharray="${escapeHtml(dash)}"` : "",
-    'stroke-linecap="round"',
-    'stroke-linejoin="round"'
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  // the wider transparent path is the click target; the visible one can be too thin to hit
-  return `<path id="route${route.i}" class="networkLink" d="${path}" ${attrs}/><path class="networkLinkHit" d="${path}" fill="none" stroke="transparent" stroke-width="2" pointer-events="stroke"/>`;
-}
-
-function routeIntersects(route: Route, bounds: ViewportRenderContext["bounds"]): boolean {
-  let x0 = Infinity;
-  let y0 = Infinity;
-  let x1 = -Infinity;
-  let y1 = -Infinity;
-  for (const [x, y] of route.points) {
-    if (x < x0) x0 = x;
-    if (y < y0) y0 = y;
-    if (x > x1) x1 = x;
-    if (y > y1) y1 = y;
-  }
-  return boundsIntersect({ x0, y0, x1, y1 }, bounds);
 }

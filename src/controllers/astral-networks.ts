@@ -35,7 +35,7 @@ const listPosition = { my: "right top", at: "right-10 top+10", of: "svg", collis
 const editorPosition = { my: "left top", at: "left+10 top+10", of: "#map" } as const;
 const DEFAULT_TARGET = 24;
 const MIN_TARGET = 2;
-const MAX_TARGET = 120;
+const MAX_TARGET = 500;
 
 let editingId: number | null = null;
 

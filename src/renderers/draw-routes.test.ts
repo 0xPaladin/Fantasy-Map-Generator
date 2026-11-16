@@ -121,14 +121,14 @@ test("redraw picks up new paths and removed routes", () => {
   expect(box.width).toBeCloseTo(41.4);
 });
 
-test("network links are left to the networks layer", () => {
+test("network routes draw on the routes layer like any other route", () => {
   pack.routes = [{ ...route(1, 0), networkId: 7 }, route(2, 0)];
   drawRoutes(routesLayer);
 
-  expect(document.getElementById("route1")).toBeNull();
+  expect(document.getElementById("route1")).not.toBeNull();
   expect(document.getElementById("route2")).not.toBeNull();
-  expect(getPath).toHaveBeenCalledTimes(1);
-  expect(getRouteBox(1)).not.toBeNull(); // the overview can still locate the link
+  expect(getPath).toHaveBeenCalledTimes(2);
+  expect(getRouteBox(1)).not.toBeNull();
 });
 
 test("erasing the layer keeps the groups, which carry the user's styles", () => {
