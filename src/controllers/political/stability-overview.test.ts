@@ -118,6 +118,8 @@ describe("StabilityOverview", () => {
     expect(dialog.textContent).toContain("Aelor");
     expect(dialog.textContent).toContain("Mill");
     expect(dialog.textContent).toContain("42%");
+    const headers = [...dialog.querySelectorAll("table.provinces th")].map(header => header.textContent);
+    expect(headers).toEqual(["Burg", "People", "Remoteness", "Minorities"]);
     expect(dialog.querySelector("table.provinces tbody tr td")?.textContent).toBe("Aelor");
 
     expect(mocks.mountAdjustments).toHaveBeenCalledWith(

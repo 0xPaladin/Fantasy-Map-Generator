@@ -234,7 +234,7 @@ Living = needs met × (`NEEDS_SHARE` + `COMFORT_SHARE` × comfort score + `VARIE
 
 **State accounts** (`Accounts.ofState`, [accounts.ts](../../src/model/economy/accounts.ts)) sum a state's economy. Its **product** has three sectors: rural (rural earnings), manufacturing (its burgs' product) and trade (its centers' margins). Its **economy type** is the sector whose share most exceeds the world's: Agrarian, Artisan or Mercantile. The good it is **known for** has the largest share² of its exports ÷ its share of the world's. Wealth is product per person, and tax burden is its taxes (adjustments aside) over its product. Exports and imports count goods at market prices, without carriage, taxes and the margin: a sale of its burg to a foreign market, or a foreign burg buying at its market, is an export.
 
-**Province accounts** (`Accounts.ofProvince`) sum a province the same way. Taxes count where the state's own taxpayer is or, for a foreigner, at the market where they were paid. A state's provinces and its lands outside any province sum to its accounts, adjustments aside. A province's own `adjustments` lines are a local ledger shown in its Economy dialog; they do not feed the state's accounts.
+**Province accounts** (`Accounts.ofProvince`) sum a province the same way. Taxes count where the state's own taxpayer is or, for a foreigner, at the market where they were paid. A state's provinces and its lands outside any province sum to its accounts, adjustments aside. A province's own `adjustments` lines are shown in its Economy dialog and added to its taxes collected; they do not feed the state's accounts.
 
 ## What state spending does
 

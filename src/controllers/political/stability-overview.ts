@@ -231,12 +231,11 @@ function renderProvinces(stateId: number): string {
   return `<h4>${t("Provinces")}</h4><div class="scroll"><table class="provinces"><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-/** Each burg in the province, the way the state dialog lists its provinces */
+/** Each burg in the province: its people, distance and minorities */
 function renderBurgs(provinceId: number): string {
   const province = pack.provinces[provinceId];
   const state = pack.states[province.state];
-  const stability = Stability.getProvince(provinceId);
-  if (!stability) return "";
+  if (!Stability.getProvince(provinceId)) return "";
 
   const burgs = (province.burgs ?? [])
     .map(id => pack.burgs[id])
@@ -244,8 +243,6 @@ function renderBurgs(provinceId: number): string {
   if (burgs.length === 0) return `<h4>${t("Burgs")}</h4><div class="right">${t("No burgs")}</div>`;
 
   const spread = Corruption.getProvinces(province.state).find(entry => entry.id === provinceId);
-  const corruption = spread ? Corruption.ofProvince(state, spread, state.economy.collected) : 0;
-  const infrastructure = StateOrders.getInfrastructure(state).get(provinceId) ?? 0;
   const people = spread?.people ?? 0;
   const center = pack.burgs[province.burg ?? 0];
   const reach = REMOTE_DECIMAS * getDecima();
@@ -265,7 +262,7 @@ function renderBurgs(provinceId: number): string {
     .toSorted((a, b) => (b.population ?? 0) - (a.population ?? 0))
     .map(burg => {
       const share = people ? (burg.population ?? 0) / people : 0;
-      return `<tr><td>${escapeHtml(burg.name ?? "—")}</td><td>${percent(share)}</td><td>${percent(remoteness(burg))}</td><td>${percent(minorities(burg))}</td><td>${rn(corruption)}%</td><td>${percent(infrastructure)}</td><td><b>${percent(stability.stability)}</b></td></tr>`;
+      return `<tr><td>${escapeHtml(burg.name ?? "—")}</td><td>${percent(share)}</td><td>${percent(remoteness(burg))}</td><td>${percent(minorities(burg))}</td></tr>`;
     })
     .join("");
 
@@ -273,10 +270,7 @@ function renderBurgs(provinceId: number): string {
     [t("Burg"), ""],
     [t("People"), t("Share of the province's people")],
     [t("Remoteness"), t("Distance from the province's capital")],
-    [t("Minorities"), t("Share of other cultures and faiths")],
-    [t("Corruption"), t("Share of state spending officials pocket")],
-    [t("Infrastructure"), t("How well the state's public works serve the people")],
-    [t("Stability"), EconomyTerms.stability()]
+    [t("Minorities"), t("Share of other cultures and faiths")]
   ]
     .map(([label, tipText]) => `<th${tipText ? ` data-tip="${tipText}"` : ""}>${label}</th>`)
     .join("");

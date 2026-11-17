@@ -134,15 +134,21 @@ function mountStateAdjustments(stateId: number): void {
   });
 }
 
-/** The province's own revenue or cost lines; they are a local ledger, not part of the state's treasury */
+/** The province's own revenue or cost lines; they count toward its taxes collected */
 function mountProvinceAdjustments(provinceId: number): void {
   const province = pack.provinces[provinceId];
   const container = findEl(`provinceRevenueAdjustments${provinceId}`);
   if (!province || province.removed || !container) return;
 
-  mountAdjustments(container, province.adjustments ?? [], EconomyTerms.adjustments(), lines =>
-    Provinces.setAdjustments(provinceId, lines)
-  );
+  const accounts = Accounts.ofProvince(provinceId);
+  const taxes = accounts ? taxesOf(accounts) : 0;
+  const sumOf = (lines: { value: number }[]) => lines.reduce((total, line) => total + line.value, 0);
+
+  mountAdjustments(container, province.adjustments ?? [], EconomyTerms.adjustments(), lines => {
+    Provinces.setAdjustments(provinceId, lines);
+    const collectedEl = findEl(`provinceTaxesCollected${provinceId}`);
+    if (collectedEl) collectedEl.textContent = formatPrice(-(taxes + sumOf(lines)));
+  });
 }
 
 /** The dialogs' style, shared with the burg economy */
@@ -362,6 +368,7 @@ function renderProvinceCards(provinceId: number, accounts: ProvinceAccounts, sta
 function renderProvinceTaxes(provinceId: number, accounts: ProvinceAccounts): string {
   const { taxes, spent, pocketed } = accounts;
   const total = taxesOf(accounts);
+  const adjustments = (pack.provinces[provinceId].adjustments ?? []).reduce((sum, line) => sum + line.value, 0);
   const stability = Stability.getProvince(provinceId);
   const state = pack.states[pack.provinces[provinceId].state];
   const corruption = stability ? Corruption.ofProvince(state, stability.province, state.economy.collected) : 0;
@@ -371,7 +378,7 @@ function renderProvinceTaxes(provinceId: number, accounts: ProvinceAccounts): st
     ${line(t("Poll tax"), -taxes.pollTax, "", "negative")}
     ${line(t("Market licenses"), -taxes.marketFees, "", "negative")}
     <div id="provinceRevenueAdjustments${provinceId}"></div>
-    <div class="total">${line(t("Taxes collected"), -total, t("Taxes paid to the state"), "negative")}</div>
+    <div class="total">${line(t("Taxes collected"), -(total + adjustments), t("Taxes paid to the state, adjustments included"), "negative", `provinceTaxesCollected${provinceId}`)}</div>
     <div class="total">${line(t("State orders"), spent, t("Goods the state bought at the province's burgs"), "positive")}</div>
     ${pocketedLine(corruption, pocketed, t("State spending pocketed by officials"))}
   </div>`;
