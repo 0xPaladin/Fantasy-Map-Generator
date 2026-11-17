@@ -1,6 +1,7 @@
 // Characters editor: the table and the sheet dialog. See docs/plans/characters.md.
-import { ACTION_DEFS, ACTIONS, DICE } from "@/data/character-actions";
+import { ACTION_DEFS, ACTIONS, DICE, heroStartingPackage } from "@/data/character-actions";
 import { ALIGNMENTS, type Alignment, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
+import { HERO_ARCHETYPE_IDS, HERO_ARCHETYPES } from "@/data/hero-archetypes";
 import { Characters } from "@/model/society/characters";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
@@ -8,6 +9,7 @@ import type { CharacterStatus, HeroCondition, HeroSheet } from "@/types/characte
 import type { ActionId, Die } from "@/types/character-actions";
 import type { FactionRelation } from "@/types/factions";
 import type { Character, HistoricalFigure, HistoricalRole, HistRefKind } from "@/types/history";
+import type { HeroArchetypeId } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -397,6 +399,27 @@ function rerollTraits(character: HistoricalFigure): void {
   refreshCharacters();
 }
 
+/** Reset the hero's attributes, actions and ability to the selected archetype's starting package */
+function rerollHero(characterId: number): void {
+  const character = Characters.get(characterId);
+  const hero = character?.hero;
+  if (!character || !hero) return;
+  const select = findEl<HTMLSelectElement>("characterArchetype");
+  const archetype = (select?.value ?? hero.archetype ?? "freeblade") as HeroArchetypeId;
+  const start = heroStartingPackage(archetype);
+  Characters.update(characterId, {
+    hero: {
+      ...hero,
+      archetype,
+      attributes: { ...start.attributes },
+      actions: { ...start.actions },
+      abilities: [start.ability]
+    }
+  });
+  refreshCharacters();
+  openCharacterDetails(characterId);
+}
+
 function locate(character: HistoricalFigure): void {
   if (character.cell === undefined) return;
   const point = pack.cells?.p?.[character.cell];
@@ -429,7 +452,7 @@ export function openCharacterDetails(characterId: number): void {
     title: `${character.name} — ${t("Character Sheet")}`,
     width: 560,
     height: "auto",
-    maxHeight: window.innerHeight - 20,
+    maxHeight: window.innerHeight - 50,
     resizable: true
   });
 
@@ -438,6 +461,7 @@ export function openCharacterDetails(characterId: number): void {
   ensureEl("deleteCharacterButton").addEventListener("click", () => deleteCharacter(characterId));
   ensureEl("addRoleButton").addEventListener("click", () => appendRoleRow());
   ensureEl("addRelationButton").addEventListener("click", () => appendRelationRow());
+  findEl("rerollHeroButton")?.addEventListener("click", () => rerollHero(characterId));
 
   const promote = findEl("promoteCharacterButton");
   promote?.addEventListener("click", () => {
@@ -532,39 +556,41 @@ function renderDetails(character: HistoricalFigure): string {
 }
 
 function renderHeroSection(hero: HeroSheet): string {
+  const archetypes = HERO_ARCHETYPE_IDS.map(
+    id =>
+      `<option value="${id}" ${hero.archetype === id ? "selected" : ""}>${escapeHtml(HERO_ARCHETYPES[id].name)}</option>`
+  ).join("");
   const attributes = (["might", "agility", "wits", "presence"] as const)
     .map(
       attribute =>
         `<label style="flex: 1; display: flex; flex-direction: column;">${capitalize(attribute)}<input data-attr="${attribute}" type="number" min="-1" max="2" step="1" value="${hero.attributes[attribute]}" style="width: 100%;" /></label>`
     )
     .join("");
-  const actions = ACTIONS.map(
-    action =>
-      `<label style="display: flex; flex-direction: column;">${escapeHtml(ACTION_DEFS[action].label)}<select data-action="${action}" style="width: 100%;">
-        ${DICE.map(die => `<option value="${die}" ${hero.actions[action] === die ? "selected" : ""}>${die}</option>`).join("")}
-      </select></label>`
-  ).join("");
+  const actionField = (action: ActionId) =>
+    `<label style="display: flex; flex-direction: column;">${escapeHtml(ACTION_DEFS[action].label)}<select data-action="${action}" style="width: 100%;">
+      ${DICE.map(die => `<option value="${die}" ${hero.actions[action] === die ? "selected" : ""}>${die}</option>`).join("")}
+    </select></label>`;
+  const primaryActions = ACTIONS.slice(0, 6).map(actionField).join("");
+  const otherActions = ACTIONS.slice(6).map(actionField).join("");
   const condition = hero.condition;
 
   return /* html */ `
-    <div style="margin-bottom: 4px;"><b>${t("Archetype")}:</b> ${escapeHtml(hero.archetype ?? "—")}</div>
-    <div style="display: flex; gap: 4px; margin-bottom: 4px;">${attributes}</div>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 4px;">${actions}</div>
-    <label style="display: flex; flex-direction: column;">${t("Abilities")}<textarea id="heroAbilities" style="width: 100%; height: 2.5em;">${escapeHtml((hero.abilities ?? []).join("\n"))}</textarea></label>
-    <label style="display: flex; flex-direction: column;">${t("Inventory")}<textarea id="heroInventory" style="width: 100%; height: 2em;">${escapeHtml((hero.inventory ?? []).join("\n"))}</textarea></label>
-    <div style="display: flex; gap: 4px; margin-top: 4px;">
+    <div style="display: flex; gap: 4px; align-items: end; margin-bottom: 4px;">
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Archetype")}<select id="characterArchetype" style="width: 100%;">${archetypes}</select></label>
+      <button id="rerollHeroButton" type="button" class="btn icon-cw" data-tip="${t("Reroll the stats of this archetype")}"></button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 4px;">
       <label style="flex: 1; display: flex; flex-direction: column;">${t("XP")}<input id="heroXp" type="number" min="0" value="${hero.xp ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Resolve")}<input id="heroResolve" type="number" value="${condition?.resolve ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Stamina")}<input id="heroStamina" type="number" value="${condition?.stamina ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Max Resolve")}<input id="heroMaxResolve" type="number" value="${condition?.maxResolve ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Max Stamina")}<input id="heroMaxStamina" type="number" value="${condition?.maxStamina ?? 0}" style="width: 100%;" /></label>
-      <label style="display: flex; align-items: center;"><input id="heroPush" type="checkbox" ${condition?.push ? "checked" : ""}/> ${t("Push")}</label>
     </div>
-    <div style="display: flex; gap: 4px; margin-top: 4px;">
-      <label style="flex: 1; display: flex; flex-direction: column;">${t("Applied Level")}<input id="heroAppliedLevel" type="number" min="0" value="${hero.progression?.appliedLevel ?? 0}" style="width: 100%;" /></label>
-      <label style="flex: 1; display: flex; flex-direction: column;">${t("Pending Choices")}<input id="heroPendingChoices" type="number" min="0" max="2" value="${hero.progression?.pendingChoices ?? 0}" style="width: 100%;" /></label>
-      <label style="flex: 2; display: flex; flex-direction: column;">${t("Picks")}<input id="heroPicks" value="${escapeHtml((hero.progression?.picks ?? []).join(", "))}" style="width: 100%;" /></label>
-    </div>`;
+    <div style="display: flex; gap: 4px; margin-bottom: 4px;">${attributes}</div>
+    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 4px;">${primaryActions}</div>
+    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 4px;">${otherActions}</div>
+    <label style="display: flex; flex-direction: column;">${t("Abilities")}<textarea id="heroAbilities" style="width: 100%; height: 2.5em;">${escapeHtml((hero.abilities ?? []).join("\n"))}</textarea></label>
+    <label style="display: flex; flex-direction: column;">${t("Inventory")}<textarea id="heroInventory" style="width: 100%; height: 2em;">${escapeHtml((hero.inventory ?? []).join("\n"))}</textarea></label>`;
 }
 
 function roleRow(role: HistoricalRole): string {
@@ -696,6 +722,9 @@ function readRelations(character: Character): Character["relations"] {
 function readHero(character: HistoricalFigure): HeroSheet | undefined {
   if (!character.hero) return undefined;
   const previous = character.hero;
+  const archetype = (findEl<HTMLSelectElement>("characterArchetype")?.value ??
+    previous.archetype ??
+    "freeblade") as HeroArchetypeId;
   const attributes = { ...previous.attributes };
   for (const input of Array.from(document.querySelectorAll<HTMLInputElement>("[data-attr]"))) {
     const key = input.dataset.attr as keyof typeof attributes;
@@ -714,27 +743,19 @@ function readHero(character: HistoricalFigure): HeroSheet | undefined {
     resolve: readNumber("heroResolve", previous.condition?.resolve ?? 0),
     stamina: readNumber("heroStamina", previous.condition?.stamina ?? 0),
     maxResolve: readNumber("heroMaxResolve", previous.condition?.maxResolve ?? 0),
-    maxStamina: readNumber("heroMaxStamina", previous.condition?.maxStamina ?? 0),
-    push: Boolean(findEl<HTMLInputElement>("heroPush")?.checked)
+    maxStamina: readNumber("heroMaxStamina", previous.condition?.maxStamina ?? 0)
   };
 
   return {
     ...previous,
+    archetype,
     attributes,
     actions,
     abilities: readLines("heroAbilities"),
     inventory: readLines("heroInventory"),
     xp: readNumber("heroXp", previous.xp ?? 0),
     condition,
-    progression: {
-      ...(previous.progression ?? {}),
-      appliedLevel: readNumber("heroAppliedLevel", previous.progression?.appliedLevel ?? 0),
-      pendingChoices: Math.max(
-        0,
-        Math.min(2, readNumber("heroPendingChoices", previous.progression?.pendingChoices ?? 0))
-      ),
-      picks: readList("heroPicks")
-    }
+    progression: previous.progression
   };
 }
 

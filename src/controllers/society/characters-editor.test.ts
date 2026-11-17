@@ -13,6 +13,7 @@ import {
   importCharacterCsv,
   openCharacterDetails
 } from "@/controllers/society/characters-editor";
+import { heroStartingPackage } from "@/data/character-actions";
 import { TRAIT_COUNTS } from "@/data/culture-traits";
 import { Characters } from "@/model/society/characters";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
@@ -150,6 +151,45 @@ describe("CharactersEditor", () => {
     const loaded = parseHistory(json, snapshotRecords, 0);
     expect(loaded.figures?.[0]?.hero?.attributes.might).toBe(2);
     expect(loaded.figures?.[0]?.hero?.actions.strike).toBe("d12");
+  });
+
+  it("selects an archetype and rerolls the hero's stats from it", () => {
+    const character = Characters.add({
+      name: "Mara",
+      culture: 1,
+      birth: 940,
+      hero: true,
+      archetype: "freeblade",
+      manual: true
+    });
+    openCharacterDetails(character.i);
+
+    const select = document.querySelector<HTMLSelectElement>("#characterArchetype")!;
+    expect(select.value).toBe("freeblade");
+    select.value = "warden";
+    document.querySelector<HTMLElement>("#rerollHeroButton")!.click();
+
+    const hero = Characters.get(character.i)!.hero!;
+    const start = heroStartingPackage("warden");
+    expect(hero.archetype).toBe("warden");
+    expect(hero.attributes).toEqual(start.attributes);
+    expect(hero.actions).toEqual(start.actions);
+    expect(hero.abilities).toEqual([start.ability]);
+  });
+
+  it("lays the hero stats out in rows without Push or progression fields", () => {
+    const character = Characters.add({ name: "Mara", culture: 1, birth: 940, hero: true, manual: true });
+    openCharacterDetails(character.i);
+
+    const dialog = document.querySelector("#characterDetailsDialog")!;
+    for (const id of ["heroPush", "heroAppliedLevel", "heroPendingChoices", "heroPicks"])
+      expect(dialog.querySelector(`#${id}`)).toBeNull();
+
+    const at = (markup: string) => dialog.innerHTML.indexOf(markup);
+    expect(at('id="characterArchetype"')).toBeLessThan(at('id="heroXp"'));
+    expect(at('id="heroXp"')).toBeLessThan(at('data-attr="might"'));
+    expect(at('data-attr="might"')).toBeLessThan(at('data-action="strike"'));
+    expect(at('data-action="survive"')).toBeLessThan(at('data-action="investigate"'));
   });
 
   it("imports CSV rows and round-trips the exported shape", () => {
