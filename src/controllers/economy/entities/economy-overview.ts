@@ -6,7 +6,9 @@ import { Corruption } from "@/model/economy/corruption";
 import { Goods } from "@/model/economy/goods-generator";
 import { PROSPERITY_LEVELS } from "@/model/economy/prosperity";
 import { StateOrders } from "@/model/economy/state-orders";
+import { Provinces } from "@/model/political/provinces-generator";
 import { Stability } from "@/model/political/stability";
+import { States } from "@/model/political/states-generator";
 import { formatPrice } from "@/model/units";
 import { goodBadge } from "@/renderers/draw-goods";
 import { Dialog } from "@/ui/dialog/dialog";
@@ -16,6 +18,7 @@ import {
   ECONOMY_COLORS,
   EconomyTerms,
   economyWikiButton,
+  mountAdjustments,
   prosperityColor,
   prosperityLevel,
   renderProsperity,
@@ -104,7 +107,42 @@ function onClick(kind: Kind, id: number, target: HTMLElement): void {
 
 function refresh(kind: Kind, id: number): void {
   const body = findEl(`${dialogId(kind, id)}Body`); // closed while the budget stayed open
-  if (body) body.innerHTML = kind === "state" ? renderState(id) : renderProvince(id);
+  if (!body) return;
+  body.innerHTML = kind === "state" ? renderState(id) : renderProvince(id);
+  if (kind === "state") mountStateAdjustments(id);
+  else mountProvinceAdjustments(id);
+}
+
+/** The state's revenue or cost lines, editable in place like the budget dialog's */
+function mountStateAdjustments(stateId: number): void {
+  const state = pack.states[stateId];
+  const container = findEl(`stateRevenueAdjustments${stateId}`);
+  if (!state?.i || !container) return;
+
+  const initial = state.economy.adjustments ?? [];
+  const sumOf = (lines: { value: number }[]) => lines.reduce((total, line) => total + line.value, 0);
+  const taxes = state.economy.collected - sumOf(initial); // collected last run, adjustments aside
+  mountAdjustments(container, initial, EconomyTerms.adjustments(), lines => {
+    States.setAdjustments(stateId, lines);
+    const collected = taxes + sumOf(lines);
+    const collectedEl = findEl(`stateRevenueCollected${stateId}`);
+    if (collectedEl) collectedEl.textContent = formatPrice(collected);
+    const accounts = Accounts.ofState(stateId);
+    const shareEl = findEl(`stateRevenueShare${stateId}`);
+    if (shareEl && accounts?.product)
+      shareEl.textContent = t("{{share}}% of the product", { share: rn((collected / accounts.product) * 100, 1) });
+  });
+}
+
+/** The province's own revenue or cost lines; they are a local ledger, not part of the state's treasury */
+function mountProvinceAdjustments(provinceId: number): void {
+  const province = pack.provinces[provinceId];
+  const container = findEl(`provinceRevenueAdjustments${provinceId}`);
+  if (!province || province.removed || !container) return;
+
+  mountAdjustments(container, province.adjustments ?? [], EconomyTerms.adjustments(), lines =>
+    Provinces.setAdjustments(provinceId, lines)
+  );
 }
 
 /** The dialogs' style, shared with the burg economy */
@@ -205,9 +243,9 @@ function renderRevenue(stateId: number, accounts: StateAccounts): string {
     ${line(t("Import tariffs"), tariffs, "", "positive")}
     ${line(t("Poll tax: {{rate}} a head", { rate: economy.pollTax || 0 }), pollTax, pollTax ? EconomyTerms.collected(pollTax, pollTaxOwed) : "", "positive")}
     ${line(t("Market licenses: {{fee}} each", { fee: economy.marketFee || 0 }), marketFees, "", "positive")}
-    ${economy.adjustments.map(({ name, value }) => line(escapeHtml(name) || t("Adjustments"), value, EconomyTerms.adjustments(), tone(value))).join("")}
-    <div class="total">${line(t("Collected"), economy.collected, t("Total collected taxes and fees"), tone(economy.collected))}</div>
-    <div class="muted">${t("{{share}}% of the product", { share })}</div>
+    <div id="stateRevenueAdjustments${stateId}"></div>
+    <div class="total">${line(t("Collected"), economy.collected, t("Total collected taxes and fees"), tone(economy.collected), `stateRevenueCollected${stateId}`)}</div>
+    <div class="muted" id="stateRevenueShare${stateId}">${t("{{share}}% of the product", { share })}</div>
   </div>`;
 }
 
@@ -332,6 +370,7 @@ function renderProvinceTaxes(provinceId: number, accounts: ProvinceAccounts): st
     ${line(t("Import tariffs"), -taxes.tariffs, "", "negative")}
     ${line(t("Poll tax"), -taxes.pollTax, "", "negative")}
     ${line(t("Market licenses"), -taxes.marketFees, "", "negative")}
+    <div id="provinceRevenueAdjustments${provinceId}"></div>
     <div class="total">${line(t("Taxes collected"), -total, t("Taxes paid to the state"), "negative")}</div>
     <div class="total">${line(t("State orders"), spent, t("Goods the state bought at the province's burgs"), "positive")}</div>
     ${pocketedLine(corruption, pocketed, t("State spending pocketed by officials"))}
@@ -360,8 +399,8 @@ function card(label: string, value: string, notes: string[], tipText: string): s
   return `<div class="card" data-tip="${tipText}"><div class="label">${label}</div><div class="value">${value}</div>${lines}</div>`;
 }
 
-const line = (name: string, value: number, tip = "", tone = "") =>
-  `<div data-tip="${tip}" class="row plain"><span class="name">${name}</span><span class="right ${tone}">${formatPrice(value)}</span></div>`;
+const line = (name: string, value: number, tip = "", tone = "", id = "") =>
+  `<div data-tip="${tip}" class="row plain"><span class="name">${name}</span><span class="right ${tone}"${id ? ` id="${id}"` : ""}>${formatPrice(value)}</span></div>`;
 
 const pocketedLine = (corruption: number, pocketed: number, tip: string) =>
   `<div data-tip="${tip}" class="row plain muted"><span class="name"><span class="swatch" style="background: ${ECONOMY_COLORS.pocketed}"></span>${t("Corruption: {{rate}}%", { rate: rn(corruption) })}</span><span class="right negative">${formatPrice(-pocketed)}</span></div>`;

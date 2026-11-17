@@ -65,6 +65,7 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Faction Outposts dialog: upstream prosperity, stability, development and trade, no city fields
 - Economy: the Living World runs on the new economy — seasonal treasuries, improvements and buildings that raise real output, and sim-owned `simAdjustments` lines merged with the player's adjustments
 - Provinces editor: clicking a province's stability opens that province's own stability breakdown, with its burgs where the state overview lists provinces
+- Economy dialogs: the Revenue section has a collapsible Adjustments row with its sum and add/remove controls, editable like the budget dialog; provinces keep their own local ledger
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 
