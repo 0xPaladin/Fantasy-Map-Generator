@@ -130,6 +130,108 @@ const TEMPLATE = /* html */ `
       background: #ffffff;
     }
     #${HUD_ID} .livingHudStatus { display: none; }
+    #${INSPECTOR_ID} {
+      position: fixed;
+      top: 52px;
+      right: 12px;
+      z-index: 61;
+      width: min(340px, calc(100vw - 24px));
+      max-height: calc(100vh - 140px);
+      overflow-y: auto;
+      padding: 0.65em 0.75em;
+      border: 1px solid #5e4fa2;
+      border-radius: 4px;
+      background: var(--bg-light, #f7f7f7);
+      color: #1f2328;
+      font-family: var(--sans-serif);
+      font-size: 0.85em;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    }
+    #${INSPECTOR_ID} .livingInspectorClose {
+      float: right;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 1em;
+      line-height: 1;
+      padding: 0.1em 0.3em;
+      color: #555;
+    }
+    #${INSPECTOR_ID} .livingInspectorTitle {
+      display: block;
+      font-size: 1.08em;
+      font-weight: bold;
+      margin-bottom: 0.3em;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: #3d2f7a;
+      text-align: left;
+      cursor: pointer;
+    }
+    #${INSPECTOR_ID} .livingSection {
+      margin-top: 0.55em;
+      padding-top: 0.45em;
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    #${INSPECTOR_ID} .livingSectionTitle,
+    #${INSPECTOR_ID} .livingGodTitle {
+      font-weight: bold;
+      font-size: 0.92em;
+      margin-bottom: 0.25em;
+      color: #333;
+    }
+    #${INSPECTOR_ID} .livingGodTitle { margin-top: 0.6em; }
+    #${INSPECTOR_ID} .livingMuted,
+    #${INSPECTOR_ID} .livingPlaceholder { color: #666; font-size: 0.9em; }
+    #${INSPECTOR_ID} .livingTraits { color: #555; font-size: 0.88em; font-style: italic; }
+    #${INSPECTOR_ID} .livingPoolVitals { display: flex; flex-wrap: wrap; gap: 0.25em; margin-top: 0.2em; }
+    #${INSPECTOR_ID} .livingCivChip {
+      display: inline-block;
+      padding: 0.15em 0.4em;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 3px;
+      background: #fff;
+      font-size: 0.85em;
+      cursor: pointer;
+    }
+    #${INSPECTOR_ID} .livingButtons { display: flex; flex-wrap: wrap; gap: 0.25em; margin-top: 0.25em; }
+    #${INSPECTOR_ID} .livingButtons button { font-size: 0.85em; padding: 0.2em 0.45em; cursor: pointer; }
+    #${INSPECTOR_ID} .livingLinkBtn {
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: #3d5a99;
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: inherit;
+      text-align: left;
+    }
+    #${INSPECTOR_ID} .livingCapacityRow,
+    #${INSPECTOR_ID} .livingMeterRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4em;
+      margin-top: 0.2em;
+    }
+    #${INSPECTOR_ID} .livingBar {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.12);
+      overflow: hidden;
+    }
+    #${INSPECTOR_ID} .livingBar > i { display: block; height: 100%; background: #5e4fa2; }
+    #${INSPECTOR_ID} .livingBar.danger > i { background: #a33d3d; }
+    #${INSPECTOR_ID} .livingBadge {
+      display: inline-block;
+      padding: 0.05em 0.35em;
+      border-radius: 3px;
+      color: #fff;
+      font-size: 0.8em;
+    }
+    #${INSPECTOR_ID} ul { margin: 0.2em 0 0; padding-left: 1.1em; }
   </style>
   <div id="${HUD_ID}">
     <div class="livingHudTop">
@@ -193,6 +295,7 @@ function open(): void {
 }
 
 function close(): void {
+  detachMapSelection();
   findEl(HUD_ID)?.remove();
   removeLivingOverlay();
   const inspector = findEl(INSPECTOR_ID);
@@ -387,9 +490,21 @@ function focusNews(this: HTMLElement): void {
   if (point) zoomTo(point[0], point[1], 8, 1000);
 }
 
+function handleMapClick(event: MouseEvent): void {
+  if (!findEl(HUD_ID)) return;
+  const viewbox = document.getElementById("viewbox") as SVGElement | null;
+  if (viewbox) onMapClick(viewbox, event);
+}
+
 function attachMapSelection(): void {
-  const map = document.getElementById("viewbox");
-  map?.addEventListener("click", event => onMapClick(event.currentTarget as SVGElement, event));
+  const target = document.getElementById("map") ?? document.getElementById("viewbox");
+  target?.removeEventListener("click", handleMapClick);
+  target?.addEventListener("click", handleMapClick);
+}
+
+function detachMapSelection(): void {
+  document.getElementById("map")?.removeEventListener("click", handleMapClick);
+  document.getElementById("viewbox")?.removeEventListener("click", handleMapClick);
 }
 
 function onMapClick(svg: SVGElement, event: MouseEvent): void {

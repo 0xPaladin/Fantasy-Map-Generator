@@ -454,4 +454,19 @@ describe("LivingHud", () => {
     state.living.provinces = {} as never;
     state.living.burgs = {} as never;
   });
+
+  it("displays the state card when clicking on a state on the map", () => {
+    state.living.states = {
+      1: { stateId: 1, agenda: null, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    openHud();
+
+    const viewbox = document.getElementById("viewbox")!;
+    viewbox.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }));
+
+    const panel = document.getElementById("livingInspector")!;
+    expect(panel.style.display).toBe("block");
+    expect(panel.textContent).toContain("Kingdom of Aeloria");
+    state.living.states = {} as never;
+  });
 });
