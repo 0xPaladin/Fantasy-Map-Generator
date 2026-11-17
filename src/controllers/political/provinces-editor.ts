@@ -376,7 +376,7 @@ function renderDialog(): void {
     else if (cl.contains("icon-dot-circled")) void Controllers.BurgsOverview.open({ stateId });
     else if (el.closest("[data-col='living']")) void Controllers.LivingHud.inspect("province", p);
     else if (cl.contains("culturePopulation")) changePopulation(p);
-    else if (cl.contains("provinceStability")) void Controllers.StabilityOverview.open(stateId);
+    else if (cl.contains("provinceStability")) void Controllers.StabilityOverview.openProvince(p);
     else if (cl.contains("provinceEconomy")) void Controllers.EconomyOverview.open("province", p);
     else if (cl.contains("icon-target"))
       highlightElement(select<SVGGElement, unknown>("#provs").select(`#province${p}`).node() as Element, 8);
