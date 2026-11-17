@@ -186,6 +186,9 @@ const TEMPLATE = /* html */ `
     #${INSPECTOR_ID} .livingPlaceholder { color: #666; font-size: 0.9em; }
     #${INSPECTOR_ID} .livingTraits { color: #555; font-size: 0.88em; font-style: italic; }
     #${INSPECTOR_ID} .livingPoolVitals { display: flex; flex-wrap: wrap; gap: 0.25em; margin-top: 0.2em; }
+    #${INSPECTOR_ID} .livingChipRows { display: flex; flex-direction: column; gap: 0.25em; margin-top: 0.2em; }
+    #${INSPECTOR_ID} .livingChipRow { display: flex; flex-wrap: nowrap; gap: 0.25em; min-width: 0; }
+    #${INSPECTOR_ID} .livingChipRow .livingCivChip { flex: 0 0 auto; white-space: nowrap; }
     #${INSPECTOR_ID} .livingCivChip {
       display: inline-block;
       padding: 0.15em 0.4em;
@@ -918,20 +921,24 @@ function renderRuler(ruler: HistoricalFigure | undefined, _age?: number): string
 const percent = (value: number | null | undefined): string => (value == null ? "—" : `${Math.round(value * 100)}%`);
 
 const FISCAL_LINES: readonly [FiscalLock, string, string][] = [
-  ["military", "⚔️", "Military"],
+  ["pollTax", "👥", "Poll tax"],
+  ["salesTax", "🧾", "Sales tax"],
+  ["corruption", "🤝", "Corruption"],
   ["court", "👑", "Court"],
   ["administration", "🖋️", "Administration"],
   ["infrastructure", "🏗️", "Infrastructure"],
-  ["corruption", "🤝", "Corruption"],
-  ["salesTax", "🧾", "Sales tax"],
-  ["pollTax", "👥", "Poll tax"]
+  ["military", "⚔️", "Military"]
 ];
+
+/** Two fixed rows: taxes and corruption above, the spending lines below */
+const FISCAL_ROWS = [FISCAL_LINES.slice(0, 3), FISCAL_LINES.slice(3)];
 
 /** Phase 3: the ruler's fiscal target against the real budget, with pin buttons. */
 function renderFiscal(stateId: number): string {
   const policy = Living.fiscalPolicy?.(stateId);
   if (!policy) return "";
-  const chips = FISCAL_LINES.map(([line, icon, label]) => {
+
+  const chip = ([line, icon, label]: readonly [FiscalLock, string, string]) => {
     const locked = policy.locks.includes(line);
     const current = policy.current[line];
     const target = policy.target[line];
@@ -939,11 +946,12 @@ function renderFiscal(stateId: number): string {
     const format = (value: number) => (isTax ? `${Math.round(value * 1000) / 10}%` : `${Math.round(value)}%`);
     const title = `${label}: ${Math.round(current)} → ${Math.round(target)} (drift ${policy.stride}/spring). Click to ${locked ? "unpin" : "pin"}.`;
     return `<button type="button" class="livingCivChip" data-god="fiscal-lock" data-state="${stateId}" data-line="${line}" title="${escapeHtml(title)}"${locked ? ' style="outline:1px solid #c4a000;"' : ""}>${icon} ${format(current)}→${format(target)}${locked ? " 🔒" : ""}</button>`;
-  }).join("");
+  };
+  const rows = FISCAL_ROWS.map(row => `<div class="livingChipRow">${row.map(chip).join("")}</div>`).join("");
 
   return `<div class="livingSection">
     <div class="livingSectionTitle">Fiscal policy <span class="livingMuted">· ruler's target, drifting ${policy.stride}/spring</span></div>
-    <div class="livingPoolVitals">${chips}</div>
+    <div class="livingChipRows">${rows}</div>
   </div>`;
 }
 
@@ -1003,24 +1011,33 @@ function renderUpstreamState(stateId: number): string {
   if (prosperity == null && stability == null && development == null && upkeep === 1) return "";
   const era = development == null ? "" : eraOf(development);
 
-  const chips = [
-    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net balance: open the state budget">${getMoneySymbol("🪙")} ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`,
-    prosperity == null
-      ? ""
-      : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,
-    stability == null
-      ? ""
-      : `<button type="button" class="livingCivChip" data-open="stability" data-id="${stateId}" title="Open the state's and its provinces' stability">⚖️ ${percent(stability)} stability</button>`,
-    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Open the state's budget, taxes and tariffs">💼 Budget</button>`,
+  const treasury = `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net balance: open the state budget">${getMoneySymbol("🪙")} ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`;
+  const developmentChip =
     development == null
       ? ""
-      : `<span class="livingCivChip" title="The people's mean development and era: it unlocks goods and unit tiers and raises output">🧪 ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`,
-    `<span class="livingCivChip" title="Share of the military spending its forces need; below it they fight worse">⚔️ ${percent(upkeep)} upkeep · ×${battle.toFixed(2)}</span>`
-  ];
+      : `<span class="livingCivChip" title="The people's mean development and era: it unlocks goods and unit tiers and raises output">🧪 ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`;
+
+  const rows = [
+    [
+      treasury,
+      prosperity == null
+        ? ""
+        : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,
+      stability == null
+        ? ""
+        : `<button type="button" class="livingCivChip" data-open="stability" data-id="${stateId}" title="Open the state's and its provinces' stability">⚖️ ${percent(stability)} stability</button>`
+    ],
+    [
+      `<span class="livingCivChip" title="Share of the military spending its forces need; below it they fight worse">⚔️ ${percent(upkeep)} upkeep · ×${battle.toFixed(2)}</span>`,
+      developmentChip
+    ]
+  ]
+    .map(row => `<div class="livingChipRow">${row.filter(Boolean).join("")}</div>`)
+    .join("");
 
   return `<div class="livingSection">
     <div class="livingSectionTitle">Upstream economy</div>
-    <div class="livingPoolVitals">${chips.join("")}</div>
+    <div class="livingChipRows">${rows}</div>
   </div>`;
 }
 

@@ -26,6 +26,7 @@ const { mocks, state } = vi.hoisted(() => {
       eligibleFactionSuppressionTargets: vi.fn((): unknown[] => []),
       startFactionSuppression: vi.fn(() => true),
       getHeroState: vi.fn((): unknown => undefined),
+      fiscalPolicy: vi.fn((): unknown => null),
       setHeroDoctrine: vi.fn(() => true),
       setHeroPush: vi.fn(() => true),
       chooseHeroPath: vi.fn(() => true),
@@ -398,6 +399,51 @@ describe("LivingHud", () => {
     expect(titles).not.toContain("Stability");
     expect(titles).not.toContain("Provinces");
     expect(titles).not.toContain("Rebellions");
+    state.living.states = {} as never;
+  });
+
+  it("lays fiscal and upstream chips out in fixed single rows", () => {
+    const current = {
+      military: 35,
+      court: 25,
+      administration: 25,
+      infrastructure: 25,
+      corruption: 35,
+      salesTax: 0.08,
+      pollTax: 0.071
+    };
+    mocks.living.fiscalPolicy.mockReturnValue({ current, target: current, locks: [], stride: 0.5 } as never);
+    state.living.states = {
+      1: { stateId: 1, agenda: null, unravel: 0, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    const cells = pack.cells as unknown as Record<string, unknown>;
+    cells.development = Uint8Array.from([0, 45, 45, 0, 45, 45]);
+    cells.pop = new Array(6).fill(5) as never;
+    options.map.eras = [
+      { level: 0, name: "Paleolithic" },
+      { level: 40, name: "Renaissance" }
+    ] as never;
+    openHud();
+    LivingHud.inspect("state", 1);
+
+    const panel = document.getElementById("livingInspector")!;
+    const lines = [...panel.querySelectorAll("[data-god='fiscal-lock']")].map(chip => chip.getAttribute("data-line"));
+    expect(lines).toEqual([
+      "pollTax",
+      "salesTax",
+      "corruption",
+      "court",
+      "administration",
+      "infrastructure",
+      "military"
+    ]);
+
+    const rows = [...panel.querySelectorAll(".livingChipRow")];
+    expect(rows[0]!.querySelectorAll(".livingCivChip").length).toBe(3);
+    expect(rows[1]!.querySelectorAll(".livingCivChip").length).toBe(4);
+    expect(panel.querySelectorAll('[data-open="budget"]').length).toBe(1);
+
+    mocks.living.fiscalPolicy.mockReturnValue(null);
     state.living.states = {} as never;
   });
 
