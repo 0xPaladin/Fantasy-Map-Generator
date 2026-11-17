@@ -447,6 +447,26 @@ describe("LivingHud", () => {
     state.living.states = {} as never;
   });
 
+  it("keeps only the stock state-filtered editors under Manage", () => {
+    state.living.states = {
+      1: { stateId: 1, agenda: null, unravel: 0, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    openHud();
+    LivingHud.inspect("state", 1);
+
+    const panel = document.getElementById("livingInspector")!;
+    const manage = [...panel.querySelectorAll(".livingSection")].find(
+      section => section.querySelector(".livingSectionTitle")?.textContent === "Manage"
+    );
+    expect(manage).toBeTruthy();
+
+    const buttons = [...manage!.querySelectorAll("button")];
+    expect(buttons.map(button => button.textContent)).toEqual(["Provinces", "Burgs", "Regiments"]);
+    expect(buttons.map(button => button.dataset.open)).toEqual(["provinces", "burgs", "regiments"]);
+    expect(buttons.every(button => button.dataset.id === "1")).toBe(true);
+    state.living.states = {} as never;
+  });
+
   it("closes and reopens the HUD cleanly", () => {
     openHud();
     LivingHud.close();

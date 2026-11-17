@@ -1159,7 +1159,6 @@ function renderStateInstability(stateId: number): string {
 function renderStateNav(stateId: number): string {
   return `<div class="livingSection"><div class="livingSectionTitle">Manage</div>
     <div class="livingButtons" style="margin-top: 0.35em;">
-      <button type="button" data-open="cities" data-id="${stateId}">Cities &amp; Economy</button>
       <button type="button" data-open="provinces" data-id="${stateId}">Provinces</button>
       <button type="button" data-open="burgs" data-id="${stateId}">Burgs</button>
       <button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>
@@ -1498,9 +1497,6 @@ function bindInspectorButtons(panel: HTMLElement): void {
     button.addEventListener("click", () => {
       const id = Number(button.dataset.id ?? 0);
       switch (button.dataset.open) {
-        case "cities":
-          void Controllers.StateCitiesDialog.open(id);
-          break;
         case "states":
         case "state": {
           const state = pack.states[id];

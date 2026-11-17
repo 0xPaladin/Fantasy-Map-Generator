@@ -28,7 +28,7 @@ A **state** card shows:
 - **Public works** — the work under construction and each finished work with its daily line (e.g. `Aqueduct +3/day`).
 - **Upstream economy** — treasury (stock Day Balance; opens the State Budget), prosperity (opens the Economy dialog), stability (opens the Stability overview), the people's mean development with its era, and the forces' upkeep with its battle multiplier.
 - **Agenda** and **suppression targets**.
-- **Manage** — quick links to Cities & Economy, Provinces, Burgs and Regiments.
+- **Manage** — opens the stock Provinces, Burgs and Regiments editors filtered to this state.
 - **Issues & Crises** — **Instability** (provinces at or below 55% stability, each marked `⚠️`, with `🔥[seasons]` beside a rebelling province), dangerous factions, troubles (with daily drain), casus belli claims and grudges.
 - **Sandbox God Mode** — spark rebellion, smite ruler, force war, assault/delve/ascend/smite/spawn factions.
 
