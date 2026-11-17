@@ -72,6 +72,7 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Characters: the editor has a selectable Alignment and one Virtues/Vices column with a row reroll; the sheet drops those fields, tables Roles and Relations, and puts Promote to hero beside Save for background characters
 - Characters: the sheet scrolls when its content, such as the promoted hero section, exceeds the screen
 - Characters: the hero section selects an archetype with a stat reroll, lays its stats out in four rows, and drops Push and the progression fields
+- Markers: visible markers adjust their province's economy and stability live (water markers attribute to the nearest shore or route-endpoint province), with per-marker overrides in the Marker Editor and _Of which markers_ rows in the Economy and Stability dialogs
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 

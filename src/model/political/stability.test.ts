@@ -99,6 +99,22 @@ describe("Stability.get", () => {
     expect(result.parts.adjustments).toBeCloseTo(-0.05);
     expect(result.stability).toBeCloseTo(0.5 + 0.25 + 0.15 - 0.05);
   });
+
+  it("includes active markers in provincial and state stability adjustments", () => {
+    vi.spyOn(Accounts, "ofState").mockReturnValue({ prosperity: 0.25, taxes: 0, product: 100 } as any);
+    vi.spyOn(Prosperity, "getRuralCell").mockReturnValue({ living: { prosperity: 0.25 } } as any);
+    pack.provinces = [{ i: 0 }, { i: 1, state: 1, burg: 0 }] as any;
+    pack.cells.province = new Uint16Array([1, 1]);
+    pack.cells.h = new Uint8Array([30, 30]);
+    pack.markers = [
+      { i: 0, type: "brigands", name: "Red Bandits", cell: 0, x: 0, y: 0 }, // -5%
+      { i: 1, type: "libraries", name: "Royal Archive", cell: 1, x: 1, y: 1 } // +4%
+    ] as any;
+
+    const prov = Stability.getProvince(1)!;
+    expect(prov.parts.adjustments).toBeCloseTo(-0.01);
+    expect(Stability.get(1)!.parts.adjustments).toBeCloseTo(-0.01);
+  });
 });
 
 describe("Military.getEquipped", () => {

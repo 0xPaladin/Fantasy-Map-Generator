@@ -133,6 +133,25 @@ describe("StabilityOverview", () => {
     expect(mocks.renderSimAdjustments).toHaveBeenCalled();
   });
 
+  it("renders provincial marker stability lines under Of which markers", () => {
+    globalThis.pack.cells = {
+      ...globalThis.pack.cells,
+      h: [30, 30, 30],
+      province: [0, 1, 1]
+    } as any;
+    globalThis.pack.markers = [{ i: 0, type: "brigands", name: "Forest Gang", cell: 1, x: 0, y: 0 }] as any;
+
+    StabilityOverview.openProvince(1);
+
+    expect(mocks.renderSimAdjustments).toHaveBeenCalledWith(
+      expect.anything(),
+      [{ name: "Forest Gang", value: -5 }],
+      expect.stringContaining("markers"),
+      expect.any(Function),
+      "Of which markers"
+    );
+  });
+
   it("warns and opens nothing without province data", () => {
     mocks.getProvince.mockReturnValue(null);
     StabilityOverview.openProvince(1);

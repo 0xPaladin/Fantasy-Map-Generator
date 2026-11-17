@@ -1,6 +1,7 @@
 import { sum } from "d3";
 import { EXPENSES } from "@/data/expenses";
 import { Pack } from "@/model/graph/pack-generator";
+import { Markers } from "@/model/story/markers-generator";
 import { Corruption } from "./corruption";
 import { DEAL_KINDS, Deals } from "./deals";
 import { Goods } from "./goods-generator";
@@ -72,6 +73,20 @@ class AccountsModule {
   ofProvince(provinceId: number): ProvinceAccounts | null {
     this.indexProvinces();
     return this.provinces.get(provinceId) ?? null;
+  }
+
+  /** A province's daily revenue/cost adjustments (user lines and local markers), which stay at the province level */
+  getProvinceAdjustments(provinceId: number): {
+    user: { name: string; value: number }[];
+    markers: { name: string; value: number }[];
+    total: number;
+  } {
+    const province = pack.provinces?.[provinceId];
+    if (!provinceId || !province || province.removed) return { user: [], markers: [], total: 0 };
+    const user = province.adjustments ?? [];
+    const markers = Markers.getProvinceAdjustments(provinceId).economy;
+    const total = sum(user, line => line.value) + sum(markers, line => line.value);
+    return { user, markers, total };
   }
 
   /** The world's: all states, neutrals included */

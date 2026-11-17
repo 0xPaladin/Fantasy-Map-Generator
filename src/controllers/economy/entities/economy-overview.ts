@@ -24,6 +24,7 @@ import {
   renderProsperity,
   renderProsperityParts,
   renderProsperityPercent,
+  renderSimAdjustments,
   tone
 } from "@/ui/economy-view";
 import { tip } from "@/ui/tooltips";
@@ -142,13 +143,34 @@ function mountProvinceAdjustments(provinceId: number): void {
 
   const accounts = Accounts.ofProvince(provinceId);
   const taxes = accounts ? taxesOf(accounts) : 0;
+  const { markers } = Accounts.getProvinceAdjustments(provinceId);
   const sumOf = (lines: { value: number }[]) => lines.reduce((total, line) => total + line.value, 0);
+  const markerTotal = sumOf(markers);
 
   mountAdjustments(container, province.adjustments ?? [], EconomyTerms.adjustments(), lines => {
     Provinces.setAdjustments(provinceId, lines);
+    const total = taxes + sumOf(lines) + markerTotal;
     const collectedEl = findEl(`provinceTaxesCollected${provinceId}`);
-    if (collectedEl) collectedEl.textContent = formatPrice(-(taxes + sumOf(lines)));
+    if (collectedEl) collectedEl.textContent = formatPrice(-total);
+    const cardEl = findEl(`provinceTaxesCard${provinceId}`);
+    if (cardEl) cardEl.textContent = formatPrice(total);
+    const burdenEl = findEl(`provinceTaxBurden${provinceId}`);
+    if (burdenEl && accounts) {
+      const burden = accounts.product ? rn((total / accounts.product) * 100, 1) : 0;
+      burdenEl.textContent = t("Tax burden: {{burden}}%", { burden });
+    }
   });
+
+  const markerContainer = findEl(`provinceMarkerAdjustments${provinceId}`);
+  if (markerContainer) {
+    renderSimAdjustments(
+      markerContainer,
+      markers,
+      t("Daily revenue or costs from markers in this province"),
+      formatPrice,
+      t("Of which markers")
+    );
+  }
 }
 
 /** The dialogs' style, shared with the burg economy */
@@ -321,7 +343,8 @@ function renderProvinceCards(provinceId: number, accounts: ProvinceAccounts, sta
 
   const population = people(accounts);
   const productShare = stateAccounts.product ? rn((accounts.product / stateAccounts.product) * 100, 1) : 0;
-  const taxes = taxesOf(accounts);
+  const provinceTaxes = (id: number) => taxesOf(of(id)) + Accounts.getProvinceAdjustments(id).total;
+  const taxes = provinceTaxes(provinceId);
   const burden = accounts.product ? rn((taxes / accounts.product) * 100, 1) : 0;
 
   const figures = getProvinceFigures(stateId);
@@ -350,7 +373,7 @@ function renderProvinceCards(provinceId: number, accounts: ProvinceAccounts, sta
     ${card(t("Product"), formatPrice(accounts.product), [ranked(a => a.product), t("{{share}}% of the state", { share: productShare })], EconomyTerms.stateProduct())}
     ${card(t("Wealth"), formatPrice(accounts.wealth), [ranked(a => a.wealth), `${t("State")}: ${formatPrice(stateAccounts.wealth)}`], EconomyTerms.wealth())}
     ${card(t("Prosperity"), prosperityPercent(accounts.prosperity), [ranked(a => a.prosperity ?? 0), `${t("State")}: ${prosperityText(stateAccounts.prosperity)}`], EconomyTerms.prosperity())}
-    ${card(t("Taxes collected"), formatPrice(taxes), [ranked(taxesOf), t("Tax burden: {{burden}}%", { burden })], t("Taxes paid to the state"))}
+    ${card(t("Taxes collected"), `<span id="provinceTaxesCard${provinceId}">${formatPrice(taxes)}</span>`, [rank(ids, provinceId, provinceTaxes), `<span id="provinceTaxBurden${provinceId}">${t("Tax burden: {{burden}}%", { burden })}</span>`], t("Taxes paid to the state"))}
     ${governed(
       t("Corruption"),
       g => g.corruption,
@@ -368,7 +391,7 @@ function renderProvinceCards(provinceId: number, accounts: ProvinceAccounts, sta
 function renderProvinceTaxes(provinceId: number, accounts: ProvinceAccounts): string {
   const { taxes, spent, pocketed } = accounts;
   const total = taxesOf(accounts);
-  const adjustments = (pack.provinces[provinceId].adjustments ?? []).reduce((sum, line) => sum + line.value, 0);
+  const { total: adjustments } = Accounts.getProvinceAdjustments(provinceId);
   const stability = Stability.getProvince(provinceId);
   const state = pack.states[pack.provinces[provinceId].state];
   const corruption = stability ? Corruption.ofProvince(state, stability.province, state.economy.collected) : 0;
@@ -378,6 +401,7 @@ function renderProvinceTaxes(provinceId: number, accounts: ProvinceAccounts): st
     ${line(t("Poll tax"), -taxes.pollTax, "", "negative")}
     ${line(t("Market licenses"), -taxes.marketFees, "", "negative")}
     <div id="provinceRevenueAdjustments${provinceId}"></div>
+    <div id="provinceMarkerAdjustments${provinceId}"></div>
     <div class="total">${line(t("Taxes collected"), -(total + adjustments), t("Taxes paid to the state, adjustments included"), "negative", `provinceTaxesCollected${provinceId}`)}</div>
     <div class="total">${line(t("State orders"), spent, t("Goods the state bought at the province's burgs"), "positive")}</div>
     ${pocketedLine(corruption, pocketed, t("State spending pocketed by officials"))}

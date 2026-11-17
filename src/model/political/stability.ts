@@ -3,6 +3,7 @@ import { Corruption, type ProvinceCorruption } from "@/model/economy/corruption"
 import { Prosperity } from "@/model/economy/prosperity";
 import { StateOrders } from "@/model/economy/state-orders";
 import { Pack } from "@/model/graph/pack-generator";
+import { Markers } from "@/model/story/markers-generator";
 import { minmax } from "@/utils/number-utils";
 import { Military } from "./military-generator";
 
@@ -87,10 +88,12 @@ class StabilityModule {
       const prosperity = this.prosperity.get(province) ?? accounts.prosperity!;
       const corruption = Corruption.ofProvince(state, province, state.economy.collected);
       const prov = province.id ? pack.provinces?.[province.id] : undefined;
-      const provAdjustments = [...(prov?.stabilityAdjustments ?? []), ...(prov?.simStabilityAdjustments ?? [])].reduce(
-        (sum, line) => sum + line.value / 100,
-        0
-      );
+      const markerAdjustments = province.id ? Markers.getProvinceAdjustments(province.id).stability : [];
+      const provAdjustments = [
+        ...(prov?.stabilityAdjustments ?? []),
+        ...(prov?.simStabilityAdjustments ?? []),
+        ...markerAdjustments
+      ].reduce((sum, line) => sum + line.value / 100, 0);
       const parts: Record<StabilityPart, number> = {
         ...shared,
         prosperity: PROSPERITY * Math.min(1, prosperity / PROSPERITY_TOP),
@@ -110,7 +113,7 @@ class StabilityModule {
 
   /** Each province's prosperity: its urban and rural people's by their numbers */
   private index(): void {
-    const sources = [pack.deals, pack.states, pack.provinces, pack.cells?.i, Pack.revision];
+    const sources = [pack.deals, pack.states, pack.provinces, pack.cells?.i, pack.markers, Pack.revision];
     if (sources.every((source, k) => source === this.sources[k])) return;
     this.sources = sources;
     const sums = new Map<ProvinceCorruption, [number, number]>(); // people, people × prosperity

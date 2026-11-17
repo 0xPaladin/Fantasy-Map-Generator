@@ -806,6 +806,7 @@ function applyResults(): void {
 
   marker.note = narrative;
   pack.markers.push(marker);
+  Pack.markChanged();
   Layers.draw("markers");
 
   tip(

@@ -118,6 +118,12 @@ function renderDialog(): void {
         <input id="markerIconStroke" type="color" style="width: 5em; height: 1.6em" />
         <i id="markerIconPaintReset" data-tip="${t("Reset to default")}" class="icon-ccw pointer"></i>
       </div>
+      <div data-tip="${t("Provincial impact: daily economy and stability adjustments for the marker's province")}">
+        <div class="label">${t("Impact")}:</div>
+        <input data-tip="${t("Daily economy adjustment for the province")}" id="markerEconomy" type="number" step="0.5" style="width: 5em" />
+        <input data-tip="${t("Provincial stability adjustment (%)")}" id="markerStability" type="number" step="1" style="width: 5em" />
+        <i id="markerImpactReset" data-tip="${t("Reset to default")}" class="icon-ccw pointer"></i>
+      </div>
     </div>
     <div id="markerBottom">
       ${noteButton("markerNotes", t("Edit free text notes (legend)"))}
@@ -144,6 +150,9 @@ function renderDialog(): void {
   ensureEl("markerIconFill").addEventListener("input", changeIconFill);
   ensureEl("markerIconStroke").addEventListener("input", changeIconStroke);
   ensureEl("markerIconPaintReset").addEventListener("click", resetIconPaint);
+  ensureEl("markerEconomy").addEventListener("change", changeMarkerEconomy);
+  ensureEl("markerStability").addEventListener("change", changeMarkerStability);
+  ensureEl("markerImpactReset").addEventListener("click", resetMarkerImpact);
   ensureEl("markerNotes").addEventListener("click", editMarkerLegend);
   ensureEl("markerRadius").addEventListener("click", openMarkersInRadius);
   ensureEl("markerLock").addEventListener("click", toggleMarkerLock);
@@ -185,12 +194,14 @@ function dragMarker(this: SVGElement, event: D3DragEvent<SVGElement, unknown, un
 
     Markers.move(selectedMarker.i, x, y);
     drawMarkers();
+    refreshEditors();
   });
 }
 
 function updateInputs(): void {
   const marker = selectedMarker;
   updateIconPaint();
+  updateImpactInputs();
 
   ensureEl<HTMLInputElement>("markerName").value = marker.name || "";
   ensureEl<HTMLInputElement>("markerType").value = marker.type || "";
@@ -217,13 +228,48 @@ function updateIconPaint(): void {
   ensureEl("markerIconPaintReset").style.visibility = iconFill || iconStroke ? "visible" : "hidden";
 }
 
+function updateImpactInputs(): void {
+  const { economy, stability } = Markers.getImpact(selectedMarker);
+  ensureEl<HTMLInputElement>("markerEconomy").value = String(economy);
+  ensureEl<HTMLInputElement>("markerStability").value = String(stability);
+  const customized = selectedMarker.economy !== undefined || selectedMarker.stability !== undefined;
+  ensureEl("markerImpactReset").style.visibility = customized ? "visible" : "hidden";
+}
+
 function changeMarkerName(this: HTMLInputElement): void {
-  if (this.value.trim()) Markers.rename(selectedMarker.i, this.value);
+  if (this.value.trim()) {
+    Markers.rename(selectedMarker.i, this.value);
+    refreshEditors();
+  }
   if (findEl("notesEditor")) void Controllers.NotesEditor.open({ type: "marker", id: selectedMarker.i });
 }
 
 function changeMarkerType(this: HTMLInputElement): void {
-  if (this.value.trim()) Markers.setType(selectedMarker.i, this.value);
+  if (this.value.trim()) {
+    Markers.setType(selectedMarker.i, this.value);
+    updateImpactInputs();
+    refreshEditors();
+  }
+}
+
+function changeMarkerEconomy(this: HTMLInputElement): void {
+  const value = Number.isFinite(this.valueAsNumber) ? this.valueAsNumber : 0;
+  Markers.setImpact(selectedMarker.i, { economy: value });
+  updateImpactInputs();
+  refreshEditors();
+}
+
+function changeMarkerStability(this: HTMLInputElement): void {
+  const value = Number.isFinite(this.valueAsNumber) ? this.valueAsNumber : 0;
+  Markers.setImpact(selectedMarker.i, { stability: value });
+  updateImpactInputs();
+  refreshEditors();
+}
+
+function resetMarkerImpact(): void {
+  Markers.setImpact(selectedMarker.i, { economy: null, stability: null });
+  updateImpactInputs();
+  refreshEditors();
 }
 
 function changeMarkerTags(this: HTMLInputElement): void {

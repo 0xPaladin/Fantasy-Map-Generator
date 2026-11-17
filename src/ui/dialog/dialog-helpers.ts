@@ -50,4 +50,9 @@ export function closeEntityDialogs(): void {
 /** Refresh every editor that is currently open */
 export function refreshEditors(): void {
   for (const buttonId of REFRESHABLE_EDITORS) findEl(buttonId)?.click();
+  for (const button of document.querySelectorAll<HTMLElement>(
+    ".economyOverviewDialog [id$='Refresh'], .stabilityDialog [id$='Refresh']"
+  )) {
+    button.click();
+  }
 }

@@ -330,3 +330,109 @@ describe("MarkersModule chronicle-owned types", () => {
     expect(pack.markers.map((marker: Marker) => marker.type)).toEqual(["ruins", "battlefields"]);
   });
 });
+
+describe("MarkersModule provincial impacts and attribution", () => {
+  it("resolves default, contextual, alias and overridden impacts", () => {
+    expect(Markers.getImpact({ type: "brigands", name: "Brigands" })).toEqual({ economy: -3, stability: -5 });
+    expect(Markers.getImpact({ type: "bandit", name: "Bandit" })).toEqual({ economy: -3, stability: -5 });
+    expect(Markers.getImpact({ type: "mines", name: "Ironton — iron mining town" })).toEqual({
+      economy: 3,
+      stability: 0
+    });
+    expect(
+      Markers.getImpact({
+        type: "mines",
+        name: "Smithton — old iron mine",
+        note: "The iron mine by Smithton is played out."
+      })
+    ).toEqual({ economy: 0, stability: -2 });
+    expect(Markers.getImpact({ type: "volcanoes", name: "Ash", note: "Erupting volcano." })).toEqual({
+      economy: -4,
+      stability: -8
+    });
+    expect(Markers.getImpact({ type: "volcanoes", name: "Ash", note: "Dormant volcano." })).toEqual({
+      economy: 0,
+      stability: 0
+    });
+    expect(
+      Markers.getImpact({ type: "caves", name: "Cavern", note: "Locals claim that it is a good spot to hid treasure." })
+    ).toEqual({ economy: 1, stability: 0 });
+    expect(Markers.getImpact({ type: "brigands", name: "Red Gang", economy: 2.5, stability: -1 })).toEqual({
+      economy: 2.5,
+      stability: -1
+    });
+  });
+
+  it("sets and resets per-marker impact overrides via setImpact", () => {
+    globalThis.pack = {
+      markers: [{ i: 1, type: "inns", name: "The Oak", cell: 0, x: 0, y: 0 }]
+    } as any;
+    Markers.setImpact(1, { economy: 5.556, stability: -2.24 });
+    expect(pack.markers[0].economy).toBe(5.56);
+    expect(pack.markers[0].stability).toBe(-2.2);
+    expect(Markers.getImpact(pack.markers[0])).toEqual({ economy: 5.56, stability: -2.2 });
+
+    Markers.setImpact(1, { economy: null, stability: null });
+    expect(pack.markers[0].economy).toBeUndefined();
+    expect(pack.markers[0].stability).toBeUndefined();
+    expect(Markers.getImpact(pack.markers[0])).toEqual({ economy: 1.5, stability: 2 });
+    expect(() => Markers.setImpact(1, { economy: Number.NaN })).toThrow("number or null");
+  });
+
+  it("attributes land and water markers to their direct, route-endpoint, or nearest shore province", () => {
+    // Cells: 0 (land, prov 1), 1 (land, prov 2), 2 (water near cell 0), 3 (water on sea route to cell 1), 4 (neutral land)
+    globalThis.pack = {
+      provinces: [{ i: 0 }, { i: 1, name: "West" }, { i: 2, name: "East" }],
+      routes: [
+        {
+          i: 7,
+          group: "searoutes",
+          points: [
+            [100, 0, 1],
+            [50, 0, 3]
+          ]
+        }
+      ],
+      cells: {
+        i: [0, 1, 2, 3, 4],
+        h: [30, 30, 10, 10, 30],
+        province: [1, 2, 0, 0, 0],
+        p: [
+          [0, 0],
+          [100, 0],
+          [10, 0],
+          [50, 0],
+          [200, 0]
+        ],
+        c: [[2], [3], [0, 3], [2, 1], []],
+        routes: [{}, {}, {}, { 7: 1 }, {}]
+      },
+      markers: [
+        { i: 0, type: "merchant-houses", name: "House A", cell: 0, x: 0, y: 0 },
+        { i: 1, type: "lake-monsters", name: "Nessie", cell: 2, x: 10, y: 0 }, // shore cell 0 (prov 1) is closer than cell 1 (prov 2)
+        { i: 2, type: "pirates", name: "Corsairs", cell: 3, x: 80, y: 0 }, // nearest shore/route endpoint is prov 2 at x=100
+        { i: 3, type: "ruins", name: "Wild Ruins", cell: 4, x: 200, y: 0 }, // neutral unprovinced land -> no province
+        { i: 4, type: "brigands", name: "Hidden Gang", cell: 0, x: 0, y: 0, hidden: true }
+      ]
+    } as any;
+
+    expect(Markers.getProvinceAdjustments(1)).toEqual({
+      economy: [
+        { name: "House A", value: 4 },
+        { name: "Nessie", value: -1.5 }
+      ],
+      stability: [
+        { name: "House A", value: 2 },
+        { name: "Nessie", value: -3 }
+      ]
+    });
+    expect(Markers.getProvinceAdjustments(2)).toEqual({
+      economy: [{ name: "Corsairs", value: -3 }],
+      stability: [{ name: "Corsairs", value: -3 }]
+    });
+
+    // Hiding a marker removes its provincial impact; moving shifts it
+    Markers.setHidden(1, true);
+    expect(Markers.getProvinceAdjustments(1).economy).toEqual([{ name: "House A", value: 4 }]);
+  });
+});

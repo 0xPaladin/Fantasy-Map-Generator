@@ -61,4 +61,23 @@ describe("ProvinceEconomy", () => {
     pack.deals = [];
     expect(Accounts.ofProvince(1)).toBeNull();
   });
+
+  it("includes province user adjustments and local marker economy impacts without rolling up to the state", () => {
+    const stateTaxesBefore = Accounts.ofState(1)!.taxes;
+    pack.provinces[1].adjustments = [{ name: "Tolls", value: 5 }];
+    pack.cells.h = new Uint8Array([30, 30, 30]);
+    pack.markers = [
+      { i: 0, type: "customs-houses", name: "Gatehouse", cell: 0, x: 0, y: 0 }, // +3
+      { i: 1, type: "brigands", name: "Road Gang", cell: 0, x: 0, y: 0 } // -3
+    ] as any;
+
+    const adj = Accounts.getProvinceAdjustments(1);
+    expect(adj.user).toEqual([{ name: "Tolls", value: 5 }]);
+    expect(adj.markers).toEqual([
+      { name: "Gatehouse", value: 3 },
+      { name: "Road Gang", value: -3 }
+    ]);
+    expect(adj.total).toBe(5);
+    expect(Accounts.ofState(1)!.taxes).toBe(stateTaxesBefore); // state taxes exclude province adjustments and marker lines
+  });
 });

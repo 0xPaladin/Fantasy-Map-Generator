@@ -5,6 +5,7 @@ import type { Burg } from "@/model/political/burgs-generator";
 import { Provinces } from "@/model/political/provinces-generator";
 import { STABILITY_PARTS, Stability, type StabilityPart } from "@/model/political/stability";
 import { States } from "@/model/political/states-generator";
+import { Markers } from "@/model/story/markers-generator";
 import { getDecima } from "@/model/units";
 import { Dialog } from "@/ui/dialog/dialog";
 import { ECONOMY_COLORS, EconomyTerms, mountAdjustments, renderSimAdjustments, tone } from "@/ui/economy-view";
@@ -51,9 +52,18 @@ function open(stateId: number): void {
       <div id="stabilityParts${stateId}">${renderParts(stability)}</div>
       <div id="stabilityAdjustments${stateId}"></div>
       <div id="stabilitySimAdjustments${stateId}"></div>
+      <div id="stabilityMarkerAdjustments${stateId}"></div>
       <div id="stabilityProvinces${stateId}">${renderProvinces(stateId)}</div>
+      <div style="margin-top: 3px"><button id="${id}Refresh" type="button" data-tip="${t("Refresh")}" class="icon-cw"></button></div>
     </div>`
   );
+  ensureEl(`${id}Refresh`).addEventListener("click", () => {
+    const updated = Stability.get(stateId);
+    if (!updated) return;
+    ensureEl(`stabilityParts${stateId}`).innerHTML = renderParts(updated);
+    mountStabilityAdjustments(stateId);
+    ensureEl(`stabilityProvinces${stateId}`).innerHTML = renderProvinces(stateId);
+  });
   mountStabilityAdjustments(stateId);
   Dialog.open(id, {
     title: t("Stability of {{- state}}", { state: state.fullName || state.name }),
@@ -81,9 +91,18 @@ function openProvince(provinceId: number): void {
       <div id="stabilityProvinceParts${provinceId}">${renderParts(stability)}</div>
       <div id="stabilityProvinceAdjustments${provinceId}"></div>
       <div id="stabilityProvinceSimAdjustments${provinceId}"></div>
+      <div id="stabilityProvinceMarkerAdjustments${provinceId}"></div>
       <div id="stabilityProvinceBurgs${provinceId}">${renderBurgs(provinceId)}</div>
+      <div style="margin-top: 3px"><button id="${id}Refresh" type="button" data-tip="${t("Refresh")}" class="icon-cw"></button></div>
     </div>`
   );
+  ensureEl(`${id}Refresh`).addEventListener("click", () => {
+    const updated = Stability.getProvince(provinceId);
+    if (!updated) return;
+    ensureEl(`stabilityProvinceParts${provinceId}`).innerHTML = renderParts(updated);
+    mountProvinceStabilityAdjustments(provinceId);
+    ensureEl(`stabilityProvinceBurgs${provinceId}`).innerHTML = renderBurgs(provinceId);
+  });
   mountProvinceStabilityAdjustments(provinceId);
   Dialog.open(id, {
     title: t("Stability of {{- province}}", { province: province.fullName || province.name }),
@@ -126,6 +145,21 @@ function mountStabilityAdjustments(stateId: number): void {
     simLines,
     t("Stability modifiers written by the Living World"),
     formatPct
+  );
+  const markerLines = (pack.provinces ?? [])
+    .filter(p => p?.i && !p.removed && p.state === stateId)
+    .flatMap(p =>
+      Markers.getProvinceAdjustments(p.i).stability.map(line => ({
+        name: `${p.name}: ${line.name}`,
+        value: line.value
+      }))
+    );
+  renderSimAdjustments(
+    ensureEl(`stabilityMarkerAdjustments${stateId}`),
+    markerLines,
+    t("Stability modifiers from markers in the state's provinces"),
+    formatPct,
+    t("Of which markers")
   );
 }
 
@@ -172,6 +206,13 @@ function mountProvinceStabilityAdjustments(provinceId: number): void {
     simLines,
     t("Stability modifiers written by the Living World"),
     formatPct
+  );
+  renderSimAdjustments(
+    ensureEl(`stabilityProvinceMarkerAdjustments${provinceId}`),
+    Markers.getProvinceAdjustments(provinceId).stability,
+    t("Stability modifiers from markers in this province"),
+    formatPct,
+    t("Of which markers")
   );
 }
 

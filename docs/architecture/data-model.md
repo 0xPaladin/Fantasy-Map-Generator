@@ -374,6 +374,8 @@ Markers data is stored as an unordered array of objects (so element id is _not_ 
 - `px`: `number` - icon box size in pixels. Optional, default is `12` (12px)
 - `lock`: `boolean` - `true` if marker is locked (not affected by regeneration). Optional
 - `note`: `string` - optional. The user's note (legend) about the marker, as html. Removed with it
+- `economy`: `number` - optional. Per-marker daily economy adjustment override for its province (gold/day); absent uses the marker type's default (`MARKER_IMPACTS`)
+- `stability`: `number` - optional. Per-marker provincial stability adjustment override (percentage points); absent uses the marker type's default (`MARKER_IMPACTS`)
 
 ## Labels
 

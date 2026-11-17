@@ -12,8 +12,17 @@ To edit a marker, click its icon. A small window with the marker properties appe
 * **Icon shift** — the icon offset by X and Y as a percentage; 50 centers the icon
 * **Pin shape** and its **fill** and **stroke** colors
 * **Icon colors** — fill and stroke for the parts of a built-in icon left uncolored; the arrow restores the icon's defaults. Emoji and custom icons keep their own colors
+* **Impact** — the marker's daily economy (`🟡/day`) and provincial stability (`%`) adjustments for the province it belongs to; defaults come from the marker's type (and generated state, such as active vs. played-out mines or dormant vs. erupting volcanoes), and the reset button restores the default
 
 The buttons at the bottom let you edit the legend, show all markers within a radius of this one, lock the marker so regeneration does not touch it, add another marker of the same type and remove the marker.
+
+## Provincial economy and stability impact
+Visible markers automatically adjust the economy and stability of the province they sit in:
+
+* **Attribution**: Land markers apply to the province of their cell (`0` in unprovinced neutral land). Water markers (`pirates`, `sea-monsters`, `lake-monsters`) attribute to the nearest shore or sea-route endpoint province. Hidden markers have no impact.
+* **Economy**: Shown under _Of which markers_ in the province's **Economy** dialog and folded into the province's **Taxes collected** and **Tax burden** without rolling up into the state's treasury.
+* **Stability**: Shown under _Of which markers_ in the province and state **Stability** breakdowns, directly shifting provincial stability (and weighting into state stability).
+* **Type defaults**: Trade and civic sites (such as merchant houses, guild halls, customs houses, active mines, fairs, portals, libraries, sacred sites, and jousts) contribute positive adjustments, while outlaws, monsters, rifts, disturbed burials, and erupting volcanoes drain provincial revenue and stability. Moving, hiding, re-typing, or deleting a marker updates its province immediately.
 
 ### Generation settings
 The _Markers Overview_ and Tools -> Regenerate -> Markers open a settings dialog listing every marker type with its icon, a **multiplier** and the current count on the map. Set a multiplier to 0 to stop a type from being generated, or raise it to get more of them. Some types (disturbed burials, rifts, portals) are only generated when a fantasy culture set is used, i.e. their default multiplier is 0 otherwise.
