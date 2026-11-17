@@ -134,6 +134,20 @@ describe("collectLivingBadges", () => {
 
     expect(badges.some(badge => badge.text.includes("120 / 250"))).toBe(true);
   });
+
+  it("caps notable news outcome badges at 2 per tick", () => {
+    mocks.state.recentNews = [
+      { tick: 3, year: 1000, season: 1, kind: "battle", text: "First clash!", cell: 1 },
+      { tick: 3, year: 1000, season: 1, kind: "revolt", text: "Second rising!", cell: 2 },
+      { tick: 3, year: 1000, season: 1, kind: "build", text: "Third work!", cell: 3 }
+    ];
+
+    const badges = collectLivingBadges(mocks.state as never);
+
+    expect(badges).toHaveLength(2);
+    expect(badges[0].text).toContain("First clash!");
+    expect(badges[1].text).toContain("Second rising!");
+  });
 });
 
 describe("drawLivingOverlay", () => {

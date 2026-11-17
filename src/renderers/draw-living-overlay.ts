@@ -12,6 +12,7 @@ const CONTENT_ID = "livingOverlayContent";
 const TOASTS_ID = "livingToasts";
 const STYLE_ID = "livingOverlayStyle";
 const MAX_BADGES = 5;
+const MAX_NEWS_BADGES = 2;
 
 const NEWS_ICONS: Partial<Record<LivingNewsItem["kind"], string>> = {
   war: "🏹",
@@ -111,7 +112,7 @@ function nearestBurgPoint(cell: number, provinceId: number | undefined): [number
   return best;
 }
 
-/** Raid lines from imminent faction raids and war arrows from conquer/reclaim agendas. */
+/** Raid lines from imminent faction raids and war arrows from conquer agendas. */
 export function collectLivingVectors(living: LivingWorldState): LivingVector[] {
   if (!pack?.cells?.p) return [];
   const vectors: LivingVector[] = [];
@@ -162,7 +163,8 @@ function badgeIcon(item: LivingNewsItem): string {
 export function collectLivingBadges(living: LivingWorldState): LivingBadge[] {
   const news = (living.recentNews ?? [])
     .filter(item => item.tick === living.tick && item.cell !== undefined)
-    .filter(item => item.kind !== "trouble" && item.kind !== "lair");
+    .filter(item => item.kind !== "trouble" && item.kind !== "lair")
+    .slice(0, MAX_NEWS_BADGES);
 
   const badges: LivingBadge[] = news.map((item, index) => ({
     id: `${item.tick}-${index}`,

@@ -761,9 +761,15 @@ function renderStateCard(stateId: number): string {
       ${renderMeter("Exhaustion", sSim.warExhaustion, false)}
     </div>
     <div class="livingSection">
-      <div class="livingSectionTitle">Claims & Grudges</div>
+      <div class="livingSectionTitle">Claims &amp; Crises</div>
       ${
-        [renderProvincesFactions(stateId), renderProvincesTroubles(stateId), renderClaims(sSim), renderGrudges(sSim)]
+        [
+          renderProvincesRebellions(stateId),
+          renderProvincesFactions(stateId),
+          renderProvincesTroubles(stateId),
+          renderClaims(sSim),
+          renderGrudges(sSim)
+        ]
           .filter(Boolean)
           .join("") || '<div class="livingMuted">None</div>'
       }
@@ -1007,8 +1013,11 @@ function renderStateProvinces(stateId: number): string {
     .map(p => {
       const pSim = living.provinces?.[p.i];
       const stab = Math.round((Stability.getProvince(p.i)?.stability ?? 0) * 100);
-      const markers = [pSim?.trouble ? "⚠️" : "", hostileFactionInProvince(p.i) ? "💀" : ""].filter(Boolean).join("");
-      return `<div class="livingCapacityRow" title="${escapeHtml(p.name ?? "Province")}: stability ${stab}%">
+      const markers = [pSim?.rebellion ? "🔥" : "", pSim?.trouble ? "⚠️" : "", hostileFactionInProvince(p.i) ? "💀" : ""]
+        .filter(Boolean)
+        .join("");
+      const rebellionTip = pSim?.rebellion ? ` · Rebellion: ${pSim.rebellion.name}` : "";
+      return `<div class="livingCapacityRow" title="${escapeHtml(p.name ?? "Province")}: stability ${stab}%${escapeHtml(rebellionTip)}">
         <span>${escapeHtml(p.name ?? "Province")}${markers ? ` ${markers}` : ""}</span>
         <span class="livingMuted">${stab}%</span>
       </div>`;
@@ -1139,9 +1148,15 @@ function renderProvinceCard(provinceId: number): string {
   const cell = trouble?.cell ?? threat?.hq.cell ?? province.center ?? 0;
 
   const stabPct = Math.round((Stability.getProvince(provinceId)?.stability ?? 0) * 100);
+  const rebellion = pSim.rebellion;
   return /* html */ `
     <button type="button" class="livingInspectorTitle" data-open="province" data-id="${provinceId}">Provinces Editor</button>
     <div class="livingMuted">${escapeHtml(state?.name ?? "Unclaimed")} · stability ${stabPct}%</div>
+    ${
+      rebellion
+        ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Rebellion:</strong> 🔥 ${escapeHtml(rebellion.name)} (${rebellion.seasonsActive} ${rebellion.seasonsActive === 1 ? "season" : "seasons"})</div>`
+        : ""
+    }
     ${
       trouble && tDef
         ? `<div style="margin-top:0.3em;color:${trouble.severity === "drain" ? "#a33d3d" : "#666"};"><strong>Trouble:</strong> ${escapeHtml(trouble.name || tDef.name)} (${trouble.severity === "drain" ? "Drain" : "Flavor"})</div>
@@ -1200,6 +1215,33 @@ function renderProvincesTroubles(stateId: number): string {
   return `<div class="livingSectionTitle">Troubles</div><ul>${rows}</ul>`;
 }
 
+function renderProvincesRebellions(stateId: number): string {
+  const living = Living.getState();
+  const ownedProvinces = (pack.provinces ?? []).filter(p => p?.i && !p.removed && p.state === stateId);
+  const rebelling = ownedProvinces
+    .map(p => ({ province: p, rebellion: living.provinces?.[p.i]?.rebellion }))
+    .filter(
+      (
+        entry
+      ): entry is {
+        province: (typeof pack.provinces)[number];
+        rebellion: NonNullable<ProvinceSimState["rebellion"]>;
+      } => Boolean(entry.rebellion)
+    );
+
+  if (rebelling.length === 0) return "";
+
+  const rows = rebelling
+    .map(({ province, rebellion }) => {
+      const cell = province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
+      const seasons = `${rebellion.seasonsActive} ${rebellion.seasonsActive === 1 ? "season" : "seasons"}`;
+      const text = `${province.name ?? "Province"}: ${rebellion.name} (${seasons})`;
+      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}" style="color:#a33d3d;" title="Zoom to ${escapeHtml(rebellion.name)}">🔥 ${escapeHtml(text)}</button></li>`;
+    })
+    .join("");
+  return `<div class="livingSectionTitle">Rebellions</div><ul>${rows}</ul>`;
+}
+
 function renderProvincesFactions(stateId: number): string {
   const ownedProvinces = (pack.provinces ?? []).filter(p => p?.i && !p.removed && p.state === stateId);
   const threatened = ownedProvinces
@@ -1245,6 +1287,7 @@ function renderBurgCard(burgId: number): string {
   const threatCapable = Boolean(threat?.sovereignAmbition);
 
   const provStab = provId ? Math.round((Stability.getProvince(provId)?.stability ?? 0) * 100) : 0;
+  const rebellion = pSim?.rebellion;
   return /* html */ `
     <div class="livingInspectorTitle">${escapeHtml(burg.name ?? "Burg")}</div>
     <div class="livingMuted">${escapeHtml(owner ?? "")} · tier ${bSim.baseTier} · pop ${burg.population ?? 0}</div>
@@ -1260,6 +1303,11 @@ function renderBurgCard(burgId: number): string {
         ? `<div class="livingSection">
             <div class="livingSectionTitle">Province: ${escapeHtml(province.name ?? "Province")}</div>
             <div class="livingMuted">Stability ${provStab}%</div>
+            ${
+              rebellion
+                ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Rebellion:</strong> 🔥 ${escapeHtml(rebellion.name)} (${rebellion.seasonsActive} ${rebellion.seasonsActive === 1 ? "season" : "seasons"})</div>`
+                : ""
+            }
             ${
               trouble && tDef
                 ? `<div style="margin-top:0.3em;color:${trouble.severity === "drain" ? "#a33d3d" : "#666"};"><strong>Trouble:</strong> ${escapeHtml(trouble.name || tDef.name)} (${trouble.severity === "drain" ? "Drain" : "Flavor"})</div>

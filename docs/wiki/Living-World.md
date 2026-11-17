@@ -15,36 +15,39 @@ The HUD is a compact bar at the bottom of the map. It can be dragged anywhere on
 - The **date badge** shows the season and year; clicking it opens the _Legends browser_ and its time slider.
 - The **news ticker** lists the latest dispatches — wars, battles, conquests, musters, fiscal changes, works, technologies-by-era, conversions and revolts. Click a headline to zoom the map to where it happened.
 
-Each tick writes to the map itself: borders, burg ownership, regiments, battle markers, religions, `simAdjustments` lines and chronicle events change as the simulation runs. Armies show capability bars, stack badges and composition strips; battlefields, besieged cities and headline events get markers. The optional **Trouble** layer draws every hazard and dangerous faction, with its level, save and garrison.
+Each tick writes to the map itself: borders, burg ownership, regiments, battle markers, religions, `simAdjustments` / `simStabilityAdjustments` lines and chronicle events change as the simulation runs. Armies show capability bars, stack badges and composition strips; `#livingOverlay` highlights active war vectors, pending raids, besieged cities and the season's 1–2 notable outcome badges.
 
 ### The inspector
 
-While the HUD is open, click a state or burg for its card, and alt-click any cell (or click unowned land) for the cell's card.
+While the HUD is open, click a state, province, or burg for its card, and alt-click any cell (or click unowned land) for the cell's card.
 
 A **state** card shows:
 
 - **Ruler** — name, culture, alignment, virtues and vices.
 - **Fiscal policy** — the ruler's target for each budget line, corruption and the sales/head tax, with the current value (`45→62`). Each line can be pinned (🔒) so the ruler cannot drift it; God mode does this by clicking a chip.
 - **Public works** — the work under construction and each finished work with its daily line (e.g. `Aqueduct +3/day`).
-- **Upstream economy** — treasury (opens the State Budget), prosperity (opens the Economy dialog), stability (opens the Stability overview), the people's mean development with its era, and the forces' upkeep with its battle multiplier.
-- **Provinces** — order and stability chips with hazard/danger marks.
-- **Agenda**, **suppression targets**, and the **Unravel** and **Exhaustion** clocks.
-- **Claims, grudges, restive burgs, troubles** (with their daily drain) and **dangerous factions**.
-- **Sandbox God Mode** — spark rebellion, smite ruler, force war, assault/smite factions, spawn factions.
+- **Upstream economy** — treasury (stock Day Balance; opens the State Budget), prosperity (opens the Economy dialog), stability (opens the Stability overview), the people's mean development with its era, and the forces' upkeep with its battle multiplier.
+- **Provinces** — stock stability chips with active rebellion (`🔥`), trouble (`⚠️`) and hostile faction (`💀`) marks.
+- **Agenda**, **suppression targets**, and the **Exhaustion** clock.
+- **Claims & Crises** — active provincial rebellions, dangerous factions, troubles (with daily drain), casus belli claims and grudges.
+- **Sandbox God Mode** — spark rebellion, smite ruler, force war, assault/delve/ascend/smite/spawn factions.
 
-A **burg** card shows its owner, tier and population, unrest, upstream prosperity and trade balance, the asset under construction, its province's order/stability/development/trouble and the resident faction outposts with their influence.
+A **province** or **burg** card shows stock stability (`Stability N%`), active rebellion status (`Rebellion: <Name>`), silent trouble flavor (`Flavor` or `Drain`), resident faction presence and quick links to the native editors (`Provinces Editor`, `Burg Editor`, `Regiments`).
 
 A **cell** card shows biome, owner state/province/burg, development with its era, prosperity, deposit, the Builder improvement (or pillage), and what its people produce a day by good.
 
-The native editors show the same data: the **Burgs Editor** adds a Living World summary (unrest/HP, faith, construction, outposts); the **Factions Editor** shows Treasury, Trade and Forces and an Outposts & Assets dialog with Trade and Lines columns; the **Provinces Editor** shows public order with hazard marks and a province details dialog.
+The native editors show the same data: the **Stability Overview** and **Province Details Dialog** expose user-owned `stabilityAdjustments` alongside sim-owned `simStabilityAdjustments` (`Of which the Living World`); the **Burgs Editor** adds a Living World summary (construction, buildings, outposts); the **Factions Editor** shows Treasury, Trade and Forces; and the **Provinces Editor** displays stability and trouble flavor/drain status.
 
 ### What the simulation does
 
-The Living World reads and mutates the live `pack`, so every native editor stays authoritative: editing a burg's walls, a state's treasury, cell ownership, goods or regiments is adopted on the next tick.
+The Living World reads and mutates the live `pack`, so every native editor stays authoritative: editing a burg's walls, a state's treasury, stability adjustments, cell ownership, goods or regiments is adopted on the next tick.
 
-#### Seasons
+#### Seasons & the 1–2 Beat Tick Director
 
-One tick is one season; four seasons make a year. At each spring boundary rulers age and succeed, the fiscal policy drifts, faith drifts, grudges fade, and the political map is captured for the Legends time slider.
+One tick is one season; four seasons make a year. Each tick runs in two phases:
+
+- **Phase A (Silent Background Sync)**: Advances the season and calendar year, updates `Production.regenerate()` in Spring or when `economyDirty`, silently drifts ruler fiscal sliders each Spring, fades grudges, captures Legends snapshots, smooths cell development toward the polity mean, updates silent provincial trouble labels/drain lines, and ticks army movement and multi-season build countdowns.
+- **Phase B (1–2 Notable Beats)**: Scores all ripe world beats across **Rebellions**, **Border Shifts**, **Ruler Succession**, **State Agendas**, **Epic Faction Agendas**, **Diplomacy** and **Religious/Fiscal turns**, executing at most **2 notable events** and emitting **1–2 headlines and map badges per tick** so every season stays readable.
 
 #### Rulers and fiscal policy
 
@@ -72,8 +75,8 @@ God mode can commission a specific work.
 The simulation sits on the map's own economy: goods, markets, prices, taxes, budgets, prosperity, corruption and stability. It reads them, bends them, and writes a little back.
 
 - **The run feeds the sim.** Improvements and pillage change rural output; buildings change manufacturing; prosperity sways the court's happiness and a well-served court adds culture and faith to the Living World's own tallies; a burg's scholarly goods support its research-free era.
-- **The sim feeds the run.** Each spring, or when the map changes, the economy is regenerated, and a season of its flows — **ninety days** — is banked onto a lasting reserve: a state's collected taxes less corruption and spending, a burg's product less its poll tax. Upkeep, works, military musters and deficits draw on that reserve.
-- **Sim-owned lines.** Projects and troubles write named `simAdjustments` on states and burgs — separate from the player's own adjustment lines, which are never touched. The economy merges them wherever it reads adjustments, so a mint's income or a brigand's toll is real money in the next run.
+- **The sim feeds the run.** Each spring, or when `economyDirty` is set, the economy is regenerated while `state.economy.treasury` and `burg.treasury` remain honest stock Day Balances (never overwritten with a 90-day reserve).
+- **Sim-owned lines.** Public works, drain troubles, rebellions, pacification and hostile raids write named `simAdjustments` (economy) and `simStabilityAdjustments` (state/province stability) — separate from the player's own adjustment lines, which are never touched. The economy and stability calculations merge them automatically.
 - **Rulers lean on the run.** Their traits drift the stored corruption, court, administration and infrastructure budgets, and their martial bent keeps troops keen; audits cut graft into the treasury, and sabotage spoils a deposit's output.
 
 #### Technology and development
@@ -92,13 +95,12 @@ Armies stay culture-unique combined-arms stacks: every FMG regiment is up to 20 
 - **Upkeep is the stock military budget**: a state's battle power is multiplied by `Military.getLivingBattleUpkeep` — fully funded forces hold the line, a bankrupt state's melt toward nothing.
 - Movement, stances, terrain, walls, sieges, city strikes, replenishment, refits and the shared battle engine are unchanged. Army camps improve replenishment.
 
-#### Factions
+#### Factions (10 Epic Archetypes & 5 Agendas)
 
-Factions are map polities without a city loop: every HQ and outpost is an anchor with assets, a garrison and economic lines.
+Map generation produces at most 10 unique epic archetypes (*Grand Merchant Consortium, Adventurers' Conclave, Arcane Conclave, Frontier Warden Order, Crusader Knightly Order, Apocalyptic Cult, Shadow Brotherhood, Claimant Confederacy, Iron Free Company, Dread Sovereign Host*).
 
 - **Income** comes from the economy underneath: commercial factions take a commission on their host market's trade, underworld ones siphon provincial graft and smuggle past tariffs, martial ones draw retainers, religious and political ones take court tithes, and charters pay a tithe to their patron as a named budget line.
-- **Works** are commissioned from treasury and built over seasons within the faction's track, era and node rules. A finished work writes a daily line into its host town (a consortium enriches it, a den drains it) and can add order or unrest.
-- **Hostility**: factions raid, hold provinces, and are suppressed by states through administration (treasury-funded campaigns) or stormed with armies; a corrupted province can let a faction ascend into a new state. Sovereign ambition needs development 18+.
+- **5 Unified Faction Agendas**: factions act via `expand_network` (found/upgrade outposts), `build_work` (commission HQ/outpost assets), `subvert` (write negative provincial `Subversion:` stability lines), `crusade_or_raid` (clear troubles / strike hostiles or raid vulnerable burgs), and `ascend` (seize a collapsing province at development 18+ to found a new sovereign state).
 
 #### Religion
 
@@ -108,19 +110,19 @@ Faith drifts without prophets or missionaries. Each spring, a province whose maj
 - A success converts a slice of holdout cells — rural first, the province capital last — and a majority flip is chronicled. Conversions repaint the stock religions layer, so the next run's diversity, corruption and stability follow.
 - A zealous conqueror assimilates over decades; a tolerant one carries the diversity cost.
 
-#### Troubles, unrest and dangerous factions
+#### Troubles, rebellions & border drift
 
-Unrest and weak provinces breed hazards. A neglected hazard grows, drains the treasury through a negative line, and can fester into a dangerous faction.
+Instability acts directly through stock **Stability** and **Corruption**:
 
-- **Hazards** (environmental, economic and site afflictions) lower order and freeze stability. A funded administration grinds them down; armies, adventurers or a magistrate's quelling end them, and a cleared hazard pays a small treasure to the clearer and leaves a ruin.
-- **Dangerous factions** raid nearby settlements, drain order and can ascend. States clear them with `clear_faction` campaigns, hired adventurers or a march on the stronghold.
-- Burg unrest decays with a garrison, temple works or a `pacify` agenda; conquered burgs may adopt their conqueror's faith and culture over time.
+- **Troubles as Silent Flavor & Drain**: Below `55%` stability, a province silently receives a cause-matched `"flavor"` trouble name (zero mechanical penalty). Below `40%` stability for 2+ seasons, it silently steps up to `"drain"` (`-3/day` economy, `-5` provincial stability) without generating headline notifications; recovering above `55%` clears it silently.
+- **Provincial Rebellions**: Below `30%` stability without a full-upkeep garrison (and outside a pacification grace window), a province ignites a **Rebellion** (`-15` provincial stability, `-5/day` economy). Checked by a `pacify` agenda, full-upkeep garrison, or recovery to `>= 45%`, the rebellion is crushed and grants a temporary `+10` `"Pacified"` stabilization bonus. Left unchecked, it spreads to restive adjacent same-state provinces, defects to a stable kin/former-owner neighbor or secedes after 2+ seasons below `25%`, or collapses on its own when surrounded by calm provinces.
+- **Border Drift**: Border provinces with high corruption (`> 35`) and low stability (`< 35%`) drift frontier cells (and non-capital burgs on them) toward adjacent high-stability (`> 70%`) neighbors.
 
 #### Agendas, diplomacy and the chronicle
 
-- States choose one realm-level agenda at a time (`muster`, `develop`, `build`, `colonize`, `conquer`, `reclaim`, `pacify`, `clear_faction`, `hire_adventurers`, `defend`, `raid`, `suppress_faction`); ruler traits and culture weight the choice.
+- States choose one unified realm-level agenda at a time from **5 State Agendas** (`conquer`, `pacify`, `build_work`, `muster`, `suppress_faction`); ruler traits and culture weight the choice.
 - Wars last at least ten seasons; peace locks a ten-season truce. Treaties (non-aggression, trade, defensive alliance, military access) layer on the native diplomacy matrix; confederation merges friendly kin states.
-- Rulers age and are succeeded, grudges and claims persist, and a full unravel meter breaks a burg away.
+- Rulers age and are succeeded, grudges fade, and rebellions or border drift reshape state boundaries dynamically.
 - Every `snapshotIntervalYears` (ten by default) the political map is captured for the Legends browser.
 
 The simulation is deterministic: the same map, seed and seasons produce the same yields, growth, borders, research (development), works, battles, conversions and chronicle events. Its state lives in `pack.history.living`, so a saved `.map` keeps rulers, treasuries, works, armies, unrest, faith and snapshots.

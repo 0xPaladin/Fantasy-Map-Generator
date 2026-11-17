@@ -4260,5 +4260,65 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(Living.getState().states[1]?.agenda?.kind).toBe("suppress_faction");
       expect(Living.getState().states[2]?.agenda?.kind).toBe("build_work");
     });
+
+    it("caps notable headlines and executed beats at 2 per tick in crowded worlds (Phase 5)", () => {
+      // Expand stub pack with extra states & factions all poised to act on the same tick
+      pack.states.push(
+        {
+          i: 3,
+          name: "Solaria",
+          economy: { ...pack.states[1].economy, treasury: 500, simAdjustments: [] },
+          culture: 1,
+          capital: 1,
+          center: 1,
+          provinces: [],
+          military: []
+        } as never,
+        {
+          i: 4,
+          name: "Valoria",
+          economy: { ...pack.states[1].economy, treasury: 500, simAdjustments: [] },
+          culture: 1,
+          capital: 1,
+          center: 1,
+          provinces: [],
+          military: []
+        } as never
+      );
+      pack.cells.development = new Uint8Array([0, 30, 30, 30, 30, 30]);
+      pack.cells.h = new Uint8Array([0, 25, 25, 25, 25, 25]);
+      pack.cells.burg = new Uint16Array([0, 1, 0, 2, 0, 3]);
+      pack.states[1].economy.treasury = 500;
+      pack.states[2].economy.treasury = 500;
+      pack.factions = [{ i: 0 } as never];
+      Factions.add({
+        name: "Crimson Brotherhood",
+        category: "underworld",
+        type: "shadow_syndicate",
+        allegiance: "clandestine",
+        treasury: 300,
+        hq: { cell: 3, burgId: 2, fortified: false, secrecy: 40, assets: [] }
+      });
+      Factions.add({
+        name: "Iron Free Company",
+        category: "martial",
+        type: "mercenary_company",
+        allegiance: "autonomous",
+        treasury: 300,
+        hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
+      });
+
+      const living = Living.init();
+      pack.provinces[2]!.stabilityAdjustments = [{ name: "Discontent", value: -20 }]; // 0.45 (< 0.55) silent trouble test
+      const startTick = living.tick;
+
+      Living.tick(1);
+
+      const thisTickNews = living.recentNews.filter(item => item.tick === startTick + 1);
+      expect(thisTickNews.length).toBeLessThanOrEqual(2);
+      // Silent Phase A still assigns flavor trouble without spending a headline
+      expect(living.provinces[2]?.trouble?.severity).toBe("flavor");
+      expect(thisTickNews.some(n => n.kind === "trouble")).toBe(false);
+    });
   });
 });

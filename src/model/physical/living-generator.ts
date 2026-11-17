@@ -984,32 +984,287 @@ class LivingModel {
         options.map.lore.calendar.year += 1;
         const currentEra = pack.history?.eras?.at(-1);
         if (currentEra) currentEra.to = options.map.lore.calendar.year;
-        this.stepRulers(living);
-        this.stepFiscalPolicy(living);
-        this.stepReligiousDrift(living);
-        this.stepGrudges(living);
-        this.captureSnapshot(living);
       }
 
-      this.syncWorld();
-      this.stepFactionEmpire(living);
-      this.stepDevelopmentDiffusion(living);
-      this.stepProvinces(living);
+      const { fiscalChangedStates, readyProjectStates, readyConstructionStates } = this.stepBackgroundSync(living);
+      this.stepNotableEvents(living, 2, fiscalChangedStates, readyProjectStates, readyConstructionStates);
       this.syncTroubleLines(living);
-      this.stepEconomy(living);
-      this.stepTactical(living);
-      this.stepFactions(living);
-      this.stepStates(living);
-      this.stepProjects(living);
-      this.stepDiplomacy(living);
-      this.stepRebellions(living);
-      this.stepBorderDrift(living);
-      this.syncTroubleLines(living);
-      this.stepMobileBurgs(living);
       this.stepEschaton(living);
     }
 
     return living;
+  }
+
+  private tickNewsCount(living: LivingWorldState): number {
+    let count = 0;
+    for (const item of living.recentNews) {
+      if (item.tick === living.tick) count += 1;
+    }
+    return count;
+  }
+
+  /** Phase A: silent background sync (fiscal drift, trouble flavor/drain, upstream economy, movement, countdowns). */
+  private stepBackgroundSync(living: LivingWorldState): {
+    fiscalChangedStates: number[];
+    readyProjectStates: Set<number>;
+    readyConstructionStates: Set<number>;
+  } {
+    this.syncWorld();
+
+    let fiscalChangedStates: number[] = [];
+    if (living.season === 0) {
+      this.ensureStateRulers(living);
+      fiscalChangedStates = this.stepFiscalPolicy(living, false);
+      this.stepGrudges(living);
+      this.captureSnapshot(living);
+    }
+
+    this.stepFactionEmpire(living);
+    this.stepDevelopmentDiffusion(living);
+    this.stepProvinces(living);
+    this.syncTroubleLines(living);
+    this.syncFactionSubversionLines();
+    this.stepEconomy(living);
+    this.stepDiplomacyTimers(living);
+    this.stepTactical(living);
+    this.stepMobileBurgs(living);
+    const { readyProjectStates, readyConstructionStates } = this.stepPassiveTimers(living);
+    return { fiscalChangedStates, readyProjectStates, readyConstructionStates };
+  }
+
+  /** Advance active unit disruption recovery and multi-season build/project countdowns silently. */
+  private stepPassiveTimers(living: LivingWorldState): {
+    readyProjectStates: Set<number>;
+    readyConstructionStates: Set<number>;
+  } {
+    const readyProjectStates = new Set<number>();
+    const readyConstructionStates = new Set<number>();
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+
+      for (const regiment of state.military ?? []) {
+        for (const unit of regiment.units ?? []) {
+          if ((unit.disruption ?? 0) > 0) {
+            const regProvId = pack.cells.province?.[regiment.cell] ?? 0;
+            const provSim = regProvId ? living.provinces?.[regProvId] : null;
+            const hosted = regProvId
+              ? Factions.active().some(
+                  f =>
+                    (f.allegiance === "hostile" || f.allegiance === "clandestine") &&
+                    this.factionProvinceId(f) === regProvId
+                )
+              : false;
+            if (provSim?.trouble?.severity !== "drain" && !hosted) {
+              unit.disruption = Math.max(0, unit.disruption! - 1);
+            }
+          }
+        }
+      }
+
+      if (sSim.project) {
+        if (sSim.project.turnsLeft <= 1) readyProjectStates.add(state.i);
+        else sSim.project.turnsLeft -= 1;
+      }
+
+      for (const burg of pack.burgs) {
+        if (!burg?.i || burg.removed || burg.state !== state.i) continue;
+        const construction = living.burgs[burg.i]?.construction;
+        if (!construction) continue;
+        if (construction.turnsLeft <= 1) readyConstructionStates.add(state.i);
+        else construction.turnsLeft -= 1;
+      }
+    }
+    return { readyProjectStates, readyConstructionStates };
+  }
+
+  /** Phase B: score all ripe world beats and execute at most `maxBeats` notable events this tick. */
+  private stepNotableEvents(
+    living: LivingWorldState,
+    maxBeats = 2,
+    fiscalChangedStates: number[] = [],
+    readyProjectStates: Set<number> = new Set(),
+    readyConstructionStates: Set<number> = new Set()
+  ): void {
+    let usedBeats = 0;
+
+    const candidates: { key: string; score: number; run: () => boolean }[] = [];
+    const rotation = (id: number) => ((id + living.tick) % 8) * 0.1;
+
+    // 1. Rebellions (ignite, suppress, spread, defect/secede, collapse)
+    const provinces = (pack.provinces ?? []).filter(p => Boolean(p?.i && !p.removed && p.state));
+    const hasRebellionWork = provinces.some(p => {
+      const pSim = living.provinces[p.i];
+      if (!pSim) return false;
+      return (
+        Boolean(pSim.rebellion) || pSim.pacifiedUntilTick !== undefined || this.effectiveProvinceStability(p.i) < 0.3
+      );
+    });
+    if (hasRebellionWork) {
+      const activeReb = provinces.some(p => Boolean(living.provinces[p.i]?.rebellion));
+      candidates.push({
+        key: "rebellions",
+        score: activeReb ? 95 : 86,
+        run: () => {
+          const before = this.tickNewsCount(living);
+          this.stepRebellions(living);
+          return this.tickNewsCount(living) > before;
+        }
+      });
+    }
+
+    // 2. Border Drift from corruption & instability
+    const hasBorderDrift = provinces.some(p => {
+      const state = p.state ? pack.states[p.state] : undefined;
+      const pSim = living.provinces[p.i];
+      if (!state?.i || state.removed || !pSim || pSim.rebellion) return false;
+      return this.effectiveProvinceStability(p.i) < 0.35 && this.effectiveProvinceCorruption(state, p.i) > 35;
+    });
+    if (hasBorderDrift) {
+      candidates.push({
+        key: "border-drift",
+        score: 80,
+        run: () => {
+          const before = this.tickNewsCount(living);
+          this.stepBorderDrift(living);
+          return this.tickNewsCount(living) > before;
+        }
+      });
+    }
+
+    // 3. Spring Ruler Succession
+    if (living.season === 0) {
+      const year = options.map?.lore?.calendar?.year ?? 1000;
+      const history = Chronicle.sync();
+      for (const state of pack.states) {
+        if (!state?.i || state.removed) continue;
+        const sSim = living.states[state.i];
+        if (!sSim) continue;
+        const ruler = history.figures?.find(fig => fig.i === sSim.rulerId);
+        if (!ruler || ruler.death !== undefined) continue;
+        const lifespan = createRng(`${living.seed}:living:lifespan:${ruler.i}`).int(55, 95);
+        if (year - ruler.birth >= lifespan) {
+          candidates.push({
+            key: `succession-${state.i}`,
+            score: 92 + rotation(state.i),
+            run: () => {
+              this.succeedRuler(state, sSim, ruler, living, year);
+              return true;
+            }
+          });
+        }
+      }
+    }
+
+    // 4. Diplomacy Resolutions (peace treaties & pacts)
+    const eligiblePeace = Object.values(living.states).some(sSim =>
+      Object.values(sSim?.warTurns ?? {}).some(turns => turns >= MIN_WAR_TURNS)
+    );
+    candidates.push({
+      key: "diplomacy",
+      score: eligiblePeace ? 72 : 45,
+      run: () => {
+        const before = this.tickNewsCount(living);
+        this.stepDiplomacyResolutions(living);
+        return this.tickNewsCount(living) > before;
+      }
+    });
+
+    // 5. Epic Factions (1 beat candidate per active faction)
+    const factionRng = this.rng("faction:agendas", living.tick);
+    for (const faction of Factions.active()) {
+      const canAscend = Boolean(this.canFactionAscend(faction, living)) || faction.agenda?.kind === "ascend";
+      const hasRaid = Boolean(faction.raidPending) || faction.agenda?.kind === "crusade_or_raid";
+      const score = (canAscend ? 88 : hasRaid ? 82 : 62) + rotation(faction.i);
+      candidates.push({
+        key: `faction-${faction.i}`,
+        score,
+        run: () => this.stepSingleFactionBeat(faction, living, factionRng)
+      });
+    }
+
+    // 6. States (1 beat candidate per active state: agendas & public works)
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      const sSim = living.states[state.i];
+      if (!sSim) continue;
+      const urgentRebellion = this.ownedProvinces(state.i).some(p => Boolean(living.provinces[p.i]?.rebellion));
+      const projectReady = readyProjectStates.has(state.i) || readyConstructionStates.has(state.i);
+      const urgentAgenda = sSim.agenda?.kind === "pacify" || sSim.agenda?.kind === "suppress_faction";
+      const warAgenda = sSim.agenda?.kind === "conquer";
+      const hasSuppressionTarget = this.eligibleFactionSuppressionTargets(state.i).length > 0;
+      const baseScore =
+        urgentRebellion || projectReady ? 84 : urgentAgenda || warAgenda || hasSuppressionTarget ? 78 : 60;
+      candidates.push({
+        key: `state-${state.i}`,
+        score: baseScore + rotation(state.i),
+        run: () =>
+          this.stepSingleStateBeat(
+            state,
+            sSim,
+            living,
+            readyProjectStates.has(state.i),
+            readyConstructionStates.has(state.i)
+          )
+      });
+    }
+
+    // 7. Spring Religious Conversion & Fiscal Turn Dispatches
+    if (living.season === 0) {
+      candidates.push({
+        key: "religion",
+        score: 48,
+        run: () => {
+          const before = this.tickNewsCount(living);
+          this.stepReligiousDrift(living);
+          return this.tickNewsCount(living) > before;
+        }
+      });
+      if (fiscalChangedStates.length > 0) {
+        for (const stateId of fiscalChangedStates) {
+          const state = pack.states[stateId];
+          const sSim = living.states[stateId];
+          if (!state?.i || state.removed || !sSim) continue;
+          candidates.push({
+            key: `fiscal-${stateId}`,
+            score: 42 + rotation(stateId),
+            run: () => {
+              const before = this.tickNewsCount(living);
+              this.pushFiscalNews(state, sSim, new Set(sSim.fiscal?.locks ?? []), living);
+              return this.tickNewsCount(living) > before;
+            }
+          });
+        }
+      }
+    }
+
+    candidates.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
+    let actedBeats = 0;
+    for (const beat of candidates) {
+      if (usedBeats >= maxBeats || actedBeats >= maxBeats) break;
+      const newsBefore = this.tickNewsCount(living);
+      const acted = beat.run();
+      const newsDelta = Math.max(0, this.tickNewsCount(living) - newsBefore);
+      if (newsDelta > 0) {
+        usedBeats += newsDelta;
+        actedBeats += 1;
+      } else if (acted) {
+        actedBeats += 1;
+      }
+    }
+
+    living.recentNews = this.clampTickNews(living, maxBeats);
+  }
+
+  /** Cap headlines pushed on `living.tick` to at most `maxPerTick`. */
+  private clampTickNews(living: LivingWorldState, maxPerTick: number): LivingNewsItem[] {
+    let seenThisTick = 0;
+    return living.recentNews.filter(item => {
+      if (item.tick !== living.tick) return true;
+      seenThisTick += 1;
+      return seenThisTick <= maxPerTick;
+    });
   }
 
   /** Synchronize `living.burgs` and `living.states` with the live `pack` */
@@ -1387,26 +1642,17 @@ class LivingModel {
     return figure.i;
   }
 
-  /** Once a year: rulers age, die and are succeeded; a weak court turns a funeral into a crisis. */
-  private stepRulers(living: LivingWorldState): void {
+  /** Once a year: backfill missing or dead rulers cleanly without emitting succession spam. */
+  private ensureStateRulers(living: LivingWorldState): void {
     const history = Chronicle.sync();
-    const year = options.map?.lore?.calendar?.year ?? 1000;
-
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
       const sSim = living.states[state.i];
       if (!sSim) continue;
-
       const ruler = history.figures?.find(figure => figure.i === sSim.rulerId);
       if (!ruler || ruler.death !== undefined) {
         sSim.rulerId = this.ensureStateRuler(state, living);
-        continue;
       }
-
-      const age = year - ruler.birth;
-      const lifespan = createRng(`${living.seed}:living:lifespan:${ruler.i}`).int(55, 95);
-      if (age < lifespan) continue;
-      this.succeedRuler(state, sSim, ruler, living, year);
     }
   }
 
@@ -1464,7 +1710,8 @@ class LivingModel {
   }
 
   /** Spring: the ruler's fiscal target pulls the real budget, taxes and graft. */
-  private stepFiscalPolicy(living: LivingWorldState): void {
+  private stepFiscalPolicy(living: LivingWorldState, emitNews = true): number[] {
+    const changedStates: number[] = [];
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
       const sSim = living.states[state.i];
@@ -1513,8 +1760,10 @@ class LivingModel {
 
       if (!changed) continue;
       living.economyDirty = true; // the run's taxes, spending and graft follow the purse
-      this.pushFiscalNews(state, sSim, locks, living);
+      changedStates.push(state.i);
+      if (emitNews) this.pushFiscalNews(state, sSim, locks, living);
     }
+    return changedStates;
   }
 
   /** The political weather the purse must answer this spring. */
@@ -2114,13 +2363,6 @@ class LivingModel {
     const key = this.factionUnitKey(faction.i, regiment.i);
     living.armies ??= {};
     living.armies[key] ??= { movement: speed, maxMovement: speed, stance: "fortify", hasFought: false };
-
-    this.pushNews(living, {
-      kind: "muster",
-      text: `${faction.name} mustered ${unit.name}.`,
-      cell: node.cell,
-      ...(node.burgId ? { burgId: node.burgId } : {})
-    });
   }
 
   /** §7.1 Bankruptcy: reset the treasury and disband the newest block, not the whole regiment. */
@@ -4595,8 +4837,8 @@ class LivingModel {
   // Diplomacy: closed borders, war length and peace treaties.
   // -------------------------------------------------------------------------
 
-  /** Tick war/peace clocks and let exhausted states sue for peace. */
-  private stepDiplomacy(living: LivingWorldState): void {
+  /** Tick war/peace clocks silently during Phase A. */
+  private stepDiplomacyTimers(living: LivingWorldState): void {
     if (!this.hasCityTerrain()) return;
 
     for (const state of pack.states) {
@@ -4616,6 +4858,11 @@ class LivingModel {
         else sSim.warTurns[other.i] = 0;
       }
     }
+  }
+
+  /** Notable beat: exhausted states sue for peace or sign neighbor treaties. */
+  private stepDiplomacyResolutions(living: LivingWorldState): void {
+    if (!this.hasCityTerrain()) return;
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
@@ -4631,7 +4878,6 @@ class LivingModel {
       }
     }
 
-    // Treaties: AI states occasionally offer pacts to their neighbours (Phase D).
     this.stepTreaties(living);
   }
 
@@ -6807,19 +7053,26 @@ class LivingModel {
       const pSim = living.provinces[province.i];
       const currentStab = province.simStabilityAdjustments ?? [];
       const keptStab = currentStab.filter(line => !isOursStab(line.name));
-      const addedStab: { name: string; value: number }[] = [];
       const activeOwner = province.state && !pack.states[province.state]?.removed;
+      const rebellionLines: { name: string; value: number }[] = [];
+      if (activeOwner && pSim?.rebellion) {
+        rebellionLines.push({ name: `Rebellion: ${pSim.rebellion.name}`, value: -15 });
+      } else if (activeOwner && pSim?.pacifiedUntilTick !== undefined && living.tick <= pSim.pacifiedUntilTick) {
+        rebellionLines.push({ name: "Pacified", value: 10 });
+      }
+      province.simStabilityAdjustments = [...keptStab, ...rebellionLines];
+      if (activeOwner && pSim?.trouble && !pSim.rebellion && this.effectiveProvinceStability(province.i) >= 0.55) {
+        pSim.trouble = null;
+      }
+      const addedStab = [...rebellionLines];
       if (activeOwner && pSim?.trouble?.severity === "drain") {
         addedStab.push({ name: `Trouble: ${pSim.trouble.name}`, value: -5 });
-      }
-      if (activeOwner && pSim?.rebellion) {
-        addedStab.push({ name: `Rebellion: ${pSim.rebellion.name}`, value: -15 });
-      } else if (activeOwner && pSim?.pacifiedUntilTick !== undefined && living.tick <= pSim.pacifiedUntilTick) {
-        addedStab.push({ name: "Pacified", value: 10 });
       }
       const nextStab = [...keptStab, ...addedStab];
       if (JSON.stringify(nextStab) !== JSON.stringify(currentStab)) {
         province.simStabilityAdjustments = nextStab;
+      } else {
+        province.simStabilityAdjustments = currentStab;
       }
     }
 
@@ -6852,27 +7105,6 @@ class LivingModel {
       if (JSON.stringify(next) === JSON.stringify(current)) continue;
       state.economy.simAdjustments = next;
       living.economyDirty = true;
-    }
-  }
-
-  /** Each season: advance a public work, or commission the next one the ruler favours. */
-  private stepProjects(living: LivingWorldState): void {
-    living.projects ??= [];
-    for (const state of pack.states) {
-      if (!state?.i || state.removed) continue;
-      const sSim = living.states[state.i];
-      if (!sSim) continue;
-
-      if (sSim.project) {
-        if (sSim.project.turnsLeft > 1) {
-          sSim.project.turnsLeft -= 1;
-          continue;
-        }
-        this.completeProject(state, sSim, living);
-        continue;
-      }
-
-      this.startProject(state, sSim, living);
     }
   }
 
@@ -7239,8 +7471,6 @@ class LivingModel {
       return owner > 0 && owner !== stateId;
     });
   }
-
-  private advanceDevelopment(_state: State, _sSim: StatePolitySim, _living: LivingWorldState): void {}
 
   /** A completed develop project raises its province's peopled cells, unlocking goods tiers. */
   private raiseProvinceDevelopment(provinceId: number, amount: number, living: LivingWorldState): void {
@@ -7880,6 +8110,106 @@ class LivingModel {
     }
   }
 
+  /** Advance one faction's agenda, patron severance, turf clashes, raids, and ascension check. */
+  private stepSingleFactionBeat(
+    faction: import("@/types/factions").Faction,
+    living: LivingWorldState,
+    rng: ReturnType<LivingModel["rng"]>
+  ): boolean {
+    const beforeNews = this.tickNewsCount(living);
+    const beforeAgenda = faction.agenda?.progress ?? -1;
+    const beforeKind = faction.agenda?.kind ?? "";
+
+    this.stepSingleFactionAgenda(faction, living);
+
+    if (faction.allegiance === "state_arm" && faction.patronStateId) {
+      const patron = pack.states?.[faction.patronStateId];
+      const patronStab = patron && !patron.removed ? this.effectiveStateStability(patron.i) : 0;
+      if (!patron || patron.removed || patronStab < 0.3) {
+        faction.allegiance = faction.alignment === "evil" || faction.alignment === "chaotic" ? "hostile" : "autonomous";
+        faction.stateRelations[faction.patronStateId] = "Enemy";
+        faction.patronStateId = undefined;
+        this.pushNews(living, {
+          kind: "faction",
+          text: `${faction.name} severed allegiance from its crumbling patron!`,
+          cell: faction.hq.cell,
+          burgId: faction.hq.burgId
+        });
+      }
+    }
+
+    for (const outpost of faction.outposts) {
+      if (outpost.pillaged) continue;
+      const otherFactions = Factions.atBurg(outpost.burgId).filter(f => f.i !== faction.i);
+      for (const rival of otherFactions) {
+        const rivalOutpost = rival.outposts.find(o => o.burgId === outpost.burgId && !o.pillaged);
+        if (!rivalOutpost) continue;
+
+        const isEnemy =
+          faction.factionRelations[rival.i] === "Enemy" ||
+          rival.factionRelations[faction.i] === "Enemy" ||
+          (faction.category === "underworld" && rival.category === "underworld");
+
+        if (isEnemy) {
+          const myPower = outpost.influence + rng.d(20);
+          const rivalPower = rivalOutpost.influence + rng.d(20);
+
+          const burg = pack.burgs?.[outpost.burgId];
+          if (myPower >= rivalPower) {
+            rivalOutpost.influence = Math.max(0, rivalOutpost.influence - 20);
+            if (rivalOutpost.influence <= 0) rivalOutpost.pillaged = true;
+            outpost.influence = Math.min(100, outpost.influence + 10);
+            faction.treasury += 25;
+            this.pushNews(living, {
+              kind: "faction",
+              text: `${faction.name} outmaneuvered ${rival.name} in the streets of ${burg?.name ?? "the city"}!`,
+              cell: outpost.cell,
+              burgId: outpost.burgId
+            });
+          } else {
+            outpost.influence = Math.max(0, outpost.influence - 20);
+            if (outpost.influence <= 0) outpost.pillaged = true;
+            rivalOutpost.influence = Math.min(100, rivalOutpost.influence + 10);
+            rival.treasury += 25;
+          }
+          break;
+        }
+      }
+    }
+
+    if (faction.allegiance === "hostile" || faction.allegiance === "clandestine") {
+      this.tickFactionRaid(faction, living);
+    }
+    this.checkEntrenchedFactionAscension(faction, living);
+
+    const afterAgenda = faction.agenda?.progress ?? -1;
+    const afterKind = faction.agenda?.kind ?? "";
+    return this.tickNewsCount(living) > beforeNews || afterKind !== beforeKind || afterAgenda !== beforeAgenda;
+  }
+
+  private checkEntrenchedFactionAscension(faction: import("@/types/factions").Faction, living: LivingWorldState): void {
+    if (
+      !faction.sovereignAmbition ||
+      faction.allegiance !== "hostile" ||
+      (faction.seasonsActive ?? 0) < 8 ||
+      this.factionDevelopment(faction) < SOVEREIGN_DEVELOPMENT
+    ) {
+      return;
+    }
+    const provId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
+    const provState = provId ? (pack.provinces?.[provId]?.state ?? 0) : 0;
+    const sSim = provState ? living.states?.[provState] : undefined;
+    const localBurgs = pack.burgs?.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === provId) ?? [];
+    const noBurgs = localBurgs.length === 0;
+    const collapsedOrder = (provId ? (Stability.getProvince(provId)?.stability ?? 1) : 1) < 0.3;
+    const stateStab = provState ? (Stability.get(provState)?.stability ?? 1) : 1;
+    const stateInTurmoil = Boolean(stateStab < 0.35 || (sSim && sSim.warExhaustion >= 50));
+    if (noBurgs || collapsedOrder || stateInTurmoil) {
+      const nonCapBurg = collapsedOrder ? localBurgs.find(b => !b.capital) : undefined;
+      this.ascendFactionToState(faction.i, nonCapBurg?.i);
+    }
+  }
+
   /** Step faction agendas: patron severance, 5 unified agendas, and contested-burg turf clashes. */
   stepFactionAgendas(living: LivingWorldState): void {
     this.syncFactionSubversionLines();
@@ -7953,26 +8283,7 @@ class LivingModel {
       if (faction.allegiance === "hostile" || faction.allegiance === "clandestine") {
         this.tickFactionRaid(faction, living);
       }
-      if (
-        faction.sovereignAmbition &&
-        faction.allegiance === "hostile" &&
-        (faction.seasonsActive ?? 0) >= 8 &&
-        this.factionDevelopment(faction) >= SOVEREIGN_DEVELOPMENT
-      ) {
-        const provId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
-        const provState = provId ? (pack.provinces?.[provId]?.state ?? 0) : 0;
-        const sSim = provState ? living.states?.[provState] : undefined;
-        const localBurgs =
-          pack.burgs?.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === provId) ?? [];
-        const noBurgs = localBurgs.length === 0;
-        const collapsedOrder = (provId ? (Stability.getProvince(provId)?.stability ?? 1) : 1) < 0.3;
-        const stateStab = provState ? (Stability.get(provState)?.stability ?? 1) : 1;
-        const stateInTurmoil = Boolean(stateStab < 0.35 || (sSim && sSim.warExhaustion >= 50));
-        if (noBurgs || collapsedOrder || stateInTurmoil) {
-          const nonCapBurg = collapsedOrder ? localBurgs.find(b => !b.capital) : undefined;
-          this.ascendFactionToState(faction.i, nonCapBurg?.i);
-        }
-      }
+      this.checkEntrenchedFactionAscension(faction, living);
     }
   }
 
@@ -8152,39 +8463,37 @@ class LivingModel {
     faction.influence = Math.min(100, (faction.influence ?? 0) + 5);
   }
 
-  /** Step each active state's projects and seasonal agenda. */
-  private stepStates(living: LivingWorldState): void {
-    for (const state of pack.states) {
-      if (!state?.i || state.removed) continue;
-      const sSim = living.states[state.i];
-      if (!sSim) continue;
+  /** Notable beat for one state: resolve ready projects/constructions, advance agenda, or commission a work. */
+  private stepSingleStateBeat(
+    state: State,
+    sSim: StatePolitySim,
+    living: LivingWorldState,
+    projectReady: boolean,
+    constructionReady: boolean
+  ): boolean {
+    const beforeNews = this.tickNewsCount(living);
+    const hadProject = Boolean(sSim.project);
+    const prevAgendaKind = sSim.agenda?.kind ?? "";
+    const prevAgendaProgress = sSim.agenda?.progress ?? -1;
 
-      for (const regiment of state.military ?? []) {
-        for (const unit of regiment.units ?? []) {
-          if ((unit.disruption ?? 0) > 0) {
-            const regProvId = pack.cells.province?.[regiment.cell] ?? 0;
-            const provSim = regProvId ? living.provinces?.[regProvId] : null;
-            const hosted = regProvId
-              ? Factions.active().some(
-                  f =>
-                    (f.allegiance === "hostile" || f.allegiance === "clandestine") &&
-                    this.factionProvinceId(f) === regProvId
-                )
-              : false;
-            if (provSim?.trouble?.severity !== "drain" && !hosted) {
-              unit.disruption = Math.max(0, unit.disruption! - 1);
-            }
-          }
-        }
-      }
-
-      this.advanceDevelopment(state, sSim, living);
-      this.advanceConstructions(state, sSim, living);
-
-      if (!sSim.agenda) sSim.agenda = this.chooseAgenda(state, sSim, living);
-      if (!sSim.agenda) continue;
-      this.stepAgenda(state, sSim, living);
+    living.projects ??= [];
+    if (projectReady && sSim.project) {
+      this.completeProject(state, sSim, living);
+    } else if (!sSim.project) {
+      this.startProject(state, sSim, living);
     }
+
+    if (constructionReady) {
+      this.advanceConstructions(state, sSim, living);
+    }
+
+    if (!sSim.agenda) sSim.agenda = this.chooseAgenda(state, sSim, living);
+    if (sSim.agenda) this.stepAgenda(state, sSim, living);
+
+    const projectChanged = Boolean(sSim.project) !== hadProject;
+    const agendaChanged =
+      (sSim.agenda?.kind ?? "") !== prevAgendaKind || (sSim.agenda?.progress ?? -1) !== prevAgendaProgress;
+    return this.tickNewsCount(living) > beforeNews || projectChanged || agendaChanged;
   }
 }
 
