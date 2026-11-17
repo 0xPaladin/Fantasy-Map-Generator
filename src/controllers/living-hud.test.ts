@@ -373,6 +373,34 @@ describe("LivingHud", () => {
     state.living.states = {} as never;
   });
 
+  it("orders the state card agenda and manage, and lists only instability under issues", () => {
+    state.living.states = {
+      1: { stateId: 1, agenda: null, unravel: 0, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    const cells = pack.cells as unknown as Record<string, unknown>;
+    cells.development = Uint8Array.from([0, 45, 45, 0, 45, 45]);
+    cells.pop = new Array(6).fill(5) as never;
+    options.map.eras = [
+      { level: 0, name: "Paleolithic" },
+      { level: 40, name: "Renaissance" }
+    ] as never;
+    openHud();
+    LivingHud.inspect("state", 1);
+
+    const panel = document.getElementById("livingInspector")!;
+    const text = panel.textContent!;
+    const order = ["Upstream economy", "Agenda", "Manage", "Issues & Crises", "Instability"];
+    for (const [k, title] of order.entries()) {
+      expect(text.indexOf(title)).toBeGreaterThan(k === 0 ? -1 : text.indexOf(order[k - 1]!));
+    }
+
+    const titles = [...panel.querySelectorAll(".livingSectionTitle")].map(entry => entry.textContent);
+    expect(titles).not.toContain("Stability");
+    expect(titles).not.toContain("Provinces");
+    expect(titles).not.toContain("Rebellions");
+    state.living.states = {} as never;
+  });
+
   it("closes and reopens the HUD cleanly", () => {
     openHud();
     LivingHud.close();
@@ -437,9 +465,9 @@ describe("LivingHud", () => {
 
     LivingHud.inspect("state", 1);
     let panel = document.getElementById("livingInspector")!;
-    expect(panel.textContent).toContain("Rebellions");
-    expect(panel.textContent).toContain("Marchland Rising");
-    expect(panel.textContent).toContain("🔥");
+    expect(panel.textContent).toContain("Instability");
+    expect(panel.textContent).toContain("⚠️ Aeloran March 🔥[2]");
+    expect(panel.querySelector('[title*="Marchland Rising"]')).toBeTruthy();
 
     LivingHud.inspect("province", 1);
     panel = document.getElementById("livingInspector")!;
