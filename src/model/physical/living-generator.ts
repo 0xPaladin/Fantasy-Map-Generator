@@ -136,6 +136,7 @@ import type {
 } from "@/types/living";
 import { SEASON_NAMES } from "@/types/living";
 import { minmax } from "@/utils";
+import { getRandomColor } from "@/utils/color-utils";
 import { SEA_LEVEL } from "@/utils/height-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
@@ -6042,9 +6043,11 @@ class LivingModel {
     relations[i] = "x";
 
     const seedName = province?.name ?? burg.name ?? Names.getCulture(culture);
-    const palette = ["#c2594a", "#4a8fc2", "#6aa84f", "#b67ac2", "#d19a47", "#47a89a"];
-    const pickedColor = palette[i % palette.length];
-    const color = pickedColor === oldOwner.color ? palette[(i + 1) % palette.length] : pickedColor;
+    const usedColors = new Set(pack.states.filter(s => s?.i && !s.removed && s.color).map(s => s.color));
+    let color = getRandomColor();
+    for (let attempt = 0; attempt < 12 && (color === oldOwner.color || usedColors.has(color)); attempt++) {
+      color = getRandomColor();
+    }
 
     pack.states.push({
       i,

@@ -4230,6 +4230,8 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
 
       expect(pack.states.length).toBe(statesBefore + 1);
       const newStateId = pack.states.length - 1;
+      expect(pack.states[newStateId]!.color).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(pack.states[newStateId]!.color).not.toBe(pack.states[1]!.color);
       expect(pack.provinces[2]!.state).toBe(newStateId);
       expect(pack.states[newStateId]!.provinces).toEqual([2]);
       expect(pack.states[1]!.provinces).not.toContain(2);
