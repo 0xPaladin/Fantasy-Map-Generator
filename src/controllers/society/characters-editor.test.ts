@@ -13,7 +13,7 @@ import {
   importCharacterCsv,
   openCharacterDetails
 } from "@/controllers/society/characters-editor";
-import { ALIGNMENTS, TRAIT_COUNTS } from "@/data/culture-traits";
+import { TRAIT_COUNTS } from "@/data/culture-traits";
 import { Characters } from "@/model/society/characters";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { Faction } from "@/types/factions";
@@ -165,7 +165,7 @@ describe("CharactersEditor", () => {
     expect(rows[0]?.[1]).toBe("Bran the Bold");
   });
 
-  it("shows alignment, virtues and vices, and rerolls them from the row", () => {
+  it("selects alignment and rerolls the combined virtues and vices from the row", () => {
     const character = Characters.add({
       name: "Bran",
       culture: 1,
@@ -178,15 +178,19 @@ describe("CharactersEditor", () => {
     CharactersEditor.open();
 
     const row = document.querySelector(`#characterRow-${character.i}`)!;
-    expect(row.querySelector('[data-col="alignment"]')?.textContent).toBe("Lawful");
-    expect(row.querySelector('[data-col="virtues"]')?.textContent).toBe("just");
-    expect(row.querySelector('[data-col="vices"]')?.textContent).toBe("proud");
+    const select = row.querySelector<HTMLSelectElement>('[data-action="alignment"]')!;
+    expect(select.value).toBe("lawful");
+    expect(row.querySelector('[data-col="traits"]')?.textContent).toContain("just, proud");
+
+    select.value = "good";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(Characters.get(character.i)?.alignment).toBe("good");
 
     row.querySelector('[data-action="reroll-traits"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     const updated = Characters.get(character.i)!;
-    expect(ALIGNMENTS).toContain(updated.alignment);
-    const counts = TRAIT_COUNTS[updated.alignment!];
+    expect(updated.alignment).toBe("good");
+    const counts = TRAIT_COUNTS.good;
     expect(updated.virtues).toHaveLength(counts.virtues);
     expect(updated.vices).toHaveLength(counts.vices);
   });
@@ -215,10 +219,13 @@ describe("CharactersEditor", () => {
     expect(dialog.querySelector("#characterRolesRows tr")).not.toBeNull();
     expect(dialog.querySelector("#characterRelationsRows")?.textContent).toContain("Wayfarers");
 
+    const promote = dialog.querySelector("#promoteCharacterButton")!;
+    expect(promote.nextElementSibling?.id).toBe("saveCharacterButton");
+    expect(dialog.querySelector('label[for="newRelationKind"]')).toBeNull();
+
     const headings = [...dialog.querySelectorAll("h4")].map(heading => heading.textContent);
     expect(headings).not.toContain("Hero");
     expect(headings.indexOf("Roles")).toBeLessThan(headings.indexOf("Relations"));
-    expect(dialog.querySelector("#promoteCharacterButton")).not.toBeNull();
 
     document.querySelector<HTMLElement>("#saveCharacterButton")?.click();
     const saved = Characters.get(character.i)!;

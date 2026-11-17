@@ -69,7 +69,7 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Provinces editor: the province details dialog and its row button are removed; provincial stability adjustments stay in the province stability breakdown
 - Burgs editor: the Hub filter is replaced by a Province filter
 - Characters editor: Name, Status, Age and Culture come first, and roles show the target's actual name instead of its kind and id
-- Characters: the editor lists Alignment, Virtues and Vices with a row reroll; the sheet drops those fields, tables Roles and Relations, and shows Hero only for heroes with a Promote button otherwise
+- Characters: the editor has a selectable Alignment and one Virtues/Vices column with a row reroll; the sheet drops those fields, tables Roles and Relations, and puts Promote to hero beside Save for background characters
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 

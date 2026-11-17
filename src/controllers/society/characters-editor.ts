@@ -68,9 +68,13 @@ const columns: EditorColumn<HistoricalFigure>[] = [
   { key: "age", label: t("Age"), width: "4em", sortBy: ageOf, sortType: "number" },
   { key: "culture", label: t("Culture"), width: "8em", sortBy: cultureName, sortType: "alpha" },
   { key: "alignment", label: t("Alignment"), width: "6em", sortBy: c => c.alignment ?? "", sortType: "alpha" },
-  { key: "virtues", label: t("Virtues"), width: "12em", sortBy: c => (c.virtues ?? []).join(", "), sortType: "alpha" },
-  { key: "vices", label: t("Vices"), width: "12em", sortBy: c => (c.vices ?? []).join(", "), sortType: "alpha" },
-  { key: "reroll", width: "1.4em" },
+  {
+    key: "traits",
+    label: t("Virtues/Vices"),
+    width: "18em",
+    sortBy: c => traitSummary(c),
+    sortType: "alpha"
+  },
   { key: "role", label: t("Role"), width: "16em", sortBy: roleSummary, sortType: "alpha" },
   { key: "faction", label: t("Faction"), width: "11em", sortBy: factionSummary, sortType: "alpha" },
   { key: "hero", label: t("Hero"), width: "4em", sortBy: c => (c.hero ? 1 : 0), sortType: "number" },
@@ -108,6 +112,10 @@ function roleSummary(character: HistoricalFigure): string {
   const role = openRole(character);
   if (!role) return "";
   return `${capitalize(role.type)} ${targetName(role.target)}`;
+}
+
+function traitSummary(character: HistoricalFigure): string {
+  return [...(character.virtues ?? []), ...(character.vices ?? [])].join(", ");
 }
 
 /** The name behind a role's target reference, with its kind and id only when the target is gone */
@@ -276,6 +284,7 @@ function renderDialog(): void {
 
   const body = ensureEl("charactersBodySection");
   body.addEventListener("click", handleTableClick);
+  body.addEventListener("change", handleTableChange);
   renderEditorPagination(ensureEl("charactersFooter"), charactersTable.view(), page => charactersTable.goto(page));
 }
 
@@ -304,9 +313,7 @@ function renderRow(character: HistoricalFigure): string {
   const hero = character.hero
     ? `<span class="badge" data-tip="${escapeHtml(heroSummary(character))}">${t("Hero")}</span>`
     : "—";
-  const alignment = character.alignment ? capitalize(character.alignment) : "—";
-  const virtues = (character.virtues ?? []).join(", ") || "—";
-  const vices = (character.vices ?? []).join(", ") || "—";
+  const traits = traitSummary(character) || "—";
   const locate = character.cell !== undefined ? "icon-dot-circled" : "";
   const removedClass = character.removed ? " removed" : "";
   const removeAction = character.removed ? "restore" : "remove";
@@ -320,10 +327,16 @@ function renderRow(character: HistoricalFigure): string {
       <span data-col="status" class="badge">${capitalize(status)}</span>
       <span data-col="age" style="text-align: center;">${ageOf(character)}</span>
       <span data-col="culture">${escapeHtml(culture)}</span>
-      <span data-col="alignment">${alignment}</span>
-      <span data-col="virtues" data-tip="${escapeHtml(virtues)}">${escapeHtml(virtues)}</span>
-      <span data-col="vices" data-tip="${escapeHtml(vices)}">${escapeHtml(vices)}</span>
-      <div data-col="reroll" class="pointer icon-cw" data-action="reroll-traits" data-tip="${t("Reroll alignment, virtues and vices")}"></div>
+      <span data-col="alignment">
+        <select data-action="alignment" aria-label="${t("Alignment")}">
+          <option value="">${t("None")}</option>
+          ${ALIGNMENTS.map(option => `<option value="${option}" ${character.alignment === option ? "selected" : ""}>${capitalize(option)}</option>`).join("")}
+        </select>
+      </span>
+      <span data-col="traits" data-tip="${escapeHtml(traits)}">
+        <span class="pointer icon-cw" data-action="reroll-traits" data-tip="${t("Reroll virtues and vices")}"></span>
+        ${escapeHtml(traits)}
+      </span>
       <span data-col="role">${escapeHtml(role)}</span>
       <span data-col="faction">${escapeHtml(faction)}</span>
       <span data-col="hero" style="text-align: center;">${hero}</span>
@@ -360,15 +373,25 @@ function handleTableClick(event: MouseEvent): void {
   }
 }
 
+function handleTableChange(event: Event): void {
+  const select = (event.target as HTMLElement)?.closest<HTMLSelectElement>('[data-action="alignment"]');
+  if (!select) return;
+  const row = select.closest<HTMLElement>("[data-id]");
+  const id = Number(row?.dataset.id);
+  if (!Number.isFinite(id) || !Characters.get(id)) return;
+  Characters.update(id, { alignment: (select.value as Alignment) || undefined });
+  if (Layers.has("characters")) Layers.draw("characters");
+}
+
 function refreshCharacters(): void {
   charactersTable.refresh();
   if (Layers.has("characters")) Layers.draw("characters");
 }
 
-/** Roll a new ethos on the culture's prevailing column, then the virtues and vices it dictates */
+/** Roll new virtues and vices in the counts the character's alignment dictates */
 function rerollTraits(character: HistoricalFigure): void {
   const rng = traitsRng(`${options.map?.seed ?? ""}:${Math.random()}`, "figure", character.i);
-  const alignment = rollAlignment(rng, pack.cultures?.[character.culture]?.alignment);
+  const alignment = character.alignment ?? rollAlignment(rng, pack.cultures?.[character.culture]?.alignment);
   const { virtues, vices } = rollFigureTraits(rng, alignment);
   Characters.update(character.i, { alignment, virtues, vices });
   refreshCharacters();
@@ -480,10 +503,10 @@ function renderDetails(character: HistoricalFigure): string {
           </tr></thead>
           <tbody id="characterRelationsRows">${relationRows(character)}</tbody>
         </table>
-        <div style="display: flex; gap: 4px; align-items: end;">
-          <label style="flex: 1; display: flex; flex-direction: column;">${t("Kind")}<select id="newRelationKind" style="width: 100%;">${RELATION_KINDS.map(kind => `<option value="${kind}">${capitalize(kind)}</option>`).join("")}</select></label>
-          <label style="flex: 0 0 5em; display: flex; flex-direction: column;">${t("Target")}<input id="newRelationTarget" type="number" min="0" style="width: 100%;" /></label>
-          <label style="flex: 1; display: flex; flex-direction: column;">${t("Relation")}<select id="newRelationTier" style="width: 100%;">${RELATIONS.map(rel => `<option value="${rel}">${rel}</option>`).join("")}</select></label>
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <select id="newRelationKind" style="flex: 1;" aria-label="${t("Kind")}">${RELATION_KINDS.map(kind => `<option value="${kind}">${capitalize(kind)}</option>`).join("")}</select>
+          <input id="newRelationTarget" type="number" min="0" style="flex: 0 0 5em;" aria-label="${t("Target")}" />
+          <select id="newRelationTier" style="flex: 1;" aria-label="${t("Relation")}">${RELATIONS.map(rel => `<option value="${rel}">${rel}</option>`).join("")}</select>
           <button id="addRelationButton" class="btn">${t("+ Relation")}</button>
         </div>
       </section>
@@ -494,14 +517,14 @@ function renderDetails(character: HistoricalFigure): string {
               <h4>${t("Hero")}</h4>
               ${renderHeroSection(character.hero)}
             </section>`
-          : `<div style="display: flex; gap: 6px; justify-content: flex-start; margin-top: 8px;">
-              <button id="promoteCharacterButton" class="btn">${t("Promote to hero")}</button>
-            </div>`
+          : ""
       }
 
-      <div style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px;">
+      <div style="display: flex; gap: 6px; align-items: center; margin-top: 8px;">
         <button id="deleteCharacterButton" class="btn icon-trash" data-tip="${t("Remove character")}"></button>
+        <span style="flex: 1;"></span>
         <button id="cancelCharacterButton" class="btn">${t("Cancel")}</button>
+        ${character.hero ? "" : `<button id="promoteCharacterButton" class="btn">${t("Promote to hero")}</button>`}
         <button id="saveCharacterButton" class="btn">${t("Save")}</button>
       </div>
     </div>`;
