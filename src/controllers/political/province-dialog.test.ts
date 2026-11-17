@@ -122,12 +122,8 @@ describe("openProvinceDetailsDialog", () => {
             trouble: {
               id: "monsters",
               name: "Forest Monsters",
-              theme: "wilderness",
-              pool: "m",
-              save: "reflex",
-              requiredRole: "guardsmen",
-              level: 4,
-              seasonsUnchecked: 2,
+              severity: "flavor",
+              seasonsLow: 0,
               cell: 1
             }
           }

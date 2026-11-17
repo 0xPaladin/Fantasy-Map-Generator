@@ -479,7 +479,9 @@ function renderLivingProvince(province: Province): string {
   const stabPct = stab != null ? `${Math.round(stab * 100)}%` : "—";
   const tip = sentences(`${t("Stability")}: ${stabPct}`, t("Click to open the Living World inspector"));
   const trouble = pSim?.trouble
-    ? `<span data-tip="${t("Active trouble: {{name}}", { name: pSim.trouble.name })}">⚠️</span>`
+    ? pSim.trouble.severity === "drain"
+      ? `<span data-tip="${t("Instability drain: {{name}}", { name: pSim.trouble.name })}">⚠️</span>`
+      : `<span data-tip="${t("Instability flavor: {{name}}", { name: pSim.trouble.name })}" style="opacity:0.65;">ⓘ</span>`
     : "";
   const hostile = Factions.active().find(f => {
     if (f.allegiance !== "hostile" && f.allegiance !== "clandestine") return false;

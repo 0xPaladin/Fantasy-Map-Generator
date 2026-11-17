@@ -1,5 +1,5 @@
 import { Controllers } from "@/controllers";
-import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import { getTroubleDef, TROUBLE_LIST } from "@/data/living-troubles";
 import type { BuildingDef } from "@/data/roster-content";
 import { currentContent } from "@/data/roster-store";
 import { poiCapacityType } from "@/data/tiers";
@@ -203,16 +203,32 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
   const corruption = stab && state ? Corruption.ofProvince(state, stab.province, state.economy.collected) : null;
   let editStabAdj = (p.stabilityAdjustments ?? []).map(line => ({ ...line }));
 
-  // Active Trouble
+  // Active Trouble (Flavor / Drain)
   let troubleHtml = "";
-  if (pSim?.trouble) {
-    const tDef = getTroubleDef(pSim.trouble.id);
-    const troubleName = pSim.trouble.name || tDef?.name || pSim.trouble.id;
-    troubleHtml = `<span>
-      <strong>${escapeHtml(troubleName)}</strong>
-      <span style="font-size:0.88em; color:#666;">(Lv ${pSim.trouble.level}, ${escapeHtml(pSim.trouble.theme)})</span>
-      <button type="button" class="icon-target pointer" data-zoom-cell="${pSim.trouble.cell}" data-tip="${t("Zoom to trouble")}" style="background:none; border:none; padding:0; cursor:pointer; font-size:1.05em; vertical-align:middle;"></button>
-      <span style="font-size:0.85em; color:#666; margin-left:0.3em;">(${tDef ? SAVE_KIND_LABELS[tDef.save] : ""} · ${tDef ? UNIT_ROLE_LABELS[tDef.requiredRole] : ""} · ${pSim.trouble.seasonsUnchecked ?? 0}s unchecked)</span>
+  if (pSim) {
+    const activeTrouble = pSim.trouble;
+    const tDef = activeTrouble ? getTroubleDef(activeTrouble.id) : undefined;
+    const troubleName = activeTrouble?.name || tDef?.name || activeTrouble?.id || "";
+    const severityBadge =
+      activeTrouble?.severity === "drain"
+        ? `<span class="provBadge" style="background:#a33d3d">${t("Drain")}</span>`
+        : activeTrouble
+          ? `<span class="provBadge" style="background:#6c757d">${t("Flavor")}</span>`
+          : "";
+    const optionsHtml = [
+      `<option value="">${t("None")}</option>`,
+      ...(activeTrouble && !TROUBLE_LIST.some(def => def.id === activeTrouble.id)
+        ? [`<option value="${escapeHtml(activeTrouble.id)}" selected>${escapeHtml(troubleName)}</option>`]
+        : []),
+      ...TROUBLE_LIST.map(
+        def =>
+          `<option value="${escapeHtml(def.id)}" ${activeTrouble?.id === def.id ? "selected" : ""}>${escapeHtml(def.name)}</option>`
+      )
+    ].join("");
+    troubleHtml = `<span style="display:inline-flex; align-items:center; gap:0.35em; flex-wrap:wrap;">
+      <select id="provDialogTroubleFlavor" style="max-width:16em;">${optionsHtml}</select>
+      ${severityBadge}
+      ${activeTrouble?.cell ? `<button type="button" class="icon-target pointer" data-zoom-cell="${activeTrouble.cell}" data-tip="${t("Zoom to trouble")}" style="background:none; border:none; padding:0; cursor:pointer; font-size:1.05em; vertical-align:middle;"></button>` : ""}
     </span>`;
   }
 
@@ -631,6 +647,23 @@ function applyChanges(
   } else if (name && name !== oldName) {
     const fullName = formName ? `${name} ${formName}` : name;
     Provinces.setFullName(p.i, fullName);
+  }
+
+  const selectedTroubleId = findEl<HTMLSelectElement>("provDialogTroubleFlavor")?.value ?? "";
+  const pSim = pack.history?.living?.provinces?.[p.i];
+  if (pSim) {
+    if (!selectedTroubleId) {
+      pSim.trouble = null;
+    } else if (pSim.trouble?.id !== selectedTroubleId) {
+      const tDef = getTroubleDef(selectedTroubleId);
+      pSim.trouble = {
+        id: tDef.id,
+        name: tDef.name,
+        severity: pSim.trouble?.severity ?? "flavor",
+        seasonsLow: pSim.trouble?.seasonsLow ?? 0,
+        cell: p.center ?? pack.states[p.state]?.center ?? 0
+      };
+    }
   }
 
   p.stabilityAdjustments = stabilityAdjustments

@@ -128,6 +128,7 @@ import type {
   StateAgenda,
   StatePolitySim,
   TreatyKind,
+  TroubleSeverity,
   TroubleTheme,
   TroubleUnitRole
 } from "@/types/living";
@@ -643,6 +644,25 @@ class LivingModel {
     for (const pSim of Object.values(living.provinces)) {
       const record = pSim as unknown as Legacy;
       for (const key of ["order", "stability", "development", "developmentProgress"]) delete record[key];
+      if (pSim.trouble && typeof pSim.trouble === "object") {
+        const tRec = pSim.trouble as unknown as Legacy;
+        if (tRec.severity !== "flavor" && tRec.severity !== "drain") {
+          tRec.severity = typeof tRec.level === "number" && tRec.level >= 6 ? "drain" : "flavor";
+        }
+        for (const key of [
+          "theme",
+          "pool",
+          "save",
+          "requiredRole",
+          "level",
+          "seasonsUnchecked",
+          "burgId",
+          "markerId",
+          "goodId"
+        ]) {
+          delete tRec[key];
+        }
+      }
     }
     for (const faction of pack.factions ?? []) {
       if (!faction?.i) continue;
@@ -782,6 +802,22 @@ class LivingModel {
       ...(state.economy?.simStabilityAdjustments ?? [])
     ].reduce((sum, line) => sum + line.value / 100, 0);
     return minmax(0.5 + adj, 0, 1);
+  }
+
+  /** Effective province stability (0..1), falling back to healthy baseline 0.65 + adjustments when economy hasn't run. */
+  private effectiveProvinceStability(provinceId: number): number {
+    const stab = Stability.getProvince(provinceId)?.stability;
+    if (stab !== undefined && stab !== null) return stab;
+    const province = pack.provinces?.[provinceId];
+    if (!province) return 0.65;
+    const state = province.state ? pack.states[province.state] : undefined;
+    const adj = [
+      ...(state?.economy?.stabilityAdjustments ?? []),
+      ...(state?.economy?.simStabilityAdjustments ?? []),
+      ...(province.stabilityAdjustments ?? []),
+      ...(province.simStabilityAdjustments ?? [])
+    ].reduce((sum, line) => sum + line.value / 100, 0);
+    return minmax(0.65 + adj, 0, 1);
   }
 
   /** Overextended empires (stability < 35%) are retired into `history.realms`. */
@@ -938,10 +974,10 @@ class LivingModel {
       this.syncWorld();
       this.stepFactionEmpire(living);
       this.stepDevelopmentDiffusion(living);
+      this.stepProvinces(living);
       this.syncTroubleLines(living);
       this.stepEconomy(living);
       this.stepTactical(living);
-      this.stepProvinces(living);
       this.stepFactions(living);
       this.stepStates(living);
       this.stepProjects(living);
@@ -1464,7 +1500,9 @@ class LivingModel {
     return {
       war: this.stateAtWar(state),
       rebellion: (Stability.get(state.i)?.stability ?? 1) < 0.35,
-      hazard: this.ownedProvinces(state.i).some(province => Boolean(living.provinces[province.i]?.trouble)),
+      hazard: this.ownedProvinces(state.i).some(
+        province => living.provinces[province.i]?.trouble?.severity === "drain"
+      ),
       bankrupt: Number(state.economy.treasury ?? 0) < 0
     };
   }
@@ -4918,9 +4956,9 @@ class LivingModel {
     return true;
   }
 
-  /** Spawn or escalate a trouble in a province (e.g. flooding, heresy, unrest). */
-  spawnTrouble(provinceId: number, troubleId?: string, theme?: TroubleTheme, level?: number): ProvinceTrouble | null {
-    return LivingThreats.spawnTrouble(provinceId, troubleId, theme, level);
+  /** Silently name provincial instability (flavor or drain trouble). */
+  spawnTrouble(provinceId: number, troubleId?: string, severity: TroubleSeverity = "flavor"): ProvinceTrouble | null {
+    return LivingThreats.spawnTrouble(provinceId, troubleId, severity);
   }
 
   /** Quell a trouble immediately (magistrate intervention, hero success, GM tool). */
@@ -5201,8 +5239,7 @@ class LivingModel {
       const prov = provId ? pack.provinces?.[provId] : null;
       const pSim = provId ? this.getState().provinces?.[provId] : null;
       if (prov && pSim && !pSim.trouble) {
-        const conquestLevel = this.rng("conquest:trouble", burg.i).d(6) + 2;
-        this.spawnTrouble(provId, undefined, "burg", conquestLevel);
+        this.spawnTrouble(provId);
       }
     }
   }
@@ -5846,16 +5883,6 @@ class LivingModel {
     return (pack.provinces ?? []).filter(province => province?.i && !province.removed && province.state === stateId);
   }
 
-  private isProvinceGarrisoned(stateId: number, provinceId: number): boolean {
-    const military = pack.states[stateId]?.military ?? [];
-    return military.some(
-      regiment =>
-        regiment.a > 0 &&
-        (pack.cells.province?.[regiment.cell] ?? 0) === provinceId &&
-        (pack.cells.state?.[regiment.cell] ?? 0) === stateId
-    );
-  }
-
   private pickProvinceSettlement(provinceId: number, stateId: number): number | undefined {
     const province = pack.provinces?.[provinceId];
     const capital = province?.burg ? pack.burgs[province.burg] : undefined;
@@ -5964,12 +5991,9 @@ class LivingModel {
   private heldGoods(stateId: number): Set<number> {
     const goods = new Set<number>();
     if (!pack.cells.good) return goods;
-    const living = pack.history?.living;
     for (let cell = 0; cell < pack.cells.good.length; cell++) {
       if (pack.cells.state?.[cell] !== stateId) continue;
       const provId = pack.cells.province?.[cell] ?? 0;
-      const pSim = provId ? living?.provinces?.[provId] : null;
-      if (pSim?.trouble?.theme === "resource") continue;
       const resourceFaction = provId
         ? Factions.active().find(f => RESOURCE_FACTION_IDS.includes(f.type) && this.factionProvinceId(f) === provId)
         : undefined;
@@ -6596,10 +6620,24 @@ class LivingModel {
     return true;
   }
 
-  /** Hazards and hostile factions drain the purse: one negative line per troubled province. */
+  /** Drain troubles and hostile factions write negative economy & provincial stability adjustments. */
   private syncTroubleLines(living: LivingWorldState): void {
     const prefixes = ["Trouble: ", "Raiders: "];
     const isOurs = (name: string) => prefixes.some(prefix => name.startsWith(prefix));
+
+    for (const province of pack.provinces ?? []) {
+      if (!province?.i || province.removed) continue;
+      const pSim = living.provinces[province.i];
+      const currentStab = province.simStabilityAdjustments ?? [];
+      const keptStab = currentStab.filter(line => !line.name.startsWith("Trouble: "));
+      const nextStab =
+        pSim?.trouble?.severity === "drain" && province.state && !pack.states[province.state]?.removed
+          ? [...keptStab, { name: `Trouble: ${pSim.trouble.name}`, value: -5 }]
+          : keptStab;
+      if (JSON.stringify(nextStab) !== JSON.stringify(currentStab)) {
+        province.simStabilityAdjustments = nextStab;
+      }
+    }
 
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
@@ -6609,9 +6647,8 @@ class LivingModel {
 
       for (const province of this.ownedProvinces(state.i)) {
         const pSim = living.provinces[province.i];
-        if (!pSim?.trouble) continue;
-        const value = -Math.max(1, Math.round(pSim.trouble.level * 0.8 + 1));
-        lines.push({ name: `Trouble: ${pSim.trouble.name} in ${province.name ?? "the province"}`, value });
+        if (pSim?.trouble?.severity !== "drain") continue;
+        lines.push({ name: `Trouble: ${pSim.trouble.name} in ${province.name ?? "the province"}`, value: -3 });
       }
 
       for (const faction of Factions.active()) {
@@ -6628,15 +6665,6 @@ class LivingModel {
       state.economy.simAdjustments = next;
       living.economyDirty = true;
     }
-  }
-
-  /** A cleared hazard drops a small treasure into the clearer's treasury; returns it. */
-  rewardTroubleClear(provinceId: number, level = 5): number {
-    const state = pack.states[pack.provinces?.[provinceId]?.state ?? 0];
-    if (!state?.i || state.removed) return 0;
-    const loot = 20 + level * 5;
-    state.economy.treasury = Math.round((Number(state.economy.treasury ?? 0) + loot) * 100) / 100;
-    return loot;
   }
 
   /** Each season: advance a public work, or commission the next one the ruler favours. */
@@ -6761,7 +6789,7 @@ class LivingModel {
 
     const provinceId = def.scale === "province" ? target : this.provinceOfTarget(def, target);
     const trouble = provinceId ? living.provinces[provinceId]?.trouble : null;
-    if (trouble) {
+    if (trouble?.severity === "drain") {
       if (def.id === "granary" || def.id === "courthouse") score += 6;
     }
     const stab = provinceId ? (Stability.getProvince(provinceId)?.stability ?? 0.7) : 0.7;
@@ -7205,43 +7233,20 @@ class LivingModel {
       if (!province?.i || province.removed) continue;
       const pSim = living.provinces[province.i];
       if (!pSim || !province.state || pack.states[province.state]?.removed) continue;
-      const provStab = Stability.getProvince(province.i)?.stability ?? 0.5;
-      const stateStab = Stability.get(province.state)?.stability ?? 0.5;
+      const provStab = this.effectiveProvinceStability(province.i);
 
-      if (pSim.trouble) {
-        pSim.trouble.seasonsUnchecked = (pSim.trouble.seasonsUnchecked ?? 0) + 1;
-        if (pSim.trouble.seasonsUnchecked % 2 === 0) {
-          pSim.trouble.level = Math.min(10, pSim.trouble.level + 1);
-        }
-
-        const unchecked = pSim.trouble.seasonsUnchecked;
-        const lvl = pSim.trouble.level;
-        if (unchecked >= 3 || lvl >= 5) {
-          const metaChance = lvl >= 10 ? 1 : Math.max(0, (unchecked - 2) * 0.06 + Math.max(0, lvl - 4) * 0.04);
-          const rngMeta = this.rng("trouble:metastasize", province.i, living.tick);
-          if (rngMeta.chance(metaChance)) {
-            this.spawnDangerousFaction(province.i, undefined, pSim.trouble.theme, lvl);
-            pSim.trouble = null;
-          }
-        }
-
+      // Silent trouble assignment, drain step-up (< 40% for 2+ seasons), and recovery clearing (>= 55%)
+      if (provStab >= 0.55) {
+        if (pSim.trouble) pSim.trouble = null;
+      } else {
+        if (!pSim.trouble) this.spawnTrouble(province.i);
         if (pSim.trouble) {
-          const administration = pack.states[province.state]?.economy.budget.administration ?? 0;
-          const adminFunded = administration >= 15 && Number(pack.states[province.state]?.economy.treasury ?? 0) >= 0;
-          if (adminFunded && this.rng("trouble:admin", province.i, living.tick).chance(0.25)) {
-            const levelBefore = pSim.trouble.level;
-            pSim.trouble.level -= 1;
-            pSim.trouble.seasonsUnchecked = 0;
-            if (pSim.trouble.level <= 0) {
-              pSim.trouble = null;
-              const loot = this.rewardTroubleClear(province.i, Math.max(2, levelBefore));
-              this.pushNews(living, {
-                kind: "trouble",
-                text: `${province.name ?? "The province"}'s courts cleared its troubles and recovered ${loot} ${getMoneyUnit(loot !== 1)}.`,
-                cell: province.center,
-                stateId: province.state
-              });
-            }
+          if (provStab < 0.4) {
+            pSim.trouble.seasonsLow = (pSim.trouble.seasonsLow ?? 0) + 1;
+            if (pSim.trouble.seasonsLow >= 2) pSim.trouble.severity = "drain";
+          } else {
+            pSim.trouble.seasonsLow = 0;
+            if (provStab >= 0.48 && pSim.trouble.severity === "drain") pSim.trouble.severity = "flavor";
           }
         }
       }
@@ -7251,22 +7256,6 @@ class LivingModel {
       );
       for (const hostile of hostiles) {
         hostile.seasonsActive = (hostile.seasonsActive ?? 0) + 1;
-      }
-
-      // Seasonal trouble spawning
-      if (!pSim.trouble && hostiles.length === 0) {
-        const rng = this.rng("trouble:spawn", province.i, living.tick);
-        let spawnChance = 0.12;
-        if (provStab < 0.5) spawnChance += 0.08;
-        if (provStab < 0.25) spawnChance += 0.05;
-        if (stateStab < 0.4) spawnChance += 0.05;
-        if (this.isProvinceGarrisoned(province.state, province.i)) spawnChance -= 0.05;
-        if ((pack.states[province.state]?.economy.budget.corruption ?? 0) >= 25) spawnChance += 0.03;
-        spawnChance = minmax(spawnChance, 0.03, 0.4);
-
-        if (rng.chance(spawnChance)) {
-          this.spawnTrouble(province.i);
-        }
       }
     }
   }
@@ -7329,9 +7318,8 @@ class LivingModel {
       if (agenda.progress >= agenda.required) {
         const troubleName = pSim.trouble.name;
         const province = pack.provinces?.[provinceId];
-        const clearedLevel = pSim.trouble.level;
         pSim.trouble = null;
-        faction.treasury = Math.round((Number(faction.treasury ?? 0) + 15 + clearedLevel * 3) * 100) / 100;
+        faction.treasury = Math.round((Number(faction.treasury ?? 0) + 25) * 100) / 100;
         const hostStateId = province?.state ?? 0;
         const before = hostStateId ? (faction.stateRelations[hostStateId] ?? "Neutral") : undefined;
         if (hostStateId) this.improveFactionRelation(faction, hostStateId);
@@ -7363,7 +7351,7 @@ class LivingModel {
       { node: faction.hq, isHq: true },
       ...(faction.outposts ?? []).map(outpost => ({ node: outpost, isHq: false }))
     ];
-    let best: { provinceId: number; level: number } | null = null;
+    let best: { provinceId: number; drain: boolean } | null = null;
     for (const entry of nodes) {
       const nodeProvId =
         (entry.node as import("@/types/factions").FactionHq).provinceId ??
@@ -7371,7 +7359,9 @@ class LivingModel {
         pack.cells.province?.[entry.node.cell];
       if (!nodeProvId) continue;
       const trouble = living.provinces[nodeProvId]?.trouble;
-      if (trouble && (!best || trouble.level > best.level)) best = { provinceId: nodeProvId, level: trouble.level };
+      if (trouble && (!best || (!best.drain && trouble.severity === "drain"))) {
+        best = { provinceId: nodeProvId, drain: trouble.severity === "drain" };
+      }
     }
     if (best) {
       const province = pack.provinces?.[best.provinceId];
@@ -7381,7 +7371,7 @@ class LivingModel {
         label: `Clearing ${trouble.name} in ${province?.name ?? "the province"}`,
         targetProvinceId: best.provinceId,
         progress: 0,
-        required: 40 + 20 * best.level
+        required: best.drain ? 80 : 60
       };
     }
   }
@@ -7676,7 +7666,7 @@ class LivingModel {
                     this.factionProvinceId(f) === regProvId
                 )
               : false;
-            if (!provSim?.trouble && !hosted) {
+            if (provSim?.trouble?.severity !== "drain" && !hosted) {
               unit.disruption = Math.max(0, unit.disruption! - 1);
             }
           }

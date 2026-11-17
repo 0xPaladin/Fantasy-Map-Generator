@@ -40,8 +40,8 @@ export type AgendaKind =
 export type TreatyKind = "nonAggression" | "trade" | "defensiveAlliance" | "militaryAccess";
 
 export type TroubleTheme = "burg" | "ruin" | "resource";
-export type TroublePool = "m" | "w" | "s";
-export type TroubleSaveKind = "disorder" | "uprising" | "poverty" | "ignorance" | "despair" | "corruption";
+export type TroubleSeverity = "flavor" | "drain";
+// Retained for roster unit specialist roles
 export type TroubleUnitRole = "guardsmen" | "military" | "merchant" | "sage" | "prophet" | "magistrate";
 
 export type HeroPool = "m" | "w" | "s" | "c";
@@ -137,23 +137,14 @@ export type MissionTag =
   | "intrigue"
   | "trap"
   | "order"
-  | "trouble"
-  | `save:${TroubleSaveKind}`
-  | `role:${TroubleUnitRole}`;
+  | "trouble";
 
 export interface ProvinceTrouble {
   id: string;
   name: string;
-  theme: TroubleTheme;
-  pool: TroublePool;
-  save: TroubleSaveKind;
-  requiredRole: TroubleUnitRole;
-  level: number;
-  seasonsUnchecked: number;
-  cell: number;
-  burgId?: number;
-  markerId?: number;
-  goodId?: number;
+  severity?: TroubleSeverity;
+  seasonsLow?: number;
+  cell?: number;
 }
 
 export interface StateAgenda {

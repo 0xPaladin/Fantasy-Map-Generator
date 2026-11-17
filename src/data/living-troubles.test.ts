@@ -3,23 +3,19 @@ import { getFactionArchetype } from "./factions-catalog";
 import { LAIR_CATALOG } from "./living-lairs";
 import {
   BURG_FACTION_IDS,
-  BURG_TROUBLE_IDS,
   getTroubleDef,
   getTroubleFactionType,
   ORGANIZATIONAL_TROUBLE_IDS,
   RESOURCE_FACTION_IDS,
-  RESOURCE_TROUBLE_IDS,
   RUIN_FACTION_IDS,
-  RUIN_TROUBLE_IDS,
   TROUBLE_CATALOG,
   TROUBLE_TO_FACTION,
   TROUBLE_TO_LAIR,
-  troubleUnitMatchMultiplier,
-  UNIT_ROLE_POOLS
+  troublesForCause
 } from "./living-troubles";
 
-describe("living-troubles (hazard catalog, retired organizational map, unit roles)", () => {
-  it("defines exactly the 28 hazard and hazardous-custom archetypes", () => {
+describe("living-troubles (flavor catalog & retired organizational map)", () => {
+  it("defines 28 instability flavor archetypes grouped by cause", () => {
     const keys = Object.keys(TROUBLE_CATALOG);
     expect(keys).toHaveLength(28);
 
@@ -29,14 +25,11 @@ describe("living-troubles (hazard catalog, retired organizational map, unit role
       expect(def.id).toBe(id);
       expect(def.name).toBeTruthy();
       expect(def.description).toBeTruthy();
-      expect(["m", "w", "s"]).toContain(def.pool);
-      expect(["disorder", "uprising", "poverty", "ignorance", "despair", "corruption"]).toContain(def.save);
-      expect(["guardsmen", "military", "merchant", "sage", "prophet", "magistrate"]).toContain(def.requiredRole);
+      expect(["diversity", "corruption", "poverty", "site"]).toContain(def.cause);
     }
 
-    for (const table of [BURG_TROUBLE_IDS, RUIN_TROUBLE_IDS, RESOURCE_TROUBLE_IDS]) {
-      expect(table.length).toBeGreaterThan(0);
-      for (const id of table) expect(TROUBLE_CATALOG[id], `spawn table id ${id} is a hazard`).toBeDefined();
+    for (const cause of ["diversity", "corruption", "poverty", "site"] as const) {
+      expect(troublesForCause(cause).length).toBeGreaterThan(0);
     }
   });
 
@@ -65,22 +58,5 @@ describe("living-troubles (hazard catalog, retired organizational map, unit role
 
     const fallback = getTroubleDef("non_existent_trouble");
     expect(fallback).toBe(TROUBLE_CATALOG.flooding);
-  });
-
-  it("computes troubleUnitMatchMultiplier correctly based on role and pool match", () => {
-    const def = getTroubleDef("flooding"); // pool: w, requiredRole: merchant
-    expect(troubleUnitMatchMultiplier(def, "merchant")).toBe(1); // exact role
-    expect(troubleUnitMatchMultiplier(def, "sage")).toBe(2); // same pool (w), different role
-    expect(troubleUnitMatchMultiplier(def, "military")).toBe(3); // wrong pool (m)
-    expect(troubleUnitMatchMultiplier(def, undefined)).toBe(3); // no unit
-  });
-
-  it("maintains consistent pool mapping in UNIT_ROLE_POOLS", () => {
-    expect(UNIT_ROLE_POOLS.guardsmen).toBe("m");
-    expect(UNIT_ROLE_POOLS.military).toBe("m");
-    expect(UNIT_ROLE_POOLS.merchant).toBe("w");
-    expect(UNIT_ROLE_POOLS.sage).toBe("w");
-    expect(UNIT_ROLE_POOLS.prophet).toBe("s");
-    expect(UNIT_ROLE_POOLS.magistrate).toBe("s");
   });
 });

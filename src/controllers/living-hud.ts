@@ -10,7 +10,7 @@ import { HERO_INJURY_LABELS, heroTemperamentTags, injuryIsActive } from "@/data/
 import { CIV_IMPROVEMENT_BY_ID } from "@/data/living-civ-improvements";
 import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
 import { PROJECT_BY_ID, projectName } from "@/data/living-projects";
-import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
+import { getTroubleDef } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
 import { DEAL_KINDS, Deals } from "@/model/economy/deals";
@@ -296,7 +296,7 @@ function afterTick(): void {
 }
 
 function redrawMap(): void {
-  Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "markers", "trouble");
+  Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "markers");
 }
 
 function renderControls(): void {
@@ -1144,8 +1144,8 @@ function renderProvinceCard(provinceId: number): string {
     <div class="livingMuted">${escapeHtml(state?.name ?? "Unclaimed")} · stability ${stabPct}%</div>
     ${
       trouble && tDef
-        ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme})</div>
-           <div class="livingMuted">Save: ${SAVE_KIND_LABELS[tDef.save]} · Specialist: ${UNIT_ROLE_LABELS[tDef.requiredRole]}</div>`
+        ? `<div style="margin-top:0.3em;color:${trouble.severity === "drain" ? "#a33d3d" : "#666"};"><strong>Trouble:</strong> ${escapeHtml(trouble.name || tDef.name)} (${trouble.severity === "drain" ? "Drain" : "Flavor"})</div>
+           <div class="livingMuted">${escapeHtml(tDef.description)}</div>`
         : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
     }
     ${
@@ -1193,9 +1193,8 @@ function renderProvincesTroubles(stateId: number): string {
       const name = t.name || def.name;
       const cell = t.cell || province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
       const drain = lines.find(line => line.name.includes(province.name ?? ""))?.value;
-      const text = `${province.name ?? "Province"}, ${name} [${t.level}]${drain ? ` · ${drain}/day` : ""}`;
-      const burgAttr = t.burgId ? ` data-zoom-burg="${t.burgId}"` : "";
-      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}"${burgAttr} title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button></li>`;
+      const text = `${province.name ?? "Province"}, ${name} (${t.severity === "drain" ? "Drain" : "Flavor"})${drain ? ` · ${drain}/day` : ""}`;
+      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}" title="Zoom to ${escapeHtml(name)}">${escapeHtml(text)}</button></li>`;
     })
     .join("");
   return `<div class="livingSectionTitle">Troubles</div><ul>${rows}</ul>`;
@@ -1263,8 +1262,8 @@ function renderBurgCard(burgId: number): string {
             <div class="livingMuted">Stability ${provStab}%</div>
             ${
               trouble && tDef
-                ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme})</div>
-                   <div class="livingMuted">Save: ${SAVE_KIND_LABELS[tDef.save]} · Specialist: ${UNIT_ROLE_LABELS[tDef.requiredRole]}</div>`
+                ? `<div style="margin-top:0.3em;color:${trouble.severity === "drain" ? "#a33d3d" : "#666"};"><strong>Trouble:</strong> ${escapeHtml(trouble.name || tDef.name)} (${trouble.severity === "drain" ? "Drain" : "Flavor"})</div>
+                   <div class="livingMuted">${escapeHtml(tDef.description)}</div>`
                 : `<div class="livingMuted" style="margin-top:0.2em;">No active trouble</div>`
             }
             ${
@@ -1498,14 +1497,9 @@ function runIntervention(button: HTMLElement): void {
       message = ok ? "The asset has been completed." : "No asset can be completed here.";
       break;
     case "spawn-trouble": {
-      const factionsBefore = (pack.factions ?? []).filter(f => f.i !== 0).length;
       const res = Living.spawnTrouble(provId);
-      ok = Boolean(res) || (pack.factions ?? []).filter(f => f.i !== 0).length > factionsBefore;
-      message = res
-        ? "Trouble has arisen in the province."
-        : ok
-          ? "A dangerous faction has taken root in the province."
-          : "Failed to spawn trouble.";
+      ok = Boolean(res);
+      message = res ? `Named provincial instability: ${res.name}.` : "Failed to assign trouble.";
       break;
     }
     case "quell-trouble":

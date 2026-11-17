@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
-import { getTroubleDef, troubleUnitMatchMultiplier } from "@/data/living-troubles";
+import { getTroubleDef } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Deals } from "@/model/economy/deals";
 import { nextRosterUnitInCategory, requiredDevelopmentFor } from "@/model/physical/living-armies";
@@ -602,60 +602,69 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(pack.history.epochs![0].polities.map(polity => polity.id)).toEqual(expect.arrayContaining([1, 2]));
   });
 
-  it("spawns and quells trouble on a province", () => {
+  it("assigns and quells trouble flavor silently without news", () => {
     const living = Living.init();
-    const trouble = Living.spawnTrouble(1, "flooding", "burg", 4);
+    const trouble = Living.spawnTrouble(1, "flooding");
 
     expect(trouble).toMatchObject({
       id: "flooding",
-      theme: "burg",
-      level: 4,
-      seasonsUnchecked: 0
+      severity: "flavor",
+      seasonsLow: 0
     });
     expect(living.provinces[1].trouble).toEqual(trouble);
-    expect(living.recentNews[0].kind).toBe("trouble");
+    expect(living.recentNews.some(n => n.kind === "trouble")).toBe(false);
 
     expect(Living.quellTrouble(1)).toBe(true);
     expect(living.provinces[1].trouble).toBeNull();
+    expect(living.recentNews.some(n => n.kind === "trouble")).toBe(false);
   });
 
-  it("advances trouble seasonsUnchecked and level when unchecked", () => {
+  it("silently escalates low-stability flavor trouble to drain after 2 seasons and clears when stability recovers", () => {
     const living = Living.init();
+    // Force province 1 stability below 0.40 using stock province adjustments
+    pack.provinces[1].stabilityAdjustments = [{ name: "Crisis", value: -45 }];
 
-    const trouble = Living.spawnTrouble(1, "flooding", "burg", 4)!;
-    expect(trouble.level).toBe(4);
+    Living.tick(1);
+    expect(living.provinces[1].trouble).not.toBeNull();
+    expect(living.provinces[1].trouble?.severity).toBe("flavor");
+    expect(living.provinces[1].trouble?.seasonsLow).toBe(1);
+    expect(living.recentNews.some(n => n.kind === "trouble")).toBe(false);
 
-    Living.tick(2);
+    Living.tick(1);
+    expect(living.provinces[1].trouble?.severity).toBe("drain");
+    expect(living.provinces[1].trouble?.seasonsLow).toBeGreaterThanOrEqual(2);
+    expect(pack.states[1].economy.simAdjustments?.some(l => l.name.startsWith("Trouble: ") && l.value === -3)).toBe(
+      true
+    );
+    expect(pack.provinces[1].simStabilityAdjustments?.some(l => l.name.startsWith("Trouble: ") && l.value === -5)).toBe(
+      true
+    );
+    expect(living.recentNews.some(n => n.kind === "trouble")).toBe(false);
 
-    expect(living.provinces[1].trouble?.level).toBeGreaterThanOrEqual(4);
+    // Recover stability >= 0.55: trouble and drain lines clear silently
+    pack.provinces[1].stabilityAdjustments = [{ name: "Stabilized", value: 40 }];
+    Living.tick(1);
+    expect(living.provinces[1].trouble).toBeNull();
+    expect((pack.states[1].economy.simAdjustments ?? []).some(l => l.name.startsWith("Trouble: "))).toBe(false);
+    expect(pack.provinces[1].simStabilityAdjustments?.some(l => l.name.startsWith("Trouble: "))).toBe(false);
   });
 
-  it("suppresses trade goods when province has active resource trouble", () => {
-    Living.init();
-    pack.cells.good = Uint16Array.from([0, 1, 2, 0, 0, 0]);
+  it("silently names instability with a flavor trouble when below 55% and leaves economy untouched", () => {
+    const living = Living.init();
+    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
+    const trouble = Living.spawnTrouble(1, "flooding")!;
+    expect(trouble.severity).toBe("flavor");
 
-    // Held goods method via muster check or direct query
-    Living.spawnTrouble(1, "hazardous_resource", "resource", 3);
-
-    // State 1 owns cells 1 and 2 in province 1. Since province 1 has resource trouble, goods 1 and 2 are suppressed.
-    // Call muster which uses heldGoods internally
+    Living.tick(1);
+    expect(living.provinces[1].trouble?.severity).toBe("flavor");
+    expect((pack.states[1].economy.simAdjustments ?? []).some(l => l.name.startsWith("Trouble: "))).toBe(false);
   });
 
-  it("computes specialist mismatch penalties correctly", () => {
-    const disorderDef = getTroubleDef("flooding"); // pool: w, requiredRole: merchant
-    expect(troubleUnitMatchMultiplier(disorderDef, "merchant")).toBe(1);
-    expect(troubleUnitMatchMultiplier(disorderDef, "sage")).toBe(2);
-    expect(troubleUnitMatchMultiplier(disorderDef, "military")).toBe(3);
-
-    const povertyDef = getTroubleDef("exceptional_poverty"); // pool: w, requiredRole: merchant
-    expect(troubleUnitMatchMultiplier(povertyDef, "merchant")).toBe(1);
-    expect(troubleUnitMatchMultiplier(povertyDef, "sage")).toBe(2);
-    expect(troubleUnitMatchMultiplier(povertyDef, "military")).toBe(3);
-
-    const despairDef = getTroubleDef("crushed_spirits"); // pool: s, requiredRole: prophet
-    expect(troubleUnitMatchMultiplier(despairDef, "prophet")).toBe(1);
-    expect(troubleUnitMatchMultiplier(despairDef, "magistrate")).toBe(2);
-    expect(troubleUnitMatchMultiplier(despairDef, "guardsmen")).toBe(3);
+  it("exposes trouble flavor defs for all causes via getTroubleDef", () => {
+    expect(getTroubleDef("flooding").cause).toBe("site");
+    expect(getTroubleDef("exceptional_poverty").cause).toBe("poverty");
+    expect(getTroubleDef("cultural_feuding").cause).toBe("diversity");
+    expect(getTroubleDef("bad_reputation").cause).toBe("corruption");
   });
 
   it("resting units in peaceful provinces recover disruption", () => {
@@ -695,26 +704,16 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(faction.seasonsActive).toBeGreaterThan(6);
   });
 
-  it("festered trouble takes root as a dangerous faction", () => {
+  it("keeps drain troubles provincial without spontaneously spawning a faction", () => {
     const living = Living.init();
-    Living.quellTrouble(1);
-    const trouble = Living.spawnTrouble(1, "flooding", "ruin", 10)!;
-    expect(trouble).not.toBeNull();
-    trouble.seasonsUnchecked = 5;
+    pack.provinces[1].stabilityAdjustments = [{ name: "Collapse", value: -45 }];
+    const trouble = Living.spawnTrouble(1, "flooding", "drain")!;
+    trouble.seasonsLow = 5;
 
     Living.tick(1);
 
-    // Level-10 trouble always festers (metaChance 1): hazard cleared, faction raised
-    expect(living.provinces[1].trouble).toBeNull();
-    expect(
-      Factions.active().some(f => {
-        const provId =
-          f.hq.provinceId ??
-          (f.hq.burgId ? pack.cells.province?.[pack.burgs?.[f.hq.burgId]?.cell ?? 0] : undefined) ??
-          pack.cells?.province?.[f.hq.cell];
-        return provId === 1 && (f.allegiance === "hostile" || f.allegiance === "clandestine");
-      })
-    ).toBe(true);
+    expect(living.provinces[1].trouble?.severity).toBe("drain");
+    expect(Factions.active()).toHaveLength(0);
   });
 
   it("mounts military expedition to assault and clear a hostile faction", () => {
@@ -3167,7 +3166,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     const stateCountBefore = pack.states.length;
 
     // Hazards stay provincial trouble: they never spawn factions or states
-    const trouble = Living.spawnTrouble(2, "flooding", "resource", 7);
+    const trouble = Living.spawnTrouble(2, "flooding");
     expect(trouble?.id).toBe("flooding");
     expect(Living.ascendFactionToState(999)).toBeNull();
     expect(pack.states.length).toBe(stateCountBefore);
@@ -3178,10 +3177,10 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     expect(pack.states.length).toBe(stateCountBefore);
   });
 
-  it("spawns a dangerous faction from organizational trouble and ascends it into a sovereign state", () => {
+  it("spawns a dangerous faction from an organizational archetype and ascends it into a sovereign state", () => {
     const living = Living.init();
-    const trouble = Living.spawnTrouble(2, "demagogue", "burg", 7);
-    expect(trouble).toBeNull();
+    const spawned = Living.spawnDangerousFaction(2, "demagogue", "burg", 7);
+    expect(spawned).not.toBeNull();
     expect(living.provinces[2].trouble).toBeNull();
 
     const faction = (pack.factions ?? []).find(f => f.i !== 0)!;
@@ -3235,53 +3234,51 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     expect(pack.cells.state[4]).toBe(newStateId);
   });
 
-  it("never promotes a festering hazard to a state in stepProvinces, even when stability has collapsed", () => {
+  it("keeps a drain trouble in place without creating a faction or promoting a state when stability collapses", () => {
     const living = Living.init();
-    const trouble = Living.spawnTrouble(2, "flooding", "burg", 10)!;
-    trouble.seasonsUnchecked = 5;
-    pack.provinces[2].simStabilityAdjustments = [{ name: "Collapse", value: -80 }];
+    pack.provinces[2].stabilityAdjustments = [{ name: "Collapse", value: -80 }];
+    const trouble = Living.spawnTrouble(2, "flooding", "drain")!;
+    trouble.seasonsLow = 3;
 
     Living.tick(1);
 
     expect(pack.states.length).toBe(3);
     expect(pack.provinces[2].state).not.toBe(3);
-    // The hazard festers into a dangerous faction instead of a state
-    expect(living.provinces[2].trouble).toBeNull();
+    expect(living.provinces[2].trouble?.severity).toBe("drain");
     expect(
       Factions.active().some(
         f => f.hq.provinceId === 2 && (f.allegiance === "hostile" || f.allegiance === "clandestine")
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("festered hazards become dangerous factions when stability is intact", () => {
+  it("escalates flavor to drain cleanly without generating a hostile faction", () => {
     const living = Living.init();
-    const trouble = Living.spawnTrouble(2, "flooding", "burg", 10)!;
-    trouble.seasonsUnchecked = 5;
+    pack.provinces[2].stabilityAdjustments = [{ name: "Collapse", value: -45 }];
     living.states[1].warExhaustion = 0;
 
-    Living.tick(1);
+    Living.tick(2);
 
     expect(pack.states.length).toBe(3);
-    expect(living.provinces[2].trouble).toBeNull();
+    expect(living.provinces[2].trouble?.severity).toBe("drain");
     expect(
       Factions.active().some(
         f => f.hq.provinceId === 2 && (f.allegiance === "hostile" || f.allegiance === "clandestine")
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("leaves a festering hazard in place without the domain check: no dice, no promotion", () => {
+  it("leaves an active drain trouble without domain rolls", () => {
     const living = Living.init();
-    Living.spawnTrouble(2, "flooding", "burg", 9);
+    pack.provinces[2].stabilityAdjustments = [{ name: "Strain", value: -45 }];
+    Living.spawnTrouble(2, "flooding", "drain");
 
     expect(typeof (Living as unknown as Record<string, unknown>).resolveTrouble).toBe("undefined");
     Living.tick(1);
 
     expect(pack.states.length).toBe(3);
     expect(pack.provinces[2].state).not.toBe(3);
-    // The hazard only escalates; it is cleared by production, heroes or factions
-    expect(living.provinces[2].trouble?.level ?? 0).toBeGreaterThanOrEqual(9);
+    expect(living.provinces[2].trouble?.severity).toBe("drain");
   });
 
   it("ascends an ambitious raid faction via Path A when overwhelming a vulnerable non-capital settlement", () => {
@@ -3355,7 +3352,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
 
   it("records independence chronicle events and round-trips emergent states through serializeHistory / parseHistory", () => {
     const living = Living.init();
-    Living.spawnTrouble(2, "demagogue", "burg", 7);
+    Living.spawnDangerousFaction(2, "demagogue", "burg", 7);
     const spawnedFaction = (pack.factions ?? []).find(f => f.i !== 0)!;
     const troubleStateId = Living.ascendFactionToState(spawnedFaction.i)!;
 
@@ -3386,7 +3383,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
       };
       try {
         const living = Living.init({ seed: "deterministic-ascension-seed" });
-        Living.spawnTrouble(2, "secret_society", "burg", 8);
+        Living.spawnDangerousFaction(2, "secret_society", "burg", 8);
         const spawnedFaction = (pack.factions ?? []).find(f => f.i !== 0)!;
         const s1 = Living.ascendFactionToState(spawnedFaction.i)!;
         const lairFaction = Living.spawnDangerousFaction(3, "angry_dead", "ruin", 9, { cell: 4 })!;
@@ -3430,15 +3427,16 @@ describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
     });
 
-  it("assigns a clear_trouble agenda sized by trouble level and advances it each season", () => {
+  it("assigns a clear_trouble agenda and advances it each season", () => {
     const living = Living.init();
-    Living.spawnTrouble(1, "flooding", "burg", 1);
+    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
+    Living.spawnTrouble(1, "flooding", "flavor");
     const faction = caretaker("adventuring");
 
     Living.tick(1);
     expect(faction.agenda?.kind).toBe("clear_trouble");
     expect(faction.agenda?.targetProvinceId).toBe(1);
-    expect(faction.agenda?.required).toBe(60); // 40 + 20 x level 1
+    expect(faction.agenda?.required).toBe(60);
     expect(faction.agenda?.progress).toBe(0);
 
     Living.tick(1);
@@ -3447,9 +3445,10 @@ describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
     expect(living.provinces[1].trouble).not.toBeNull();
   });
 
-  it("clears the hazard on completion with order and stability rewards", () => {
+  it("clears the hazard on completion with standing rewards", () => {
     const living = Living.init();
-    Living.spawnTrouble(1, "flooding", "burg", 1);
+    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
+    Living.spawnTrouble(1, "flooding", "flavor");
     const faction = caretaker("religious");
     faction.stateRelations[1] = "Suspicion";
 
@@ -3468,7 +3467,8 @@ describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
 
   it("improves relations one rung per clear, capped at Ally", () => {
     const living = Living.init();
-    Living.spawnTrouble(1, "flooding", "burg", 1);
+    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
+    Living.spawnTrouble(1, "flooding", "flavor");
     const faction = caretaker("adventuring");
     faction.stateRelations[1] = "Enemy";
     faction.agenda = {
@@ -3484,7 +3484,7 @@ describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
     expect(faction.stateRelations[1]).toBe("Rival");
 
     // Already Ally: stays Ally
-    Living.spawnTrouble(1, "flooding", "burg", 1);
+    Living.spawnTrouble(1, "flooding", "flavor");
     faction.stateRelations[1] = "Ally";
     faction.agenda = { kind: "clear_trouble", label: "test", targetProvinceId: 1, progress: 0, required: 1 };
     Living.tick(1);
@@ -3493,12 +3493,15 @@ describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
 
   it("clears the agenda without progress when the trouble is gone", () => {
     Living.init();
-    Living.spawnTrouble(1, "flooding", "burg", 1);
+    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
+    Living.spawnTrouble(1, "flooding", "flavor");
     const faction = caretaker("commercial");
 
     Living.tick(1);
     expect(faction.agenda?.kind).toBe("clear_trouble");
 
+    // Recover stability above 0.55 and clear trouble so stepProvinces doesn't recreate it
+    pack.provinces[1].stabilityAdjustments = [];
     Living.quellTrouble(1);
     Living.tick(1);
     expect(faction.agenda).toBeNull();
@@ -3506,7 +3509,8 @@ describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
 
   it("does not assign clear_trouble to martial factions or factions without a node in the province", () => {
     Living.init();
-    Living.spawnTrouble(1, "flooding", "burg", 1);
+    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
+    Living.spawnTrouble(1, "flooding", "flavor");
     const martial = caretaker("martial");
     martial.hq.burgId = 1;
 
@@ -3899,39 +3903,34 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
   });
 
   describe("Trouble economics (living-fmg-native Phase 5)", () => {
-    it("writes a negative daily line for a hazard, scaled by level", () => {
+    it("writes negative economy and provincial stability lines only for drain troubles", () => {
       const living = Living.init();
-      const trouble = {
-        id: "brigands",
-        name: "Brigands",
-        theme: "burg" as const,
-        pool: "m" as const,
-        save: "disorder" as const,
-        requiredRole: "guardsmen" as const,
-        level: 4,
-        seasonsUnchecked: 0,
+      pack.provinces[1].stabilityAdjustments = [{ name: "Crisis", value: -45 }];
+      living.provinces[1].trouble = {
+        id: "flooding",
+        name: "Seasonal Flooding",
+        severity: "drain",
+        seasonsLow: 2,
         cell: 1
       };
-      living.provinces[1].trouble = trouble;
 
       Living.tick(1);
       const line = pack.states[1].economy.simAdjustments?.find(entry => entry.name.startsWith("Trouble: "));
-      expect(line?.value).toBe(-4); // round(4 × 0.8 + 1)
-      expect(line?.name).toContain("Brigands");
+      expect(line?.value).toBe(-3);
+      expect(line?.name).toContain("Seasonal Flooding");
+      const stabLine = pack.provinces[1].simStabilityAdjustments?.find(entry => entry.name.startsWith("Trouble: "));
+      expect(stabLine?.value).toBe(-5);
     });
 
-    it("keeps project lines when it rebuilds hazard lines", () => {
+    it("keeps project lines when it rebuilds drain lines", () => {
       const living = Living.init();
+      pack.provinces[1].stabilityAdjustments = [{ name: "Crisis", value: -45 }];
       pack.states[1].economy.simAdjustments = [{ name: "Mint of Aeloria", value: 4 }];
       living.provinces[1].trouble = {
-        id: "brigands",
-        name: "Brigands",
-        theme: "burg",
-        pool: "m",
-        save: "disorder",
-        requiredRole: "guardsmen",
-        level: 2,
-        seasonsUnchecked: 0,
+        id: "flooding",
+        name: "Seasonal Flooding",
+        severity: "drain",
+        seasonsLow: 2,
         cell: 1
       };
 
@@ -3955,30 +3954,24 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(line!.value).toBeLessThan(0);
     });
 
-    it("rewards the clearer and drops the line once quelled", () => {
+    it("drops drain lines once stability recovers or trouble is quelled", () => {
       const living = Living.init();
-      pack.states[1].economy.treasury = 0;
+      pack.provinces[1].stabilityAdjustments = [{ name: "Crisis", value: -45 }];
       living.provinces[1].trouble = {
-        id: "brigands",
-        name: "Brigands",
-        theme: "burg",
-        pool: "m",
-        save: "disorder",
-        requiredRole: "guardsmen",
-        level: 4,
-        seasonsUnchecked: 0,
+        id: "flooding",
+        name: "Seasonal Flooding",
+        severity: "drain",
+        seasonsLow: 2,
         cell: 1
       };
       Living.tick(1);
+      expect(pack.states[1].economy.simAdjustments?.some(entry => entry.name.startsWith("Trouble: "))).toBe(true);
 
-      const before = Number(pack.states[1].economy.treasury);
-      expect(Living.quellTrouble(1)).toBe(true);
-      expect(Number(pack.states[1].economy.treasury)).toBeCloseTo(before + 20 + 4 * 5, 2);
-
-      const spawn = vi.spyOn(Living, "spawnTrouble").mockReturnValue(null);
+      pack.provinces[1].stabilityAdjustments = [];
       Living.tick(1);
-      spawn.mockRestore();
+      expect(living.provinces[1].trouble).toBeNull();
       expect(pack.states[1].economy.simAdjustments?.some(entry => entry.name.startsWith("Trouble: "))).toBe(false);
+      expect(pack.provinces[1].simStabilityAdjustments?.some(entry => entry.name.startsWith("Trouble: "))).toBe(false);
     });
   });
 

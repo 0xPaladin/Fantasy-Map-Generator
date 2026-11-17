@@ -234,7 +234,7 @@ describe("LivingHud", () => {
         order: 60,
         stability: 1,
         development: 0,
-        trouble: { id: "flooding", name: "Flooding", level: 3, cell: 4, theme: "banditry" }
+        trouble: { id: "flooding", name: "Flooding", severity: "drain", cell: 4 }
       }
     } as never;
     (pack.factions as unknown[]) = [
@@ -258,7 +258,7 @@ describe("LivingHud", () => {
     LivingHud.inspect("state", 1);
 
     const panel = document.getElementById("livingInspector")!;
-    expect(panel.textContent).toContain("Flooding [3]");
+    expect(panel.textContent).toContain("Flooding (Drain)");
     expect(panel.textContent).toContain("Dangerous factions");
     expect(panel.textContent).toContain("Aeloran March, Bandit Camp [hostile]");
     state.living.provinces = {} as never;
@@ -285,7 +285,7 @@ describe("LivingHud", () => {
         order: 40,
         stability: 0,
         development: 0,
-        trouble: { id: "flooding", name: "Seasonal Flooding", level: 4, cell: 4, theme: "banditry" }
+        trouble: { id: "flooding", name: "Seasonal Flooding", severity: "drain", cell: 4 }
       }
     } as never;
     (pack.factions as unknown[]) = [

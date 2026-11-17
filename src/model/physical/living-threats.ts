@@ -6,15 +6,14 @@ import { getFactionArchetype } from "@/data/factions-catalog";
 import { getLairDef, instantiateLairUnits, LAIR_CATALOG } from "@/data/living-lairs";
 import {
   BURG_FACTION_IDS,
-  BURG_TROUBLE_IDS,
   getTroubleDef,
   getTroubleFactionType,
   RESOURCE_FACTION_IDS,
-  RESOURCE_TROUBLE_IDS,
   RUIN_FACTION_IDS,
-  RUIN_TROUBLE_IDS,
   TROUBLE_CATALOG,
-  TROUBLE_TO_LAIR
+  TROUBLE_TO_LAIR,
+  type TroubleCause,
+  troublesForCause
 } from "@/data/living-troubles";
 import { assignStateRoster } from "@/data/roster-content";
 import { currentContent } from "@/data/roster-store";
@@ -26,12 +25,19 @@ import { Burgs } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { Military, type Regiment, syncRegimentTotals } from "@/model/political/military-generator";
 import type { Province } from "@/model/political/provinces-generator";
+import { Stability } from "@/model/political/stability";
 import { noFinance, type State } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
 import type { ArmyUnit } from "@/types/battle";
 import type { Faction } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef } from "@/types/history";
-import type { LivingWorldState, ProvinceSimState, ProvinceTrouble, TroubleTheme } from "@/types/living";
+import type {
+  LivingWorldState,
+  ProvinceSimState,
+  ProvinceTrouble,
+  TroubleSeverity,
+  TroubleTheme
+} from "@/types/living";
 import { minmax } from "@/utils/number-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
@@ -48,8 +54,6 @@ export interface ThreatHost {
   addBattleMarker?(burgOrCell: Burg | number, label?: string): void;
   fieldArmy?(state: State): Regiment | null;
   applyArmySurvivors?(state: State, regiment: Regiment, units: ArmyUnit[]): void;
-  /** a cleared hazard drops a small treasure into the clearer's treasury */
-  rewardTroubleClear?(provinceId: number, level?: number): number;
   provinceCells?(provinceId: number): number[];
   recordGrudge?(stateId: number, burg: Burg, kind: string, reason: string, otherId?: number): void;
   findFigure?(figureId: number): HistoricalFigure | undefined;
@@ -306,11 +310,36 @@ export function syncDangerMarkers(living: LivingWorldState): void {
   }
 }
 
+function matchTroubleCause(provinceId: number, rng: Rng): TroubleCause {
+  const parts = Stability.getProvince(provinceId)?.parts;
+  const provCells = getProvinceCells(provinceId);
+  const hasSite = (pack.markers ?? []).some(
+    m =>
+      !m.hidden &&
+      m.cell !== undefined &&
+      provCells.includes(m.cell) &&
+      ["ruins", "cave", "dungeon", "battlefields", "volcano"].includes(m.type)
+  );
+  if (hasSite && rng.chance(0.35)) return "site";
+
+  if (parts) {
+    const scores: { cause: TroubleCause; weight: number }[] = [
+      { cause: "diversity", weight: -parts.diversity },
+      { cause: "corruption", weight: -parts.corruption - parts.remoteness },
+      { cause: "poverty", weight: -parts.burden + Math.max(0, 0.25 - parts.prosperity) }
+    ];
+    scores.sort((a, b) => b.weight - a.weight);
+    if (scores[0].weight > 0.02) return scores[0].cause;
+  }
+
+  return hasSite ? "site" : (rng.choice<TroubleCause>(["poverty", "corruption", "diversity", "site"]) ?? "poverty");
+}
+
+/** Silently name provincial instability with a flavor or drain trouble. */
 export function spawnTrouble(
   provinceId: number,
   troubleId?: string,
-  theme?: TroubleTheme,
-  level?: number
+  severity: TroubleSeverity = "flavor"
 ): ProvinceTrouble | null {
   const province = pack.provinces?.[provinceId];
   if (!province?.i || province.removed) return null;
@@ -320,69 +349,20 @@ export function spawnTrouble(
   if (!pSim) return null;
 
   const rng = getRng("trouble:spawn", provinceId, living.tick);
-
-  let finalTheme = theme;
-  if (!finalTheme) {
-    const provCells = getProvinceCells(provinceId);
-    const hasBurg = pack.burgs.some(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === provinceId);
-    const hasRuin = (pack.markers ?? []).some(
-      m =>
-        !m.hidden &&
-        m.cell &&
-        provCells.includes(m.cell) &&
-        ["ruins", "cave", "dungeon", "battlefields", "volcano"].includes(m.type)
-    );
-    const hasResource = provCells.some(c => Boolean(pack.cells.good?.[c]));
-
-    const candidates: TroubleTheme[] = [];
-    if (hasBurg) candidates.push("burg", "burg");
-    if (hasRuin) candidates.push("ruin", "ruin");
-    if (hasResource) candidates.push("resource", "resource");
-    if (candidates.length === 0) candidates.push("burg");
-    finalTheme = rng.choice(candidates) ?? "burg";
-  }
-
-  // Spawn split: hazard trouble stays a provincial affliction; organizational
-  // trouble takes root as a dangerous faction instead. An explicit ID is
-  // honored: catalog IDs are hazards, anything else is a faction.
-  const spawnFaction = troubleId
-    ? !TROUBLE_CATALOG[troubleId]
-    : rng.next() < (finalTheme === "ruin" ? 0.6 : finalTheme === "burg" ? 0.55 : 0.4);
-  if (spawnFaction) {
-    spawnDangerousFaction(provinceId, troubleId, finalTheme, level);
-    return null;
-  }
-
-  let finalTroubleId = troubleId;
-  if (!finalTroubleId) {
-    const table =
-      finalTheme === "burg" ? BURG_TROUBLE_IDS : finalTheme === "ruin" ? RUIN_TROUBLE_IDS : RESOURCE_TROUBLE_IDS;
-    finalTroubleId = rng.choice(table) ?? "flooding";
-  }
-
-  const finalLevel = minmax(level ?? rng.d(4) + 1, 1, 10);
+  const cause = matchTroubleCause(provinceId, rng);
+  const finalTroubleId = troubleId ?? rng.choice(troublesForCause(cause))?.id ?? "flooding";
   const tDef = getTroubleDef(finalTroubleId);
   const cell = province.center ?? pack.states[province.state]?.center ?? 0;
+
   pSim.trouble = {
-    id: finalTroubleId,
+    id: tDef.id,
     name: tDef.name,
-    theme: finalTheme,
-    pool: tDef.pool,
-    save: tDef.save,
-    requiredRole: tDef.requiredRole,
-    level: finalLevel,
-    seasonsUnchecked: 0,
+    severity,
+    seasonsLow: 0,
     cell
   };
 
-  pushNews(living, {
-    kind: "trouble",
-    text: `${tDef.name} arose in ${province.name}! (${finalTheme} trouble, level ${finalLevel})`,
-    cell,
-    stateId: province.state
-  });
-
-  return pSim.trouble ?? null;
+  return pSim.trouble;
 }
 
 /**
@@ -534,9 +514,21 @@ export function migrateLegacyThreats(living: LivingWorldState): void {
     if (!pSim) continue;
 
     if (pSim.trouble && !TROUBLE_CATALOG[pSim.trouble.id]) {
-      const trouble = pSim.trouble;
+      const legacyTrouble = pSim.trouble as ProvinceTrouble & { theme?: TroubleTheme; level?: number };
       pSim.trouble = null;
-      spawnDangerousFaction(province.i, trouble.id, trouble.theme, trouble.level);
+      spawnDangerousFaction(province.i, legacyTrouble.id, legacyTrouble.theme, legacyTrouble.level);
+    } else if (pSim.trouble) {
+      const legacyTrouble = pSim.trouble as ProvinceTrouble & { level?: number };
+      const severity: TroubleSeverity =
+        legacyTrouble.severity ??
+        (typeof legacyTrouble.level === "number" && legacyTrouble.level >= 6 ? "drain" : "flavor");
+      pSim.trouble = {
+        id: legacyTrouble.id,
+        name: legacyTrouble.name,
+        severity,
+        seasonsLow: legacyTrouble.seasonsLow ?? 0,
+        cell: legacyTrouble.cell ?? province.center ?? 0
+      };
     }
     // Legacy lair fields from pre-faction saves (types deleted; read off the raw record)
     const legacy = (pSim as unknown as { lair?: { id: string; theme?: TroubleTheme; level?: number } }).lair;
@@ -567,14 +559,7 @@ export function quellTrouble(provinceId: number): boolean {
   const pSim = living.provinces[provinceId];
   if (!pSim?.trouble) return false;
 
-  const loot = host.rewardTroubleClear?.(provinceId, pSim.trouble.level) ?? 0;
   pSim.trouble = null;
-  pushNews(living, {
-    kind: "trouble",
-    text: `Trouble in ${province.name} was quelled${loot ? `, and ${loot} gold recovered` : ""}.`,
-    cell: province.center ?? 0,
-    stateId: province.state
-  });
   return true;
 }
 

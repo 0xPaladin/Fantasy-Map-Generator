@@ -28,8 +28,6 @@ const TAG_LABELS: Record<string, string> = {
 };
 
 function label(tag: MissionTag): string {
-  if (tag.startsWith("save:")) return tag.slice(5);
-  if (tag.startsWith("role:")) return tag.slice(5);
   return TAG_LABELS[tag] ?? tag;
 }
 
