@@ -131,6 +131,7 @@ export function showDataTip(event: Event): void {
 
 /** Full text of an element that cuts it to fit, or "" if it fits */
 function getClippedText(element: HTMLElement): string {
+  if (element.childElementCount > 0 && getComputedStyle(element).textOverflow !== "ellipsis") return "";
   if (element.scrollWidth <= element.clientWidth || getComputedStyle(element).overflowX === "visible") return "";
   const text = element instanceof HTMLInputElement ? element.value : element.textContent;
   return text?.trim() ?? "";

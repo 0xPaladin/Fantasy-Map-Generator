@@ -18,30 +18,109 @@ const position = { my: "right top", at: "right-10 top+10", of: "svg", collision:
 
 const TEMPLATE = /* html */ `
   <style>
-    #${dialogId} { width: 34em; }
-    #${dialogId} #legendsTabs { display: flex; gap: .3em; padding: .3em .4em 0; }
-    #${dialogId} #legendsTabs button { padding: .2em 1em; }
-    #${dialogId} #legendsTabs button.active { font-weight: bold; background-color: rgba(0, 0, 0, 0.08); }
-    #${dialogId} #legendsBody { height: 24em; overflow-y: auto; padding: .3em .5em; }
-    #${dialogId} .legendsEra { font-weight: bold; margin: .6em 0 .2em; border-bottom: 1px solid rgba(0, 0, 0, 0.15); }
-    #${dialogId} .legendsEvent { display: flex; gap: .4em; align-items: baseline; padding: .15em 0; }
-    #${dialogId} .legendsYear { font-weight: bold; flex: 0 0 3.2em; text-align: right; }
-    #${dialogId} .legendsText { flex: 1; }
+    #${dialogId} { width: min(56em, 90vw); max-width: 90vw; box-sizing: border-box; }
+    #${dialogId} > div { width: 100%; box-sizing: border-box; }
+    #${dialogId} #legendsTabs {
+      display: flex;
+      gap: 0.25em;
+      padding: 0.35em 0.5em 0;
+      border-bottom: 1px solid var(--dark-border, rgba(0, 0, 0, 0.2));
+      background: rgba(0, 0, 0, 0.03);
+    }
+    #${dialogId} #legendsTabs button {
+      padding: 0.3em 0.9em;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 3px 3px 0 0;
+      background: transparent;
+      cursor: pointer;
+      opacity: 0.78;
+    }
+    #${dialogId} #legendsTabs button:hover {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.05);
+    }
+    #${dialogId} #legendsTabs button.active {
+      font-weight: bold;
+      opacity: 1;
+      background: var(--bg-light, #ffffff);
+      border-color: var(--dark-border, rgba(0, 0, 0, 0.2));
+      margin-bottom: -1px;
+      padding-bottom: calc(0.3em + 1px);
+    }
+    #${dialogId} #legendsFilters {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.4em 0.65em;
+      padding: 0.45em 0.5em;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+      max-width: none;
+    }
+    #${dialogId} #legendsFilters label {
+      display: flex;
+      align-items: center;
+      gap: 0.35em;
+      min-width: 0;
+    }
+    #${dialogId} #legendsFilters select,
+    #${dialogId} #legendsFilters input[type="search"] {
+      flex: 1;
+      min-width: 0;
+      width: 100%;
+    }
+    #${dialogId} #legendsBody {
+      height: min(55vh, 28em);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      padding: 0.35em 0.5em;
+    }
+    #${dialogId} #legendsBody::-webkit-scrollbar { width: 6px; background: transparent; }
+    #${dialogId} #legendsBody::-webkit-scrollbar-thumb { background: #aaa; border-radius: 6px; }
+    #${dialogId} #legendsBody::-webkit-scrollbar-thumb:hover { background: #666; }
+    #${dialogId} .legendsEra {
+      font-weight: bold;
+      margin: 0.65em 0 0.2em;
+      padding: 0.2em 0.35em;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+      background: rgba(0, 0, 0, 0.04);
+    }
+    #${dialogId} .legendsEraGroup:first-child .legendsEra { margin-top: 0.1em; }
+    #${dialogId} .legendsEvent {
+      display: flex;
+      gap: 0.45em;
+      align-items: baseline;
+      padding: 0.22em 0.35em;
+      border-radius: 2px;
+    }
+    #${dialogId} .legendsEraGroup > .legendsEvent:nth-child(even),
+    #${dialogId} .legendsRealm .legendsEvent:nth-child(even) {
+      background-color: rgba(0, 0, 0, 0.05);
+    }
+    #${dialogId} .legendsEvent:hover { background-color: rgba(0, 0, 0, 0.08); }
+    #${dialogId} .legendsYear { font-weight: bold; flex: 0 0 3.4em; text-align: right; }
+    #${dialogId} .legendsText { flex: 1; min-width: 0; overflow-wrap: break-word; }
     #${dialogId} .legendActor { font-style: italic; white-space: nowrap; color: #3d4a5c; }
     #${dialogId} .legendLocate { flex: none; }
-    #${dialogId} .legendsRealm { border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 4px; padding: .4em .5em; margin-bottom: .5em; }
-    #${dialogId} .legendsRealmHead { display: flex; gap: .8em; align-items: baseline; }
-    #${dialogId} .legendsRealmLine { margin-top: .3em; }
-    #${dialogId} .legendsRealm .legendsEvent { padding-left: .5em; }
-    #${dialogId} .legendsTraits { opacity: .95; }
+    #${dialogId} .legendsRealm {
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      border-radius: 4px;
+      padding: 0.45em 0.55em;
+      margin-bottom: 0.5em;
+    }
+    #${dialogId} .legendsRealmHead { display: flex; gap: 0.8em; align-items: baseline; flex-wrap: wrap; }
+    #${dialogId} .legendsRealmLine { margin-top: 0.3em; }
+    #${dialogId} .legendsRealm .legendsEvent { padding-left: 0.5em; }
+    #${dialogId} .legendsTraits { opacity: 0.95; }
     #${dialogId} .legendsAlignment { font-weight: bold; }
     #${dialogId} .legendsVice { color: #a33d3d; }
-    #${dialogId} .legendsEmpty { padding: 1em; font-style: italic; opacity: .7; }
-    #${dialogId} #legendsScrub { display: flex; gap: .5em; align-items: center; padding: .3em .5em; }
+    #${dialogId} .legendsEmpty { padding: 1em; font-style: italic; opacity: 0.7; }
+    #${dialogId} #legendsScrub { display: flex; gap: 0.5em; align-items: center; padding: 0.3em 0.5em; max-width: none; }
     #${dialogId} #legendsScrubRange { flex: 1; }
     #${dialogId} #legendsScrubYear { font-weight: bold; white-space: nowrap; }
     #${dialogId} #legendsScrubNow { flex: none; }
-    #${dialogId} .legendsEra.past { background-color: rgba(0, 0, 0, 0.08); }
+    #${dialogId} #legendsBottom { max-width: none; padding: 0.25em 0.5em 0.35em; }
+    #${dialogId} .legendsEra.past { background-color: rgba(0, 0, 0, 0.1); }
   </style>
 `;
 
@@ -90,17 +169,17 @@ function renderDialog(): void {
       <button id="legendsTabFigures" data-tip="The rulers and generals of the chronicle">Figures</button>
     </div>
 
-    <div id="legendsFilters" class="editorFilters">
-      <label for="legendsType" data-tip="Show only events of this kind" style="grid-template-columns: 3.4em 8em">Type:
+    <div id="legendsFilters">
+      <label for="legendsType" data-tip="Show only events of this kind">Type:
         <select id="legendsType"><option value="">All</option>${types.map(type => `<option>${type}</option>`).join("")}</select>
       </label>
-      <label for="legendsActor" data-tip="Show only events involving this kind of entity" style="grid-template-columns: 3.4em 7em">Actors:
+      <label for="legendsActor" data-tip="Show only events involving this kind of entity">Actors:
         <select id="legendsActor">
           <option value="">All</option>
           ${["state", "realm", "culture", "religion", "burg", "figure", "polity"].map(kind => `<option>${kind}</option>`).join("")}
         </select>
       </label>
-      <label for="legendsSearch" data-tip="Filter by the event text" style="grid-template-columns: 4em 10em">Search:
+      <label for="legendsSearch" data-tip="Filter by the event text">Search:
         <input id="legendsSearch" type="search" />
       </label>
     </div>
@@ -239,18 +318,27 @@ function renderTimeline(body: HTMLElement): void {
   const currentEra = viewedEpoch()?.era;
   const { eras } = pack.history;
   let current: string | undefined;
-  let lines = "";
+  let groups = "";
+  let groupEvents = "";
+  const flushGroup = (headerLine: string) => {
+    if (!headerLine) return;
+    groups += `<div class="legendsEraGroup">${headerLine}${groupEvents}</div>`;
+    groupEvents = "";
+  };
+  let currentHeaderLine = "";
   for (const event of events) {
     const era = eraFor(eras, event.year);
     const header = era ? `${era.name} (${formatSpan(era.from, era.to)})` : "Age unremembered";
     if (header !== current) {
+      flushGroup(currentHeaderLine);
       current = header;
       const isScrubbedEra = isInPast() && era?.name === currentEra;
-      lines += `<div class="legendsEra${isScrubbedEra ? " past" : ""}">${escapeHtml(header)}</div>`;
+      currentHeaderLine = `<div class="legendsEra${isScrubbedEra ? " past" : ""}">${escapeHtml(header)}</div>`;
     }
-    lines += renderEvent(event);
+    groupEvents += renderEvent(event);
   }
-  body.innerHTML = `<div class="legendsTimeline">${lines}</div>`;
+  flushGroup(currentHeaderLine);
+  body.innerHTML = `<div class="legendsTimeline">${groups}</div>`;
   wireRows(body);
   ensureEl("legendsCount").textContent = String(events.length);
 }
