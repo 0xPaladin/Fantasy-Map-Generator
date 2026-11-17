@@ -18,19 +18,7 @@ export type SeasonId = 0 | 1 | 2 | 3;
 
 export const SEASON_NAMES = ["Spring", "Summer", "Autumn", "Winter"] as const;
 
-export type AgendaKind =
-  | "muster"
-  | "develop"
-  | "build"
-  | "colonize"
-  | "conquer"
-  | "reclaim"
-  | "pacify"
-  | "clear_faction"
-  | "hire_adventurers"
-  | "defend"
-  | "raid"
-  | "suppress_faction";
+export type AgendaKind = "conquer" | "pacify" | "build_work" | "muster" | "suppress_faction";
 
 /**
  * Diplomatic treaties (Phase D of the army integration). War and peace stay
@@ -237,10 +225,19 @@ export interface BurgSimState {
   pillaged?: boolean;
 }
 
+export interface ProvinceRebellion {
+  name: string;
+  seasonsActive: number;
+}
+
 export interface ProvinceSimState {
   provinceId: number;
   /** Active obstacle/trouble afflicting the province */
   trouble?: ProvinceTrouble | null;
+  /** Active rebellion in the province (ignites below 30% stability without full-upkeep garrison) */
+  rebellion?: ProvinceRebellion | null;
+  /** Tick until which the post-crushing "Pacified (+10%)" stability bonus persists */
+  pacifiedUntilTick?: number;
 }
 
 export interface StatePolitySim {

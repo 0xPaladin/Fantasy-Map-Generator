@@ -134,7 +134,7 @@ export function collectLivingVectors(living: LivingWorldState): LivingVector[] {
 
   for (const sSim of Object.values(living.states ?? {})) {
     const agenda = sSim?.agenda;
-    if (!agenda || (agenda.kind !== "conquer" && agenda.kind !== "reclaim")) continue;
+    if (agenda?.kind !== "conquer") continue;
     const state = pack.states?.[sSim.stateId];
     const from = burgPoint(state?.capital) ?? cellPoint(state?.center);
     const to = burgPoint(agenda.targetBurgId);

@@ -753,7 +753,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     expect(living.recentNews.some(item => item.kind === "faction")).toBe(true);
   });
 
-  it("selects faction agendas against a hostile threat and loads Wealth capacity during adventurer contract", () => {
+  it("selects suppress_faction agenda against a hostile threat", () => {
     const living = Living.init();
     Living.quellTrouble(1);
     Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 6);
@@ -764,20 +764,21 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     // Advance 1 tick so chooseAgenda and stepAgenda run
     Living.tick(1);
 
-    // Agenda should have targeted the hostile faction (either clear_faction or hire_adventurers) or processed it
+    // Agenda should have targeted the hostile faction with suppress_faction or resolved it
     expect(
       (sSim.agenda as StateAgenda | null)?.targetProvinceId ?? living.recentNews.some(item => item.kind === "faction")
     ).toBeTruthy();
 
-    // Active adventurer contract commits +1 W load
+    // Active suppress_faction agenda uses the unified kind
     const activeAgenda: StateAgenda = {
-      kind: "hire_adventurers",
-      label: "Hiring adventurers against Ruined Keep",
+      kind: "suppress_faction",
+      label: "Suppressing Ruined Keep",
       targetProvinceId: 1,
       progress: 0,
       required: 1
     };
     sSim.agenda = activeAgenda;
+    expect(sSim.agenda.kind).toBe("suppress_faction");
   });
 
   describe("Wheel of Ages (slice 5)", () => {
@@ -4101,6 +4102,163 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       faithWorld();
       pack.cells.religion![1] = 0; // the capital holds no faith
       expect(Living.religiousPressure(1, 1)).toBe(0);
+    });
+  });
+
+  describe("Rebellions, border shifts & unified agendas (simplification Phase 4)", () => {
+    beforeEach(() => {
+      buildStubPack();
+    });
+
+    it("ignites a provincial rebellion below 30% stability without a full-upkeep garrison and writes Rebellion lines", () => {
+      const living = Living.init();
+      Living.quellTrouble(2);
+      pack.provinces[2]!.stabilityAdjustments = [{ name: "Famine", value: -40 }]; // 0.65 - 0.40 = 0.25
+
+      Living.tick(1);
+
+      expect(living.provinces[2]?.rebellion).toEqual({ name: "Oakshire Rising", seasonsActive: 0 });
+      expect(pack.provinces[2]!.simStabilityAdjustments).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "Rebellion: Oakshire Rising", value: -15 })])
+      );
+      expect(pack.states[1].economy.simAdjustments).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "Rebellion: Oakshire Rising in Oakshire", value: -5 })])
+      );
+      expect(living.recentNews.some(n => n.kind === "revolt" && n.text.includes("Oakshire Rising"))).toBe(true);
+    });
+
+    it("suppresses a rebellion when targeted by pacify, setting Pacified +10 stabilization", () => {
+      const living = Living.init();
+      Living.quellTrouble(2);
+      living.provinces[2]!.rebellion = { name: "Oakshire Rising", seasonsActive: 1 };
+      living.states[1]!.agenda = {
+        kind: "pacify",
+        label: "Pacifying rebellion in Oakshire",
+        targetProvinceId: 2,
+        targetBurgId: 2,
+        progress: 0,
+        required: 1
+      };
+
+      Living.tick(1);
+
+      expect(living.provinces[2]?.rebellion).toBeNull();
+      expect(living.provinces[2]?.pacifiedUntilTick).toBeGreaterThan(living.tick);
+      expect(pack.provinces[2]!.simStabilityAdjustments).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "Pacified", value: 10 })])
+      );
+    });
+
+    it("crushes or prevents rebellion when a full-upkeep garrison occupies the province", () => {
+      const living = Living.init();
+      Living.quellTrouble(2);
+      pack.provinces[2]!.stabilityAdjustments = [{ name: "Tax Revolt", value: -40 }];
+      pack.states[1].military = [
+        { i: 1, name: "Oakshire Watch", a: 50, cell: 3, state: 1, u: { infantry: 50 }, units: [] } as never
+      ];
+
+      Living.tick(1);
+
+      expect(living.provinces[2]?.rebellion ?? null).toBeNull();
+    });
+
+    it("spreads an unchecked rebellion to an adjacent restive same-state province", () => {
+      const living = Living.init();
+      Living.quellTrouble(2);
+      Living.quellTrouble(3);
+      pack.provinces[2]!.stabilityAdjustments = [{ name: "Crisis", value: -35 }]; // 0.30 (< 0.45)
+      pack.provinces[3]!.stabilityAdjustments = [{ name: "Discontent", value: -30 }]; // 0.35 (< 0.45, >= 0.30)
+      living.provinces[2]!.rebellion = { name: "Oakshire Rising", seasonsActive: 0 };
+      living.states[1]!.agenda = { kind: "build_work", label: "Busy elsewhere", progress: 0, required: 3 };
+      // Prevent chooseAgenda from picking pacify during this tick
+      living.burgs[1]!.construction = { buildingId: "granary", turnsLeft: 5 };
+
+      Living.tick(1);
+
+      expect(living.provinces[3]?.rebellion).toEqual({ name: "Oakshire Rising", seasonsActive: 0 });
+    });
+
+    it("defects an unchecked province to an adjacent stable kin neighbor after 2+ seasons below 25% stability", () => {
+      const living = Living.init();
+      Living.quellTrouble(3);
+      // Province 3 (Wildreach, cell 4) has culture 2 matching state 2 (Khazadia), adjacent to state 2 (cell 5)
+      pack.states[2].economy.stabilityAdjustments = [{ name: "Prosperous", value: 20 }]; // 0.50 + 0.20 = 0.70 (> 0.60)
+      pack.provinces[3]!.stabilityAdjustments = [{ name: "Collapse", value: -45 }]; // 0.20 (< 0.25)
+      living.provinces[3]!.rebellion = { name: "Wildreach Rising", seasonsActive: 1 };
+      living.states[1]!.agenda = { kind: "build_work", label: "Distracted", progress: 0, required: 3 };
+
+      Living.tick(1);
+
+      expect(pack.provinces[3]!.state).toBe(2);
+      expect(pack.cells.state![4]).toBe(2);
+      expect(living.provinces[3]?.rebellion).toBeNull();
+    });
+
+    it("collapses an unchecked rebellion on its own after 2+ seasons when surrounded by calm provinces", () => {
+      const living = Living.init();
+      Living.quellTrouble(1);
+      Living.quellTrouble(2);
+      Living.quellTrouble(3);
+      pack.provinces[2]!.stabilityAdjustments = [{ name: "Fraying", value: -25 }]; // 0.65 - 0.25 - 0.15(rebellion) = 0.25 (>= 0.25)
+      living.provinces[2]!.rebellion = { name: "Oakshire Rising", seasonsActive: 1 };
+      living.states[1]!.agenda = { kind: "build_work", label: "Distracted", progress: 0, required: 3 };
+
+      Living.tick(1);
+
+      expect(living.provinces[2]?.rebellion).toBeNull();
+      expect(living.recentNews.some(n => n.kind === "pacify" && n.text.includes("fell apart"))).toBe(true);
+    });
+
+    it("drifts corrupt, unstable frontier cells to a high-stability neighbor", () => {
+      // Give province 3 (state 1) a non-center frontier cell 6 with a non-capital burg adjoining state 2 (cell 5)
+      pack.cells.i.push(6);
+      pack.cells.state = new Uint16Array([0, 1, 1, 1, 1, 2, 1]);
+      pack.cells.province = new Uint16Array([0, 1, 1, 2, 3, 4, 3]);
+      pack.cells.pop = [...pack.cells.pop, 50] as never;
+      pack.cells.culture = [...pack.cells.culture, 1] as never;
+      pack.cells.religion = [...(pack.cells.religion ?? []), 1] as never;
+      pack.cells.c.push([4, 5]);
+      pack.cells.c[4] = [3, 5, 6];
+      pack.cells.c[5] = [4, 6];
+      pack.cells.p.push([45, 45]);
+      pack.cells.r = [...pack.cells.r, 0] as never;
+      pack.cells.burg = new Uint16Array([0, 1, 0, 2, 0, 3, 4]);
+      pack.burgs.push({
+        i: 4,
+        name: "Borderwatch",
+        cell: 6,
+        x: 45,
+        y: 45,
+        state: 1,
+        culture: 1,
+        population: 2,
+        capital: 0
+      } as never);
+
+      const living = Living.init();
+      Living.quellTrouble(3);
+      pack.states[1].economy.budget = { corruption: 45 } as never; // > 35 fallback corruption
+      pack.provinces[3]!.stabilityAdjustments = [{ name: "Neglect", value: -45 }]; // 0.65 - 0.45 + 0.10(Pacified) = 0.30 (< 0.35)
+      living.provinces[3]!.pacifiedUntilTick = 10; // block rebellion ignition so border drift runs cleanly
+      pack.states[2].economy.stabilityAdjustments = [{ name: "Order", value: 25 }]; // 0.75 (> 0.70)
+
+      Living.tick(1);
+
+      expect(pack.cells.state![6]).toBe(2);
+      expect(pack.burgs[4]!.state).toBe(2);
+      expect(living.recentNews.some(n => n.kind === "revolt" && n.text.includes("drifted"))).toBe(true);
+    });
+
+    it("remaps legacy agenda kinds to the 5 unified state agendas on load", () => {
+      const living = Living.init();
+      living.states[1]!.agenda = { kind: "hire_adventurers" as never, label: "Legacy", progress: 0, required: 1 };
+      living.states[2]!.agenda = { kind: "develop" as never, label: "Legacy Build", progress: 0, required: 1 };
+
+      pack.history.living = living;
+      Living.init();
+
+      expect(Living.getState().states[1]?.agenda?.kind).toBe("suppress_faction");
+      expect(Living.getState().states[2]?.agenda?.kind).toBe("build_work");
     });
   });
 });
