@@ -13,6 +13,7 @@ import {
   importCharacterCsv,
   openCharacterDetails
 } from "@/controllers/society/characters-editor";
+import { ALIGNMENTS, TRAIT_COUNTS } from "@/data/culture-traits";
 import { Characters } from "@/model/society/characters";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { Faction } from "@/types/factions";
@@ -125,6 +126,10 @@ describe("CharactersEditor", () => {
     document.querySelector<HTMLElement>("#promoteCharacterButton")?.click();
     expect(Characters.get(character.i)?.hero).toBeDefined();
 
+    const dialog = document.querySelector("#characterDetailsDialog")!;
+    expect([...dialog.querySelectorAll("h4")].map(heading => heading.textContent)).toContain("Hero");
+    expect(dialog.querySelector("#promoteCharacterButton")).toBeNull();
+
     const might = document.querySelector<HTMLInputElement>('[data-attr="might"]')!;
     might.value = "2";
     const strike = document.querySelector<HTMLSelectElement>('[data-action="strike"]')!;
@@ -160,7 +165,7 @@ describe("CharactersEditor", () => {
     expect(rows[0]?.[1]).toBe("Bran the Bold");
   });
 
-  it("regenerates virtues and vices from the selected alignment", () => {
+  it("shows alignment, virtues and vices, and rerolls them from the row", () => {
     const character = Characters.add({
       name: "Bran",
       culture: 1,
@@ -170,28 +175,55 @@ describe("CharactersEditor", () => {
       vices: ["proud"],
       manual: true
     });
+    CharactersEditor.open();
+
+    const row = document.querySelector(`#characterRow-${character.i}`)!;
+    expect(row.querySelector('[data-col="alignment"]')?.textContent).toBe("Lawful");
+    expect(row.querySelector('[data-col="virtues"]')?.textContent).toBe("just");
+    expect(row.querySelector('[data-col="vices"]')?.textContent).toBe("proud");
+
+    row.querySelector('[data-action="reroll-traits"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    const updated = Characters.get(character.i)!;
+    expect(ALIGNMENTS).toContain(updated.alignment);
+    const counts = TRAIT_COUNTS[updated.alignment!];
+    expect(updated.virtues).toHaveLength(counts.virtues);
+    expect(updated.vices).toHaveLength(counts.vices);
+  });
+
+  it("drops traits from the sheet, tables roles and relations, and shows no Hero section for background characters", () => {
+    const character = Characters.add({
+      name: "Bran",
+      culture: 1,
+      birth: 950,
+      alignment: "lawful",
+      virtues: ["just"],
+      vices: ["proud"],
+      manual: true,
+      roles: [{ type: "ruler", target: { kind: "state", id: 1 }, from: 900 }],
+      relations: { factions: { 1: "Ally" } }
+    });
     openCharacterDetails(character.i);
 
-    const alignmentSelect = document.querySelector<HTMLSelectElement>("#characterAlignment")!;
-    alignmentSelect.value = "good";
-    document.querySelector<HTMLButtonElement>("#regenerateCharacterTraitsButton")!.click();
+    const dialog = document.querySelector("#characterDetailsDialog")!;
+    expect(dialog.querySelector("#characterAlignment")).toBeNull();
+    expect(dialog.querySelector("#characterVirtues")).toBeNull();
+    expect(dialog.querySelector("#characterVices")).toBeNull();
 
-    const virtues = document
-      .querySelector<HTMLInputElement>("#characterVirtues")!
-      .value.split(",")
-      .map(s => s.trim())
-      .filter(Boolean);
-    const vices = document
-      .querySelector<HTMLInputElement>("#characterVices")!
-      .value.split(",")
-      .map(s => s.trim())
-      .filter(Boolean);
-    expect(virtues).toHaveLength(3);
-    expect(vices).toHaveLength(0);
+    expect(dialog.querySelector("#characterRolesRows")?.tagName).toBe("TBODY");
+    expect(dialog.querySelector("#characterRelationsRows")?.tagName).toBe("TBODY");
+    expect(dialog.querySelector("#characterRolesRows tr")).not.toBeNull();
+    expect(dialog.querySelector("#characterRelationsRows")?.textContent).toContain("Wayfarers");
 
-    alignmentSelect.value = "";
-    document.querySelector<HTMLButtonElement>("#regenerateCharacterTraitsButton")!.click();
-    expect(document.querySelector<HTMLInputElement>("#characterVirtues")!.value).toBe("");
-    expect(document.querySelector<HTMLInputElement>("#characterVices")!.value).toBe("");
+    const headings = [...dialog.querySelectorAll("h4")].map(heading => heading.textContent);
+    expect(headings).not.toContain("Hero");
+    expect(headings.indexOf("Roles")).toBeLessThan(headings.indexOf("Relations"));
+    expect(dialog.querySelector("#promoteCharacterButton")).not.toBeNull();
+
+    document.querySelector<HTMLElement>("#saveCharacterButton")?.click();
+    const saved = Characters.get(character.i)!;
+    expect(saved.alignment).toBe("lawful");
+    expect(saved.virtues).toEqual(["just"]);
+    expect(saved.vices).toEqual(["proud"]);
   });
 });
