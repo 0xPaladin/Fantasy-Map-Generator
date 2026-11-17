@@ -61,11 +61,15 @@ describe("FactionsGenerator", () => {
     } as unknown as PackedGraph;
   });
 
-  it("reserves index 0 and generates a non-empty list of factions", () => {
+  it("reserves index 0, spawns at most 10 unique epic factions, and caps each archetype at 1", () => {
     Factions.generate();
     expect(pack.factions).toBeDefined();
     expect(pack.factions[0].i).toBe(0);
-    expect(pack.factions.length).toBeGreaterThan(1);
+    const active = Factions.active();
+    expect(active.length).toBeGreaterThan(1);
+    expect(active.length).toBeLessThanOrEqual(10);
+    const types = active.map(f => f.type);
+    expect(new Set(types).size).toBe(types.length);
   });
 
   it("is deterministic when generated with the same seed", () => {
@@ -81,16 +85,18 @@ describe("FactionsGenerator", () => {
   it("guarantees at least one adventurer guild", () => {
     Factions.generate();
     const adventurerGuilds = pack.factions.filter(f => f.type === "adventurer_guild");
-    expect(adventurerGuilds.length).toBeGreaterThanOrEqual(1);
+    expect(adventurerGuilds).toHaveLength(1);
   });
 
-  it("creates hostile lair factions from danger markers", () => {
+  it("creates epic danger-marker factions (Dread Sovereign Host & Apocalyptic Cult) without exceeding the cap", () => {
     Factions.generate();
     const lairFactions = pack.factions.filter(f => f.hq?.markerId !== undefined);
-    expect(lairFactions.length).toBe(2); // brigands & dungeons, inns is not danger
+    expect(lairFactions.length).toBeGreaterThanOrEqual(1);
+    expect(lairFactions.length).toBeLessThanOrEqual(2);
 
     const brigandFaction = lairFactions.find(f => f.hq.markerId === 1);
     expect(brigandFaction).toBeDefined();
+    expect(brigandFaction?.type).toBe("dread_host");
     expect(brigandFaction?.allegiance).toBe("hostile");
     expect(brigandFaction?.military).toHaveLength(1);
     expect(brigandFaction?.military[0].cell).toBe(15);

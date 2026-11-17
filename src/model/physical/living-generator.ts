@@ -4,6 +4,7 @@ import { rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-trait
 import { ANCIENT_SUPPRESSED_CAP } from "@/data/development";
 import { EXPENSES, type Expense } from "@/data/expenses";
 import { getAllFactionAssets, getFactionAsset } from "@/data/faction-assets";
+import { getFactionArchetype } from "@/data/factions-catalog";
 import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
 import { SOVEREIGN_DEVELOPMENT, UNIT_TECH_DEVELOPMENT } from "@/data/living-eras";
 import {
@@ -668,6 +669,10 @@ class LivingModel {
       if (!faction?.i) continue;
       const record = faction as unknown as Legacy;
       for (const key of [...researchKeys, "happiness", "happinessBreakdown", "yieldsPerTurn"]) delete record[key];
+      const kind = faction.agenda?.kind as string | undefined;
+      if (kind && !["expand_network", "build_work", "subvert", "crusade_or_raid", "ascend"].includes(kind)) {
+        faction.agenda = null;
+      }
     }
     for (const bSim of Object.values(living.burgs)) {
       const record = bSim as unknown as Legacy;
@@ -2161,6 +2166,18 @@ class LivingModel {
     return nodes;
   }
 
+  /** Best next asset a faction can currently afford and build. */
+  private pickNextFactionAsset(faction: Faction): FactionAssetDef | null {
+    const treasury = Number(faction.treasury ?? 0);
+    const development = this.factionDevelopment(faction);
+    const candidates = getAllFactionAssets()
+      .filter(def => factionCanBuildAsset(faction, def, development))
+      .filter(def => treasury >= def.cost + FACTION_PROJECT_RESERVE)
+      .filter(def => this.pickFactionAssetNode(faction, def) !== null)
+      .sort((a, b) => a.tier - b.tier || a.cost - b.cost || a.id.localeCompare(b.id));
+    return candidates[0] ?? null;
+  }
+
   /** A faction's next work: advance it, or commission the best asset its track and purse allow. */
   private stepFactionProject(faction: Faction, living: LivingWorldState): void {
     if (faction.project) {
@@ -2172,14 +2189,7 @@ class LivingModel {
       return;
     }
 
-    const treasury = Number(faction.treasury ?? 0);
-    const development = this.factionDevelopment(faction);
-    const candidates = getAllFactionAssets()
-      .filter(def => factionCanBuildAsset(faction, def, development))
-      .filter(def => treasury >= def.cost + FACTION_PROJECT_RESERVE)
-      .filter(def => this.pickFactionAssetNode(faction, def) !== null)
-      .sort((a, b) => a.tier - b.tier || a.cost - b.cost || a.id.localeCompare(b.id));
-    const next = candidates[0];
+    const next = this.pickNextFactionAsset(faction);
     if (next) this.commissionFactionAsset(faction.i, next.id);
   }
 
@@ -5995,7 +6005,12 @@ class LivingModel {
       if (pack.cells.state?.[cell] !== stateId) continue;
       const provId = pack.cells.province?.[cell] ?? 0;
       const resourceFaction = provId
-        ? Factions.active().find(f => RESOURCE_FACTION_IDS.includes(f.type) && this.factionProvinceId(f) === provId)
+        ? Factions.active().find(
+            f =>
+              f.allegiance === "hostile" &&
+              (f.type === "dread_host" || RESOURCE_FACTION_IDS.includes(f.type)) &&
+              this.factionProvinceId(f) === provId
+          )
         : undefined;
       if (resourceFaction) continue;
       const good = pack.cells.good[cell];
@@ -7295,94 +7310,411 @@ class LivingModel {
     if (idx >= 0 && idx < ladder.length - 1) faction.stateRelations[stateId] = ladder[idx + 1];
   }
 
-  /**
-   * Clear trouble as a production clock (faction-trouble conversion Phase 2):
-   * adventuring/religious/commercial factions bank their node's Production
-   * each season toward `40 + 20 * level` and clear the hazard on completion.
-   */
-  private stepFactionClearTrouble(faction: import("@/types/factions").Faction, living: LivingWorldState): void {
-    const agenda = faction.agenda;
-    if (agenda?.kind === "clear_trouble") {
-      const provinceId = agenda.targetProvinceId;
-      const pSim = provinceId !== undefined ? living.provinces[provinceId] : undefined;
-      if (provinceId === undefined || !pSim?.trouble) {
-        faction.agenda = null;
-        return;
+  /** Pick an outpost expansion or tier upgrade target within the faction's expansion scope. */
+  private pickFactionNetworkTarget(faction: Faction): {
+    mode: "establish" | "upgrade";
+    burg: Burg;
+    outpost?: import("@/types/factions").FactionOutpost;
+  } | null {
+    const treasury = Number(faction.treasury ?? 0);
+    const existingUpgrade = (faction.outposts ?? []).find(o => !o.pillaged && o.tier < 3);
+    if (existingUpgrade && treasury >= 80 && (faction.outposts?.length ?? 0) >= 2) {
+      const burg = pack.burgs?.[existingUpgrade.burgId];
+      if (burg?.i && !burg.removed) return { mode: "upgrade", burg, outpost: existingUpgrade };
+    }
+    if ((faction.outposts?.length ?? 0) >= 4 || treasury < 60) return null;
+
+    const hqProv = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
+    const hqState = faction.patronStateId ?? (faction.hq.burgId ? pack.burgs?.[faction.hq.burgId]?.state : 0) ?? 0;
+    const candidates = (pack.burgs ?? []).filter(b => {
+      if (!b?.i || b.removed || this.factionNodesAtBurg(faction.i, b.i)) return false;
+      switch (faction.expansionScope) {
+        case "local":
+        case "province":
+          return (pack.cells?.province?.[b.cell] ?? 0) === hqProv;
+        case "state":
+          return !hqState || b.state === hqState;
+        case "culture":
+          return b.culture === faction.culture;
+        case "religion":
+          return !faction.religion || (pack.cells?.religion?.[b.cell] ?? 0) === faction.religion;
+        default:
+          return true;
       }
-      const node = this.factionNodeInProvince(faction, provinceId);
-      if (!node) {
-        faction.agenda = null;
-        return;
-      }
-      agenda.progress += 8; // a caretaker faction's seasonal clearing effort
-      if (agenda.progress >= agenda.required) {
-        const troubleName = pSim.trouble.name;
-        const province = pack.provinces?.[provinceId];
-        pSim.trouble = null;
-        faction.treasury = Math.round((Number(faction.treasury ?? 0) + 25) * 100) / 100;
-        const hostStateId = province?.state ?? 0;
-        const before = hostStateId ? (faction.stateRelations[hostStateId] ?? "Neutral") : undefined;
-        if (hostStateId) this.improveFactionRelation(faction, hostStateId);
-        faction.influence = Math.min(100, (faction.influence ?? 0) + 10);
-        const standing =
-          before && before !== faction.stateRelations[hostStateId]
-            ? `, improving relations with ${pack.states[hostStateId]?.name ?? "the state"}`
-            : "";
-        this.pushNews(living, {
-          kind: "trouble",
-          text: `${faction.name} cleared the ${troubleName} afflicting ${province?.name ?? "the province"}${standing}.`,
-          cell: province?.center ?? node.node.cell,
-          burgId: node.node.burgId
-        });
-        this.pushHistory(
-          "deed",
-          [{ kind: "state", id: province?.state ?? 0 }],
-          province?.center ?? node.node.cell,
-          `${faction.name} cleared the ${troubleName} afflicting ${province?.name ?? "the province"}.`
-        );
-        faction.agenda = null;
-      }
-      return;
+    });
+    candidates.sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
+    const best = candidates[0];
+    if (best) return { mode: "establish", burg: best };
+
+    if (existingUpgrade && treasury >= 80) {
+      const burg = pack.burgs?.[existingUpgrade.burgId];
+      if (burg?.i && !burg.removed) return { mode: "upgrade", burg, outpost: existingUpgrade };
+    }
+    return null;
+  }
+
+  /** Whether a faction satisfies sovereignty preconditions in its HQ province. */
+  private canFactionAscend(faction: Faction, living: LivingWorldState): { provinceId: number; burgId?: number } | null {
+    if (!faction.sovereignAmbition || faction.allegiance === "state_arm" || faction.allegiance === "chartered") {
+      return null;
+    }
+    if ((faction.seasonsActive ?? 0) < 8 || this.factionDevelopment(faction) < SOVEREIGN_DEVELOPMENT) return null;
+    const provId = this.factionProvinceId(faction);
+    if (!provId) return null;
+    const provState = pack.provinces?.[provId]?.state ?? 0;
+    const sSim = provState ? living.states?.[provState] : undefined;
+    const localBurgs = pack.burgs?.filter(b => b?.i && !b.removed && pack.cells.province?.[b.cell] === provId) ?? [];
+    const noBurgs = localBurgs.length === 0;
+    const collapsedOrder = this.effectiveProvinceStability(provId) < 0.3;
+    const stateInTurmoil = Boolean(
+      (provState ? this.effectiveStateStability(provState) : 1) < 0.35 || (sSim && sSim.warExhaustion >= 50)
+    );
+    if (!noBurgs && !collapsedOrder && !stateInTurmoil) return null;
+    const nonCapBurg = collapsedOrder ? localBurgs.find(b => !b.capital) : undefined;
+    return { provinceId: provId, burgId: nonCapBurg?.i };
+  }
+
+  /** Pick a province for covert subversion by underworld, political, or clandestine factions. */
+  private pickFactionSubvertTarget(faction: Faction): { provinceId: number; burgId?: number } | null {
+    if (faction.category !== "underworld" && faction.category !== "political" && faction.allegiance !== "clandestine") {
+      return null;
+    }
+    const lineName = `Subversion: ${faction.name}`;
+    for (const { node } of this.factionNodes(faction)) {
+      const provId =
+        ("provinceId" in node ? node.provinceId : undefined) ??
+        (node.burgId ? pack.cells?.province?.[pack.burgs?.[node.burgId]?.cell ?? 0] : undefined) ??
+        pack.cells?.province?.[node.cell] ??
+        0;
+      const province = provId ? pack.provinces?.[provId] : undefined;
+      if (!province?.i || province.removed || !province.state) continue;
+      if (faction.patronStateId && province.state === faction.patronStateId) continue;
+      if ((province.simStabilityAdjustments ?? []).some(l => l.name === lineName)) continue;
+      return { provinceId: province.i, burgId: node.burgId };
+    }
+    return null;
+  }
+
+  /** Pick a crusade (against hostile faction or drain trouble) or a settlement raid target. */
+  private pickFactionCrusadeOrRaidTarget(
+    faction: Faction,
+    living: LivingWorldState
+  ): {
+    mode: "raid" | "strike_faction" | "clear_drain";
+    targetProvinceId?: number;
+    targetBurgId?: number;
+    targetFactionId?: number;
+  } | null {
+    if (
+      faction.allegiance === "hostile" ||
+      (faction.category === "religious" && faction.allegiance === "clandestine")
+    ) {
+      const provId = this.factionProvinceId(faction);
+      const local = (pack.burgs ?? []).find(
+        b => b?.i && !b.removed && !b.capital && pack.cells?.province?.[b.cell] === provId
+      );
+      if (local) return { mode: "raid", targetBurgId: local.i, targetProvinceId: provId };
+      return null;
     }
 
-    // Assignment: only caretaker categories, only with a node in a troubled province.
-    if (agenda || !["adventuring", "religious", "commercial"].includes(faction.category)) return;
-    const nodes = [
-      { node: faction.hq, isHq: true },
-      ...(faction.outposts ?? []).map(outpost => ({ node: outpost, isHq: false }))
-    ];
-    let best: { provinceId: number; drain: boolean } | null = null;
-    for (const entry of nodes) {
+    if (!["adventuring", "religious", "martial", "commercial"].includes(faction.category)) return null;
+    const hostStateId = faction.patronStateId ?? (faction.hq.burgId ? pack.burgs?.[faction.hq.burgId]?.state : 0) ?? 0;
+    const enemyFaction = Factions.active().find(other => {
+      if (other.i === faction.i || (other.allegiance !== "hostile" && other.allegiance !== "clandestine")) return false;
+      const provId = this.factionProvinceId(other);
+      const provState = provId ? pack.provinces?.[provId]?.state : 0;
+      return Boolean(hostStateId && provState === hostStateId);
+    });
+    if (enemyFaction) {
+      return {
+        mode: "strike_faction",
+        targetFactionId: enemyFaction.i,
+        targetProvinceId: this.factionProvinceId(enemyFaction)
+      };
+    }
+
+    for (const { node } of this.factionNodes(faction)) {
       const nodeProvId =
-        (entry.node as import("@/types/factions").FactionHq).provinceId ??
-        (entry.node.burgId ? pack.cells.province?.[pack.burgs?.[entry.node.burgId]?.cell ?? 0] : undefined) ??
-        pack.cells.province?.[entry.node.cell];
+        ("provinceId" in node ? node.provinceId : undefined) ??
+        (node.burgId ? pack.cells?.province?.[pack.burgs?.[node.burgId]?.cell ?? 0] : undefined) ??
+        pack.cells?.province?.[node.cell];
       if (!nodeProvId) continue;
       const trouble = living.provinces[nodeProvId]?.trouble;
-      if (trouble && (!best || (!best.drain && trouble.severity === "drain"))) {
-        best = { provinceId: nodeProvId, drain: trouble.severity === "drain" };
+      if (trouble) return { mode: "clear_drain", targetProvinceId: nodeProvId };
+    }
+    return null;
+  }
+
+  /** Choose one of the 5 canonical faction agendas when a faction is idle. */
+  private chooseFactionAgenda(
+    faction: Faction,
+    living: LivingWorldState
+  ): import("@/types/factions").FactionAgenda | null {
+    const ascendTarget = this.canFactionAscend(faction, living);
+    if (ascendTarget) {
+      return {
+        kind: "ascend",
+        label: `${faction.name} rallying to claim sovereignty`,
+        targetProvinceId: ascendTarget.provinceId,
+        targetBurgId: ascendTarget.burgId,
+        progress: 0,
+        required: 2
+      };
+    }
+
+    if (faction.project) {
+      const def = getFactionAsset(faction.project.assetId);
+      return {
+        kind: "build_work",
+        label: `Building ${def?.name ?? faction.project.assetId}`,
+        assetId: faction.project.assetId,
+        progress: 0,
+        required: Math.max(1, faction.project.turnsLeft)
+      };
+    }
+
+    const crusadeTarget = this.pickFactionCrusadeOrRaidTarget(faction, living);
+    if (crusadeTarget?.mode === "strike_faction" && crusadeTarget.targetFactionId) {
+      const target = pack.factions?.[crusadeTarget.targetFactionId];
+      return {
+        kind: "crusade_or_raid",
+        label: `Crusading against ${target?.name ?? "hostiles"}`,
+        targetFactionId: crusadeTarget.targetFactionId,
+        targetProvinceId: crusadeTarget.targetProvinceId,
+        progress: 0,
+        required: 2
+      };
+    }
+    if (crusadeTarget?.mode === "clear_drain" && crusadeTarget.targetProvinceId) {
+      const province = pack.provinces?.[crusadeTarget.targetProvinceId];
+      const trouble = living.provinces[crusadeTarget.targetProvinceId]?.trouble;
+      if (trouble) {
+        return {
+          kind: "crusade_or_raid",
+          label: `Relieving ${trouble.name} in ${province?.name ?? "the province"}`,
+          targetProvinceId: crusadeTarget.targetProvinceId,
+          progress: 0,
+          required: trouble.severity === "drain" ? 3 : 2
+        };
       }
     }
-    if (best) {
-      const province = pack.provinces?.[best.provinceId];
-      const trouble = living.provinces[best.provinceId]!.trouble!;
-      faction.agenda = {
-        kind: "clear_trouble",
-        label: `Clearing ${trouble.name} in ${province?.name ?? "the province"}`,
-        targetProvinceId: best.provinceId,
+
+    const networkTarget = this.pickFactionNetworkTarget(faction);
+    if (networkTarget) {
+      return {
+        kind: "expand_network",
+        label:
+          networkTarget.mode === "upgrade"
+            ? `Upgrading outpost in ${networkTarget.burg.name}`
+            : `Establishing outpost in ${networkTarget.burg.name}`,
+        targetBurgId: networkTarget.burg.i,
         progress: 0,
-        required: best.drain ? 80 : 60
+        required: 2
       };
+    }
+
+    const subvertTarget = this.pickFactionSubvertTarget(faction);
+    if (subvertTarget) {
+      const province = pack.provinces?.[subvertTarget.provinceId];
+      return {
+        kind: "subvert",
+        label: `Subverting ${province?.name ?? "the province"}`,
+        targetProvinceId: subvertTarget.provinceId,
+        targetBurgId: subvertTarget.burgId,
+        progress: 0,
+        required: 2
+      };
+    }
+
+    if (crusadeTarget?.mode === "raid" && crusadeTarget.targetBurgId) {
+      const burg = pack.burgs?.[crusadeTarget.targetBurgId];
+      return {
+        kind: "crusade_or_raid",
+        label: `Preparing raid on ${burg?.name ?? "the frontier"}`,
+        targetBurgId: crusadeTarget.targetBurgId,
+        targetProvinceId: crusadeTarget.targetProvinceId,
+        progress: 0,
+        required: 2
+      };
+    }
+
+    return null;
+  }
+
+  /** Advance one faction's active agenda (5 agendas: expand_network, build_work, subvert, crusade_or_raid, ascend). */
+  private stepSingleFactionAgenda(faction: Faction, living: LivingWorldState): void {
+    if (!faction.agenda) {
+      faction.agenda = this.chooseFactionAgenda(faction, living);
+      if (!faction.agenda) return;
+    }
+    const agenda = faction.agenda;
+
+    switch (agenda.kind) {
+      case "build_work": {
+        if (!faction.project) {
+          faction.agenda = null;
+          return;
+        }
+        agenda.progress = Math.min(agenda.required, agenda.required - Math.max(0, faction.project.turnsLeft - 1));
+        return;
+      }
+      case "expand_network": {
+        const burg = agenda.targetBurgId ? pack.burgs?.[agenda.targetBurgId] : undefined;
+        if (!burg?.i || burg.removed) {
+          faction.agenda = null;
+          return;
+        }
+        agenda.progress += 1;
+        if (agenda.progress < agenda.required) return;
+
+        const existing = (faction.outposts ?? []).find(o => o.burgId === burg.i && !o.pillaged);
+        const year = options?.map?.lore?.calendar?.year ?? 1000;
+        if (existing) {
+          if (Number(faction.treasury ?? 0) >= 80 && existing.tier < 3) {
+            faction.treasury = Math.round((Number(faction.treasury) - 80) * 100) / 100;
+            existing.tier = Math.min(3, existing.tier + 1) as 1 | 2 | 3;
+            existing.influence = Math.min(100, existing.influence + 15);
+            ensureFactionNodeSim(existing, false);
+            this.pushNews(living, {
+              kind: "faction",
+              text: `${faction.name} expanded its chapter house in ${burg.name ?? "the city"} to Tier ${existing.tier}.`,
+              cell: burg.cell,
+              burgId: burg.i
+            });
+          }
+        } else if (Number(faction.treasury ?? 0) >= 60) {
+          faction.treasury = Math.round((Number(faction.treasury) - 60) * 100) / 100;
+          const arch = getFactionArchetype(faction.type);
+          const defaultAsset = arch?.desiredAssets[0];
+          const outpost: import("@/types/factions").FactionOutpost = {
+            burgId: burg.i,
+            cell: burg.cell,
+            tier: 1,
+            influence: 40,
+            secrecy: faction.allegiance === "clandestine" ? 50 : 0,
+            assets: defaultAsset ? [defaultAsset] : [],
+            establishedYear: year
+          };
+          ensureFactionNodeSim(outpost, false);
+          faction.outposts.push(outpost);
+          this.pushNews(living, {
+            kind: "faction",
+            text: `${faction.name} established a new outpost in ${burg.name ?? "the city"}.`,
+            cell: burg.cell,
+            burgId: burg.i
+          });
+        }
+        faction.agenda = null;
+        return;
+      }
+      case "subvert": {
+        const provinceId = agenda.targetProvinceId;
+        const province = provinceId ? pack.provinces?.[provinceId] : undefined;
+        if (!province?.i || province.removed) {
+          faction.agenda = null;
+          return;
+        }
+        agenda.progress += 1;
+        if (agenda.progress < agenda.required) return;
+
+        const lineName = `Subversion: ${faction.name}`;
+        const kept = (province.simStabilityAdjustments ?? []).filter(l => l.name !== lineName);
+        province.simStabilityAdjustments = [...kept, { name: lineName, value: -6 }];
+        faction.influence = Math.min(100, (faction.influence ?? 0) + 8);
+        this.pushNews(living, {
+          kind: "faction",
+          text: `${faction.name}'s covert network sowed unrest across ${province.name ?? "the province"}.`,
+          cell: province.center ?? faction.hq.cell,
+          stateId: province.state
+        });
+        faction.agenda = null;
+        return;
+      }
+      case "crusade_or_raid": {
+        agenda.progress += 1;
+        if (agenda.progress < agenda.required) return;
+
+        if (agenda.targetFactionId) {
+          const target = pack.factions?.[agenda.targetFactionId];
+          if (target && !target.removed) {
+            const lead = target.military?.[0];
+            if (lead?.units?.length) {
+              for (const u of lead.units) u.hp = Math.max(0, Number((u.hp * 0.65).toFixed(2)));
+              lead.units = lead.units.filter(u => u.hp > 0);
+              syncRegimentTotals(lead, Military.getUnitTypes());
+            }
+            if (!lead || lead.a <= 0) Factions.remove(target.i);
+            const hostState = faction.patronStateId ?? pack.provinces?.[agenda.targetProvinceId ?? 0]?.state ?? 0;
+            if (hostState) this.improveFactionRelation(faction, hostState);
+            faction.treasury = Math.round((Number(faction.treasury ?? 0) + 25) * 100) / 100;
+            faction.influence = Math.min(100, (faction.influence ?? 0) + 10);
+            this.pushNews(living, {
+              kind: "faction",
+              text: `${faction.name} launched a strike against ${target.name}!`,
+              cell: target.hq.cell,
+              stateId: hostState || undefined
+            });
+          }
+          faction.agenda = null;
+          return;
+        }
+
+        if (agenda.targetProvinceId) {
+          const pSim = living.provinces[agenda.targetProvinceId];
+          const province = pack.provinces?.[agenda.targetProvinceId];
+          if (pSim?.trouble && this.factionNodeInProvince(faction, agenda.targetProvinceId)) {
+            const troubleName = pSim.trouble.name;
+            pSim.trouble = null;
+            faction.treasury = Math.round((Number(faction.treasury ?? 0) + 25) * 100) / 100;
+            const hostStateId = province?.state ?? 0;
+            if (hostStateId) this.improveFactionRelation(faction, hostStateId);
+            faction.influence = Math.min(100, (faction.influence ?? 0) + 10);
+            this.pushNews(living, {
+              kind: "faction",
+              text: `${faction.name} quelled ${troubleName} in ${province?.name ?? "the province"}.`,
+              cell: province?.center ?? faction.hq.cell,
+              stateId: hostStateId || undefined
+            });
+          } else if (faction.allegiance === "hostile" || faction.allegiance === "clandestine") {
+            faction.raidPending = true;
+            this.tickFactionRaid(faction, living);
+          }
+        }
+        faction.agenda = null;
+        return;
+      }
+      case "ascend": {
+        agenda.progress += 1;
+        if (agenda.progress < agenda.required) return;
+        this.ascendFactionToState(faction.i, agenda.targetBurgId);
+        faction.agenda = null;
+        return;
+      }
     }
   }
 
-  /** Step faction agendas: patron severance, clear-trouble production clocks and turf clashes (expansion is via Settlers in Phase 4) */
+  /** Prune subversion stability lines belonging to dissolved factions. */
+  private syncFactionSubversionLines(): void {
+    const activeNames = new Set(Factions.active().map(f => `Subversion: ${f.name}`));
+    for (const province of pack.provinces ?? []) {
+      if (!province?.i || province.removed || !province.simStabilityAdjustments?.length) continue;
+      const filtered = province.simStabilityAdjustments.filter(
+        line => !line.name.startsWith("Subversion: ") || activeNames.has(line.name)
+      );
+      if (filtered.length !== province.simStabilityAdjustments.length) {
+        province.simStabilityAdjustments = filtered;
+      }
+    }
+  }
+
+  /** Step faction agendas: patron severance, 5 unified agendas, and contested-burg turf clashes. */
   stepFactionAgendas(living: LivingWorldState): void {
+    this.syncFactionSubversionLines();
     const activeFactions = Factions.active();
     const rng = this.rng("faction:agendas", living.tick);
 
     for (const faction of activeFactions) {
-      this.stepFactionClearTrouble(faction, living);
+      this.stepSingleFactionAgenda(faction, living);
 
       if (faction.allegiance === "state_arm" && faction.patronStateId) {
         const patron = pack.states?.[faction.patronStateId];

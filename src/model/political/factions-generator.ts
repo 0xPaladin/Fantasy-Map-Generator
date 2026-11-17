@@ -1,7 +1,7 @@
 import { hcl } from "d3";
 import { rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
-import { FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
+import { EPIC_FACTION_IDS, FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
 import { assignStateRoster } from "@/data/roster-content";
 import {
   Military,
@@ -389,198 +389,286 @@ class FactionsModule {
       return faction;
     };
 
-    // 1. Commercial Guilds (2–4 factions in major trade hubs)
-    const sortedBurgs = [...burgs].sort((a, b) => (b.population || 0) - (a.population || 0));
-    const commercialHubs = sortedBurgs.slice(0, Math.min(4, sortedBurgs.length));
-
-    for (const hub of commercialHubs) {
-      const isPort = Boolean(hub.port);
-      const type = isPort ? (masterRng.next() > 0.5 ? "merchant_consortium" : "smuggler_syndicate") : "trade_guild";
+    const usedTypes = new Set<string>();
+    const spawnEpic = (
+      type: string,
+      hq: FactionHq,
+      allegianceOverride?: FactionAllegiance,
+      optionsOverride: {
+        patronStateId?: number;
+        burgName?: string;
+        markerName?: string;
+        cultureId?: number;
+        religionId?: number;
+        outposts?: FactionOutpost[];
+      } = {}
+    ): Faction | null => {
       const arch = getFactionArchetype(type);
-      const allegiance = arch?.defaultAllegiance || "chartered";
+      const canonical = arch?.type ?? type;
+      if (!arch || usedTypes.has(canonical) || usedTypes.size >= EPIC_FACTION_IDS.length) return null;
+      usedTypes.add(canonical);
+      return createFaction(canonical, arch.category, hq, allegianceOverride ?? arch.defaultAllegiance, optionsOverride);
+    };
 
-      // Find 1-2 outpost burgs in the same state or nearby
-      const outposts: FactionOutpost[] = [];
-      const candidateOutposts = burgs.filter(b => b.i !== hub.i && (b.state === hub.state || masterRng.next() > 0.6));
-      for (let o = 0; o < Math.min(2, candidateOutposts.length); o++) {
-        const outBurg = candidateOutposts[o];
-        outposts.push({
+    const sortedBurgs = [...burgs].sort((a, b) => (b.population || 0) - (a.population || 0));
+    const dangerMarkers = markers.filter(isDangerMarker);
+
+    // 1. Grand Merchant Consortium at the top commercial hub (or largest port)
+    const tradeHub = sortedBurgs.find(b => b.port) ?? sortedBurgs[0];
+    if (tradeHub) {
+      const outposts: FactionOutpost[] = burgs
+        .filter(b => b.i !== tradeHub.i && (b.state === tradeHub.state || masterRng.next() > 0.6))
+        .slice(0, 2)
+        .map(outBurg => ({
           burgId: outBurg.i,
           cell: outBurg.cell,
-          tier: 1,
+          tier: 1 as const,
           influence: 40,
-          secrecy: allegiance === "clandestine" ? 50 : 0,
+          secrecy: 0,
           assets: ["trade_depot"],
           establishedYear: currentYear - 15
-        });
-      }
-
-      createFaction(
-        type,
-        "commercial",
+        }));
+      spawnEpic(
+        "merchant_consortium",
         {
-          cell: hub.cell,
-          burgId: hub.i,
-          provinceId: pack.cells?.province?.[hub.cell],
+          cell: tradeHub.cell,
+          burgId: tradeHub.i,
+          provinceId: pack.cells?.province?.[tradeHub.cell],
           fortified: false,
-          secrecy: allegiance === "clandestine" ? 50 : 0,
+          secrecy: 0,
           assets: ["trade_depot", "counting_house"]
         },
-        allegiance,
+        "chartered",
         {
-          patronStateId: hub.state || undefined,
-          burgName: hub.name,
-          cultureId: hub.culture,
+          patronStateId: tradeHub.state || undefined,
+          burgName: tradeHub.name,
+          cultureId: tradeHub.culture,
           outposts
         }
       );
     }
 
-    // 2. Adventuring & Scholarly Orders (1–3 factions, guarantee at least 1 adventurer guild)
-    const advBurgs = sortedBurgs.slice(1, Math.min(4, sortedBurgs.length));
-    const advTypes = ["adventurer_guild", "ranger_wardens", "arcane_college"];
-
-    for (let i = 0; i < Math.max(1, advBurgs.length); i++) {
-      const b = advBurgs[i] || sortedBurgs[0];
-      if (!b) continue;
-
-      const type = i === 0 ? "adventurer_guild" : advTypes[i % advTypes.length];
-      const outposts: FactionOutpost[] = [];
-      const neighbor = burgs.find(nb => nb.i !== b.i && nb.state === b.state);
-      if (neighbor) {
-        outposts.push({
-          burgId: neighbor.i,
-          cell: neighbor.cell,
-          tier: 1,
-          influence: 40,
-          secrecy: 0,
-          assets: ["chapter_lodge"],
-          establishedYear: currentYear - 20
-        });
-      }
-
-      createFaction(
-        type,
-        "adventuring",
+    // 2. Adventurers' Conclave (guaranteed when burgs exist)
+    const advBurg = sortedBurgs[1] ?? sortedBurgs[0];
+    if (advBurg) {
+      const neighbor = burgs.find(nb => nb.i !== advBurg.i && nb.state === advBurg.state);
+      spawnEpic(
+        "adventurer_guild",
         {
-          cell: b.cell,
-          burgId: b.i,
-          provinceId: pack.cells?.province?.[b.cell],
+          cell: advBurg.cell,
+          burgId: advBurg.i,
+          provinceId: pack.cells?.province?.[advBurg.cell],
           fortified: false,
           secrecy: 0,
           assets: ["chapter_lodge", "seeker_archives"]
         },
         "autonomous",
         {
-          patronStateId: b.state || undefined,
-          burgName: b.name,
-          cultureId: b.culture,
-          outposts
+          patronStateId: advBurg.state || undefined,
+          burgName: advBurg.name,
+          cultureId: advBurg.culture,
+          outposts: neighbor
+            ? [
+                {
+                  burgId: neighbor.i,
+                  cell: neighbor.cell,
+                  tier: 1,
+                  influence: 40,
+                  secrecy: 0,
+                  assets: ["chapter_lodge"],
+                  establishedYear: currentYear - 20
+                }
+              ]
+            : []
         }
       );
     }
 
-    // 3. Religious Orders & Cults (seeded from religions)
-    for (const rel of religions.slice(0, 3)) {
-      const relBurg = burgs.find(b => pack.cells?.religion?.[b.cell] === rel.i) || sortedBurgs[0];
-      if (!relBurg) continue;
+    // 3. Arcane Conclave & Frontier Warden Order (when the world has enough settlements)
+    const arcaneBurg = sortedBurgs[2] ?? sortedBurgs[0];
+    if (arcaneBurg && burgs.length >= 2) {
+      spawnEpic(
+        "arcane_college",
+        {
+          cell: arcaneBurg.cell,
+          burgId: arcaneBurg.i,
+          provinceId: pack.cells?.province?.[arcaneBurg.cell],
+          fortified: false,
+          secrecy: 0,
+          assets: ["seeker_archives", "alchemical_lab"]
+        },
+        "chartered",
+        { patronStateId: arcaneBurg.state || undefined, burgName: arcaneBurg.name, cultureId: arcaneBurg.culture }
+      );
+    }
+    const wardenBurg = sortedBurgs[sortedBurgs.length - 1];
+    if (wardenBurg && burgs.length >= 3) {
+      spawnEpic(
+        "ranger_wardens",
+        {
+          cell: wardenBurg.cell,
+          burgId: wardenBurg.i,
+          provinceId: pack.cells?.province?.[wardenBurg.cell],
+          fortified: false,
+          secrecy: 0,
+          assets: ["chapter_lodge", "wayside_shrine"]
+        },
+        "autonomous",
+        { patronStateId: wardenBurg.state || undefined, burgName: wardenBurg.name, cultureId: wardenBurg.culture }
+      );
+    }
 
-      const isCult = rel.type === "Cult" || rel.type === "Heresy" || masterRng.next() < 0.25;
-      const type = isCult ? "sinister_cult" : "holy_order";
-      const allegiance = isCult ? "clandestine" : "chartered";
-
-      createFaction(
-        type,
-        "religious",
+    // 4. Crusader Knightly Order (major organized faith)
+    const mainRel = religions.find(r => r.type !== "Cult" && r.type !== "Heresy") ?? religions[0];
+    if (mainRel && burgs.length > 0) {
+      const relBurg = burgs.find(b => pack.cells?.religion?.[b.cell] === mainRel.i) ?? sortedBurgs[0];
+      spawnEpic(
+        "holy_order",
         {
           cell: relBurg.cell,
           burgId: relBurg.i,
           provinceId: pack.cells?.province?.[relBurg.cell],
-          fortified: !isCult,
-          secrecy: isCult ? 70 : 0,
-          assets: isCult ? ["safe_house", "ritual_sanctum"] : ["wayside_shrine", "monastic_scriptorium"]
+          fortified: true,
+          secrecy: 0,
+          assets: ["wayside_shrine", "monastic_scriptorium"]
         },
-        allegiance,
+        "chartered",
         {
-          patronStateId: isCult ? undefined : relBurg.state || undefined,
+          patronStateId: relBurg.state || undefined,
           burgName: relBurg.name,
-          religionId: rel.i,
+          religionId: mainRel.i,
           cultureId: relBurg.culture
         }
       );
     }
 
-    // 4. Underworld Syndicates (in top populated burgs or ports)
-    for (const b of sortedBurgs.slice(0, Math.min(2, sortedBurgs.length))) {
-      createFaction(
-        "thieves_guild",
-        "underworld",
+    // 5. Shadow Brotherhood in a major city/port
+    const shadowBurg = sortedBurgs.find(b => b.port && b.i !== tradeHub?.i) ?? sortedBurgs[0];
+    if (shadowBurg && (burgs.length >= 2 || dangerMarkers.length > 0)) {
+      spawnEpic(
+        "shadow_syndicate",
         {
-          cell: b.cell,
-          burgId: b.i,
-          provinceId: pack.cells?.province?.[b.cell],
+          cell: shadowBurg.cell,
+          burgId: shadowBurg.i,
+          provinceId: pack.cells?.province?.[shadowBurg.cell],
           fortified: false,
           secrecy: 65,
           assets: ["safe_house", "smuggler_tunnel"]
         },
         "clandestine",
-        {
-          patronStateId: undefined,
-          burgName: b.name,
-          cultureId: b.culture
-        }
+        { burgName: shadowBurg.name, cultureId: shadowBurg.culture }
       );
     }
 
-    // 5. Political State-Arm Agencies (for prominent states)
-    for (const state of states.slice(0, Math.min(3, states.length))) {
-      const capBurg = pack.burgs?.[state.capital];
-      if (!capBurg) continue;
-
-      createFaction(
-        "magistrate_cadre",
-        "political",
+    // 6. Claimant Confederacy in a secondary realm (or second major burg)
+    const leagueState = states[1] ?? states[0];
+    const leagueBurg = (leagueState?.capital ? pack.burgs?.[leagueState.capital] : undefined) ?? sortedBurgs[1];
+    if (leagueBurg && (states.length >= 2 || masterRng.next() < 0.7)) {
+      spawnEpic(
+        "noble_league",
         {
-          cell: capBurg.cell,
-          burgId: capBurg.i,
-          provinceId: pack.cells?.province?.[capBurg.cell],
+          cell: leagueBurg.cell,
+          burgId: leagueBurg.i,
+          provinceId: pack.cells?.province?.[leagueBurg.cell],
           fortified: false,
           secrecy: 0,
           assets: ["informant_ring", "printing_cell"]
         },
-        "state_arm",
-        {
-          patronStateId: state.i,
-          burgName: capBurg.name,
-          cultureId: capBurg.culture
-        }
+        "autonomous",
+        { patronStateId: leagueBurg.state || undefined, burgName: leagueBurg.name, cultureId: leagueBurg.culture }
       );
     }
 
-    // 6. Armed Lair Factions (every danger marker)
-    for (const marker of markers) {
-      if (!isDangerMarker(marker)) continue;
-
-      const archetypeMapping = getLairArchetypeForMarker(marker.type);
-      const type = archetypeMapping.lairId;
-      const arch = getFactionArchetype(type);
-
-      createFaction(
-        type,
-        arch?.category || "martial",
+    // 7. Iron Free Company in a prominent settlement
+    const mercBurg = sortedBurgs[Math.min(3, sortedBurgs.length - 1)];
+    if (mercBurg && burgs.length >= 3 && masterRng.next() < 0.85) {
+      spawnEpic(
+        "mercenary_company",
         {
-          cell: marker.cell,
-          markerId: marker.i,
-          provinceId: pack.cells?.province?.[marker.cell],
-          maritime: archetypeMapping.isMaritime,
-          fortified: Boolean(arch?.sovereignAmbition),
+          cell: mercBurg.cell,
+          burgId: mercBurg.i,
+          provinceId: pack.cells?.province?.[mercBurg.cell],
+          fortified: true,
+          secrecy: 0,
+          assets: ["muster_camp", "armory_forge"]
+        },
+        "autonomous",
+        { patronStateId: mercBurg.state || undefined, burgName: mercBurg.name, cultureId: mercBurg.culture }
+      );
+    }
+
+    // 8. Apocalyptic Cult from heresy/dark site (at most 1)
+    const cultRel = religions.find(r => r.type === "Cult" || r.type === "Heresy");
+    const occultMarker = dangerMarkers.find(m =>
+      ["dungeons", "dungeon", "rifts", "rift", "disturbed-burials", "necropolises"].some(k =>
+        (m.type ?? "").toLowerCase().includes(k)
+      )
+    );
+    if (cultRel && burgs.length > 0) {
+      const cultBurg = burgs.find(b => pack.cells?.religion?.[b.cell] === cultRel.i) ?? sortedBurgs[0];
+      spawnEpic(
+        "heretical_cult",
+        {
+          cell: cultBurg.cell,
+          burgId: cultBurg.i,
+          provinceId: pack.cells?.province?.[cultBurg.cell],
+          fortified: false,
+          secrecy: 70,
+          assets: ["safe_house", "ritual_sanctum"]
+        },
+        "clandestine",
+        { burgName: cultBurg.name, religionId: cultRel.i, cultureId: cultBurg.culture }
+      );
+    } else if (occultMarker) {
+      const mapping = getLairArchetypeForMarker(occultMarker.type);
+      spawnEpic(
+        "heretical_cult",
+        {
+          cell: occultMarker.cell,
+          markerId: occultMarker.i,
+          provinceId: pack.cells?.province?.[occultMarker.cell],
+          maritime: mapping.isMaritime,
+          fortified: false,
+          secrecy: 65,
+          assets: ["safe_house", "ritual_sanctum"]
+        },
+        "clandestine",
+        { markerName: occultMarker.name }
+      );
+    } else if (sortedBurgs.length >= 2 && masterRng.next() < 0.65) {
+      const b = sortedBurgs[sortedBurgs.length - 1]!;
+      spawnEpic(
+        "heretical_cult",
+        {
+          cell: b.cell,
+          burgId: b.i,
+          provinceId: pack.cells?.province?.[b.cell],
+          fortified: false,
+          secrecy: 70,
+          assets: ["safe_house", "wayside_shrine"]
+        },
+        "clandestine",
+        { burgName: b.name, cultureId: b.culture }
+      );
+    }
+
+    // 9. Dread Sovereign Host anchored at the primary danger marker (at most 1)
+    const primaryDanger = dangerMarkers.find(m => m.i !== occultMarker?.i) ?? dangerMarkers[0];
+    if (primaryDanger) {
+      const mapping = getLairArchetypeForMarker(primaryDanger.type);
+      spawnEpic(
+        "dread_host",
+        {
+          cell: primaryDanger.cell,
+          markerId: primaryDanger.i,
+          provinceId: pack.cells?.province?.[primaryDanger.cell],
+          maritime: mapping.isMaritime,
+          fortified: true,
           secrecy: 35,
           assets: ["muster_camp"]
         },
         "hostile",
-        {
-          markerName: marker.name
-        }
+        { markerName: primaryDanger.name }
       );
     }
   }

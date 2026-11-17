@@ -11,18 +11,7 @@ export type FactionExpansionScope = "local" | "province" | "state" | "culture" |
 
 export type FactionRelation = "Ally" | "Friendly" | "Neutral" | "Suspicion" | "Rival" | "Enemy";
 
-export type FactionAgendaKind =
-  | "establish_outpost"
-  | "upgrade_outpost"
-  | "build_asset"
-  | "research_tech"
-  | "muster_forces"
-  | "raid_burg"
-  | "subvert_burg"
-  | "clear_trouble"
-  | "strike_rival"
-  | "excavate_site"
-  | "stage_coup";
+export type FactionAgendaKind = "expand_network" | "build_work" | "subvert" | "crusade_or_raid" | "ascend";
 
 export interface FactionAgenda {
   kind: FactionAgendaKind;

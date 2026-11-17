@@ -682,7 +682,7 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
     Living.init();
     const faction = Living.spawnDangerousFaction(1, "brigand_raiders", "burg", 5);
     expect(faction).not.toBeNull();
-    expect(faction!.type).toBe("brigand_raiders");
+    expect(faction!.type).toBe("dread_host");
     expect(faction!.hq.burgId).toBe(1);
     expect(faction!.military[0]!.units!.length).toBeGreaterThan(0);
     expect(faction!.stateRelations[1]).toBe("Enemy");
@@ -3184,7 +3184,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     expect(living.provinces[2].trouble).toBeNull();
 
     const faction = (pack.factions ?? []).find(f => f.i !== 0)!;
-    expect(faction.type).toBe("demagogue");
+    expect(faction.type).toBe("noble_league");
     expect(faction.hq.burgId).toBe(2);
     expect(faction.stateRelations[1]).toBe("Enemy");
 
@@ -3193,7 +3193,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
 
     const newState = pack.states[newStateId!];
     expect(newState).toBeDefined();
-    expect(newState.fullName).toContain("Popular Assembly");
+    expect(newState.fullName).toContain("Confederated Duchy");
     expect(newState.economy.treasury).toBe(150);
     expect(newState.capital).toBe(2);
 
@@ -3225,7 +3225,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
     expect(pack.burgs.length).toBe(burgsBefore + 1);
 
     const newState = pack.states[newStateId!];
-    expect(newState.fullName).toContain("Apocalyptic Dominion");
+    expect(newState.fullName).toContain("Unholy Covenant");
 
     const newCapital = pack.burgs[newState.capital];
     expect(newCapital.cell).toBe(4);
@@ -3346,7 +3346,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
 
     expect(pack.states.length).toBe(4);
     expect(pack.provinces[3].state).toBe(3);
-    expect(pack.states[3].fullName).toContain("Underhold");
+    expect(pack.states[3].fullName).toContain("Dread Dominion");
     expect(faction.allegiance).toBe("state_arm");
   });
 
@@ -3410,7 +3410,7 @@ describe("Living (Lair Ascension Slice 3: Shared Emergent State Engine)", () => 
   });
 });
 
-describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
+describe("Epic faction agendas (simplification Phase 3)", () => {
   beforeEach(() => {
     buildStubPack();
     pack.cells.h = Uint8Array.from([0, 30, 30, 30, 30, 30]);
@@ -3418,115 +3418,126 @@ describe("Faction clear-trouble clock (trouble conversion Phase 2)", () => {
     pack.factions = [{ i: 0 } as Faction];
   });
 
-  const caretaker = (category: "adventuring" | "religious" | "commercial" | "martial") =>
-    Factions.add({
-      name: `${category} caretakers`,
-      category,
-      type: category === "martial" ? "mercenary_company" : "adventurer_guild",
-      allegiance: "autonomous",
-      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
-    });
-
-  it("assigns a clear_trouble agenda and advances it each season", () => {
-    const living = Living.init();
-    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
-    Living.spawnTrouble(1, "flooding", "flavor");
-    const faction = caretaker("adventuring");
-
-    Living.tick(1);
-    expect(faction.agenda?.kind).toBe("clear_trouble");
-    expect(faction.agenda?.targetProvinceId).toBe(1);
-    expect(faction.agenda?.required).toBe(60);
-    expect(faction.agenda?.progress).toBe(0);
-
-    Living.tick(1);
-    expect(faction.agenda?.kind).toBe("clear_trouble");
-    expect(faction.agenda?.progress ?? 0).toBeGreaterThan(0);
-    expect(living.provinces[1].trouble).not.toBeNull();
-  });
-
-  it("clears the hazard on completion with standing rewards", () => {
-    const living = Living.init();
-    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
-    Living.spawnTrouble(1, "flooding", "flavor");
-    const faction = caretaker("religious");
-    faction.stateRelations[1] = "Suspicion";
-
-    Living.tick(1);
-    expect(faction.agenda?.kind).toBe("clear_trouble");
-    faction.agenda!.progress = faction.agenda!.required - 1;
-
-    Living.tick(1);
-
-    expect(living.provinces[1].trouble).toBeNull();
-    expect(faction.agenda).toBeNull();
-    expect(living.recentNews.some(n => n.kind === "trouble" && n.text.includes(faction.name))).toBe(true);
-    // Clearing trouble buys standing with the host state
-    expect(faction.stateRelations[1]).toBe("Neutral");
-  });
-
-  it("improves relations one rung per clear, capped at Ally", () => {
-    const living = Living.init();
-    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
-    Living.spawnTrouble(1, "flooding", "flavor");
-    const faction = caretaker("adventuring");
-    faction.stateRelations[1] = "Enemy";
-    faction.agenda = {
-      kind: "clear_trouble",
-      label: "test",
-      targetProvinceId: 1,
-      progress: 0,
-      required: 1
-    };
-
-    Living.tick(1);
-    expect(living.provinces[1].trouble).toBeNull();
-    expect(faction.stateRelations[1]).toBe("Rival");
-
-    // Already Ally: stays Ally
-    Living.spawnTrouble(1, "flooding", "flavor");
-    faction.stateRelations[1] = "Ally";
-    faction.agenda = { kind: "clear_trouble", label: "test", targetProvinceId: 1, progress: 0, required: 1 };
-    Living.tick(1);
-    expect(faction.stateRelations[1]).toBe("Ally");
-  });
-
-  it("clears the agenda without progress when the trouble is gone", () => {
+  it("assigns build_work when a faction can fund an eligible asset", () => {
     Living.init();
-    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
-    Living.spawnTrouble(1, "flooding", "flavor");
-    const faction = caretaker("commercial");
-
-    Living.tick(1);
-    expect(faction.agenda?.kind).toBe("clear_trouble");
-
-    // Recover stability above 0.55 and clear trouble so stepProvinces doesn't recreate it
-    pack.provinces[1].stabilityAdjustments = [];
-    Living.quellTrouble(1);
-    Living.tick(1);
-    expect(faction.agenda).toBeNull();
-  });
-
-  it("does not assign clear_trouble to martial factions or factions without a node in the province", () => {
-    Living.init();
-    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
-    Living.spawnTrouble(1, "flooding", "flavor");
-    const martial = caretaker("martial");
-    martial.hq.burgId = 1;
-
-    Living.tick(2);
-    expect(martial.agenda).toBeNull();
-
-    // Province 2 (Oakshire) has no troubled province node for a second faction
-    const far = Factions.add({
-      name: "far guild",
+    const guild = Factions.add({
+      name: "Adventurers' Conclave",
       category: "adventuring",
       type: "adventurer_guild",
       allegiance: "autonomous",
-      hq: { cell: 5, burgId: 3, fortified: false, secrecy: 0, assets: [] }
+      treasury: 200,
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] }
     });
+
     Living.tick(1);
-    expect(far.agenda).toBeNull();
+    expect(guild.agenda?.kind).toBe("build_work");
+    expect(guild.project).toBeDefined();
+
+    Living.tick(1);
+    expect(guild.hq.assets.length).toBeGreaterThan(0);
+    expect(guild.agenda).toBeNull();
+  });
+
+  it("assigns and completes expand_network to establish a new outpost", () => {
+    Living.init();
+    const consortium = Factions.add({
+      name: "Grand Merchant Consortium",
+      category: "commercial",
+      type: "merchant_consortium",
+      allegiance: "chartered",
+      expansionScope: "global",
+      treasury: 95,
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
+    });
+
+    Living.tick(1);
+    expect(consortium.agenda?.kind).toBe("expand_network");
+    expect(consortium.outposts).toHaveLength(0);
+
+    Living.tick(1);
+    expect(consortium.outposts.length).toBe(1);
+    expect(consortium.treasury).toBeLessThan(95);
+    expect(consortium.agenda).toBeNull();
+  });
+
+  it("executes subvert to apply a temporary provincial stability penalty", () => {
+    Living.init();
+    pack.provinces[2].state = 2;
+    const shadow = Factions.add({
+      name: "Shadow Brotherhood",
+      category: "underworld",
+      type: "shadow_syndicate",
+      allegiance: "clandestine",
+      treasury: 10,
+      hq: { cell: 3, burgId: 2, provinceId: 2, fortified: false, secrecy: 65, assets: ["safe_house"] }
+    });
+
+    Living.tick(1);
+    expect(shadow.agenda?.kind).toBe("subvert");
+    expect(shadow.agenda?.targetProvinceId).toBe(2);
+
+    Living.tick(1);
+    const subLine = pack.provinces[2].simStabilityAdjustments?.find(l => l.name === "Subversion: Shadow Brotherhood");
+    expect(subLine?.value).toBe(-6);
+    expect(shadow.agenda).toBeNull();
+  });
+
+  it("executes crusade_or_raid to clear trouble or strike hostiles and improve relations", () => {
+    const living = Living.init();
+    pack.provinces[1].stabilityAdjustments = [{ name: "Strain", value: -25 }];
+    Living.spawnTrouble(1, "flooding", "flavor");
+    const holy = Factions.add({
+      name: "Crusader Knightly Order",
+      category: "religious",
+      type: "holy_order",
+      allegiance: "chartered",
+      patronStateId: 1,
+      treasury: 10,
+      hq: { cell: 1, burgId: 1, provinceId: 1, fortified: true, secrecy: 0, assets: ["wayside_shrine"] }
+    });
+    holy.stateRelations[1] = "Suspicion";
+
+    Living.tick(1);
+    expect(holy.agenda?.kind).toBe("crusade_or_raid");
+    expect(holy.agenda?.targetProvinceId).toBe(1);
+
+    Living.tick(1);
+    expect(living.provinces[1].trouble).toBeNull();
+    expect(holy.stateRelations[1]).toBe("Neutral");
+    expect(holy.agenda).toBeNull();
+  });
+
+  it("executes ascend when an ambitious entrenched faction holds a collapsed province", () => {
+    Living.init();
+    pack.cells.burg = new Uint16Array([0, 1, 0, 2, 0, 0]);
+    pack.cells.development = new Uint8Array([0, 30, 30, 30, 30, 30]);
+    pack.provinces[2].stabilityAdjustments = [{ name: "Collapse", value: -80 }];
+    const league = Factions.add({
+      name: "Claimant Confederacy",
+      category: "political",
+      type: "noble_league",
+      allegiance: "autonomous",
+      sovereignAmbition: true,
+      stateForm: "Confederated Duchy",
+      seasonsActive: 10,
+      treasury: 10,
+      hq: {
+        cell: 3,
+        burgId: 2,
+        provinceId: 2,
+        fortified: false,
+        secrecy: 0,
+        assets: ["informant_ring", "printing_cell", "shadow_directorate"]
+      }
+    });
+    const statesBefore = pack.states.length;
+
+    Living.tick(1);
+    expect(league.agenda?.kind).toBe("ascend");
+
+    Living.tick(1);
+    expect(pack.states.length).toBe(statesBefore + 1);
+    expect(league.agenda).toBeNull();
   });
 });
 
@@ -3752,7 +3763,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(remnant).not.toBeNull();
     expect(remnant!.name).toContain("Aeloria Restoration Front");
     expect(remnant!.category).toBe("political");
-    expect(remnant!.type).toBe("rebel_front");
+    expect(remnant!.type).toBe("noble_league");
     expect(remnant!.allegiance).toBe("hostile");
     expect(remnant!.sovereignAmbition).toBe(true);
     expect(remnant!.stateRelations[2]).toBe("Enemy");

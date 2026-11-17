@@ -2,7 +2,7 @@
 
 import { type Alignment, aggressiveTraits, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { convertDangerMarkerToRuins, getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
-import { getFactionArchetype } from "@/data/factions-catalog";
+import { getFactionArchetype, resolveFactionArchetypeType } from "@/data/factions-catalog";
 import { getLairDef, instantiateLairUnits, LAIR_CATALOG } from "@/data/living-lairs";
 import {
   BURG_FACTION_IDS,
@@ -296,13 +296,20 @@ function recordClaim(stateId: number, burg: Burg, targetStateId: number): void {
  */
 export function syncDangerMarkers(living: LivingWorldState): void {
   living.activeTroubles ??= {};
+  const active = Factions.active();
+  if (active.length >= 10) return;
 
+  const activeTypes = new Set(active.map(f => resolveFactionArchetypeType(f.type)));
   for (const marker of pack.markers ?? []) {
     if (marker.hidden || !isDangerMarker(marker)) continue;
+    if (Factions.active().length >= 10) break;
     if (Factions.active().some(f => f.hq.markerId === marker.i)) continue;
     const provinceId = pack.cells?.province?.[marker.cell] ?? 0;
     if (!provinceId || !living.provinces[provinceId]) continue;
     const mapping = getLairArchetypeForMarker(marker.type);
+    const canonical = resolveFactionArchetypeType(mapping.lairId);
+    if (activeTypes.has(canonical)) continue;
+    activeTypes.add(canonical);
     spawnDangerousFaction(provinceId, mapping.lairId, mapping.defaultTheme, undefined, {
       name: marker.name,
       markerId: marker.i
@@ -548,6 +555,37 @@ export function migrateLegacyThreats(living: LivingWorldState): void {
       if (lair.provinceId) spawnDangerousFaction(lair.provinceId, lair.id, lair.theme, lair.level);
     }
     delete (living as unknown as { activeLairs?: unknown }).activeLairs;
+  }
+
+  // Remap legacy non-epic faction types and cap duplicate petty factions by converting extras into drain troubles
+  const seenEpicTypes = new Set<string>();
+  const activeFactions = Factions.active();
+  for (const faction of activeFactions) {
+    const canonical = resolveFactionArchetypeType(faction.type);
+    if (canonical !== faction.type) {
+      faction.type = canonical;
+      const arch = getFactionArchetype(canonical);
+      if (arch) {
+        faction.category = arch.category;
+        if (!faction.icon) faction.icon = arch.markerIcon;
+      }
+    }
+    if (seenEpicTypes.has(canonical) && activeFactions.length > 10 && faction.hq.markerId !== undefined) {
+      const provId = faction.hq.provinceId ?? pack.cells?.province?.[faction.hq.cell] ?? 0;
+      const pSim = provId ? living.provinces[provId] : undefined;
+      if (pSim && !pSim.trouble) {
+        pSim.trouble = {
+          id: "ancient_curse",
+          name: faction.name,
+          severity: "drain",
+          seasonsLow: 2,
+          cell: faction.hq.cell
+        };
+      }
+      Factions.remove(faction.i);
+      continue;
+    }
+    seenEpicTypes.add(canonical);
   }
 }
 
@@ -933,7 +971,7 @@ export function spawnRemnantFaction(fallenState: State, conquerorStateId?: numbe
   const remnant = Factions.add({
     name: `${fallenState.name} Restoration Front`,
     category: "political",
-    type: "rebel_front",
+    type: "noble_league",
     allegiance: "hostile",
     color: fallenState.color,
     culture: fallenState.culture,
