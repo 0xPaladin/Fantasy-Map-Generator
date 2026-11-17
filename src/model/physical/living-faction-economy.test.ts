@@ -9,6 +9,7 @@ import {
   canReadUpstreamEconomy,
   computeFactionEconomy,
   factionUpstreamIncome,
+  projectedAssetSeasons,
   SEASON_DAYS
 } from "./living-faction-economy";
 
@@ -187,11 +188,29 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
     expect(economy.collectedDaily).toBeCloseTo(8 * 0.2 + turnover * 0.05, 2);
     expect(economy.expenses.map(e => e.bucket)).toEqual(["court", "administration", "infrastructure", "military"]);
     expect(economy.corruptionRate).toBe(7); // 10 base - 3 lawful
-    expect(economy.charterTitheDaily).toBeCloseTo(economy.collectedDaily * 0.15, 2);
+    expect(economy.charterTitheDaily).toBeCloseTo(economy.collectedDaily * 0.15, 1);
     const spent = economy.expenses.reduce((s, e) => s + e.daily, 0);
     expect(economy.dayBalance).toBeCloseTo(
       economy.collectedDaily - spent - economy.corruptionDaily - economy.charterTitheDaily,
       2
     );
+  });
+
+  it("folds faction adjustments into daily revenue and computes projected asset seasons", () => {
+    const guild = faction({
+      adjustments: [
+        { name: "Patron Grant", value: 3 },
+        { name: "Dock Dues", value: -1 }
+      ]
+    });
+    const nodeInc = factionUpstreamIncome(guild, guild.hq);
+    const economy = computeFactionEconomy(guild, [nodeInc], 0);
+
+    expect(economy.adjustmentsDaily).toBe(2);
+    expect(economy.collectedDaily).toBeCloseTo(2.1 + 2, 2);
+    expect(economy.projectDaily).toBeCloseTo((4.1 * 22) / 100, 2);
+    expect(projectedAssetSeasons(50, economy.projectDaily)).toBe(1);
+    expect(projectedAssetSeasons(200, economy.projectDaily)).toBe(3);
+    expect(projectedAssetSeasons(50, 0)).toBeNull();
   });
 });

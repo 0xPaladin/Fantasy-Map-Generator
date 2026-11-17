@@ -68,6 +68,8 @@ describe("FactionsEditor", () => {
     const bodySection = document.querySelector("#factionsBodySection")!;
     expect(bodySection.innerHTML).toContain("Golden Merchants");
     expect(bodySection.innerHTML).toContain("Commercial");
+    expect(dialog?.innerHTML).not.toContain('data-col="treasury"');
+    expect(dialog?.innerHTML).toContain("Avg daily income");
   });
 
   it("filters factions by category and search", () => {
@@ -173,21 +175,33 @@ describe("FactionsEditor", () => {
     openOutpostsDialog(faction.i);
     const dialog = document.querySelector("#factionOutpostsDialog")!;
     expect(dialog.innerHTML).toContain("Income");
-    expect(dialog.innerHTML).toContain("income a season");
-    expect(dialog.innerHTML).toContain("🪙 100");
+    expect(dialog.innerHTML).toContain("/day");
+    expect(dialog.innerHTML).not.toContain("income a season");
+    expect(dialog.innerHTML).not.toContain("🪙 100");
     expect(dialog.innerHTML).toContain("Revenue");
+    expect(dialog.innerHTML).toContain("Adjustments");
     expect(dialog.innerHTML).toContain("Expenses");
     expect(dialog.innerHTML).toContain("Court and patronage");
     expect(dialog.innerHTML).toContain("Day Balance");
     expect(dialog.innerHTML).toContain("Corruption");
     expect(dialog.innerHTML).not.toContain("Citizens");
     expect(dialog.innerHTML).not.toContain("yields");
+
+    const outpostsHeader = dialog.querySelector("#outpostsTable .header")!;
+    expect(outpostsHeader.textContent).not.toContain("Tier");
+    expect(outpostsHeader.textContent).not.toContain("Lines");
+
+    const hqInfInput = dialog.querySelector<HTMLInputElement>('.nodeInfluenceInput[data-node="hq"]')!;
+    hqInfInput.value = "85";
+    hqInfInput.dispatchEvent(new Event("change"));
+    expect(faction.hq.influence).toBe(85);
   });
 
   it("formats asset benefits using FMG-native simulation effects", () => {
-    expect(formatAssetBenefits("trade_depot")).toBe("+1 🪙/day Host, +3% Market Cut");
-    expect(formatAssetBenefits("safe_house")).toBe("-1 🪙/day Host, -3 Order");
-    expect(formatAssetBenefits("shadow_court")).toBe("-12 Order, +6 Unrest");
+    expect(formatAssetBenefits("trade_depot")).toBe("+1 🪙/day Host, +3% Market Cut, +1 Influence");
+    expect(formatAssetBenefits("safe_house")).toBe("-1 🪙/day Host, -1% Host Stability, +15 Secrecy");
+    expect(formatAssetBenefits("shadow_court")).toBe("-6% Host Stability, +10 Secrecy, +4 Influence");
+    expect(formatAssetBenefits("war_citadel")).toBe("+4% Host Stability, +2 Force Cap");
   });
 
   it("supports tab switching between HQ & Outposts, Assets, and Forces", () => {
@@ -233,13 +247,14 @@ describe("FactionsEditor", () => {
     expect(assetsPanel.style.display).toBe("none");
   });
 
-  it("supports commissioning and dismantling assets in the Assets tab", () => {
+  it("supports adjustments, season-projected asset queuing, and dismantling in Assets tab", () => {
     const faction = Factions.add({
       name: "Silver Vault",
       category: "commercial",
       type: "merchant_consortium",
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] },
-      treasury: 500
+      treasury: 500,
+      adjustments: [{ name: "Trade Charter", value: 2 }]
     });
     pack.cells.development = new Uint8Array([0, 30, 30]);
 
@@ -249,17 +264,29 @@ describe("FactionsEditor", () => {
     const assetSelect = document.querySelector<HTMLSelectElement>("#newAssetSelect")!;
     const addAssetBtn = document.querySelector<HTMLButtonElement>("#addAssetBtn")!;
 
+    // Asset options display projected seasons based upon revenue (not lump-sum gold)
+    const depotOption = assetSelect.querySelector<HTMLOptionElement>('option[value="trade_depot"]')!;
+    expect(depotOption.textContent).toContain("season");
+    expect(depotOption.textContent).not.toContain("50g");
+
     locSelect.value = "hq";
     assetSelect.value = "trade_depot";
     addAssetBtn.click();
 
-    // A work is commissioned: paid from the treasury, built over seasons (phase 6).
+    // Selecting places the work in the active slot without deducting lump-sum gold from treasury
     expect(faction.project).toMatchObject({ assetId: "trade_depot", nodeKey: "hq" });
-    expect(faction.treasury).toBe(450);
+    expect(faction.treasury).toBe(500);
     expect(faction.hq.assets).not.toContain("trade_depot");
+
+    // Selecting another asset places it in the queue
+    document.querySelector<HTMLSelectElement>("#newAssetLocationSelect")!.value = "hq";
+    document.querySelector<HTMLSelectElement>("#newAssetSelect")!.value = "counting_house";
+    document.querySelector<HTMLButtonElement>("#addAssetBtn")!.click();
+    expect(faction.projectQueue).toEqual([{ assetId: "counting_house", nodeKey: "hq" }]);
 
     // A finished asset can still be dismantled from the node.
     faction.project = undefined;
+    faction.projectQueue = undefined;
     faction.hq.assets = ["trade_depot"];
     openOutpostsDialog(faction.i, "assets");
     const assetRows = document.querySelectorAll("#assetsTable > .states");

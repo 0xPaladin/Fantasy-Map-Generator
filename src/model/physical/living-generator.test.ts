@@ -4006,15 +4006,18 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       return { living, faction };
     }
 
-    it("commissions an asset from treasury and pays the host town a daily line", () => {
+    it("queues an asset without lump-sum treasury cost, draws from daily revenue, and writes host effects", () => {
       const { living, faction } = factionWorld();
       expect(Living.commissionFactionAsset(faction.i, "trade_depot", "hq")).toBe(true);
-      expect(faction.treasury).toBe(450);
+      expect(faction.treasury).toBe(500);
       expect(faction.project).toMatchObject({ assetId: "trade_depot", nodeKey: "hq", turnsLeft: 1 });
+      expect(Living.commissionFactionAsset(faction.i, "counting_house", "hq")).toBe(true);
+      expect(faction.projectQueue).toEqual([{ assetId: "counting_house", nodeKey: "hq" }]);
 
       Living.tick(1);
-      expect(faction.project).toBeUndefined();
       expect(faction.hq.assets).toContain("trade_depot");
+      // Queued asset promoted automatically once active completes
+      expect(faction.project).toMatchObject({ assetId: "counting_house", nodeKey: "hq" });
       const line = pack.burgs[1].simAdjustments?.find(entry =>
         entry.name.startsWith("Faction: Test Consortium Trade Depot")
       );

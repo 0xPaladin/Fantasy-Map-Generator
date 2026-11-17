@@ -65,9 +65,11 @@ import {
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
 import {
+  canReadUpstreamEconomy,
   computeFactionEconomy,
   type FactionUpstreamIncome,
   factionUpstreamIncome,
+  projectedAssetSeasons,
   SEASON_DAYS
 } from "@/model/physical/living-faction-economy";
 import {
@@ -2311,10 +2313,16 @@ class LivingModel {
 
   /** Factions keep a small standing guard: muster one roster block per season while under strength and funded. */
   private musterFactionBlock(faction: Faction, living: LivingWorldState): void {
+    const assetMilitaryCap = this.factionNodes(faction).reduce(
+      (sum, { node }) =>
+        sum + (node.assets ?? []).reduce((aSum, aid) => aSum + (getFactionAsset(aid)?.yields?.militaryCap ?? 0), 0),
+      0
+    );
     const desired =
       1 +
       Math.floor((faction.outposts ?? []).length / 2) +
-      (faction.allegiance === "hostile" || faction.category === "martial" || faction.sovereignAmbition ? 1 : 0);
+      (faction.allegiance === "hostile" || faction.category === "martial" || faction.sovereignAmbition ? 1 : 0) +
+      assetMilitaryCap;
     const combatRegiments = (faction.military ?? []).filter(r => !isCivilianUnit((r.type ?? "").toLowerCase()));
     if (combatRegiments.length >= desired) return;
 
@@ -2426,26 +2434,50 @@ class LivingModel {
     return nodes;
   }
 
-  /** Best next asset a faction can currently afford and build. */
+  /** Best next asset a faction can currently fund from daily revenue and build. */
   private pickNextFactionAsset(faction: Faction): FactionAssetDef | null {
-    const treasury = Number(faction.treasury ?? 0);
+    const breakdown = this.getFactionYieldBreakdown(faction);
+    const canFund =
+      breakdown.economy.projectDaily > 0 ||
+      (!canReadUpstreamEconomy() && Number(faction.treasury ?? 0) >= FACTION_PROJECT_RESERVE);
+    if (!canFund) return null;
+
     const development = this.factionDevelopment(faction);
     const candidates = getAllFactionAssets()
       .filter(def => factionCanBuildAsset(faction, def, development))
-      .filter(def => treasury >= def.cost + FACTION_PROJECT_RESERVE)
       .filter(def => this.pickFactionAssetNode(faction, def) !== null)
       .sort((a, b) => a.tier - b.tier || a.cost - b.cost || a.id.localeCompare(b.id));
     return candidates[0] ?? null;
   }
 
-  /** A faction's next work: advance it, or commission the best asset its track and purse allow. */
+  /** Advance the active asset build using daily infrastructure revenue, or queue the next eligible work. */
   private stepFactionProject(faction: Faction, living: LivingWorldState): void {
+    if (!faction.project && faction.projectQueue?.length) {
+      this.promoteNextQueuedFactionProject(faction);
+    }
+
     if (faction.project) {
-      if (faction.project.turnsLeft > 1) {
-        faction.project.turnsLeft -= 1;
+      const def = getFactionAsset(faction.project.assetId);
+      const breakdown = this.getFactionYieldBreakdown(faction);
+      const seasonalDraw = breakdown.economy.projectDaily * SEASON_DAYS;
+      if (seasonalDraw > 0 && def) {
+        const remaining = (faction.project.remainingCost ?? def.cost) - seasonalDraw;
+        if (remaining <= 0) {
+          this.completeFactionProject(faction, living);
+        } else {
+          faction.project.remainingCost = Math.round(remaining * 100) / 100;
+          faction.project.turnsLeft = Math.max(1, Math.ceil(remaining / seasonalDraw));
+        }
         return;
       }
-      this.completeFactionProject(faction, living);
+
+      if (!canReadUpstreamEconomy()) {
+        if (faction.project.turnsLeft > 1) {
+          faction.project.turnsLeft -= 1;
+          return;
+        }
+        this.completeFactionProject(faction, living);
+      }
       return;
     }
 
@@ -2453,28 +2485,72 @@ class LivingModel {
     if (next) this.commissionFactionAsset(faction.i, next.id);
   }
 
-  /** God mode / editor: pay for and begin one faction asset at a node. */
+  /** Begin one queued asset directly if it fits its target node. */
+  private startFactionProjectEntry(faction: Faction, assetId: string, nodeKey: FactionNodeKey): boolean {
+    const def = getFactionAsset(assetId);
+    const target = this.factionNodeByKey(faction, nodeKey);
+    if (!def || !target || (target.node.assets ?? []).includes(assetId)) return false;
+
+    const breakdown = this.getFactionYieldBreakdown(faction);
+    const turns = projectedAssetSeasons(def.cost, breakdown.economy.projectDaily) ?? def.tier;
+    faction.project = {
+      assetId,
+      nodeKey: factionSuppressionNodeKey(target.node, target.isHq),
+      turnsLeft: turns,
+      totalCost: def.cost,
+      remainingCost: def.cost
+    };
+    return true;
+  }
+
+  private promoteNextQueuedFactionProject(faction: Faction): void {
+    while (faction.projectQueue?.length && !faction.project) {
+      const next = faction.projectQueue.shift()!;
+      this.startFactionProjectEntry(faction, next.assetId, next.nodeKey);
+    }
+  }
+
+  /** God mode / editor: place a faction asset in the active/queued build list funded by daily revenue. */
   commissionFactionAsset(factionId: number, assetId: string, nodeKey?: FactionNodeKey): boolean {
     const faction = Factions.active().find(entry => entry.i === factionId);
     const def = getFactionAsset(assetId);
-    if (!faction?.i || faction.removed || !def || faction.project) return false;
-    if (Number(faction.treasury ?? 0) < def.cost) return false;
+    if (!faction?.i || faction.removed || !def) return false;
     if (!factionCanBuildAsset(faction, def, this.factionDevelopment(faction))) return false;
 
     const target = nodeKey ? this.factionNodeByKey(faction, nodeKey) : this.pickFactionAssetNode(faction, def);
     if (!target || (target.node.assets ?? []).includes(assetId)) return false;
 
-    faction.treasury = Math.round((Number(faction.treasury) - def.cost) * 100) / 100;
-    faction.project = {
-      assetId,
-      nodeKey: factionSuppressionNodeKey(target.node, target.isHq),
-      turnsLeft: def.tier
-    };
+    const resolvedKey = factionSuppressionNodeKey(target.node, target.isHq);
+    const duplicateActive = faction.project?.assetId === assetId && faction.project?.nodeKey === resolvedKey;
+    const duplicateQueued = (faction.projectQueue ?? []).some(q => q.assetId === assetId && q.nodeKey === resolvedKey);
+    if (duplicateActive || duplicateQueued) return false;
+
+    if (!faction.project) {
+      if (!this.startFactionProjectEntry(faction, assetId, resolvedKey)) return false;
+    } else {
+      faction.projectQueue ??= [];
+      faction.projectQueue.push({ assetId, nodeKey: resolvedKey });
+    }
     if (pack.history?.living) pack.history.living.economyDirty = true;
     return true;
   }
 
-  /** Finish a faction work: add it to the node and let the host town feel it. */
+  /** Cancel the active project or remove a queued asset build. */
+  dequeueFactionProject(factionId: number, kind: "active" | "queued", queueIndex = 0): boolean {
+    const faction = Factions.active().find(entry => entry.i === factionId);
+    if (!faction?.i || faction.removed) return false;
+    if (kind === "active") {
+      if (!faction.project) return false;
+      faction.project = undefined;
+      this.promoteNextQueuedFactionProject(faction);
+      return true;
+    }
+    if (!faction.projectQueue || queueIndex < 0 || queueIndex >= faction.projectQueue.length) return false;
+    faction.projectQueue.splice(queueIndex, 1);
+    return true;
+  }
+
+  /** Finish a faction work: add it to the node, apply node/province effects, and start the next queued work. */
   private completeFactionProject(faction: Faction, living: LivingWorldState): void {
     const active = faction.project;
     if (!active) return;
@@ -2482,14 +2558,15 @@ class LivingModel {
     const target = this.factionNodeByKey(faction, active.nodeKey);
     if (!def || !target) {
       faction.project = undefined;
+      this.promoteNextQueuedFactionProject(faction);
       return;
     }
 
     target.node.assets = [...(target.node.assets ?? []), def.id];
-    if (target.node.sim) target.node.sim.civBuildings = [...target.node.assets];
-    this.applyFactionAssetImpacts(target.node, def);
-    faction.influence = minmax((faction.influence ?? 0) + 2, 0, 100);
+    this.applyFactionAssetImpacts(target.node, def, living);
+    faction.influence = minmax((faction.influence ?? 0) + (def.yields?.influence ?? 2), 0, 100);
     faction.project = undefined;
+    this.promoteNextQueuedFactionProject(faction);
     living.economyDirty = true;
 
     const location = target.node.burgId ? (pack.burgs[target.node.burgId]?.name ?? "a burg") : "the wilds";
@@ -2503,11 +2580,31 @@ class LivingModel {
     this.pushHistory("deed", [{ kind: "state", id: faction.patronStateId ?? 0 }], target.node.cell, text);
   }
 
-  private applyFactionAssetImpacts(_node: FactionHq | FactionOutpost, _def: FactionAssetDef): void {}
+  private applyFactionAssetImpacts(
+    node: FactionHq | FactionOutpost,
+    def: FactionAssetDef,
+    living: LivingWorldState
+  ): void {
+    if (def.yields?.secrecy) {
+      node.secrecy = minmax((node.secrecy ?? 0) + def.yields.secrecy, 0, 100);
+    }
+    if (def.yields?.development) {
+      const cell = node.burgId ? (pack.burgs[node.burgId]?.cell ?? node.cell) : node.cell;
+      const provId = pack.cells?.province?.[cell] ?? 0;
+      if (provId) this.raiseProvinceDevelopment(provId, def.yields.development, living);
+    }
+  }
 
-  /** Rebuild every faction money line on its host towns: one per asset with a gold bite. */
-  private syncFactionLines(living: LivingWorldState): void {
+  /** Sync all faction asset economy and stability lines on burgs and provinces. */
+  syncFactionEffects(living: LivingWorldState | undefined = pack.history?.living): void {
+    this.syncFactionLines(living);
+  }
+
+  /** Rebuild faction asset daily lines on host burgs and stability lines on host provinces. */
+  private syncFactionLines(living?: LivingWorldState): void {
     const prefix = "Faction: ";
+    const stabPrefix = "Faction Work: ";
+
     for (const burg of pack.burgs) {
       if (!burg?.i || burg.removed) continue;
       const current = burg.simAdjustments ?? [];
@@ -2529,7 +2626,33 @@ class LivingModel {
       const next = [...kept, ...lines];
       if (JSON.stringify(next) === JSON.stringify(current)) continue;
       burg.simAdjustments = next;
-      living.economyDirty = true;
+      if (living) living.economyDirty = true;
+    }
+
+    for (const province of pack.provinces ?? []) {
+      if (!province?.i || province.removed) continue;
+      const currentStab = province.simStabilityAdjustments ?? [];
+      const keptStab = currentStab.filter(line => !line.name.startsWith(stabPrefix));
+      const stabLines: { name: string; value: number }[] = [];
+
+      for (const faction of Factions.active()) {
+        for (const { node } of this.factionNodes(faction)) {
+          const cell = node.burgId ? (pack.burgs[node.burgId]?.cell ?? node.cell) : node.cell;
+          const nodeProv = pack.cells?.province?.[cell] ?? 0;
+          if (nodeProv !== province.i) continue;
+          for (const assetId of node.assets ?? []) {
+            const def = getFactionAsset(assetId);
+            const stability = def?.burgImpact?.stability ?? 0;
+            if (!def || !stability) continue;
+            stabLines.push({ name: `${stabPrefix}${faction.name} ${def.name}`, value: stability });
+          }
+        }
+      }
+
+      const nextStab = [...keptStab, ...stabLines];
+      if (JSON.stringify(nextStab) === JSON.stringify(currentStab)) continue;
+      province.simStabilityAdjustments = nextStab;
+      if (living) living.economyDirty = true;
     }
   }
 
@@ -2587,6 +2710,7 @@ class LivingModel {
       const breakdown: FactionNodeYieldBreakdown = {
         node,
         isHq,
+        dailyIncome: Math.round((upstream.gold / SEASON_DAYS) * 100) / 100,
         upstreamGold: upstream.gold,
         charterTithe: upstream.charterTithe
       };
@@ -2617,6 +2741,7 @@ class LivingModel {
       nodes,
       hq: hqBreakdown,
       outposts: outpostsBreakdown,
+      dailyIncome: Math.round((economy.collectedDaily - economy.charterTitheDaily) * 100) / 100,
       upstreamGold: Math.round(totalUpstreamGold * 100) / 100,
       charterTithe: Math.round(totalCharterTithe * 100) / 100,
       charterPatronId,

@@ -19,6 +19,7 @@ import type {
 } from "@/types/factions";
 import type { BurgSimState } from "@/types/living";
 import { createRng, type Rng } from "@/utils/rng";
+import { requireAdjustments } from "@/utils/validation-utils";
 
 /** Initialize or reconcile the OpenCiv BurgSimState for a Faction HQ or Outpost */
 export function ensureFactionNodeSim(node: FactionHq | FactionOutpost, isHq: boolean): BurgSimState {
@@ -751,6 +752,7 @@ class FactionsModule {
       doctrine: params.doctrine,
       agenda: params.agenda ?? null,
       seasonsActive: params.seasonsActive || 0,
+      adjustments: params.adjustments,
       tags: params.tags,
       lock: params.lock,
       removed: false,
@@ -768,6 +770,13 @@ class FactionsModule {
     if (!f || f.removed) return false;
     f.removed = true;
     return true;
+  }
+
+  /** Set daily revenue/cost adjustments on a faction */
+  setAdjustments(id: number, adjustments: { name: string; value: number }[]): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    f.adjustments = requireAdjustments(adjustments);
   }
 }
 

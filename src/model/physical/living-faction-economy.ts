@@ -1,6 +1,7 @@
 // Upstream-backed faction income (economy alignment §5.1): trade margins, graft,
 // retainers and tithes read off the last economy run rather than abstract cell yields.
 
+import { getFactionAsset } from "@/data/faction-assets";
 import { Corruption } from "@/model/economy/corruption";
 import { Deals } from "@/model/economy/deals";
 import { Prosperity } from "@/model/economy/prosperity";
@@ -99,7 +100,7 @@ function commercialLines(
 ): FactionRevenueLine[] {
   const hostBurg = burgId ? pack.burgs?.[burgId] : undefined;
   const marketId = Number(pack.cells.market?.[node.cell] ?? 0);
-  const assets = [...(node.assets ?? []), ...(node.sim?.civBuildings ?? [])];
+  const assets = node.assets ?? [];
   const commerce = assets.filter(asset => COMMERCIAL_ASSETS.includes(asset)).length;
   const commission = Math.min(COMMISSION_TOP, COMMISSION_BASE + COMMISSION_PER_ASSET * commerce);
   const factor = leaderIncomeFactor(faction);
@@ -174,34 +175,39 @@ export function factionUpstreamIncome(faction: Faction, node: FactionHq | Factio
   const burgId = node.burgId;
   const hostStateId = burgId ? (pack.burgs?.[burgId]?.state ?? 0) : (pack.cells.state?.[node.cell] ?? 0);
   const state = pack.states?.[hostStateId];
-  if (!hostStateId || !state?.i || state.removed) return NONE;
 
   let lines: FactionRevenueLine[] = [];
   let influence = 0;
-  switch (faction.category) {
-    case "commercial":
-      lines = commercialLines(faction, node, burgId);
-      break;
-    case "underworld":
-      lines = underworldLines(state, node);
-      break;
-    case "martial":
-      lines = martialLines(faction, hostStateId, burgId);
-      break;
-    case "religious":
-    case "political":
-      lines = courtLines(state, burgId, faction.category === "political");
-      influence = Math.min(
-        INFLUENCE_TOP,
-        (Number(state.economy?.spent?.court ?? 0) + Number(state.economy?.spent?.administration ?? 0)) / 20
-      );
-      break;
-    case "adventuring":
-      lines = adventuringLines(state, burgId);
-      break;
-    default:
-      break;
+  if (hostStateId && state?.i && !state.removed) {
+    switch (faction.category) {
+      case "commercial":
+        lines = commercialLines(faction, node, burgId);
+        break;
+      case "underworld":
+        lines = underworldLines(state, node);
+        break;
+      case "martial":
+        lines = martialLines(faction, hostStateId, burgId);
+        break;
+      case "religious":
+      case "political":
+        lines = courtLines(state, burgId, faction.category === "political");
+        influence = Math.min(
+          INFLUENCE_TOP,
+          (Number(state.economy?.spent?.court ?? 0) + Number(state.economy?.spent?.administration ?? 0)) / 20
+        );
+        break;
+      case "adventuring":
+        lines = adventuringLines(state, burgId);
+        break;
+      default:
+        break;
+    }
   }
+
+  const assetDaily = (node.assets ?? []).reduce((sum, aid) => sum + (getFactionAsset(aid)?.yields?.gold ?? 0), 0);
+  if (assetDaily > 0) lines.push({ key: "asset_extraction", label: "Asset extraction", daily: assetDaily });
+  if (!lines.length && (!hostStateId || !state?.i || state.removed)) return NONE;
 
   const dailyGross = lines.reduce((sum, line) => sum + line.daily, 0);
   const gold = dailyGross * SEASON_DAYS;
@@ -244,6 +250,13 @@ const FACTION_CORRUPTION_BASE: Record<FactionCategory, number> = {
   adventuring: 8
 };
 
+/** Projected seasons to fund an asset cost from daily infrastructure revenue */
+export function projectedAssetSeasons(cost: number, projectDaily: number): number | null {
+  if (cost <= 0) return 1;
+  if (projectDaily <= 0) return null;
+  return Math.max(1, Math.ceil(cost / (projectDaily * SEASON_DAYS)));
+}
+
 /** Compute the daily state-style Revenue & Expenses breakdown for a faction. */
 export function computeFactionEconomy(
   faction: Faction,
@@ -265,10 +278,13 @@ export function computeFactionEconomy(
   }
 
   const revenueLines = [...byKey.values()].map(line => ({ ...line, daily: rn(line.daily, 2) }));
-  const collectedDaily = rn(
-    revenueLines.reduce((sum, line) => sum + line.daily, 0),
+  const streamDaily = revenueLines.reduce((sum, line) => sum + line.daily, 0);
+  const adjustmentsDaily = rn(
+    (faction.adjustments ?? []).reduce((sum, line) => sum + (Number(line.value) || 0), 0),
     2
   );
+  const collectedDaily = rn(streamDaily + adjustmentsDaily, 2);
+  const revenueBase = Math.max(0, collectedDaily);
   const hostProductShare = totalHostProduct > 0 ? rn((collectedDaily / totalHostProduct) * 100, 1) : 0;
 
   const profile = FACTION_EXPENSE_PROFILES[faction.category] ?? FACTION_EXPENSE_PROFILES.commercial;
@@ -279,14 +295,14 @@ export function computeFactionEconomy(
   else if (faction.alignment === "chaotic" || faction.alignment === "evil") corruptionRate += 4;
   corruptionRate = minmax(corruptionRate, 4, 30);
 
-  const corruptionDaily = rn((collectedDaily * corruptionRate) / 100, 2);
+  const corruptionDaily = rn((revenueBase * corruptionRate) / 100, 2);
   const charterTitheDaily = rn(charterTitheSeasonal / SEASON_DAYS, 2);
 
   const buckets: FactionExpenseBucket[] = ["court", "administration", "infrastructure", "military"];
   const expenses: FactionExpenseLine[] = buckets.map(bucket => {
-    const baseDaily = (collectedDaily * profile[bucket]) / 100;
+    const baseDaily = (revenueBase * profile[bucket]) / 100;
     const daily = bucket === "military" ? Math.max(baseDaily, militaryBlockDaily) : baseDaily;
-    const share = collectedDaily > 0 ? Math.round((daily / collectedDaily) * 100) : daily > 0 ? 100 : 0;
+    const share = revenueBase > 0 ? Math.round((daily / revenueBase) * 100) : daily > 0 ? 100 : 0;
     return {
       bucket,
       label: FACTION_EXPENSE_LABELS[bucket],
@@ -295,6 +311,7 @@ export function computeFactionEconomy(
     };
   });
 
+  const projectDaily = rn(expenses.find(e => e.bucket === "infrastructure")?.daily ?? 0, 2);
   const spentDaily = expenses.reduce((sum, e) => sum + e.daily, 0);
   const spentShare = expenses.reduce((sum, e) => sum + e.share, 0);
   const dayBalance = rn(collectedDaily - spentDaily - corruptionDaily - charterTitheDaily, 2);
@@ -304,6 +321,8 @@ export function computeFactionEconomy(
   return {
     revenueLines,
     collectedDaily,
+    adjustmentsDaily,
+    projectDaily,
     hostProductShare,
     expenses,
     spentShare,
