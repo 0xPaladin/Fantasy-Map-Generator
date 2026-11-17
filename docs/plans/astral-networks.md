@@ -377,8 +377,7 @@ src/locales/en.json                          extracted strings (then all locales
 - **Trade impact.** Network links join the trade graph by default. Friction is a blunt multiplier on the
   link's length; it does not model capacity, tariffs or direction. That is enough for a wormhole shortcut
   and a relay backwater, and keeps the first version out of the market simulator.
-- **Exact counts.** Poisson-disc thinning gives a minimum distance, not an exact requested count. The UI
-  shows the actual count and offers Regenerate rather than promising a number.
+- **Exact counts.** Poisson-disc thinning starts from the target-area radius, shrinks the radius by binary search if too few nodes are accepted, and slices/tops up so the network gets the exact requested count (capped only by available candidates).
 - **Settings growth.** Networks live in the settings record. A map with hundreds of networks grows that
   record; the expected range (a handful of networks, tens of nodes) is far below the existing goods set.
 - **Route id renumbering.** Avoided by not storing route ids. The link between a network and its routes is
@@ -388,7 +387,7 @@ src/locales/en.json                          extracted strings (then all locales
 
 ## Out of scope
 
-- Manual node placement, dragging, adding or deleting individual nodes.
+- Manual node adding or deleting individual nodes (dragging existing nodes is supported while the Network Edit box is open).
 - Node names, notes, or per-node metadata beyond cell/burg/position.
 - Custom network kinds and a kinds editor.
 - Links between different networks, or network hubs shared by several networks.

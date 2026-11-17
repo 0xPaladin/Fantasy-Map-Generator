@@ -1,14 +1,20 @@
 import { Controllers } from "@/controllers";
 import { ALIGNMENTS, type Alignment } from "@/data/culture-traits";
 import { FACTION_ASSETS_CATALOG, getFactionAsset } from "@/data/faction-assets";
-import { CIV_BUILDING_BY_ID } from "@/data/living-civ-buildings";
+import { COMMERCIAL_ASSETS, COMMISSION_PER_ASSET } from "@/model/physical/living-faction-economy";
 import { Living } from "@/model/physical/living-generator";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import type { Regiment } from "@/model/political/military-generator";
-import { getMoneySymbol } from "@/model/units";
+import { formatPrice, getMoneySymbol } from "@/model/units";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
-import type { Faction, FactionAllegiance, FactionCategory, FactionOutpost } from "@/types/factions";
+import type {
+  Faction,
+  FactionAllegiance,
+  FactionCategory,
+  FactionOutpost,
+  FactionYieldBreakdown
+} from "@/types/factions";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -20,6 +26,7 @@ import {
   renderEditorPagination,
   type TableView
 } from "@/ui/dialog/table";
+import { budgetBackground, ECONOMY_COLORS, tone } from "@/ui/economy-view";
 import type { FillBoxElement } from "@/ui/elements/fill-box";
 import { zoomTo } from "@/ui/map/zoom";
 import { t } from "@/utils/i18n";
@@ -40,14 +47,14 @@ const CSV_COLUMNS = [
   "HQ Burg",
   "Outposts Count",
   "Treasury",
-  "Trade",
+  "Income",
   "Expansionism",
   "Color"
 ];
 
 /** Gold a node draws from the upstream economy this season, before upkeep */
-function formatTrade(gold: number | undefined): string {
-  return gold ? `${getMoneySymbol("🪙")} ${Math.round(gold * 10) / 10}` : "—";
+function formatIncome(gold: number | undefined): string {
+  return gold ? `${getMoneySymbol("🪙")} ${Math.round(gold)}` : "—";
 }
 
 export function formatAssetBenefits(assetId?: string): string {
@@ -55,28 +62,79 @@ export function formatAssetBenefits(assetId?: string): string {
   const def = getFactionAsset(assetId);
   if (!def) return "—";
   const parts: string[] = [];
-  if (def.yields?.gold) parts.push(`+${def.yields.gold} ${getMoneySymbol("🪙")}`);
-  if (def.yields?.science) parts.push(`+${def.yields.science} 🔬`);
-  if (def.yields?.influence) parts.push(`+${def.yields.influence} 🎭`);
-  if (def.yields?.militaryCap) parts.push(`+${def.yields.militaryCap} ⚔️`);
-  if (def.yields?.secrecy) parts.push(`+${def.yields.secrecy} 👁️`);
-  if (def.burgImpact?.order) parts.push(`+${def.burgImpact.order} Order`);
-  if (def.burgImpact?.unrest) parts.push(`${def.burgImpact.unrest > 0 ? "+" : ""}${def.burgImpact.unrest} Unrest`);
-  if (def.burgImpact?.prod) parts.push(`+${def.burgImpact.prod} 🔨`);
-
-  if (parts.length === 0) {
-    const civ = CIV_BUILDING_BY_ID[assetId];
-    if (civ?.stats) {
-      if (civ.stats.gold) parts.push(`+${civ.stats.gold} ${getMoneySymbol("🪙")}`);
-      if (civ.stats.production) parts.push(`+${civ.stats.production} 🔨`);
-      if (civ.stats.food) parts.push(`+${civ.stats.food} 🌾`);
-      if (civ.stats.science) parts.push(`+${civ.stats.science} 🔬`);
-      if (civ.stats.culture) parts.push(`+${civ.stats.culture} 🎭`);
-      if (civ.stats.faith) parts.push(`+${civ.stats.faith} ✨`);
-    }
+  if (def.burgImpact?.gold) {
+    const sign = def.burgImpact.gold > 0 ? "+" : "";
+    parts.push(`${sign}${def.burgImpact.gold} ${getMoneySymbol("🪙")}/day Host`);
+  }
+  if (COMMERCIAL_ASSETS.includes(assetId)) {
+    parts.push(`+${Math.round(COMMISSION_PER_ASSET * 100)}% Market Cut`);
+  }
+  if (def.burgImpact?.order) {
+    const orderDelta = def.burgImpact.order * 3;
+    parts.push(`${orderDelta > 0 ? "+" : ""}${orderDelta} Order`);
+  }
+  if (def.burgImpact?.unrest && def.burgImpact.unrest > 0) {
+    parts.push(`+${def.burgImpact.unrest * 3} Unrest`);
   }
 
   return parts.length ? parts.join(", ") : def.description || "—";
+}
+
+function renderFactionEconomyLedger(breakdown: FactionYieldBreakdown): string {
+  const econ = breakdown.economy;
+  const revRow = (label: string, value: number, tipText = "", rowTone = "positive") =>
+    `<div ${tipText ? `data-tip="${escapeHtml(tipText)}"` : ""} class="row plain"><span class="name">${escapeHtml(label)}</span><span class="right ${rowTone}">${formatPrice(value)}</span></div>`;
+
+  const revenueHtml = econ.revenueLines.length
+    ? econ.revenueLines.map(line => revRow(t(line.label), line.daily)).join("")
+    : `<div class="row plain muted"><span class="name">${t("No active revenue streams")}</span><span class="right">—</span></div>`;
+
+  const expRow = (name: string, share: number, bar: string, value: number, tipText: string, rowTone: string) =>
+    `<div ${tipText ? `data-tip="${escapeHtml(tipText)}"` : ""} class="row budget"><span class="name">${name}</span><span class="right">${share}%</span>${bar}<span class="right ${rowTone}">${formatPrice(value)}</span></div>`;
+
+  const expensesHtml = econ.expenses
+    .map(exp =>
+      expRow(
+        escapeHtml(t(exp.label)),
+        exp.share,
+        `<div class="bar" style="background: ${budgetBackground(Math.min(100, exp.share), econ.corruptionRate)}"></div>`,
+        -exp.daily,
+        "",
+        "negative"
+      )
+    )
+    .join("");
+
+  const corruptionRow = `<div class="row budget muted" data-tip="${t("Corruption: share of faction revenue lost to skimming and overhead")}"><span class="name"><span class="swatch" style="background: ${ECONOMY_COLORS.pocketed}"></span>${t("Corruption")}: ${econ.corruptionRate}%</span><span></span><span></span><span class="right negative">${formatPrice(-econ.corruptionDaily)}</span></div>`;
+
+  const titheRow =
+    econ.charterTitheDaily > 0
+      ? `<div class="row budget muted" data-tip="${t("Charter tithe paid daily to the patron state")}"><span class="name"><span class="swatch" style="background: ${ECONOMY_COLORS.spent}"></span>${t("Charter tithe")}: 15%</span><span></span><span></span><span class="right negative">${formatPrice(-econ.charterTitheDaily)}</span></div>`
+      : "";
+
+  const nodeCount = breakdown.nodes.length;
+  const subNote =
+    econ.hostProductShare > 0
+      ? `${nodeCount} ${nodeCount === 1 ? t("active node") : t("active nodes")} · ${t("{{share}}% of host product", { share: econ.hostProductShare })}`
+      : `${nodeCount} ${nodeCount === 1 ? t("active node") : t("active nodes")}`;
+
+  return /* html */ `
+    <div class="factionLedger columns">
+      <div>
+        <h4 data-tip="${t("Daily revenue streams across active HQ and outposts")}"><span>${t("Revenue")}</span><span>🏛️</span></h4>
+        ${revenueHtml}
+        <div class="total">${revRow(t("Collected"), econ.collectedDaily, t("Total daily revenue before expenses"), tone(econ.collectedDaily))}</div>
+        <div class="muted">${subNote}</div>
+      </div>
+      <div>
+        <h4 data-tip="${t("Automatic daily expense allocations and net balance")}"><span>${t("Expenses")}</span><span>🏛️</span></h4>
+        ${expensesHtml}
+        <div class="total">${expRow(t("Day Balance"), econ.dayBalanceShare, "<span></span>", econ.dayBalance, t("Net daily balance (×90 per season)"), tone(econ.dayBalance))}</div>
+        ${corruptionRow}
+        ${titheRow}
+      </div>
+    </div>
+  `;
 }
 
 let filterState: { search: string; category: string; allegiance: string; alignment: string };
@@ -136,8 +194,8 @@ const columns: EditorColumn<Faction>[] = [
     sortType: "number"
   },
   {
-    key: "trade",
-    label: t("Trade"),
+    key: "income",
+    label: t("Income"),
     width: "5em",
     sortBy: f => Living.getFactionYieldBreakdown(f).upstreamGold,
     sortType: "number"
@@ -406,7 +464,7 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <span data-col="hq" class="pointer" data-action="locate" data-tip="${t("Click to zoom to HQ")}" style="text-decoration: underline;">${escapeHtml(hqName)}</span>
         <span data-col="outposts" class="badge pointer" data-action="outposts" data-tip="${t("Click to manage outposts and assets")}">${f.outposts?.length || 0}</span>
         <input type="number" min="0" max="99999" value="${f.treasury || 0}" data-col="treasury" data-action="treasury" style="width: 4.5em;" />
-        <span data-col="trade" style="text-align: center;">${formatTrade(Living.getFactionYieldBreakdown(f).upstreamGold)}</span>
+        <span data-col="income" style="text-align: center;">${formatIncome(Living.getFactionYieldBreakdown(f).upstreamGold)}</span>
         <span data-col="military" style="text-align: center;">${f.military?.length || 0}</span>
         <div data-col="details" class="pointer icon-pencil" data-action="details" data-tip="${t("Manage Outposts & Assets")}"></div>
         <div data-col="remove" class="pointer icon-trash" data-action="remove" data-tip="${t("Remove faction")}"></div>
@@ -599,7 +657,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
   const hqStatusText = faction.hq.pillaged
     ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>`
     : "";
-  const hqTrade = formatTrade(breakdown.hq?.upstreamGold);
+  const hqIncome = formatIncome(breakdown.hq?.upstreamGold);
   const lineSum = (burgId?: number) => {
     if (!burgId) return 0;
     const burg = pack.burgs[burgId];
@@ -618,8 +676,8 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">⭐ <b>${escapeHtml(hqName)}</b></div>
       <div style="justify-content: center; text-align: center;">2</div>
       <div style="justify-content: center; text-align: center;">${Math.round(faction.hq.influence ?? 70)}%${hqStatusText}</div>
-      <div style="justify-content: center; text-align: center;">${hqTrade}</div>
-      <div style="justify-content: center; text-align: center;">${formatTrade(lineSum(faction.hq.burgId))}</div>
+      <div style="justify-content: center; text-align: center;">${hqIncome}</div>
+      <div style="justify-content: center; text-align: center;">${formatIncome(lineSum(faction.hq.burgId))}</div>
       <div></div>
     </div>
   `;
@@ -629,7 +687,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       const burg = pack.burgs?.[op.burgId];
       const burgName = burg?.name ?? `Burg ${op.burgId}`;
       const nodeBreakdown = breakdown.outposts.find(b => b.node === op);
-      const trade = formatTrade(nodeBreakdown?.upstreamGold);
+      const income = formatIncome(nodeBreakdown?.upstreamGold);
       const statusText = op.pillaged
         ? `<span style="opacity: 0.7; font-size: 0.85em; margin-left: 4px;">(Pillaged)</span>`
         : "";
@@ -638,8 +696,8 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><b>${escapeHtml(burgName)}</b></div>
         <div style="justify-content: center; text-align: center;">${op.tier}</div>
         <div style="justify-content: center; text-align: center;">${op.influence}%${statusText}</div>
-        <div style="justify-content: center; text-align: center;">${trade}</div>
-        <div style="justify-content: center; text-align: center;">${formatTrade(lineSum(op.burgId))}</div>
+        <div style="justify-content: center; text-align: center;">${income}</div>
+        <div style="justify-content: center; text-align: center;">${formatIncome(lineSum(op.burgId))}</div>
         <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
           <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
         </div>
@@ -849,6 +907,67 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
           padding: 0 0.2em;
           font-weight: 600;
         }
+        #${dialogDomId} .factionLedger.columns {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          align-items: start;
+          width: 100%;
+          column-gap: 1.8em;
+          margin-bottom: 10px;
+          font-size: 0.92em;
+        }
+        #${dialogDomId} .factionLedger h4 {
+          margin: 0.2em 0 0.3em;
+          border-bottom: 1px solid var(--dark-solid);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 1em;
+        }
+        #${dialogDomId} .factionLedger .row {
+          display: grid;
+          align-items: center;
+          column-gap: 0.4em;
+          line-height: 1.5;
+        }
+        #${dialogDomId} .factionLedger .row.plain {
+          grid-template-columns: minmax(0, 1fr) minmax(6em, max-content);
+        }
+        #${dialogDomId} .factionLedger .row.budget {
+          grid-template-columns: minmax(0, 2fr) 2.5em minmax(1em, 1fr) minmax(5em, max-content);
+        }
+        #${dialogDomId} .factionLedger .row .name {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.2em;
+        }
+        #${dialogDomId} .factionLedger .bar {
+          height: 0.7em;
+          background: #eee;
+        }
+        #${dialogDomId} .factionLedger .right {
+          text-align: right;
+          white-space: nowrap;
+          font-variant-numeric: tabular-nums;
+        }
+        #${dialogDomId} .factionLedger .total {
+          font-weight: bold;
+          border-top: 1px solid #ccc;
+        }
+        #${dialogDomId} .factionLedger .muted {
+          font-size: 0.85em;
+          color: #666;
+        }
+        #${dialogDomId} .factionLedger .swatch {
+          display: inline-block;
+          width: 0.8em;
+          height: 0.8em;
+          margin-right: 0.25em;
+          vertical-align: middle;
+        }
       </style>
 
       <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 4px;">
@@ -859,9 +978,11 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.allegiance)}</span>
         <span class="badge" style="margin-right: 4px;">${capitalize(faction.alignment)}</span>
         <span class="badge" style="margin-right: 4px;">${getMoneySymbol("🪙")} ${Math.round(faction.treasury ?? 0)}</span>
-        <span class="badge" style="margin-right: 4px;">📈 ${Math.round(breakdown.upstreamGold * 10) / 10} trade a season</span>
+        <span class="badge" style="margin-right: 4px;">📈 ${Math.round(breakdown.upstreamGold)} income a season</span>
         ${breakdown.charterTithe ? `<span class="badge">🏛️ ${Math.round(breakdown.charterTithe * 10) / 10} tithes a season</span>` : ""}
       </div>
+
+      ${renderFactionEconomyLedger(breakdown)}
 
       <!-- Tab Buttons -->
       <div class="dialogTabs">
@@ -883,7 +1004,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
             <div>${t("Burg")}</div>
             <div style="justify-content: center; text-align: center;">${t("Tier")}</div>
             <div style="justify-content: center; text-align: center;">${t("Influence")}</div>
-            <div style="justify-content: center; text-align: center;" data-tip="${t("Gold the node draws from its host's economy a season")}">${t("Trade")}</div>
+            <div style="justify-content: center; text-align: center;" data-tip="${t("Gold the node draws from its host's economy a season")}">${t("Income")}</div>
             <div style="justify-content: center; text-align: center;" data-tip="${t("Daily lines the faction's works write into the host town")}">${t("Lines")}</div>
             <div></div>
           </div>

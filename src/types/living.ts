@@ -18,19 +18,7 @@ export type SeasonId = 0 | 1 | 2 | 3;
 
 export const SEASON_NAMES = ["Spring", "Summer", "Autumn", "Winter"] as const;
 
-export type AgendaKind =
-  | "muster"
-  | "develop"
-  | "build"
-  | "colonize"
-  | "conquer"
-  | "reclaim"
-  | "pacify"
-  | "clear_faction"
-  | "hire_adventurers"
-  | "defend"
-  | "raid"
-  | "suppress_faction";
+export type AgendaKind = "conquer" | "pacify" | "build_work" | "muster" | "suppress_faction";
 
 /**
  * Diplomatic treaties (Phase D of the army integration). War and peace stay
@@ -40,8 +28,8 @@ export type AgendaKind =
 export type TreatyKind = "nonAggression" | "trade" | "defensiveAlliance" | "militaryAccess";
 
 export type TroubleTheme = "burg" | "ruin" | "resource";
-export type TroublePool = "m" | "w" | "s";
-export type TroubleSaveKind = "disorder" | "uprising" | "poverty" | "ignorance" | "despair" | "corruption";
+export type TroubleSeverity = "flavor" | "drain";
+// Retained for roster unit specialist roles
 export type TroubleUnitRole = "guardsmen" | "military" | "merchant" | "sage" | "prophet" | "magistrate";
 
 export type HeroPool = "m" | "w" | "s" | "c";
@@ -137,23 +125,14 @@ export type MissionTag =
   | "intrigue"
   | "trap"
   | "order"
-  | "trouble"
-  | `save:${TroubleSaveKind}`
-  | `role:${TroubleUnitRole}`;
+  | "trouble";
 
 export interface ProvinceTrouble {
   id: string;
   name: string;
-  theme: TroubleTheme;
-  pool: TroublePool;
-  save: TroubleSaveKind;
-  requiredRole: TroubleUnitRole;
-  level: number;
-  seasonsUnchecked: number;
-  cell: number;
-  burgId?: number;
-  markerId?: number;
-  goodId?: number;
+  severity?: TroubleSeverity;
+  seasonsLow?: number;
+  cell?: number;
 }
 
 export interface StateAgenda {
@@ -219,11 +198,8 @@ export interface BurgConstructionState {
 export interface BurgSimState {
   burgId: number;
   baseTier: number;
-  development: number;
-  developmentProgress: number;
   buildings: string[];
   construction: BurgConstructionState | null;
-  unrest: number;
   conqueredBy?: number;
   /** the state that held the burg before its first conquest in this simulation (0 = free) */
   originalOwner?: number;
@@ -247,31 +223,27 @@ export interface BurgSimState {
   siegeSupplies?: number;
   hasStruckThisTurn?: boolean;
   pillaged?: boolean;
-  /** accumulated seasonal reserves (Living ledger); upstream `burg.treasury` stays a day's net */
-  treasury?: number;
+}
+
+export interface ProvinceRebellion {
+  name: string;
+  seasonsActive: number;
 }
 
 export interface ProvinceSimState {
   provinceId: number;
-  /** Public order, 0..100 */
-  order: number;
-  /** Stability points, spent to purchase development */
-  stability: number;
-  /** Earned development points, each adds +1 W and +1 S to the region */
-  development: number;
-  developmentProgress: {
-    settlementId: number;
-    turnsLeft: number;
-  } | null;
   /** Active obstacle/trouble afflicting the province */
   trouble?: ProvinceTrouble | null;
+  /** Active rebellion in the province (ignites below 30% stability without full-upkeep garrison) */
+  rebellion?: ProvinceRebellion | null;
+  /** Tick until which the post-crushing "Pacified (+10%)" stability bonus persists */
+  pacifiedUntilTick?: number;
 }
 
 export interface StatePolitySim {
   stateId: number;
   rulerId?: number;
   agenda: StateAgenda | null;
-  unravel: number;
   warExhaustion: number;
   claims: ClaimRecord[];
   grudges: GrudgeRecord[];
@@ -283,8 +255,6 @@ export interface StatePolitySim {
   fiscal?: FiscalPolicyState;
   /** the public work under construction, one at a time */
   project?: ActiveProject;
-  /** accumulated seasonal reserves (Living ledger); mirrored onto `state.economy.treasury` */
-  treasury?: number;
 }
 
 export type LivingNewsKind =

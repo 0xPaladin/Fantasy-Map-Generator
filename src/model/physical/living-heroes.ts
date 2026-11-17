@@ -19,7 +19,6 @@ import {
 import { aspectBonus } from "@/data/hero-aspects";
 import { disciplineBonus, matchingDisciplines } from "@/data/hero-disciplines";
 import { heroMaxVitals, heroTemperamentFor, recoverInjuries } from "@/data/hero-vitals";
-import { UNIT_ROLE_POOLS } from "@/data/living-troubles";
 import { valueModifier } from "@/data/saves-helpers";
 import type { Regiment } from "@/model/political/military-generator";
 import { Military } from "@/model/political/military-generator";
@@ -581,7 +580,15 @@ export function commanderFor(state: State, regiment: Regiment, specialty: Troubl
   const alignment = rollAlignment(rng, pack.cultures[culture]?.alignment);
   const { virtues, vices } = rollFigureTraits(rng, alignment);
   const skills = { m: 0, w: 0, s: 0, c: 0 };
-  skills[UNIT_ROLE_POOLS[specialty]] = 1;
+  const specialistPool: Record<TroubleUnitRole, keyof typeof skills> = {
+    guardsmen: "m",
+    military: "m",
+    merchant: "w",
+    sage: "w",
+    prophet: "s",
+    magistrate: "s"
+  };
+  skills[specialistPool[specialty]] = 1;
   const figure = Characters.add({
     name: Names.getCulture(culture),
     culture,

@@ -21,13 +21,6 @@ let isCellsLayerForced = false; // the cells layer is turned on for the editing 
 function open(id: string): void {
   if (options.app.mode) return;
 
-  const routeId = Number(id.startsWith("route") ? id.slice(5) : id);
-  const networkRoute = pack.routes.find(route => route.i === routeId);
-  if (networkRoute?.networkId !== undefined) {
-    void Controllers.AstralNetworks.openEditor(networkRoute.networkId);
-    return;
-  }
-
   if (findEl("routeEditor") && id === selectedRoute.attr("id")) return;
   Dialog.closeAll(".stable");
 

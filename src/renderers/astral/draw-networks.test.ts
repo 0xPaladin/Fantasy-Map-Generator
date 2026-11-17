@@ -60,14 +60,12 @@ beforeEach(() => {
   setViewportTransform(1, 0, 0);
 });
 
-test("draws each network's links and nodes under one styled group", () => {
+test("draws each network's nodes under one styled group and leaves routes to the routes layer", () => {
   drawNetworks();
 
   const group = document.querySelector("#network1");
   expect(group).not.toBeNull();
-  expect(group?.querySelector(".links #route10")?.getAttribute("d")).toBe("M10,10L90,90");
-  expect(group?.querySelector(".links #route10")?.getAttribute("stroke")).toBe("#a855f7");
-  expect(group?.querySelector(".links #route10")?.getAttribute("stroke-dasharray")).toBe("6 4");
+  expect(group?.querySelector(".links")).toBeNull();
   expect(group?.querySelector("#networkNode1-0 use")?.getAttribute("href")).toBe("#glyph");
   expect(group?.querySelector("[data-group='portal']")).not.toBeNull();
 });

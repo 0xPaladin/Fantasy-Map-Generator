@@ -234,7 +234,7 @@ describe("LivingHud", () => {
         order: 60,
         stability: 1,
         development: 0,
-        trouble: { id: "flooding", name: "Flooding", level: 3, cell: 4, theme: "banditry" }
+        trouble: { id: "flooding", name: "Flooding", severity: "drain", cell: 4 }
       }
     } as never;
     (pack.factions as unknown[]) = [
@@ -258,7 +258,7 @@ describe("LivingHud", () => {
     LivingHud.inspect("state", 1);
 
     const panel = document.getElementById("livingInspector")!;
-    expect(panel.textContent).toContain("Flooding [3]");
+    expect(panel.textContent).toContain("Flooding (Drain)");
     expect(panel.textContent).toContain("Dangerous factions");
     expect(panel.textContent).toContain("Aeloran March, Bandit Camp [hostile]");
     state.living.provinces = {} as never;
@@ -285,7 +285,7 @@ describe("LivingHud", () => {
         order: 40,
         stability: 0,
         development: 0,
-        trouble: { id: "flooding", name: "Seasonal Flooding", level: 4, cell: 4, theme: "banditry" }
+        trouble: { id: "flooding", name: "Seasonal Flooding", severity: "drain", cell: 4 }
       }
     } as never;
     (pack.factions as unknown[]) = [
@@ -410,5 +410,48 @@ describe("LivingHud", () => {
 
     mocks.living.eligibleFactionSuppressionTargets.mockReturnValue([]);
     state.living.states = {} as never;
+  });
+
+  it("renders active provincial rebellions in state, province, and burg inspectors", () => {
+    state.living.states = {
+      1: {
+        stateId: 1,
+        agenda: { kind: "pacify", label: "Pacifying Oakshire", progress: 0, required: 1 },
+        warExhaustion: 0,
+        claims: [],
+        grudges: []
+      }
+    } as never;
+    state.living.provinces = {
+      1: {
+        provinceId: 1,
+        trouble: null,
+        rebellion: { name: "Marchland Rising", seasonsActive: 2 }
+      }
+    } as never;
+    state.living.burgs = {
+      1: { burgId: 1, baseTier: 2, tier: 2, population: 10, assets: [], buildings: [] }
+    } as never;
+
+    openHud();
+
+    LivingHud.inspect("state", 1);
+    let panel = document.getElementById("livingInspector")!;
+    expect(panel.textContent).toContain("Rebellions");
+    expect(panel.textContent).toContain("Marchland Rising");
+    expect(panel.textContent).toContain("🔥");
+
+    LivingHud.inspect("province", 1);
+    panel = document.getElementById("livingInspector")!;
+    expect(panel.textContent).toContain("Rebellion:");
+    expect(panel.textContent).toContain("Marchland Rising (2 seasons)");
+
+    LivingHud.inspect("burg", 1);
+    panel = document.getElementById("livingInspector")!;
+    expect(panel.textContent).toContain("Marchland Rising (2 seasons)");
+
+    state.living.states = {} as never;
+    state.living.provinces = {} as never;
+    state.living.burgs = {} as never;
   });
 });

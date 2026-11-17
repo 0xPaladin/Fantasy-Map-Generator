@@ -105,7 +105,7 @@ it("shows the OpenCiv city state and opens the Living inspector", () => {
 
   const section = document.getElementById("burgLivingSection");
   expect(section?.style.display).toBe("block");
-  expect(section?.textContent).toContain("Unrest 0%");
+  expect(section?.textContent).toContain("HP 210/250");
   expect(section?.textContent).toContain("Solar Church");
   expect(section?.textContent).toContain("Building: monument");
   expect(section?.textContent).toContain("2 seasons left");

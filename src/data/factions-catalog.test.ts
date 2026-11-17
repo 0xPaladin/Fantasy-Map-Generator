@@ -2,14 +2,22 @@ import { describe, expect, it } from "vitest";
 import { FACTION_ASSETS_CATALOG } from "@/data/faction-assets";
 import { LAIR_CATALOG } from "@/data/living-lairs";
 import { getTroubleFactionType, ORGANIZATIONAL_TROUBLE_IDS, TROUBLE_CATALOG } from "@/data/living-troubles";
-import { getAllFactionArchetypes, getArchetypesByCategory, getFactionArchetype } from "./factions-catalog";
+import {
+  EPIC_FACTION_IDS,
+  FACTIONS_CATALOG,
+  getAllFactionArchetypes,
+  getArchetypesByCategory,
+  getFactionArchetype,
+  resolveFactionArchetypeType
+} from "./factions-catalog";
 
 describe("FACTIONS_CATALOG", () => {
   const knownAssetIds = new Set(Object.keys(FACTION_ASSETS_CATALOG));
 
-  it("contains at least 38 archetypes across 6 categories", () => {
+  it("contains strictly the 10 curated epic archetypes across all 6 categories", () => {
     const archetypes = getAllFactionArchetypes();
-    expect(archetypes.length).toBeGreaterThanOrEqual(38);
+    expect(archetypes).toHaveLength(10);
+    expect(Object.keys(FACTIONS_CATALOG)).toEqual(EPIC_FACTION_IDS);
 
     const categories = new Set(archetypes.map(a => a.category));
     expect(categories.has("commercial")).toBe(true);
@@ -28,22 +36,26 @@ describe("FACTIONS_CATALOG", () => {
     }
   });
 
-  it("absorbs all 20 lairs from LAIR_CATALOG", () => {
+  it("resolves all 20 legacy lairs to one of the 10 epic archetypes", () => {
     const lairKeys = Object.keys(LAIR_CATALOG);
     expect(lairKeys.length).toBe(20);
 
     for (const lairKey of lairKeys) {
+      const canonical = resolveFactionArchetypeType(lairKey);
+      expect(FACTIONS_CATALOG[canonical], `${lairKey} -> ${canonical}`).toBeDefined();
       const factionArch = getFactionArchetype(lairKey);
       expect(factionArch).toBeDefined();
       expect(factionArch?.markerIcon).toBeTruthy();
     }
   });
 
-  it("absorbs every retired organizational trouble as a faction archetype", () => {
+  it("resolves every retired organizational trouble to an epic faction archetype", () => {
     expect(ORGANIZATIONAL_TROUBLE_IDS.length).toBe(18);
     for (const troubleId of ORGANIZATIONAL_TROUBLE_IDS) {
       expect(TROUBLE_CATALOG[troubleId]).toBeUndefined();
-      expect(getFactionArchetype(getTroubleFactionType(troubleId)), troubleId).toBeDefined();
+      const arch = getFactionArchetype(getTroubleFactionType(troubleId));
+      expect(arch, troubleId).toBeDefined();
+      expect(FACTIONS_CATALOG[arch!.type]).toBeDefined();
     }
     expect(Object.keys(TROUBLE_CATALOG)).toHaveLength(28);
   });
@@ -55,7 +67,7 @@ describe("FACTIONS_CATALOG", () => {
     expect(guild?.defaultAlignment).toBe("good");
 
     const commercial = getArchetypesByCategory("commercial");
-    expect(commercial.length).toBeGreaterThanOrEqual(4);
-    expect(commercial.map(c => c.type)).toContain("merchant_consortium");
+    expect(commercial).toHaveLength(1);
+    expect(commercial[0].type).toBe("merchant_consortium");
   });
 });

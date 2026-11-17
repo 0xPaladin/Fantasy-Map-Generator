@@ -74,7 +74,7 @@ describe("Networks.create", () => {
       seed: "seed-1"
     });
 
-    expect(first.nodes.length).toBeGreaterThan(1);
+    expect(first.nodes).toHaveLength(12);
     expect(first.nodes.every(node => pack.cells.h[node.cell] >= 20)).toBe(true);
     expect(second.nodes).toEqual(first.nodes);
     expect(first.nodes.map(node => node.cell)).toEqual([...first.nodes.map(node => node.cell)].sort((a, b) => a - b));
@@ -91,7 +91,7 @@ describe("Networks.create", () => {
 
     expect(network.connect).toBe(false);
     expect(Networks.routesOf(network.i)).toHaveLength(0);
-    expect(network.nodes.length).toBeGreaterThan(0);
+    expect(network.nodes).toHaveLength(3);
     for (const node of network.nodes) {
       const burg = pack.burgs[node.burg!];
       expect(burg.cell).toBe(node.cell);
@@ -120,6 +120,55 @@ describe("Networks.create", () => {
       expect(pack.cells.routes[route.points[0][2]]?.[route.points[1][2]]).toBe(route.i);
     }
     expect(styles.routes.groups.transit).toBeDefined();
+  });
+
+  test("creates the exact requested number of nodes, capped by available candidates", () => {
+    const exact = Networks.create({
+      name: "Exact",
+      kind: "communication",
+      scope: { kind: "any" },
+      target: 37,
+      seed: "seed-exact"
+    });
+    expect(exact.nodes).toHaveLength(37);
+
+    const capped = Networks.create({
+      name: "Capped",
+      kind: "communication",
+      scope: { kind: "burgs" },
+      target: 24,
+      seed: "seed-capped"
+    });
+    expect(capped.nodes).toHaveLength(3);
+  });
+
+  test("moveNode updates the node position and recomputes all networks", () => {
+    const first = Networks.create({
+      name: "First",
+      kind: "transit",
+      scope: { kind: "land" },
+      target: 4,
+      seed: "seed-move-1"
+    });
+    const second = Networks.create({
+      name: "Second",
+      kind: "portal",
+      scope: { kind: "land" },
+      target: 4,
+      seed: "seed-move-2"
+    });
+    const secondRouteBefore = Networks.routesOf(second.i)[0];
+
+    Networks.moveNode(first.i, 0, 89, 89);
+
+    expect(first.nodes[0].x).toBe(89);
+    expect(first.nodes[0].y).toBe(89);
+    expect(first.nodes[0].cell).toBe(99);
+    const firstRoutesAfter = Networks.routesOf(first.i);
+    expect(firstRoutesAfter.some(r => r.points.some(([x, y]) => x === 89 && y === 89))).toBe(true);
+    const secondRoutesAfter = Networks.routesOf(second.i);
+    expect(secondRoutesAfter.length).toBeGreaterThan(0);
+    expect(secondRoutesAfter[0]).not.toBe(secondRouteBefore);
   });
 
   test("communication networks never create routes", () => {

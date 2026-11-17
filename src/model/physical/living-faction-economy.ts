@@ -7,8 +7,17 @@ import { Prosperity } from "@/model/economy/prosperity";
 import { Taxes } from "@/model/economy/taxes";
 import { figureBias } from "@/model/physical/figure-bias";
 import type { State } from "@/model/political/states-generator";
-import type { Faction, FactionHq, FactionOutpost } from "@/types/factions";
-import { rn } from "@/utils/number-utils";
+import type {
+  Faction,
+  FactionCategory,
+  FactionEconomyBreakdown,
+  FactionExpenseBucket,
+  FactionExpenseLine,
+  FactionHq,
+  FactionOutpost,
+  FactionRevenueLine
+} from "@/types/factions";
+import { minmax, rn } from "@/utils/number-utils";
 
 export const SEASON_DAYS = 90; // a season of upstream daily flows, as the state and burg ledgers count it
 
@@ -18,13 +27,32 @@ export interface FactionUpstreamIncome {
   charterTithe: number; // the share paid to its patron state
   patronStateId: number; // 0 without a charter
   influence: number;
+  /** Daily revenue lines at this node (gross, before charter tithe and expenses) */
+  lines: FactionRevenueLine[];
+  /** Host burg manufacturing product (for product-share reporting) */
+  hostProduct: number;
 }
 
-const NONE: FactionUpstreamIncome = { gold: 0, charterTithe: 0, patronStateId: 0, influence: 0 };
+const NONE: FactionUpstreamIncome = {
+  gold: 0,
+  charterTithe: 0,
+  patronStateId: 0,
+  influence: 0,
+  lines: [],
+  hostProduct: 0
+};
 
-const COMMERCIAL_ASSETS = ["trade_depot", "counting_house", "grand_exchange", "bazaar", "harbor", "seaport", "bank"];
+export const COMMERCIAL_ASSETS = [
+  "trade_depot",
+  "counting_house",
+  "grand_exchange",
+  "bazaar",
+  "harbor",
+  "seaport",
+  "bank"
+];
 const COMMISSION_BASE = 0.05; // of the market's turnover, a faction's cut
-const COMMISSION_PER_ASSET = 0.03;
+export const COMMISSION_PER_ASSET = 0.03;
 const COMMISSION_TOP = 0.15;
 const PRODUCT_SHARE = 0.2; // of the host burg's manufacturing product
 const SIPHON_BASE = 0.1; // of the province's official graft
@@ -63,19 +91,28 @@ function marketTurnover(marketId: number, burgId: number | undefined): number {
   return turnover;
 }
 
-/** The node's commercial cut of its host market and burg */
-function commercialGold(faction: Faction, node: FactionHq | FactionOutpost, burgId: number | undefined): number {
+/** The node's commercial cut of its host market and burg, decomposed into daily streams */
+function commercialLines(
+  faction: Faction,
+  node: FactionHq | FactionOutpost,
+  burgId: number | undefined
+): FactionRevenueLine[] {
   const hostBurg = burgId ? pack.burgs?.[burgId] : undefined;
   const marketId = Number(pack.cells.market?.[node.cell] ?? 0);
   const assets = [...(node.assets ?? []), ...(node.sim?.civBuildings ?? [])];
   const commerce = assets.filter(asset => COMMERCIAL_ASSETS.includes(asset)).length;
   const commission = Math.min(COMMISSION_TOP, COMMISSION_BASE + COMMISSION_PER_ASSET * commerce);
-  const daily = (hostBurg?.product ?? 0) * PRODUCT_SHARE + marketTurnover(marketId, burgId) * commission;
-  return daily * SEASON_DAYS * leaderIncomeFactor(faction);
+  const factor = leaderIncomeFactor(faction);
+  const mfgDaily = (hostBurg?.product ?? 0) * PRODUCT_SHARE * factor;
+  const marketDaily = marketTurnover(marketId, burgId) * commission * factor;
+  return [
+    { key: "mfg_cut", label: "Manufacturing cut", daily: mfgDaily },
+    { key: "market_comm", label: "Market commissions", daily: marketDaily }
+  ];
 }
 
 /** What the underworld takes of official graft, and of the trade tariffs it helps avoid */
-function underworldGold(state: State, node: FactionHq | FactionOutpost): number {
+function underworldLines(state: State, node: FactionHq | FactionOutpost): FactionRevenueLine[] {
   const influence = Math.max(0, Math.min(100, node.influence ?? 50));
   const siphon = Math.min(SIPHON_TOP, SIPHON_BASE + (SIPHON_INFLUENCE * influence) / 100);
   const province = Corruption.ofCell(node.cell) ?? Corruption.ofCapital(state);
@@ -83,23 +120,51 @@ function underworldGold(state: State, node: FactionHq | FactionOutpost): number 
   const tariffs = Taxes.getTaxesByState().tariffs[state.i] || 0;
   const embargo = (state.economy?.tariffs ?? []).some(rule => rule.rate === "embargo");
   const smuggling = tariffs * SMUGGLING_SHARE * (embargo ? EMBARGO_BONUS : 1);
-  return (pocketed * siphon + smuggling) * SEASON_DAYS;
+  return [
+    { key: "graft_siphon", label: "Graft siphon", daily: pocketed * siphon },
+    { key: "smuggling", label: "Smuggling & tariffs", daily: smuggling }
+  ];
 }
 
-/** A mercenary retainer from a patron that keeps the company, nothing from one it raids instead */
-function retainerGold(faction: Faction, stateId: number): number {
+/** A mercenary retainer from a patron that keeps the company, or raiding tribute for hostile warbands */
+function martialLines(faction: Faction, stateId: number, burgId: number | undefined): FactionRevenueLine[] {
   const relation = faction.stateRelations?.[stateId];
-  if (relation !== "Ally" && relation !== "Friendly") return 0;
-  return Number(pack.states?.[stateId]?.economy?.spent?.military ?? 0) * RETAINER_SHARE * SEASON_DAYS;
+  const retainer =
+    relation === "Ally" || relation === "Friendly"
+      ? Number(pack.states?.[stateId]?.economy?.spent?.military ?? 0) * RETAINER_SHARE
+      : 0;
+  const hostBurg = burgId ? pack.burgs?.[burgId] : undefined;
+  const tribute = faction.allegiance === "hostile" ? (hostBurg?.product ?? 0) * 0.05 : 0;
+  return [
+    { key: "retainers", label: "Military retainers", daily: retainer },
+    ...(faction.allegiance === "hostile" ? [{ key: "tribute", label: "Raiding & tribute", daily: tribute }] : [])
+  ];
 }
 
 /** What the temples and the chancery draw of the court's and the administration's spending */
-function courtGold(state: State, burgId: number | undefined, political: boolean): number {
+function courtLines(state: State, burgId: number | undefined, political: boolean): FactionRevenueLine[] {
   const prosperity = burgId ? (Prosperity.getBurg(burgId)?.prosperity ?? 0.5) : 0.5;
   const spent = state.economy?.spent;
-  const court = Number(spent?.court ?? 0) * COURT_SHARE;
-  const administration = political ? Number(spent?.administration ?? 0) * ADMINISTRATION_SHARE : 0;
-  return (court + administration) * (0.5 + prosperity) * SEASON_DAYS;
+  const scale = 0.5 + prosperity;
+  const court = Number(spent?.court ?? 0) * COURT_SHARE * scale;
+  const administration = political ? Number(spent?.administration ?? 0) * ADMINISTRATION_SHARE * scale : 0;
+  const lines: FactionRevenueLine[] = [
+    { key: "court_patronage", label: political ? "Court patronage" : "Court & clergy patronage", daily: court }
+  ];
+  if (political) lines.push({ key: "admin_share", label: "Admin appropriation", daily: administration });
+  return lines;
+}
+
+/** What adventuring guilds draw from charters and local frontier bounties */
+function adventuringLines(state: State, burgId: number | undefined): FactionRevenueLine[] {
+  const hostBurg = burgId ? pack.burgs?.[burgId] : undefined;
+  const prosperity = burgId ? (Prosperity.getBurg(burgId)?.prosperity ?? 0.5) : 0.5;
+  const charter = Number(state.economy?.spent?.administration ?? 0) * 0.03 * (0.5 + prosperity);
+  const bounties = (hostBurg?.product ?? 0) * 0.08;
+  return [
+    { key: "guild_charters", label: "Guild charters", daily: charter },
+    { key: "bounties", label: "Bounties & contracts", daily: bounties }
+  ];
 }
 
 /** §5.1: a faction node's income from the upstream economy, net of the charter tithe it owes */
@@ -111,36 +176,141 @@ export function factionUpstreamIncome(faction: Faction, node: FactionHq | Factio
   const state = pack.states?.[hostStateId];
   if (!hostStateId || !state?.i || state.removed) return NONE;
 
-  let gold = 0;
+  let lines: FactionRevenueLine[] = [];
   let influence = 0;
   switch (faction.category) {
     case "commercial":
-      gold = commercialGold(faction, node, burgId);
+      lines = commercialLines(faction, node, burgId);
       break;
     case "underworld":
-      gold = underworldGold(state, node);
+      lines = underworldLines(state, node);
       break;
     case "martial":
-      gold = retainerGold(faction, hostStateId);
+      lines = martialLines(faction, hostStateId, burgId);
       break;
     case "religious":
     case "political":
-      gold = courtGold(state, burgId, faction.category === "political");
+      lines = courtLines(state, burgId, faction.category === "political");
       influence = Math.min(
         INFLUENCE_TOP,
         (Number(state.economy?.spent?.court ?? 0) + Number(state.economy?.spent?.administration ?? 0)) / 20
       );
       break;
+    case "adventuring":
+      lines = adventuringLines(state, burgId);
+      break;
     default:
       break;
   }
 
+  const dailyGross = lines.reduce((sum, line) => sum + line.daily, 0);
+  const gold = dailyGross * SEASON_DAYS;
   const chartered = faction.allegiance === "chartered" || faction.allegiance === "state_arm";
   const charterTithe = chartered && gold > 0 ? gold * CHARTER_SHARE : 0;
+  const hostProduct = burgId ? Number(pack.burgs?.[burgId]?.product ?? 0) : 0;
+
   return {
     gold: rn(gold - charterTithe, 2),
     charterTithe: rn(charterTithe, 2),
     patronStateId: charterTithe > 0 ? (faction.patronStateId ?? hostStateId) : 0,
-    influence: rn(influence, 2)
+    influence: rn(influence, 2),
+    lines,
+    hostProduct
+  };
+}
+
+const FACTION_EXPENSE_PROFILES: Record<FactionCategory, Record<FactionExpenseBucket, number>> = {
+  commercial: { court: 10, administration: 18, infrastructure: 22, military: 18 },
+  underworld: { court: 8, administration: 24, infrastructure: 12, military: 22 },
+  martial: { court: 6, administration: 12, infrastructure: 12, military: 42 },
+  religious: { court: 26, administration: 18, infrastructure: 14, military: 14 },
+  political: { court: 22, administration: 26, infrastructure: 12, military: 16 },
+  adventuring: { court: 8, administration: 16, infrastructure: 20, military: 28 }
+};
+
+export const FACTION_EXPENSE_LABELS: Record<FactionExpenseBucket, string> = {
+  court: "Court and patronage",
+  administration: "Administration",
+  infrastructure: "Infrastructure",
+  military: "Military"
+};
+
+const FACTION_CORRUPTION_BASE: Record<FactionCategory, number> = {
+  commercial: 10,
+  underworld: 16,
+  martial: 10,
+  religious: 8,
+  political: 12,
+  adventuring: 8
+};
+
+/** Compute the daily state-style Revenue & Expenses breakdown for a faction. */
+export function computeFactionEconomy(
+  faction: Faction,
+  nodeIncomes: FactionUpstreamIncome[],
+  blockUpkeepSeasonal: number
+): FactionEconomyBreakdown {
+  const byKey = new Map<string, FactionRevenueLine>();
+  let totalHostProduct = 0;
+  let charterTitheSeasonal = 0;
+
+  for (const inc of nodeIncomes) {
+    totalHostProduct += inc.hostProduct;
+    charterTitheSeasonal += inc.charterTithe;
+    for (const line of inc.lines) {
+      const existing = byKey.get(line.key);
+      if (existing) existing.daily += line.daily;
+      else byKey.set(line.key, { ...line });
+    }
+  }
+
+  const revenueLines = [...byKey.values()].map(line => ({ ...line, daily: rn(line.daily, 2) }));
+  const collectedDaily = rn(
+    revenueLines.reduce((sum, line) => sum + line.daily, 0),
+    2
+  );
+  const hostProductShare = totalHostProduct > 0 ? rn((collectedDaily / totalHostProduct) * 100, 1) : 0;
+
+  const profile = FACTION_EXPENSE_PROFILES[faction.category] ?? FACTION_EXPENSE_PROFILES.commercial;
+  const militaryBlockDaily = blockUpkeepSeasonal / SEASON_DAYS;
+
+  let corruptionRate = FACTION_CORRUPTION_BASE[faction.category] ?? 10;
+  if (faction.alignment === "lawful") corruptionRate -= 3;
+  else if (faction.alignment === "chaotic" || faction.alignment === "evil") corruptionRate += 4;
+  corruptionRate = minmax(corruptionRate, 4, 30);
+
+  const corruptionDaily = rn((collectedDaily * corruptionRate) / 100, 2);
+  const charterTitheDaily = rn(charterTitheSeasonal / SEASON_DAYS, 2);
+
+  const buckets: FactionExpenseBucket[] = ["court", "administration", "infrastructure", "military"];
+  const expenses: FactionExpenseLine[] = buckets.map(bucket => {
+    const baseDaily = (collectedDaily * profile[bucket]) / 100;
+    const daily = bucket === "military" ? Math.max(baseDaily, militaryBlockDaily) : baseDaily;
+    const share = collectedDaily > 0 ? Math.round((daily / collectedDaily) * 100) : daily > 0 ? 100 : 0;
+    return {
+      bucket,
+      label: FACTION_EXPENSE_LABELS[bucket],
+      share,
+      daily: rn(daily, 2)
+    };
+  });
+
+  const spentDaily = expenses.reduce((sum, e) => sum + e.daily, 0);
+  const spentShare = expenses.reduce((sum, e) => sum + e.share, 0);
+  const dayBalance = rn(collectedDaily - spentDaily - corruptionDaily - charterTitheDaily, 2);
+  const dayBalanceShare =
+    collectedDaily > 0 ? Math.round((dayBalance / collectedDaily) * 100) : dayBalance < 0 ? -100 : 0;
+
+  return {
+    revenueLines,
+    collectedDaily,
+    hostProductShare,
+    expenses,
+    spentShare,
+    corruptionRate,
+    corruptionDaily,
+    charterTitheDaily,
+    dayBalance,
+    dayBalanceShare
   };
 }

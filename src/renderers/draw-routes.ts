@@ -31,7 +31,6 @@ export function drawRoutes(layer: Layer): void {
   log.time("drawRoutes");
   const shapes: RouteShape[] = [];
   for (const route of pack.routes) {
-    if (route.networkId !== undefined) continue; // network links draw on their own layer
     const shape = buildShape(route);
     if (shape) shapes.push(shape);
   }

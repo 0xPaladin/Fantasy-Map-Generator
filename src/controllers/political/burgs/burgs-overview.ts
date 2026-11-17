@@ -259,22 +259,30 @@ function renderDialog(): void {
           >${t("State")}:
           <select id="burgsFilterState"></select
         ></label>
-        <div id="burgsHubFilters" data-tip="${t("Filter by cross-realm hub: skyports serve the air lanes, underdark gates open to the tunnel network")}" class="editorFilters">
-          <span class="label" style="align-self: center">${t("Hub")}:</span>
-          <button id="burgsHubAll" data-hub="all" class="burgsFilterButton active">${t("All")}</button>
-          <button id="burgsHubSkyPort" data-hub="skyPort" class="burgsFilterButton">${t("Skyport")}</button>
-          <button id="burgsHubUnderdarkGate" data-hub="underdarkGate" class="burgsFilterButton">${t("Underdark Gate")}</button>
-        </div>
-        <div id="burgsRealmFilters" data-tip="${t("Filter by realm: surface, sky, underdark, underwater, titan or horde")}" class="editorFilters">
-          <span class="label" style="align-self: center">${t("Realm")}:</span>
-          <button id="burgsRealmAll" data-realm="all" class="burgsFilterButton active">${t("All")}</button>
-          <button id="burgsRealmSurface" data-realm="surface" class="burgsFilterButton">${t("Surface")}</button>
-          <button id="burgsRealmSky" data-realm="sky" class="burgsFilterButton">${t("Sky")}</button>
-          <button id="burgsRealmUnderdark" data-realm="underdark" class="burgsFilterButton">${t("Underdark")}</button>
-          <button id="burgsRealmUnderwater" data-realm="underwater" class="burgsFilterButton">${t("Underwater")}</button>
-          <button id="burgsRealmTitan" data-realm="titan" class="burgsFilterButton">${t("Titan")}</button>
-          <button id="burgsRealmHorde" data-realm="horde" class="burgsFilterButton">${t("Horde")}</button>
-        </div>
+        <label
+          for="burgsFilterHub"
+          data-tip="${t("Filter by cross-realm hub: skyports serve the air lanes, underdark gates open to the tunnel network")}"
+          >${t("Hub")}:
+          <select id="burgsFilterHub">
+            <option value="all">${t("All")}</option>
+            <option value="skyPort">${t("Skyport")}</option>
+            <option value="underdarkGate">${t("Underdark Gate")}</option>
+          </select>
+        </label>
+        <label
+          for="burgsFilterRealm"
+          data-tip="${t("Filter by realm: surface, sky, underdark, underwater, titan or horde")}"
+          >${t("Realm")}:
+          <select id="burgsFilterRealm">
+            <option value="all">${t("All")}</option>
+            <option value="surface">${t("Surface")}</option>
+            <option value="sky">${t("Sky")}</option>
+            <option value="underdark">${t("Underdark")}</option>
+            <option value="underwater">${t("Underwater")}</option>
+            <option value="titan">${t("Titan")}</option>
+            <option value="horde">${t("Horde")}</option>
+          </select>
+        </label>
         <label for="burgsFilterCulture"
           >${t("Culture")}:
           <select id="burgsFilterCulture"></select
@@ -353,9 +361,9 @@ function renderDialog(): void {
   ensureEl("burgsChart").addEventListener("click", showBurgsChart);
   ensureEl("burgsFilterState").addEventListener("change", onFilterChange);
   ensureEl("burgsFilterCulture").addEventListener("change", onFilterChange);
+  ensureEl("burgsFilterHub").addEventListener("change", onFilterChange);
+  ensureEl("burgsFilterRealm").addEventListener("change", onFilterChange);
   ensureEl("burgsSearch").addEventListener("input", onFilterChange);
-  ensureEl("burgsRealmFilters").addEventListener("click", onRealmHubFilterClick);
-  ensureEl("burgsHubFilters").addEventListener("click", onRealmHubFilterClick);
   ensureEl("regenerateBurgNames").addEventListener("click", regenerateNames);
   ensureEl("addNewBurg").addEventListener("click", () => {
     const realm = ensureEl<HTMLSelectElement>("addBurgRealm").value as BurgRealm;
@@ -400,38 +408,17 @@ function updateFilter(): void {
   culturesSorted.forEach(
     c => void cultureFilter.options.add(new Option(c.name, String(c.i), false, c.i === filterState.cultureId))
   );
-  captureRealmFilterButtons();
+  ensureEl<HTMLSelectElement>("burgsFilterHub").value = filterState.hub;
+  ensureEl<HTMLSelectElement>("burgsFilterRealm").value = filterState.realm;
   dialogState.set(dialogId, "filters", filterState);
-}
-
-function captureRealmFilterButtons(): void {
-  for (const id of [
-    "burgsRealmAll",
-    "burgsRealmSurface",
-    "burgsRealmSky",
-    "burgsRealmUnderdark",
-    "burgsRealmUnderwater",
-    "burgsRealmTitan",
-    "burgsRealmHorde"
-  ])
-    ensureEl(id).classList.toggle("active", ensureEl(id).dataset.realm === filterState.realm);
-  for (const id of ["burgsHubAll", "burgsHubSkyPort", "burgsHubUnderdarkGate"])
-    ensureEl(id).classList.toggle("active", ensureEl(id).dataset.hub === filterState.hub);
-}
-
-function onRealmHubFilterClick(event: Event): void {
-  const button = (event.target as HTMLElement).closest<HTMLElement>("[data-realm], [data-hub]");
-  if (button?.dataset.realm) filterState.realm = button.dataset.realm;
-  else if (button?.dataset.hub) filterState.hub = button.dataset.hub;
-  dialogState.set(dialogId, "filters", filterState);
-  captureRealmFilterButtons();
-  burgsTable.reset();
 }
 
 function onFilterChange(): void {
   filterState.search = ensureEl<HTMLInputElement>("burgsSearch").value;
   filterState.stateId = +ensureEl<HTMLSelectElement>("burgsFilterState").value;
   filterState.cultureId = +ensureEl<HTMLSelectElement>("burgsFilterCulture").value;
+  filterState.hub = ensureEl<HTMLSelectElement>("burgsFilterHub").value;
+  filterState.realm = ensureEl<HTMLSelectElement>("burgsFilterRealm").value;
   dialogState.set(dialogId, "filters", filterState);
   burgsTable.reset();
 }

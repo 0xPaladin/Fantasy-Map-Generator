@@ -36,7 +36,6 @@ import { drawScaleBar, removeScaleBar } from "@/renderers/draw-scalebar";
 import { drawStates } from "@/renderers/draw-states";
 import { drawTemperature } from "@/renderers/draw-temperature";
 import { drawTexture } from "@/renderers/draw-texture";
-import { drawTrouble, removeTrouble } from "@/renderers/draw-trouble";
 import { drawVignette } from "@/renderers/draw-vignette";
 import { drawZones } from "@/renderers/draw-zones";
 import { drawHeightmap } from "@/renderers/heightmap/draw-heightmap";
@@ -459,7 +458,6 @@ const mapLayers = [
   new Layer({ id: "fogging", parent: "viewbox", attrs: { mask: "url(#fog)" }, permanent: true, draw: drawFogging }),
   new Layer({ id: "markers", parent: "viewbox", draw: drawMarkers }),
   new Layer({ id: "characters", parent: "viewbox", draw: drawCharacters, erase: removeCharacters }),
-  new Layer({ id: "trouble", parent: "viewbox", draw: drawTrouble, erase: removeTrouble }),
   new Layer({
     id: "factions",
     parent: "viewbox",

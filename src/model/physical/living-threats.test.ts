@@ -92,42 +92,38 @@ describe("living-threats", () => {
     expect(Factions.active().some(f => f.hq.markerId === 1)).toBe(false);
   });
 
-  it("spawns hazards as trouble and quells them", () => {
-    const trouble = spawnTrouble(1, "flooding", "burg", 3);
+  it("spawns trouble as flavor by default and quells it silently", () => {
+    const trouble = spawnTrouble(1, "flooding");
     expect(trouble).not.toBeNull();
     expect(trouble?.id).toBe("flooding");
+    expect(trouble?.severity).toBe("flavor");
     expect(mockLiving.provinces[1].trouble).toBe(trouble);
+    expect(mockLiving.recentNews).toHaveLength(0);
 
     const quelled = quellTrouble(1);
     expect(quelled).toBe(true);
     expect(mockLiving.provinces[1].trouble).toBeNull();
+    expect(mockLiving.recentNews).toHaveLength(0);
   });
 
-  it("spawns organizational trouble as a dangerous faction instead", () => {
-    const trouble = spawnTrouble(1, "secret_society", "burg", 3);
-    expect(trouble).toBeNull();
-    expect(mockLiving.provinces[1].trouble).toBeNull();
-
-    const factions = (pack.factions ?? []).filter(f => f.i !== 0);
-    expect(factions).toHaveLength(1);
-    expect(factions[0]?.type).toBe("secret_society");
-    expect(factions[0]?.allegiance).toBe("clandestine");
-    expect(factions[0]?.stateRelations[1]).toBe("Enemy");
-    expect(factions[0]?.hq.burgId).toBe(1);
-    expect(factions[0]?.military.length).toBeGreaterThan(0);
+  it("assigns a flavor trouble matched to the province when no id is given", () => {
+    const trouble = spawnTrouble(1);
+    expect(trouble).not.toBeNull();
+    expect(trouble?.severity).toBe("flavor");
+    expect(mockLiving.provinces[1].trouble).toBe(trouble);
   });
 
-  it("spawns a dangerous faction directly with lair-template military", () => {
+  it("spawns a dangerous faction directly with lair-template military under canonical epic type", () => {
     const faction = spawnDangerousFaction(1, "monsters", "ruin", 6);
     expect(faction).not.toBeNull();
-    expect(faction?.type).toBe("monster_nest");
+    expect(faction?.type).toBe("dread_host");
     expect(faction?.allegiance).toBe("hostile");
     expect(faction?.threatLevel).toBe(6);
     expect(faction?.military[0]?.u).toBeDefined();
     expect(mockLiving.provinces[1].trouble).toBeNull();
   });
 
-  it("migrates legacy organizational trouble and lairs into factions", () => {
+  it("migrates legacy organizational trouble and lairs into epic factions", () => {
     mockLiving.provinces[1].trouble = {
       id: "demagogue",
       name: "Zealous Demagogue",
@@ -153,14 +149,14 @@ describe("living-threats", () => {
     expect(mockLiving.provinces[1].trouble).toBeNull();
     expect((mockLiving.provinces[1] as unknown as { lair?: unknown }).lair).toBeUndefined();
     const types = (pack.factions ?? []).filter(f => f.i !== 0).map(f => f.type);
-    expect(types).toContain("demagogue");
-    expect(types).toContain("bandit_camp");
+    expect(types).toContain("noble_league");
+    expect(types).toContain("dread_host");
   });
 
   it("spawns and smites dangerous factions", () => {
     const faction = spawnDangerousFaction(1, "bandit_camp", "burg", 2);
     expect(faction).not.toBeNull();
-    expect(faction?.type).toBe("bandit_camp");
+    expect(faction?.type).toBe("dread_host");
 
     expect(smiteFaction(1)).toBe(true);
     expect(Factions.active().some(f => f.i === faction!.i)).toBe(false);

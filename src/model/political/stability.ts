@@ -14,7 +14,8 @@ export const STABILITY_PARTS = [
   "remoteness",
   "diversity",
   "corruption",
-  "burden"
+  "burden",
+  "adjustments"
 ] as const;
 export type StabilityPart = (typeof STABILITY_PARTS)[number];
 type StateStability = { stability: number; parts: Record<StabilityPart, number> };
@@ -77,15 +78,26 @@ class StabilityModule {
       burden: -BURDEN * Math.min(1, accounts.product > 0 ? accounts.taxes / accounts.product / BURDEN_TOP : 0)
     };
 
+    const stateAdjustments = [
+      ...(state.economy.stabilityAdjustments ?? []),
+      ...(state.economy.simStabilityAdjustments ?? [])
+    ].reduce((sum, line) => sum + line.value / 100, 0);
+
     return Corruption.getProvinces(stateId).map(province => {
       const prosperity = this.prosperity.get(province) ?? accounts.prosperity!;
       const corruption = Corruption.ofProvince(state, province, state.economy.collected);
+      const prov = province.id ? pack.provinces?.[province.id] : undefined;
+      const provAdjustments = [...(prov?.stabilityAdjustments ?? []), ...(prov?.simStabilityAdjustments ?? [])].reduce(
+        (sum, line) => sum + line.value / 100,
+        0
+      );
       const parts: Record<StabilityPart, number> = {
         ...shared,
         prosperity: PROSPERITY * Math.min(1, prosperity / PROSPERITY_TOP),
         remoteness: -REMOTENESS * province.remoteness,
         diversity: -DIVERSITY * province.diversity,
-        corruption: -CORRUPTION * Math.min(1, corruption / CORRUPTION_TOP)
+        corruption: -CORRUPTION * Math.min(1, corruption / CORRUPTION_TOP),
+        adjustments: stateAdjustments + provAdjustments
       };
       const stability = minmax(
         STABILITY_PARTS.reduce((sum, part) => sum + parts[part], 0),

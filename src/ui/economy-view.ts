@@ -329,9 +329,13 @@ export function mountAdjustments(
   initial: Adjustment[],
   tip: string,
   onChange: (adjustments: Adjustment[]) => void,
-  formatTotal = formatPrice
+  formatTotal = formatPrice,
+  opts?: { step?: string; valueTip?: string; addTip?: string }
 ): void {
   const lines = initial.map(line => ({ ...line }));
+  const step = opts?.step ?? "0.01";
+  const valueTip = opts?.valueTip ?? t("Amount a day; negative for a cost");
+  const addTip = opts?.addTip ?? t("Add revenue or a cost");
   const renderHead = () => {
     const total = sum(lines, line => line.value);
     const count = lines.length ? ` (${lines.length})` : "";
@@ -341,14 +345,14 @@ export function mountAdjustments(
     const rows = lines.map(
       ({ name, value }, k) => /* html */ `<div class="line" data-index="${k}">
         <input class="name" type="text" style="width: 100%; margin: 0" value="${escapeHtml(name)}" placeholder="${t("Name")}"/>
-        <input class="value" type="number" step="0.01" style="width: 100%; margin: 0; text-align: right" value="${value}" data-tip="${t("Amount a day; negative for a cost")}"/>
+        <input class="value" type="number" step="${step}" style="width: 100%; margin: 0; text-align: right" value="${value}" data-tip="${escapeHtml(valueTip)}"/>
         <span class="icon-trash-empty pointer remove" data-tip="${t("Remove")}"></span>
       </div>`
     );
     container.innerHTML = /* html */ `${ADJUSTMENTS_STYLE}<div class="adjustments">
       <div class="head" data-tip="${tip}">${renderHead()}</div>
       <div class="lines" ${expanded ? "" : "hidden"}>${rows.join("")}
-        <button type="button" class="add icon-plus" data-tip="${t("Add revenue or a cost")}">${t("Add")}</button>
+        <button type="button" class="add icon-plus" data-tip="${escapeHtml(addTip)}">${t("Add")}</button>
       </div>
     </div>`;
   };

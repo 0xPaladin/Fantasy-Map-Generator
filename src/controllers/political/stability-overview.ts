@@ -2,8 +2,9 @@ import { EXPENSE_LABELS } from "@/data/id-labels";
 import { Corruption } from "@/model/economy/corruption";
 import { StateOrders } from "@/model/economy/state-orders";
 import { STABILITY_PARTS, Stability, type StabilityPart } from "@/model/political/stability";
+import { States } from "@/model/political/states-generator";
 import { Dialog } from "@/ui/dialog/dialog";
-import { ECONOMY_COLORS, EconomyTerms, tone } from "@/ui/economy-view";
+import { ECONOMY_COLORS, EconomyTerms, mountAdjustments, renderSimAdjustments, tone } from "@/ui/economy-view";
 import { tip } from "@/ui/tooltips";
 import { t } from "@/utils/i18n";
 import { ensureEl } from "@/utils/node-utils";
@@ -41,14 +42,54 @@ function open(stateId: number): void {
   Dialog.destroy(id);
   ensureEl("dialogs").insertAdjacentHTML(
     "beforeend",
-    /* html */ `<div id="${id}" class="dialog stable stabilityDialog">${STYLE}${renderParts(stateId)} ${renderProvinces(stateId)}</div>`
+    /* html */ `<div id="${id}" class="dialog stable stabilityDialog">${STYLE}
+      <div id="stabilityParts${stateId}">${renderParts(stateId)}</div>
+      <div id="stabilityAdjustments${stateId}"></div>
+      <div id="stabilitySimAdjustments${stateId}"></div>
+      <div id="stabilityProvinces${stateId}">${renderProvinces(stateId)}</div>
+    </div>`
   );
+  mountStabilityAdjustments(stateId);
   Dialog.open(id, {
     title: t("Stability of {{- state}}", { state: state.fullName || state.name }),
     width: "fit-content",
     onClose: () => Dialog.destroy(id),
     position: { my: "right top", at: "right-10 top+10", of: "svg" }
   });
+}
+
+const formatPct = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${rn(Math.abs(value), 1)}%`;
+
+function mountStabilityAdjustments(stateId: number): void {
+  const state = pack.states[stateId];
+  mountAdjustments(
+    ensureEl(`stabilityAdjustments${stateId}`),
+    state.economy.stabilityAdjustments ?? [],
+    t("Adjustments: percentage-point modifiers to state stability, set by you"),
+    adjustments => {
+      States.setStabilityAdjustments(stateId, adjustments);
+      ensureEl(`stabilityParts${stateId}`).innerHTML = renderParts(stateId);
+      ensureEl(`stabilityProvinces${stateId}`).innerHTML = renderProvinces(stateId);
+    },
+    formatPct,
+    {
+      step: "1",
+      valueTip: t("Stability points (%); negative to lower stability"),
+      addTip: t("Add stability modifier")
+    }
+  );
+  const simLines = [
+    ...(state.economy.simStabilityAdjustments ?? []),
+    ...(pack.provinces ?? [])
+      .filter(p => p?.i && !p.removed && p.state === stateId && p.simStabilityAdjustments?.length)
+      .flatMap(p => p.simStabilityAdjustments!.map(line => ({ name: `${p.name}: ${line.name}`, value: line.value })))
+  ];
+  renderSimAdjustments(
+    ensureEl(`stabilitySimAdjustments${stateId}`),
+    simLines,
+    t("Stability modifiers written by the Living World"),
+    formatPct
+  );
 }
 
 /** Each part of the state's stability, for or against; the base is the same for all */
@@ -62,7 +103,8 @@ function renderParts(stateId: number): string {
     remoteness: t("Remoteness"),
     diversity: t("Minorities"),
     corruption: t("Corruption"),
-    burden: t("Tax burden")
+    burden: t("Tax burden"),
+    adjustments: t("Adjustments")
   };
   const signed = (value: number) => `${value >= 0 ? "+" : "−"}${rn(Math.abs(value) * 100)}`;
   const rows = STABILITY_PARTS.map(part => {

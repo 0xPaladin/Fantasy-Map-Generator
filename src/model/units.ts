@@ -95,7 +95,7 @@ export function getCellPopulation(cellId: number, pack: PackedGraph): [number, n
 }
 
 export function getMoneyUnit(plural = true): string {
-  const name = options.map.units.money.unit || "uncia";
+  const name = options.map?.units?.money?.unit || "uncia";
   return plural && !name.endsWith("s") ? `${name}s` : name;
 }
 

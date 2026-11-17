@@ -80,7 +80,6 @@ describe("State Cities & Economy dialog", () => {
     living.states[1] = {
       stateId: 1,
       agenda: null,
-      unravel: 0,
       warExhaustion: 0,
       claims: [],
       grudges: []
@@ -89,12 +88,9 @@ describe("State Cities & Economy dialog", () => {
     living.burgs[1] = {
       burgId: 1,
       baseTier: 2,
-      development: 0,
-      developmentProgress: 0,
       buildings: ["library"],
       civBuildings: ["library"],
       construction: null,
-      unrest: 0,
       originalOwner: 1,
       originalCulture: 1,
       originalReligion: 0,
@@ -104,12 +100,9 @@ describe("State Cities & Economy dialog", () => {
     living.burgs[2] = {
       burgId: 2,
       baseTier: 1,
-      development: 0,
-      developmentProgress: 0,
       buildings: ["granary"],
       civBuildings: ["granary"],
       construction: null,
-      unrest: 0,
       originalOwner: 1,
       originalCulture: 1,
       originalReligion: 0,

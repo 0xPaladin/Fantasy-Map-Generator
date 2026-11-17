@@ -560,8 +560,8 @@ function updateBurgLiving(burgId: number): void {
   section.style.display = "block";
   const burg = pack.burgs[burgId];
   const hpLine =
-    bSim.hp !== undefined && bSim.maxHp !== undefined ? ` · HP ${Math.round(bSim.hp)}/${Math.round(bSim.maxHp)}` : "";
-  const unrestLine = `Unrest ${Math.round(bSim.unrest ?? 0)}%${hpLine}`;
+    bSim.hp !== undefined && bSim.maxHp !== undefined ? `HP ${Math.round(bSim.hp)}/${Math.round(bSim.maxHp)}` : "";
+  const unrestLine = hpLine;
   const religionId = burg?.cell !== undefined ? (pack.cells.religion?.[burg.cell] ?? 0) : 0;
   const religion = religionId ? pack.religions?.[religionId]?.name : undefined;
   const religionLine = religion ? `<div>${t("Faith")}: ${escapeHtml(religion)}</div>` : "";

@@ -1,4 +1,5 @@
 // The Networks tool: manage the created networks and edit one network's kind, placement and links
+import { type D3DragEvent, drag, select } from "d3";
 import {
   NETWORK_KIND_DEFINITIONS,
   NETWORK_KINDS,
@@ -10,6 +11,7 @@ import {
 } from "@/data/astral-networks";
 import { Networks } from "@/model/astral/networks";
 import { Options } from "@/model/options/options-model";
+import { setNetworkRenderHook } from "@/renderers/astral/draw-networks";
 import { Layers } from "@/renderers/layers";
 import { Dialog } from "@/ui/dialog/dialog";
 import {
@@ -23,7 +25,8 @@ import {
 import { zoomTo } from "@/ui/map/zoom";
 import { tip } from "@/ui/tooltips";
 import { t } from "@/utils/i18n";
-import { ensureEl } from "@/utils/node-utils";
+import { ensureEl, findEl } from "@/utils/node-utils";
+import { minmax, rn } from "@/utils/number-utils";
 import { escapeHtml } from "@/utils/string-utils";
 
 const dialogId = "astralNetworks" as const;
@@ -32,7 +35,7 @@ const listPosition = { my: "right top", at: "right-10 top+10", of: "svg", collis
 const editorPosition = { my: "left top", at: "left+10 top+10", of: "#map" } as const;
 const DEFAULT_TARGET = 24;
 const MIN_TARGET = 2;
-const MAX_TARGET = 120;
+const MAX_TARGET = 500;
 
 let editingId: number | null = null;
 
@@ -214,10 +217,73 @@ function openEditor(id?: number): void {
   Layers.show("networks", "routes");
 
   renderEditor();
+  setNetworkRenderHook(editingId === null ? null : attachNodeDrag);
+  const container = findEl<SVGGElement>("networks");
+  if (container) attachNodeDrag(container);
+
   Dialog.open(editorId, {
     title: id === undefined ? t("New Network") : t("Edit Network"),
     position: editorPosition,
-    onClose: () => Dialog.destroy(editorId)
+    onClose: closeEditor
+  });
+}
+
+function closeEditor(): void {
+  editingId = null;
+  setNetworkRenderHook(null);
+  const container = findEl<SVGGElement>("networks");
+  if (container) {
+    select(container)
+      .selectAll<SVGGElement, unknown>(".nodes > g[data-node]")
+      .classed("draggable", false)
+      .style("cursor", null)
+      .on(".drag", null);
+  }
+  Dialog.destroy(editorId);
+}
+
+function attachNodeDrag(container: SVGGElement): void {
+  select(container)
+    .selectAll<SVGGElement, unknown>(".nodes > g[data-node]")
+    .classed("draggable", false)
+    .style("cursor", null)
+    .on(".drag", null);
+
+  if (editingId === null) return;
+  select(container)
+    .selectAll<SVGGElement, unknown>(`#network${editingId} .nodes > g[data-node]`)
+    .classed("draggable", true)
+    .style("cursor", "move")
+    .call(drag<SVGGElement, unknown>().on("start", dragNetworkNode));
+}
+
+function dragNetworkNode(this: SVGGElement, event: D3DragEvent<SVGGElement, unknown, unknown>): void {
+  if (editingId === null) return;
+  const network = Networks.get(editingId);
+  const nodeIndex = Number(this.dataset.node);
+  const node = network?.nodes[nodeIndex];
+  if (!network || !node) return;
+
+  const offsetX = node.x - event.x;
+  const offsetY = node.y - event.y;
+  let moved = false;
+
+  event.on("drag", function (this: SVGGElement, dragEvent: D3DragEvent<SVGGElement, unknown, unknown>) {
+    moved = true;
+    const { width, height } = options.map.graph;
+    const x = minmax(offsetX + dragEvent.x, 0, width);
+    const y = minmax(offsetY + dragEvent.y, 0, height);
+    this.setAttribute("transform", `translate(${rn(x, 2)} ${rn(y, 2)})`);
+  });
+
+  event.on("end", (dragEvent: D3DragEvent<SVGGElement, unknown, unknown>) => {
+    if (!moved) return;
+    const { width, height } = options.map.graph;
+    const x = rn(minmax(offsetX + dragEvent.x, 0, width), 2);
+    const y = rn(minmax(offsetY + dragEvent.y, 0, height), 2);
+    Networks.moveNode(network.i, nodeIndex, x, y);
+    saved();
+    updateSummary();
   });
 }
 

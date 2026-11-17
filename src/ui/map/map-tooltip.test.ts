@@ -15,11 +15,6 @@ beforeEach(() => {
     <svg id="map">
       <g id="viewbox">
         <g id="markers"><g id="marker0"><g><g><path/></g></g></g></g>
-        <g id="trouble">
-          <svg id="trouble-marker-1" data-trouble-type="trouble" data-province-id="1">
-            <g><path id="troublePath"/></g>
-          </svg>
-        </g>
         <g id="cultures"><polygon id="cell1"/></g>
         <g id="journeys"><g><g><path id="segment0_1"/></g></g></g>
         <g id="labels"><g><g><text id="label1" data-label-type="state" data-id="1">Ovis</text></g></g></g>
@@ -47,28 +42,7 @@ beforeEach(() => {
       { i: 1, name: "Northshire", center: 0 }
     ],
     states: [{ i: 0 }, { i: 1, name: "Kingdom" }],
-    burgs: [{ i: 0 }],
-    history: {
-      living: {
-        provinces: {
-          1: {
-            provinceId: 1,
-            trouble: {
-              id: "monsters",
-              name: "Monster Infestation",
-              theme: "ruin",
-              pool: "m",
-              save: "uprising",
-              requiredRole: "military",
-              level: 4,
-              seasonsUnchecked: 1,
-              cell: 0
-            },
-            lair: null
-          }
-        }
-      }
-    }
+    burgs: [{ i: 0 }]
   } as unknown as typeof pack;
   globalThis.options = { app: { notesPinned: false }, map: { viewOnly: false } } as unknown as typeof options;
   document.getElementById("map")!.addEventListener("mousemove", showNotes);
@@ -86,25 +60,6 @@ it("shows nested hover notes using shared references without computing geometry"
   expect(document.getElementById("notesBody")!.innerHTML).toBe("<p>A beacon</p>");
   expect(document.getElementById("notes")!.style.display).toBe("block");
   expect(points).not.toHaveBeenCalled();
-});
-
-it("shows trouble notes on hover", () => {
-  const troublePath = document.getElementById("troublePath")!;
-  troublePath.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-
-  expect(document.getElementById("notesHeader")!.textContent).toContain("Monster Infestation");
-  expect(document.getElementById("notesBody")!.innerHTML).toContain("Northshire");
-  expect(document.getElementById("notesBody")!.innerHTML).toContain("Threat Level:</strong> 4 / 10");
-  expect(document.getElementById("notes")!.style.display).toBe("block");
-});
-
-it("shows trouble tooltip on hover", () => {
-  const troubleMarker = document.getElementById("trouble-marker-1")!;
-  const event = new MouseEvent("mousemove", { bubbles: true });
-  troubleMarker.dispatchEvent(event);
-
-  showMapTooltip([0, 0], { ...event, target: troubleMarker }, 0, 0);
-  expect(tip).toHaveBeenCalledWith(expect.stringContaining("Monster Infestation"));
 });
 
 it("shows culture tooltip with ancestry when populated", () => {
