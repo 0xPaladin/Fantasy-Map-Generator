@@ -67,6 +67,7 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Provinces editor: clicking a province's stability opens that province's own stability breakdown, with its burgs where the state overview lists provinces
 - Economy dialogs: the Revenue section has a collapsible Adjustments row with its sum and add/remove controls, editable like the budget dialog; a province's lines count toward its taxes collected
 - Provinces editor: the province details dialog and its row button are removed; provincial stability adjustments stay in the province stability breakdown
+- Burgs editor: the Hub filter is replaced by a Province filter
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 

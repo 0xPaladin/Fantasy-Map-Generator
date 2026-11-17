@@ -38,8 +38,8 @@ import { sentences, t } from "@/utils/i18n";
 import { ensureEl, findEl } from "@/utils/node-utils";
 import { rn, si } from "@/utils/number-utils";
 
-type Filters = { stateId?: number | null; cultureId?: number | null };
-type FilterState = { search: string; stateId: number; cultureId: number; realm: string; hub: string };
+type Filters = { stateId?: number | null; cultureId?: number | null; provinceId?: number | null };
+type FilterState = { search: string; stateId: number; cultureId: number; provinceId: number; realm: string };
 
 const dialogId = "burgsOverview" as const;
 const CSV_COLUMNS = [
@@ -223,17 +223,18 @@ function open(filters: Filters = {}): void {
     search: "",
     stateId: -1,
     cultureId: -1,
-    realm: "all",
-    hub: "all"
+    provinceId: -1,
+    realm: "all"
   }));
+  filterState.provinceId ??= -1;
   if (!["all", "surface", "sky", "underdark", "underwater", "titan", "horde"].includes(filterState.realm))
     filterState.realm = "all";
-  if (!["all", "skyPort", "underdarkGate"].includes(filterState.hub)) filterState.hub = "all";
   Dialog.closeAll(`#${dialogId}, .stable`);
   Layers.show("burgIcons", "labels");
 
   if (filters.stateId != null) filterState.stateId = filters.stateId;
   if (filters.cultureId != null) filterState.cultureId = filters.cultureId;
+  if (filters.provinceId != null) filterState.provinceId = filters.provinceId;
   renderDialog();
   updateFilter();
   updateLockAllIcon();
@@ -259,16 +260,10 @@ function renderDialog(): void {
           >${t("State")}:
           <select id="burgsFilterState"></select
         ></label>
-        <label
-          for="burgsFilterHub"
-          data-tip="${t("Filter by cross-realm hub: skyports serve the air lanes, underdark gates open to the tunnel network")}"
-          >${t("Hub")}:
-          <select id="burgsFilterHub">
-            <option value="all">${t("All")}</option>
-            <option value="skyPort">${t("Skyport")}</option>
-            <option value="underdarkGate">${t("Underdark Gate")}</option>
-          </select>
-        </label>
+        <label for="burgsFilterProvince"
+          >${t("Province")}:
+          <select id="burgsFilterProvince"></select
+        ></label>
         <label
           for="burgsFilterRealm"
           data-tip="${t("Filter by realm: surface, sky, underdark, underwater, titan or horde")}"
@@ -360,8 +355,8 @@ function renderDialog(): void {
   ensureEl("burgsGroupsEditorButton").addEventListener("click", () => Controllers.BurgGroupEditor.open());
   ensureEl("burgsChart").addEventListener("click", showBurgsChart);
   ensureEl("burgsFilterState").addEventListener("change", onFilterChange);
+  ensureEl("burgsFilterProvince").addEventListener("change", onFilterChange);
   ensureEl("burgsFilterCulture").addEventListener("change", onFilterChange);
-  ensureEl("burgsFilterHub").addEventListener("change", onFilterChange);
   ensureEl("burgsFilterRealm").addEventListener("change", onFilterChange);
   ensureEl("burgsSearch").addEventListener("input", onFilterChange);
   ensureEl("regenerateBurgNames").addEventListener("click", regenerateNames);
@@ -408,7 +403,23 @@ function updateFilter(): void {
   culturesSorted.forEach(
     c => void cultureFilter.options.add(new Option(c.name, String(c.i), false, c.i === filterState.cultureId))
   );
-  ensureEl<HTMLSelectElement>("burgsFilterHub").value = filterState.hub;
+
+  const provinceFilter = ensureEl<HTMLSelectElement>("burgsFilterProvince");
+  const provinces = pack.provinces.filter(province => province.i && !province.removed);
+  if (
+    filterState.provinceId !== -1 &&
+    filterState.provinceId !== 0 &&
+    !provinces.some(p => p.i === filterState.provinceId)
+  )
+    filterState.provinceId = -1;
+  provinceFilter.options.length = 0; // remove all options
+  provinceFilter.options.add(new Option(t("All"), "-1", false, filterState.provinceId === -1));
+  provinceFilter.options.add(new Option(t("None"), "0", false, filterState.provinceId === 0));
+  const provincesSorted = [...provinces].sort((a, b) => ((a.name ?? "") > (b.name ?? "") ? 1 : -1));
+  provincesSorted.forEach(
+    p => void provinceFilter.options.add(new Option(p.name ?? "", String(p.i), false, p.i === filterState.provinceId))
+  );
+
   ensureEl<HTMLSelectElement>("burgsFilterRealm").value = filterState.realm;
   dialogState.set(dialogId, "filters", filterState);
 }
@@ -416,8 +427,8 @@ function updateFilter(): void {
 function onFilterChange(): void {
   filterState.search = ensureEl<HTMLInputElement>("burgsSearch").value;
   filterState.stateId = +ensureEl<HTMLSelectElement>("burgsFilterState").value;
+  filterState.provinceId = +ensureEl<HTMLSelectElement>("burgsFilterProvince").value;
   filterState.cultureId = +ensureEl<HTMLSelectElement>("burgsFilterCulture").value;
-  filterState.hub = ensureEl<HTMLSelectElement>("burgsFilterHub").value;
   filterState.realm = ensureEl<HTMLSelectElement>("burgsFilterRealm").value;
   dialogState.set(dialogId, "filters", filterState);
   burgsTable.reset();
@@ -440,10 +451,10 @@ function getFilteredBurgs(): Burg[] {
   }
   if (filterState.stateId !== -1) filtered = filtered.filter(b => b.state === filterState.stateId); // filtered by state
   if (filterState.cultureId !== -1) filtered = filtered.filter(b => b.culture === filterState.cultureId); // filtered by culture
+  if (filterState.provinceId !== -1)
+    filtered = filtered.filter(b => (pack.cells.province[b.cell] || 0) === filterState.provinceId); // filtered by province
   if (filterState.realm === "surface") filtered = filtered.filter(b => isSurfaceBurg(b));
   else if (filterState.realm !== "all") filtered = filtered.filter(b => getBurgRealm(b) === filterState.realm);
-  if (filterState.hub === "skyPort") filtered = filtered.filter(b => b.skyPort === 1);
-  else if (filterState.hub === "underdarkGate") filtered = filtered.filter(b => b.underdarkGate === 1);
   return filtered;
 }
 
