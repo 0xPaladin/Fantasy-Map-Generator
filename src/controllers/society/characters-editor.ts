@@ -64,10 +64,10 @@ let filterState: { search: string; status: string; kind: string };
 const columns: EditorColumn<HistoricalFigure>[] = [
   { key: "locate", width: "1.2em", permanent: true },
   { key: "name", label: t("Name"), width: "12em", permanent: true, sortBy: c => c.name, sortType: "alpha" },
-  { key: "culture", label: t("Culture"), width: "8em", sortBy: cultureName, sortType: "alpha" },
   { key: "status", label: t("Status"), width: "6em", sortBy: statusOf, sortType: "alpha" },
   { key: "age", label: t("Age"), width: "4em", sortBy: ageOf, sortType: "number" },
-  { key: "role", label: t("Role"), width: "12em", sortBy: roleSummary, sortType: "alpha" },
+  { key: "culture", label: t("Culture"), width: "8em", sortBy: cultureName, sortType: "alpha" },
+  { key: "role", label: t("Role"), width: "16em", sortBy: roleSummary, sortType: "alpha" },
   { key: "faction", label: t("Faction"), width: "11em", sortBy: factionSummary, sortType: "alpha" },
   { key: "hero", label: t("Hero"), width: "4em", sortBy: c => (c.hero ? 1 : 0), sortType: "number" },
   { key: "details", width: "1.2em" },
@@ -103,7 +103,31 @@ function openRole(character: HistoricalFigure): HistoricalRole | undefined {
 function roleSummary(character: HistoricalFigure): string {
   const role = openRole(character);
   if (!role) return "";
-  return `${capitalize(role.type)} ${role.target.kind} ${role.target.id}`;
+  return `${capitalize(role.type)} ${targetName(role.target)}`;
+}
+
+/** The name behind a role's target reference, with its kind and id only when the target is gone */
+function targetName(target: HistoricalRole["target"]): string {
+  const { kind, id } = target;
+  const fallback = `${capitalize(kind)} ${id}`;
+  switch (kind) {
+    case "state":
+      return pack.states?.[id]?.name ?? fallback;
+    case "burg":
+      return pack.burgs?.[id]?.name ?? fallback;
+    case "culture":
+      return pack.cultures?.[id]?.name ?? fallback;
+    case "religion":
+      return pack.religions?.[id]?.name ?? fallback;
+    case "faction":
+      return pack.factions?.[id]?.name ?? fallback;
+    case "figure":
+      return Characters.get(id)?.name ?? fallback;
+    case "realm":
+      return pack.history?.realms?.[id]?.name ?? fallback;
+    case "polity":
+      return pack.history?.polities?.find(polity => polity.id === id)?.name ?? fallback;
+  }
 }
 
 function factionSummary(character: HistoricalFigure): string {

@@ -42,6 +42,11 @@ describe("CharactersEditor", () => {
         { i: 0, name: "Wildlands", base: "german" },
         { i: 1, name: "Aeloran", base: "german" }
       ],
+      states: [
+        { i: 0, name: "Neutrals" },
+        { i: 1, name: "Aeloria" }
+      ],
+      burgs: [{}, { i: 1, name: "Aelor" }],
       factions: [addFaction(1, { name: "Wayfarers" })],
       cells: {
         p: [
@@ -65,6 +70,26 @@ describe("CharactersEditor", () => {
     expect(body.innerHTML).toContain("Hero");
     expect(document.querySelector("#charactersFooterCount")?.textContent).toBe("2");
     expect(document.querySelector("#charactersFooterHeroes")?.textContent).toBe("1");
+  });
+
+  it("orders the columns and names each role's target", () => {
+    const character = Characters.add({
+      name: "Bran",
+      culture: 1,
+      birth: 950,
+      manual: true,
+      roles: [{ type: "ruler", target: { kind: "state", id: 1 }, from: 900 }]
+    });
+
+    CharactersEditor.open();
+
+    const headers = [...document.querySelectorAll("#charactersEditorHeader [data-col]")].map(header =>
+      header.getAttribute("data-col")
+    );
+    expect(headers.slice(1, 5)).toEqual(["name", "status", "age", "culture"]);
+
+    const row = document.querySelector(`#characterRow-${character.i}`)!;
+    expect(row.querySelector('[data-col="role"]')?.textContent).toBe("Ruler Aeloria");
   });
 
   it("derives the faction column from faction membership", () => {
