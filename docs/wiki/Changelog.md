@@ -61,7 +61,8 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Living World: development is the only technology — it gates goods tiers, unit tiers, faction ascension (18) and the works catalog; diffusion eases peopled land toward the state's mean, and develop projects and Colleges raise it
 - Military: musters are gated by unit goods and by the state's development (a unit opens at its tier); short or backward states field levies; battle power scales with the state's battle upkeep
 - HUD inspector: the state card shows treasury and fiscal policy chips (click to pin), public works, prosperity/stability/development + upkeep; the burg card its prosperity, trade balance and assets; alt-clicking a cell opens its development, deposit and rural output
-- State Cities & Economy and Faction Outposts dialogs: upstream prosperity, stability, development and trade, no city fields
+- Living World: the State Cities & Economy dialog is gone; the HUD state card's Manage buttons open the stock Provinces, Burgs and Regiments editors filtered to that state
+- Faction Outposts dialog: upstream prosperity, stability, development and trade, no city fields
 - Economy: the Living World runs on the new economy — seasonal treasuries, improvements and buildings that raise real output, and sim-owned `simAdjustments` lines merged with the player's adjustments
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
