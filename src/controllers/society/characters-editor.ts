@@ -429,6 +429,7 @@ export function openCharacterDetails(characterId: number): void {
     title: `${character.name} — ${t("Character Sheet")}`,
     width: 560,
     height: "auto",
+    maxHeight: window.innerHeight - 20,
     resizable: true
   });
 
@@ -456,7 +457,7 @@ function renderDetails(character: HistoricalFigure): string {
     .join("");
 
   return /* html */ `
-    <div id="${detailsId}" class="dialog stable" style="padding: 8px; max-height: 72vh; overflow-y: auto; font-size: 0.85em;">
+    <div id="${detailsId}" class="dialog stable" style="padding: 8px; font-size: 0.85em;">
       <style>
         #${detailsId} .characterTable { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
         #${detailsId} .characterTable th { text-align: left; border-bottom: 1px solid var(--dark-solid); padding: 2px 4px; }
