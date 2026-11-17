@@ -4194,6 +4194,52 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(living.provinces[3]?.rebellion).toBeNull();
     });
 
+    it("secedes the entire province (all its cells and non-capital burgs) when no kin foreign neighbor exists", () => {
+      // Expand province 2 (Oakshire) with an extra rural cell 6 and second burg 4 (far from burg 2)
+      pack.cells.i.push(6);
+      pack.cells.state = new Uint16Array([0, 1, 1, 1, 1, 2, 1]);
+      pack.cells.province = new Uint16Array([0, 1, 1, 2, 3, 4, 2]);
+      pack.cells.pop = [...pack.cells.pop, 40] as never;
+      pack.cells.culture = [...pack.cells.culture, 1] as never;
+      pack.cells.religion = [...(pack.cells.religion ?? []), 1] as never;
+      pack.cells.c.push([3]);
+      pack.cells.c[3] = [2, 4, 6];
+      pack.cells.p.push([35, 35]);
+      pack.cells.r = [...pack.cells.r, 0] as never;
+      pack.cells.burg = new Uint16Array([0, 1, 0, 2, 0, 3, 4]);
+      pack.burgs.push({
+        i: 4,
+        name: "Oakridge",
+        cell: 6,
+        x: 35,
+        y: 35,
+        state: 1,
+        culture: 1,
+        population: 2,
+        capital: 0
+      } as never);
+
+      const living = Living.init();
+      Living.quellTrouble(2);
+      pack.provinces[2]!.stabilityAdjustments = [{ name: "Collapse", value: -45 }]; // 0.20 (< 0.25)
+      living.provinces[2]!.rebellion = { name: "Oakshire Rising", seasonsActive: 1 };
+      living.states[1]!.agenda = { kind: "build_work", label: "Distracted", progress: 0, required: 3 };
+      const statesBefore = pack.states.length;
+
+      Living.tick(1);
+
+      expect(pack.states.length).toBe(statesBefore + 1);
+      const newStateId = pack.states.length - 1;
+      expect(pack.provinces[2]!.state).toBe(newStateId);
+      expect(pack.states[newStateId]!.provinces).toEqual([2]);
+      expect(pack.states[1]!.provinces).not.toContain(2);
+      expect(pack.cells.state![3]).toBe(newStateId);
+      expect(pack.cells.state![6]).toBe(newStateId);
+      expect(pack.burgs[2]!.state).toBe(newStateId);
+      expect(pack.burgs[4]!.state).toBe(newStateId);
+      expect(living.provinces[2]?.rebellion).toBeNull();
+    });
+
     it("collapses an unchecked rebellion on its own after 2+ seasons when surrounded by calm provinces", () => {
       const living = Living.init();
       Living.quellTrouble(1);

@@ -929,8 +929,8 @@ class LivingModel {
         ? province.burg
         : this.pickProvinceSettlement(province.i, state.i);
     const burg = settlementId !== undefined ? pack.burgs[settlementId] : undefined;
-    if (burg?.i && !burg.removed && burg.state === state.i) {
-      this.breakAway(state, burg, living);
+    if (burg?.i && !burg.removed && !burg.capital && burg.state === state.i) {
+      this.secedeProvince(state, province, burg, living);
       return true;
     }
 
@@ -5149,7 +5149,16 @@ class LivingModel {
           );
     if (!targetBurg?.i || targetBurg.removed || targetBurg.state !== stateId || targetBurg.capital) return false;
 
-    this.breakAway(state, targetBurg, living);
+    const provId = pack.cells.province?.[targetBurg.cell] ?? 0;
+    const province = provId ? pack.provinces?.[provId] : undefined;
+    const hasStateCapital = Boolean(
+      province?.i && pack.cells.province?.[pack.burgs[state.capital]?.cell ?? -1] === province.i
+    );
+    if (province?.i && !province.removed && province.state === stateId && !hasStateCapital) {
+      this.secedeProvince(state, province, targetBurg, living);
+    } else {
+      this.breakAway(state, targetBurg, living);
+    }
     return true;
   }
 
@@ -5749,12 +5758,21 @@ class LivingModel {
             this.defectProvinceToState(state, foreign.state, province, living);
             continue;
           }
-          const rebelBurg = pack.burgs.find(
-            b => b?.i && !b.removed && !b.capital && b.state === state.i && pack.cells.province?.[b.cell] === province.i
-          );
+          const provCapital = province.burg ? pack.burgs[province.burg] : undefined;
+          const rebelBurg =
+            provCapital && !provCapital.removed && !provCapital.capital && provCapital.state === state.i
+              ? provCapital
+              : pack.burgs.find(
+                  b =>
+                    b?.i &&
+                    !b.removed &&
+                    !b.capital &&
+                    b.state === state.i &&
+                    pack.cells.province?.[b.cell] === province.i
+                );
           if (rebelBurg) {
             pSim.rebellion = null;
-            this.breakAway(state, rebelBurg, living);
+            this.secedeProvince(state, province, rebelBurg, living);
             continue;
           }
         }
@@ -5958,7 +5976,55 @@ class LivingModel {
     return 0;
   }
 
-  private foundSecessionState(oldOwner: State, burg: Burg): number {
+  /** Secede an entire rebellious province as a new sovereign state. */
+  private secedeProvince(oldOwner: State, province: Province, capitalBurg: Burg, living: LivingWorldState): void {
+    const newStateId = this.foundSecessionState(oldOwner, capitalBurg, province);
+    const newState = pack.states[newStateId];
+    if (!newState) return;
+
+    const provCells = this.provinceCells(province.i).filter(
+      cell => cell !== oldOwner.center && pack.cells.burg?.[cell] !== oldOwner.capital
+    );
+    this.transferCells(newStateId, provCells);
+    province.state = newStateId;
+    if (oldOwner.provinces) oldOwner.provinces = oldOwner.provinces.filter(id => id !== province.i);
+    newState.provinces = [province.i];
+
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || burg.capital || burg.state !== oldOwner.i) continue;
+      if (pack.cells.province?.[burg.cell] !== province.i) continue;
+      burg.state = newStateId;
+      const bSim = living.burgs[burg.i];
+      if (bSim) bSim.conqueredBy = undefined;
+      this.recordClaim(oldOwner.i, burg, newStateId);
+      this.recordGrudge(oldOwner.i, burg, "repulsed", `${province.name ?? burg.name} seceded from ${oldOwner.name}`);
+    }
+
+    capitalBurg.state = newStateId;
+    capitalBurg.capital = 1;
+    this.raiseRebelRegiment(newStateId, capitalBurg);
+    const rebel = this.spawnRebel(oldOwner, capitalBurg, living);
+    const text = `${province.name ?? capitalBurg.name ?? "A province"} seceded from ${oldOwner.name}, proclaiming ${newState.name}!`;
+    this.pushNews(living, {
+      kind: "revolt",
+      text,
+      cell: province.center ?? capitalBurg.cell,
+      stateId: newStateId,
+      burgId: capitalBurg.i
+    });
+    this.pushHistory(
+      "independence",
+      [
+        { kind: "figure", id: rebel.i },
+        { kind: "state", id: oldOwner.i },
+        { kind: "state", id: newStateId }
+      ],
+      province.center ?? capitalBurg.cell,
+      text
+    );
+  }
+
+  private foundSecessionState(oldOwner: State, burg: Burg, province?: Province): number {
     const i = pack.states.length;
     const culture = burg.culture ?? oldOwner.culture ?? 0;
     const relations: string[] = [];
@@ -5975,16 +6041,21 @@ class LivingModel {
     }
     relations[i] = "x";
 
+    const seedName = province?.name ?? burg.name ?? Names.getCulture(culture);
+    const palette = ["#c2594a", "#4a8fc2", "#6aa84f", "#b67ac2", "#d19a47", "#47a89a"];
+    const pickedColor = palette[i % palette.length];
+    const color = pickedColor === oldOwner.color ? palette[(i + 1) % palette.length] : pickedColor;
+
     pack.states.push({
       i,
-      name: Names.getState(burg.name ?? Names.getCulture(culture), culture),
+      name: Names.getState(seedName, culture),
       diplomacy: relations,
-      provinces: [],
-      color: oldOwner.color ?? "#8a8a8a",
+      provinces: province ? [province.i] : [],
+      color,
       expansionism: 0.5,
       capital: burg.i,
       type: "Generic",
-      center: burg.cell,
+      center: province?.center ?? burg.cell,
       culture,
       rosterId: assignStateRoster({ culture, type: "Generic" }, pack.cultures),
       military: [],
