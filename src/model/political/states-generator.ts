@@ -80,6 +80,10 @@ export interface StateFinance {
   adjustments: { name: string; value: number }[]; // income a day besides taxes; negative for debts or tribute paid. The user's, kept on regeneration
   /** sim-owned lines (projects, troubles); merged with `adjustments` where the economy reads them */
   simAdjustments?: { name: string; value: number }[];
+  /** user-owned stability adjustments in percentage points (e.g. -15 for -15%) */
+  stabilityAdjustments?: { name: string; value: number }[];
+  /** sim-owned stability adjustments in percentage points */
+  simStabilityAdjustments?: { name: string; value: number }[];
   budget: StateBudget;
   collected: number; // all the taxes collected in the last run
   spent: Record<Expense, number>; // what each expense bought in the last run
@@ -1752,6 +1756,11 @@ class StatesModule {
   /** Set adjustments: named amounts a day besides taxes in the map's currency, e.g. [{ name: "Tribute", value: 40 }], negative for debts or tribute paid. They replace its lines and take effect when production is regenerated */
   setAdjustments(stateId: number, adjustments: { name: string; value: number }[]): void {
     this.ruled(stateId).economy.adjustments = requireAdjustments(adjustments);
+  }
+
+  /** Set state stability adjustments in percentage points, e.g. [{ name: "Festival", value: 10 }] */
+  setStabilityAdjustments(stateId: number, adjustments: { name: string; value: number }[]): void {
+    this.ruled(stateId).economy.stabilityAdjustments = requireAdjustments(adjustments);
   }
 
   /** Lock a state so regeneration keeps it, or unlock it */

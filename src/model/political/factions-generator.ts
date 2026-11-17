@@ -33,12 +33,9 @@ export function ensureFactionNodeSim(node: FactionHq | FactionOutpost, isHq: boo
     node.sim = {
       burgId,
       baseTier: tier,
-      development: 0,
-      developmentProgress: 0,
       buildings: [],
       civBuildings,
       construction: null,
-      unrest: 0,
       isMajor: true,
       hp: baseHp,
       maxHp: baseHp
@@ -49,7 +46,6 @@ export function ensureFactionNodeSim(node: FactionHq | FactionOutpost, isHq: boo
     node.sim.buildings ??= [];
     node.sim.civBuildings = civBuildings;
     node.sim.construction ??= null;
-    node.sim.unrest ??= 0;
     node.sim.isMajor = true;
     node.sim.maxHp ??= baseHp;
     node.sim.hp ??= node.sim.maxHp;

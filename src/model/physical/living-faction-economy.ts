@@ -42,7 +42,15 @@ const NONE: FactionUpstreamIncome = {
   hostProduct: 0
 };
 
-export const COMMERCIAL_ASSETS = ["trade_depot", "counting_house", "grand_exchange", "bazaar", "harbor", "seaport", "bank"];
+export const COMMERCIAL_ASSETS = [
+  "trade_depot",
+  "counting_house",
+  "grand_exchange",
+  "bazaar",
+  "harbor",
+  "seaport",
+  "bank"
+];
 const COMMISSION_BASE = 0.05; // of the market's turnover, a faction's cut
 export const COMMISSION_PER_ASSET = 0.03;
 const COMMISSION_TOP = 0.15;

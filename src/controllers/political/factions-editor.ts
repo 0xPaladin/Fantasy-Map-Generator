@@ -8,9 +8,14 @@ import type { Regiment } from "@/model/political/military-generator";
 import { formatPrice, getMoneySymbol } from "@/model/units";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
-import type { Faction, FactionAllegiance, FactionCategory, FactionOutpost, FactionYieldBreakdown } from "@/types/factions";
+import type {
+  Faction,
+  FactionAllegiance,
+  FactionCategory,
+  FactionOutpost,
+  FactionYieldBreakdown
+} from "@/types/factions";
 import { Dialog } from "@/ui/dialog/dialog";
-import { budgetBackground, ECONOMY_COLORS, tone } from "@/ui/economy-view";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
 import {
@@ -21,6 +26,7 @@ import {
   renderEditorPagination,
   type TableView
 } from "@/ui/dialog/table";
+import { budgetBackground, ECONOMY_COLORS, tone } from "@/ui/economy-view";
 import type { FillBoxElement } from "@/ui/elements/fill-box";
 import { zoomTo } from "@/ui/map/zoom";
 import { t } from "@/utils/i18n";

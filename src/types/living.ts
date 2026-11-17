@@ -219,11 +219,8 @@ export interface BurgConstructionState {
 export interface BurgSimState {
   burgId: number;
   baseTier: number;
-  development: number;
-  developmentProgress: number;
   buildings: string[];
   construction: BurgConstructionState | null;
-  unrest: number;
   conqueredBy?: number;
   /** the state that held the burg before its first conquest in this simulation (0 = free) */
   originalOwner?: number;
@@ -247,22 +244,10 @@ export interface BurgSimState {
   siegeSupplies?: number;
   hasStruckThisTurn?: boolean;
   pillaged?: boolean;
-  /** accumulated seasonal reserves (Living ledger); upstream `burg.treasury` stays a day's net */
-  treasury?: number;
 }
 
 export interface ProvinceSimState {
   provinceId: number;
-  /** Public order, 0..100 */
-  order: number;
-  /** Stability points, spent to purchase development */
-  stability: number;
-  /** Earned development points, each adds +1 W and +1 S to the region */
-  development: number;
-  developmentProgress: {
-    settlementId: number;
-    turnsLeft: number;
-  } | null;
   /** Active obstacle/trouble afflicting the province */
   trouble?: ProvinceTrouble | null;
 }
@@ -271,7 +256,6 @@ export interface StatePolitySim {
   stateId: number;
   rulerId?: number;
   agenda: StateAgenda | null;
-  unravel: number;
   warExhaustion: number;
   claims: ClaimRecord[];
   grudges: GrudgeRecord[];
@@ -283,8 +267,6 @@ export interface StatePolitySim {
   fiscal?: FiscalPolicyState;
   /** the public work under construction, one at a time */
   project?: ActiveProject;
-  /** accumulated seasonal reserves (Living ledger); mirrored onto `state.economy.treasury` */
-  treasury?: number;
 }
 
 export type LivingNewsKind =

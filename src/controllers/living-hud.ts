@@ -506,8 +506,10 @@ function selectState(stateId: number): void {
 }
 
 function selectBurg(burgId: number): void {
-  const living = Living.getState();
-  if ((living.burgs?.[burgId]?.unrest ?? 0) > 0) rememberTarget("Fit for unrest", ["social", "order"]);
+  const provId = pack.burgs?.[burgId]?.cell !== undefined ? pack.cells?.province?.[pack.burgs[burgId].cell] : 0;
+  if (provId && (Stability.getProvince(provId)?.stability ?? 1) < 0.4) {
+    rememberTarget("Fit for unrest", ["social", "order"]);
+  }
   selected = { kind: "burg", id: burgId };
   renderInspector();
 }
@@ -755,19 +757,13 @@ function renderStateCard(stateId: number): string {
     ${renderStateNav(stateId)}
     <div class="livingSection">
       <div class="livingSectionTitle">Stability</div>
-      ${renderMeter("Unravel", sSim.unravel, true)}
+      ${renderMeter("Stability", Math.round((Stability.get(stateId)?.stability ?? 0) * 100), false)}
       ${renderMeter("Exhaustion", sSim.warExhaustion, false)}
     </div>
     <div class="livingSection">
       <div class="livingSectionTitle">Claims & Grudges</div>
       ${
-        [
-          renderProvincesFactions(stateId),
-          renderProvincesTroubles(stateId),
-          renderRestiveBurgs(stateId),
-          renderClaims(sSim),
-          renderGrudges(sSim)
-        ]
+        [renderProvincesFactions(stateId), renderProvincesTroubles(stateId), renderClaims(sSim), renderGrudges(sSim)]
           .filter(Boolean)
           .join("") || '<div class="livingMuted">None</div>'
       }
@@ -1010,12 +1006,11 @@ function renderStateProvinces(stateId: number): string {
   const rows = owned
     .map(p => {
       const pSim = living.provinces?.[p.i];
-      const order = Math.round(pSim?.order ?? 0);
-      const stability = pSim?.stability ?? 0;
+      const stab = Math.round((Stability.getProvince(p.i)?.stability ?? 0) * 100);
       const markers = [pSim?.trouble ? "⚠️" : "", hostileFactionInProvince(p.i) ? "💀" : ""].filter(Boolean).join("");
-      return `<div class="livingCapacityRow" title="${escapeHtml(p.name ?? "Province")}: order ${order}%, stability ${stability}">
+      return `<div class="livingCapacityRow" title="${escapeHtml(p.name ?? "Province")}: stability ${stab}%">
         <span>${escapeHtml(p.name ?? "Province")}${markers ? ` ${markers}` : ""}</span>
-        <span class="livingMuted">${order}% · S${stability}</span>
+        <span class="livingMuted">${stab}%</span>
       </div>`;
     })
     .join("");
@@ -1129,37 +1124,6 @@ function renderGrudges(sSim: StatePolitySim): string {
   return `<div class="livingSectionTitle">Grudges</div><ul>${rows}</ul>`;
 }
 
-const UNREST_BINS = [
-  { label: "Red", color: "#a33d3d", min: 17 },
-  { label: "Orange", color: "#d96b27", min: 10 },
-  { label: "Yellow", color: "#c99b24", min: 5 }
-] as const;
-
-function getUnrestBin(unrest: number): (typeof UNREST_BINS)[number] | null {
-  if (unrest >= 17) return UNREST_BINS[0];
-  if (unrest >= 10) return UNREST_BINS[1];
-  if (unrest >= 5) return UNREST_BINS[2];
-  return null;
-}
-
-function renderRestiveBurgs(stateId: number): string {
-  const living = Living.getState();
-  const restive = (pack.burgs ?? [])
-    .filter(b => b?.i && !b.removed && b.state === stateId && (living.burgs[b.i]?.unrest ?? 0) >= 5)
-    .map(b => ({ burg: b, unrest: living.burgs[b.i]?.unrest ?? 0 }));
-  if (restive.length === 0) return "";
-
-  const rows = restive
-    .map(({ burg, unrest }) => {
-      const bin = getUnrestBin(unrest)!;
-      return `<li><button type="button" class="livingLinkBtn" data-zoom-burg="${burg.i}" title="Zoom to ${escapeHtml(burg.name ?? "Burg")}">
-        <span style="color:${bin.color}; font-weight: bold;">■</span> ${escapeHtml(burg.name ?? "Burg")}
-      </button></li>`;
-    })
-    .join("");
-  return `<div class="livingSectionTitle">Restive Burgs</div><ul>${rows}</ul>`;
-}
-
 function renderProvinceCard(provinceId: number): string {
   const living = Living.getState();
   const province = pack.provinces?.[provinceId];
@@ -1174,9 +1138,10 @@ function renderProvinceCard(provinceId: number): string {
   const threatCapable = Boolean(threat?.sovereignAmbition);
   const cell = trouble?.cell ?? threat?.hq.cell ?? province.center ?? 0;
 
+  const stabPct = Math.round((Stability.getProvince(provinceId)?.stability ?? 0) * 100);
   return /* html */ `
     <button type="button" class="livingInspectorTitle" data-open="province" data-id="${provinceId}">Provinces Editor</button>
-    <div class="livingMuted">${escapeHtml(state?.name ?? "Unclaimed")} · order ${Math.round(pSim.order)}% · stability ${pSim.stability} · dev ${pSim.development}</div>
+    <div class="livingMuted">${escapeHtml(state?.name ?? "Unclaimed")} · stability ${stabPct}%</div>
     ${
       trouble && tDef
         ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme})</div>
@@ -1280,13 +1245,10 @@ function renderBurgCard(burgId: number): string {
   const threat = provId ? hostileFactionInProvince(provId) : null;
   const threatCapable = Boolean(threat?.sovereignAmbition);
 
+  const provStab = provId ? Math.round((Stability.getProvince(provId)?.stability ?? 0) * 100) : 0;
   return /* html */ `
     <div class="livingInspectorTitle">${escapeHtml(burg.name ?? "Burg")}</div>
     <div class="livingMuted">${escapeHtml(owner ?? "")} · tier ${bSim.baseTier} · pop ${burg.population ?? 0}</div>
-    <div class="livingSection">
-      <div class="livingSectionTitle">Unrest</div>
-      ${renderMeter("Unrest", bSim.unrest, true)}
-    </div>
     ${renderUpstreamBurg(burgId)}
     <div class="livingSection">
       <div class="livingSectionTitle">Asset</div>
@@ -1298,7 +1260,7 @@ function renderBurgCard(burgId: number): string {
       province && pSim
         ? `<div class="livingSection">
             <div class="livingSectionTitle">Province: ${escapeHtml(province.name ?? "Province")}</div>
-            <div class="livingMuted">Order ${Math.round(pSim.order)}% · Stability ${pSim.stability} · Dev ${pSim.development}</div>
+            <div class="livingMuted">Stability ${provStab}%</div>
             ${
               trouble && tDef
                 ? `<div style="margin-top:0.3em;color:#a33d3d;"><strong>Trouble:</strong> ${escapeHtml(tDef.name)} (Lv ${trouble.level}, ${trouble.theme})</div>

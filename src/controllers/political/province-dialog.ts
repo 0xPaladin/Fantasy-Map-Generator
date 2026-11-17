@@ -1,14 +1,15 @@
 import { Controllers } from "@/controllers";
-import { civBuildingCapacity } from "@/data/living-civ-buildings";
 import { getTroubleDef, SAVE_KIND_LABELS, UNIT_ROLE_LABELS } from "@/data/living-troubles";
 import type { BuildingDef } from "@/data/roster-content";
 import { currentContent } from "@/data/roster-store";
-import { valueModifier } from "@/data/saves-helpers";
 import { poiCapacityType } from "@/data/tiers";
-import { classifyGood, Living, regionTierFromPop } from "@/model/physical/living-generator";
+import { Accounts } from "@/model/economy/accounts";
+import { Corruption } from "@/model/economy/corruption";
+import { Living } from "@/model/physical/living-generator";
 import { Factions } from "@/model/political/factions-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import { Provinces } from "@/model/political/provinces-generator";
+import { Stability } from "@/model/political/stability";
 import { Names } from "@/model/society/names-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
 import { getArea, getAreaUnit } from "@/model/units";
@@ -17,6 +18,7 @@ import { speak } from "@/services/speech";
 import type { Faction } from "@/types/factions";
 import type { LivingWorldState, ProvinceSimState } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
+import { mountAdjustments, renderProsperityPercent, renderSimAdjustments } from "@/ui/economy-view";
 import { zoomTo } from "@/ui/map/zoom";
 import { t } from "@/utils/i18n";
 import { applyOption, ensureEl, findEl } from "@/utils/node-utils";
@@ -82,16 +84,7 @@ function getLivingState(): LivingWorldState | undefined {
   }
 }
 
-export interface ProvinceCapacity {
-  m: number;
-  w: number;
-  s: number;
-  c: number;
-  modM: number;
-  modW: number;
-  modS: number;
-  modC: number;
-}
+const formatPct = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${rn(Math.abs(value), 1)}%`;
 
 /** Hostile/clandestine faction with an HQ in a province (dialog view of threat pressure). */
 function hostileFactionForDialog(provinceId: number): Faction | null {
@@ -147,118 +140,6 @@ function getProvinceConstruction(provinceId: number, living?: LivingWorldState) 
     | undefined;
   if (pSim?.construction) return pSim.construction;
   return null;
-}
-
-export function computeProvinceCapacity(
-  p: Province,
-  pSim?: ProvinceSimState,
-  living?: LivingWorldState
-): ProvinceCapacity {
-  const popScale = options.map?.units?.population?.scale ?? 1000;
-  const urbanRate = options.map?.units?.population?.urbanization?.rate ?? 1;
-  const rural = (p.rural ?? 0) * popScale;
-  const urban = (p.urban ?? 0) * popScale * urbanRate;
-  const totalPop = rural + urban;
-  const popThousands = Math.round(totalPop / 1000);
-  const rTier = regionTierFromPop(popThousands);
-  const dev = pSim?.development ?? 0;
-
-  let m = 1; // base levy
-  let w = rTier + dev;
-  let s = rTier + dev;
-  let c = 0;
-
-  // Capital court bonus: +2 C if province holds state capital
-  const state = pack.states?.[p.state];
-  if (state?.capital && (p.burg === state.capital || p.burgs?.includes(state.capital))) {
-    c += 2;
-  }
-
-  // Province cells
-  const provCells = new Set<number>();
-  if (pack.cells?.province) {
-    for (let i = 0; i < pack.cells.province.length; i++) {
-      if (pack.cells.province[i] === p.i) provCells.add(i);
-    }
-  }
-
-  // Landmarks & POIs in this province's cells
-  for (const marker of pack.markers ?? []) {
-    if (marker && provCells.has(marker.cell)) {
-      const pool = poiCapacityType(marker.type);
-      if (pool === "m") m++;
-      else if (pool === "w") w++;
-      else if (pool === "s") s++;
-      else if (pool === "c") c++;
-    }
-  }
-
-  // Trade goods in this province's cells
-  if (pack.cells?.good) {
-    for (const cell of provCells) {
-      const goodId = pack.cells.good[cell];
-      if (!goodId) continue;
-      const good = options.map.goods?.[goodId];
-      if (!good) continue;
-      const cl = classifyGood(good);
-      if (cl === "strategic") m++;
-      else if (cl === "luxury") w++;
-    }
-  }
-
-  // Standing buildings
-  let buildingDefs: BuildingDef[] = [];
-  try {
-    buildingDefs = currentContent().content.buildings;
-  } catch {
-    buildingDefs = [];
-  }
-  const buildingById = new Map<string, BuildingDef>(buildingDefs.map(b => [b.id, b]));
-
-  // Province-level buildings
-  const provBuildings = getProvinceBuildings(p.i, living);
-  for (const bid of provBuildings) {
-    const bDef = buildingById.get(bid);
-    if (bDef?.effects?.capacity) {
-      m += bDef.effects.capacity.m ?? 0;
-      w += bDef.effects.capacity.w ?? 0;
-      s += bDef.effects.capacity.s ?? 0;
-      c += bDef.effects.capacity.c ?? 0;
-    }
-  }
-
-  // Burg structures in this province
-  for (const bId of p.burgs ?? []) {
-    const bSim = living?.burgs?.[bId];
-    if (!bSim) continue;
-    for (const bid of bSim.civBuildings ?? []) {
-      const cap = civBuildingCapacity(bid);
-      m += cap.m;
-      w += cap.w;
-      s += cap.s;
-      c += cap.c;
-    }
-    for (const bid of bSim.buildings ?? []) {
-      const bDef = buildingById.get(bid);
-      if (bDef?.effects?.capacity) {
-        m += bDef.effects.capacity.m ?? 0;
-        w += bDef.effects.capacity.w ?? 0;
-        s += bDef.effects.capacity.s ?? 0;
-        c += bDef.effects.capacity.c ?? 0;
-      }
-    }
-  }
-
-  return {
-    m,
-    w,
-    s,
-    c,
-    modM: valueModifier(m),
-    modW: valueModifier(w),
-    modS: valueModifier(s),
-    modC: valueModifier(c)
-  };
 }
 
 function formatBuildingEffects(effects?: BuildingEffects): string {
@@ -317,23 +198,10 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
 
   const living = getLivingState();
   const pSim = living?.provinces?.[provinceId];
-  const order = pSim?.order ?? 50;
-  const stability = pSim?.stability ?? 0;
-  const development = pSim?.development ?? 0;
-
-  // Domain checks capacity
-  const cap = computeProvinceCapacity(p, pSim, living);
-
-  // Development progress
-  let devProgressHtml = "";
-  if (pSim?.developmentProgress) {
-    const targetBurg =
-      pack.burgs?.[pSim.developmentProgress.settlementId]?.name ?? `Burg #${pSim.developmentProgress.settlementId}`;
-    devProgressHtml = `<div class="provRow" style="font-size:0.85em; color:#444;">
-      <span class="label">Progress:</span>
-      <span>Next dev in <strong>${escapeHtml(targetBurg)}</strong> (${pSim.developmentProgress.turnsLeft} turns left)</span>
-    </div>`;
-  }
+  const stab = Stability.getProvince(provinceId);
+  const prosperity = Accounts.ofProvince(provinceId)?.prosperity;
+  const corruption = stab && state ? Corruption.ofProvince(state, stab.province, state.economy.collected) : null;
+  let editStabAdj = (p.stabilityAdjustments ?? []).map(line => ({ ...line }));
 
   // Active Trouble
   let troubleHtml = "";
@@ -453,10 +321,6 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
     const bSim = living?.burgs?.[bId];
     const icon = b.capital ? "👑" : b.port ? "⚓" : "🏰";
     const pop = rn((b.population ?? 0) * popScale * urbanRate);
-    const unrestBadge =
-      bSim && bSim.unrest > 0
-        ? `<span class="provBadge" style="background:${bSim.unrest >= 20 ? "#8b0000" : bSim.unrest >= 15 ? "#d9534f" : bSim.unrest >= 10 ? "#f0ad4e" : "#5cb85c"}">Unrest ${bSim.unrest}</span>`
-        : `<span style="color:#888;">0</span>`;
 
     burgRowsHtml += `<tr>
       <td>
@@ -465,7 +329,6 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
       </td>
       <td>Tier ${bSim?.baseTier ?? 1}</td>
       <td>${si(pop)}</td>
-      <td>${unrestBadge}</td>
       <td style="text-align:right; white-space:nowrap;">
         <span class="burgFeatureIcon icon-star-empty ${b.capital ? "" : "inactive"}" style="color:${b.capital ? "#d4af37" : "#aaa"}; font-size:1.05em;" data-tip="${b.capital ? t("State capital (Click to toggle)") : t("Not a capital (Click to toggle)")}" data-burg-feature="capital" data-burg-id="${b.i}"></span>
         <span class="burgFeatureIcon icon-anchor ${b.port ? "" : "inactive"}" style="color:${b.port ? "#3a86ff" : "#aaa"}; font-size:0.95em;" data-tip="${b.port ? t("Port (Click to toggle)") : t("Not a port (Click to toggle)")}" data-burg-feature="port" data-burg-id="${b.i}"></span>
@@ -488,7 +351,6 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
             <th>${t("Burg")}</th>
             <th>${t("Tier")}</th>
             <th>${t("Pop")}</th>
-            <th>${t("Unrest")}</th>
             <th style="text-align:right;">${t("Features & Actions")}</th>
           </tr>
         </thead>
@@ -555,31 +417,15 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
         </div>
       </div>
 
-      <!-- Line 3: Living World Stats & Domain Checks -->
+      <!-- Line 3: Stock Stability, Corruption, Prosperity & Adjustments -->
       <div class="provSection">
-        <div class="provRow" style="flex-wrap: wrap; gap: 0.8em; align-items: center; justify-content: space-between;">
-          <div style="display: inline-flex; align-items: center; gap: 0.35em;">
-            <strong class="label" data-tip="${t("Province Domain check modifiers")}">Checks:</strong>
-            <span class="provCheckChip" data-tip="Military Value: ${cap.m} → Check Modifier: +${cap.modM} (Roll: 1d20 + ${cap.modM})"><strong>M:</strong> ${cap.m} (+${cap.modM})</span>
-            <span class="provCheckChip" data-tip="Wealth Value: ${cap.w} → Check Modifier: +${cap.modW} (Roll: 1d20 + ${cap.modW})"><strong>W:</strong> ${cap.w} (+${cap.modW})</span>
-            <span class="provCheckChip" data-tip="Social Value: ${cap.s} → Check Modifier: +${cap.modS} (Roll: 1d20 + ${cap.modS})"><strong>S:</strong> ${cap.s} (+${cap.modS})</span>
-            <span class="provCheckChip" data-tip="Cunning Value: ${cap.c} → Check Modifier: +${cap.modC} (Roll: 1d20 + ${cap.modC})"><strong>C:</strong> ${cap.c} (+${cap.modC})</span>
-          </div>
-
-          <div style="display: inline-flex; align-items: center; gap: 0.4em;">
-            <span class="label" data-tip="${t("Public Order")}">${t("Order")}:</span>
-            <input type="number" id="provDialogOrder" min="0" max="100" value="${order}" style="width: 4.5em; text-align: center;" />
-            <span style="font-size:0.85em; color:#666;">/100</span>
-
-            <span class="label" style="margin-left:0.35em;" data-tip="${t("Stability")}">${t("Stab")}:</span>
-            <input type="number" id="provDialogStability" min="0" value="${stability}" style="width: 4em; text-align: center;" />
-
-            <span class="label" style="margin-left:0.35em;" data-tip="${t("Development")}">${t("Dev")}:</span>
-            <input type="number" id="provDialogDev" min="0" value="${development}" style="width: 4em; text-align: center;" />
-          </div>
+        <div class="provRow" style="flex-wrap: wrap; gap: 0.8em; align-items: center;">
+          <span class="provCheckChip"><strong>${t("Stability")}:</strong> ${stab ? `${rn(stab.stability * 100)}%` : "—"}</span>
+          <span class="provCheckChip"><strong>${t("Corruption")}:</strong> ${corruption !== null ? `${rn(corruption)}%` : "—"}</span>
+          <span class="provCheckChip"><strong>${t("Prosperity")}:</strong> ${prosperity != null ? renderProsperityPercent(prosperity) : "—"}</span>
         </div>
-
-        ${devProgressHtml ? `<div style="font-size: 0.85em; color: #555; margin-top: 2px;">${devProgressHtml}</div>` : ""}
+        <div id="provDialogStabilityAdjustments" style="margin-top: 0.35em;"></div>
+        <div id="provDialogSimStabilityAdjustments"></div>
 
         ${
           troubleHtml || factionHtml
@@ -606,6 +452,27 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
     </div>`;
 
   ensureEl("dialogs").insertAdjacentHTML("beforeend", dialogHtml);
+
+  mountAdjustments(
+    ensureEl("provDialogStabilityAdjustments"),
+    editStabAdj,
+    t("Adjustments: percentage-point modifiers to provincial stability, set by you"),
+    lines => {
+      editStabAdj = lines;
+    },
+    formatPct,
+    {
+      step: "1",
+      valueTip: t("Stability points (%); negative to lower stability"),
+      addTip: t("Add stability modifier")
+    }
+  );
+  renderSimAdjustments(
+    ensureEl("provDialogSimStabilityAdjustments"),
+    p.simStabilityAdjustments ?? [],
+    t("Stability modifiers written by the Living World"),
+    formatPct
+  );
 
   applyOption(ensureEl("provDialogSelectForm"), p.formName || "");
 
@@ -729,7 +596,7 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
       {
         label: t("Apply"),
         onClick: () => {
-          applyChanges(p, onUpdate);
+          applyChanges(p, editStabAdj, onUpdate);
           Dialog.close(PROVINCE_DIALOG_ID);
         }
       },
@@ -745,7 +612,11 @@ export function openProvinceDetailsDialog(provinceId: number, onUpdate?: () => v
   });
 }
 
-function applyChanges(p: Province, onUpdate?: () => void): void {
+function applyChanges(
+  p: Province,
+  stabilityAdjustments: { name: string; value: number }[],
+  onUpdate?: () => void
+): void {
   const shortInput = findEl<HTMLInputElement>("provDialogShort");
   const formSelect = findEl<HTMLSelectElement>("provDialogSelectForm");
 
@@ -762,22 +633,9 @@ function applyChanges(p: Province, onUpdate?: () => void): void {
     Provinces.setFullName(p.i, fullName);
   }
 
-  const living = getLivingState();
-  const pSim = living?.provinces?.[p.i];
-  if (pSim) {
-    const orderInput = findEl<HTMLInputElement>("provDialogOrder");
-    const stabInput = findEl<HTMLInputElement>("provDialogStability");
-    const devInput = findEl<HTMLInputElement>("provDialogDev");
-    if (orderInput && orderInput.value !== "") {
-      pSim.order = Math.max(0, Math.min(100, Number(orderInput.value) || 0));
-    }
-    if (stabInput && stabInput.value !== "") {
-      pSim.stability = Math.max(0, Number(stabInput.value) || 0);
-    }
-    if (devInput && devInput.value !== "") {
-      pSim.development = Math.max(0, Number(devInput.value) || 0);
-    }
-  }
+  p.stabilityAdjustments = stabilityAdjustments
+    .map(line => ({ name: String(line.name ?? "").trim(), value: Number(line.value) || 0 }))
+    .filter(line => line.name || line.value);
 
   Layers.draw("provinces");
   Layers.draw("labels");

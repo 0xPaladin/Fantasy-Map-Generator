@@ -776,8 +776,6 @@ export function sendAdventurersToFaction(stateId: number, provinceId: number): b
     }
     const factionName = faction.name;
     Factions.remove(faction.i);
-    pSim.order = Math.min(100, pSim.order + 12);
-    pSim.stability += 1;
     relieveEschaton(living);
 
     pushNews(living, {
@@ -889,7 +887,7 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
     state: targetBurg?.state ?? 0,
     center: targetCell
   } as Province;
-  const dummyPSim = { order: 50, stability: 1 } as ProvinceSimState;
+  const dummyPSim = { provinceId } as ProvinceSimState;
 
   const newStateId = spawnEmergentState({
     province: province ?? dummyProv,
@@ -1222,8 +1220,6 @@ function spawnEmergentState(opts: {
   }
 
   pSim.trouble = null;
-  pSim.order = 75;
-  pSim.stability = 3;
 
   const ruler = spawnEmergentRuler(newState, living, opts.alignment);
 
@@ -1234,7 +1230,6 @@ function spawnEmergentState(opts: {
 
   const bSim = living.burgs?.[capital.i];
   if (bSim) {
-    bSim.unrest = 0;
     bSim.conqueredBy = undefined;
     const scaffold = ["walls2", "barracks1", "market1", "temple1"];
     const bSet = new Set(bSim.buildings);
@@ -1247,7 +1242,6 @@ function spawnEmergentState(opts: {
   const sSim = living.states[newStateId];
   if (sSim) {
     sSim.rulerId = ruler.i;
-    sSim.unravel = 0;
     sSim.warExhaustion = 0;
   }
 

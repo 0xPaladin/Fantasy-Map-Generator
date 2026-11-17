@@ -150,8 +150,8 @@ const columns: EditorColumn<Province>[] = [
     label: t("Living"),
     width: "5.5em",
     mobileHidden: true,
-    tip: t("Living World public order, active trouble and faction. Click to inspect"),
-    sortBy: province => pack.history?.living?.provinces?.[province.i]?.order ?? 0
+    tip: t("Living World stability, active trouble and faction. Click to inspect"),
+    sortBy: province => Stability.getProvince(province.i)?.stability ?? -1
   },
   {
     key: "burgs",
@@ -470,19 +470,15 @@ function getProvincesData(): Province[] {
   return sortDataByColumns(dialogId, filtered, columns);
 }
 
-/** The Living World column: public order plus active trouble/faction flags. */
+/** The Living World column: stock stability plus active trouble/faction flags. */
 function renderLivingProvince(province: Province): string {
   const pSim = pack.history?.living?.provinces?.[province.i];
-  if (!pSim) return `<span class="placeholder">—</span>`;
+  const stab = Stability.getProvince(province.i)?.stability;
+  if (!pSim && stab == null) return `<span class="placeholder">—</span>`;
 
-  const order = Math.round(pSim.order);
-  const tip = sentences(
-    `${t("Public order")}: ${order}%`,
-    `${t("Stability")}: ${pSim.stability}`,
-    `${t("Development")}: ${pSim.development}`,
-    t("Click to open the Living World inspector")
-  );
-  const trouble = pSim.trouble
+  const stabPct = stab != null ? `${Math.round(stab * 100)}%` : "—";
+  const tip = sentences(`${t("Stability")}: ${stabPct}`, t("Click to open the Living World inspector"));
+  const trouble = pSim?.trouble
     ? `<span data-tip="${t("Active trouble: {{name}}", { name: pSim.trouble.name })}">⚠️</span>`
     : "";
   const hostile = Factions.active().find(f => {
@@ -494,7 +490,7 @@ function renderLivingProvince(province: Province): string {
     return provId === province.i;
   });
   const threat = hostile ? `<span data-tip="${t("Dangerous faction: {{name}}", { name: hostile.name })}">⚔️</span>` : "";
-  return `<span class="pointer" data-tip="${tip}">${order}%</span>${trouble}${threat}`;
+  return `<span class="pointer" data-tip="${tip}">${stabPct}</span>${trouble}${threat}`;
 }
 
 function renderProvincesPage(view: TableView<Province>): void {

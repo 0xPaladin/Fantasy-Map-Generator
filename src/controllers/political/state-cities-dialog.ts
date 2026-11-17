@@ -492,12 +492,9 @@ export function openStateCitiesDialog(stateId: number, activeTab: "cities" | "as
       bSim = {
         burgId,
         baseTier: settlementTierFromPop(burg.population ?? 0),
-        development: 0,
-        developmentProgress: 0,
         buildings: [],
         civBuildings: [],
         construction: null,
-        unrest: 0,
         originalOwner: burg.state ?? 0,
         originalCulture: burg.culture,
         originalReligion: pack.cells.religion?.[burg.cell] ?? 0

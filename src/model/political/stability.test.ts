@@ -83,6 +83,22 @@ describe("Stability.get", () => {
     expect(Stability.get(1)).toBeNull();
     expect(Stability.get(0)).toBeNull();
   });
+
+  it("applies state and province stability adjustments (user and sim) weighted by province share", () => {
+    vi.spyOn(Accounts, "ofState").mockReturnValue({ prosperity: 0.25, taxes: 0, product: 100 } as any);
+    vi.spyOn(Prosperity, "getRuralCell").mockReturnValue({ living: { prosperity: 0.25 } } as any);
+    pack.provinces = [
+      { i: 0 },
+      { i: 1, state: 1, burg: 0, stabilityAdjustments: [{ name: "Local Shrine", value: 10 }] }
+    ] as any;
+    pack.cells.province = new Uint16Array([1, 1]);
+    pack.states[1].economy.stabilityAdjustments = [{ name: "Festival", value: 5 }];
+    pack.states[1].economy.simStabilityAdjustments = [{ name: "War Exhaustion", value: -20 }];
+
+    const result = Stability.get(1)!;
+    expect(result.parts.adjustments).toBeCloseTo(-0.05);
+    expect(result.stability).toBeCloseTo(0.5 + 0.25 + 0.15 - 0.05);
+  });
 });
 
 describe("Military.getEquipped", () => {

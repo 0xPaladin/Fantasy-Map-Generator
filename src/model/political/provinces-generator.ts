@@ -36,6 +36,10 @@ export interface Province {
   burgs?: number[];
   note?: string;
   tags?: string[];
+  /** user-owned stability adjustments in percentage points (e.g. -15 for -15%) */
+  stabilityAdjustments?: { name: string; value: number }[];
+  /** sim-owned stability adjustments in percentage points */
+  simStabilityAdjustments?: { name: string; value: number }[];
 }
 
 class ProvinceModule {

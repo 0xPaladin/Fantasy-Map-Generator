@@ -12,7 +12,7 @@ vi.mock("@/controllers", () => ({
 
 import { Provinces } from "@/model/political/provinces-generator";
 import { DIALOGS_MARKUP } from "@/ui/dialog/dialog-testing";
-import { computeProvinceCapacity, openProvinceDetailsDialog, PROVINCE_DIALOG_ID } from "./province-dialog";
+import { openProvinceDetailsDialog, PROVINCE_DIALOG_ID } from "./province-dialog";
 
 describe("openProvinceDetailsDialog", () => {
   beforeEach(() => {
@@ -180,30 +180,17 @@ describe("openProvinceDetailsDialog", () => {
     expect(dialog?.textContent).toContain("Urban");
   });
 
-  it("displays Living World M W S C checks and spacious living stat inputs", () => {
+  it("displays stock Stability, Corruption, Prosperity chips and trouble/faction info", () => {
     openProvinceDetailsDialog(1);
 
     const dialog = document.getElementById(PROVINCE_DIALOG_ID);
-    expect(dialog?.textContent).toContain("Checks:");
-    expect(dialog?.textContent).toContain("M:");
-    expect(dialog?.textContent).toContain("W:");
-    expect(dialog?.textContent).toContain("S:");
-    expect(dialog?.textContent).toContain("C:");
+    expect(dialog?.textContent).toContain("Stability:");
+    expect(dialog?.textContent).toContain("Corruption:");
+    expect(dialog?.textContent).toContain("Prosperity:");
 
     const chips = dialog?.querySelectorAll(".provCheckChip");
-    expect(chips?.length).toBe(4);
+    expect(chips?.length).toBe(3);
 
-    const orderInput = dialog?.querySelector<HTMLInputElement>("#provDialogOrder");
-    const stabInput = dialog?.querySelector<HTMLInputElement>("#provDialogStability");
-    const devInput = dialog?.querySelector<HTMLInputElement>("#provDialogDev");
-    expect(orderInput?.value).toBe("65");
-    expect(stabInput?.value).toBe("3");
-    expect(devInput?.value).toBe("2");
-    expect(orderInput?.style.width).toBe("4.5em");
-    expect(stabInput?.style.width).toBe("4em");
-    expect(devInput?.style.width).toBe("4em");
-
-    expect(dialog?.textContent).toContain("Next dev in Highkeep");
     expect(dialog?.textContent).toContain("Forest Monsters");
     expect(dialog?.textContent).toContain("Goblin Warren");
   });
@@ -224,7 +211,6 @@ describe("openProvinceDetailsDialog", () => {
     const burgTable = tables?.[1];
     expect(burgTable?.textContent).toContain("Highkeep");
     expect(burgTable?.textContent).toContain("Tier 3");
-    expect(burgTable?.textContent).toContain("Unrest 14");
     expect(burgTable?.querySelector("[data-zoom-burg='1']")).toBeTruthy();
     expect(burgTable?.querySelector("[data-open-burg='1']")).toBeTruthy();
 
@@ -254,15 +240,9 @@ describe("openProvinceDetailsDialog", () => {
     const dialog = document.getElementById(PROVINCE_DIALOG_ID);
     const shortInput = dialog!.querySelector<HTMLInputElement>("#provDialogShort")!;
     const formSelect = dialog!.querySelector<HTMLSelectElement>("#provDialogSelectForm")!;
-    const orderInput = dialog!.querySelector<HTMLInputElement>("#provDialogOrder")!;
-    const stabInput = dialog!.querySelector<HTMLInputElement>("#provDialogStability")!;
-    const devInput = dialog!.querySelector<HTMLInputElement>("#provDialogDev")!;
 
     shortInput.value = "Southmarch";
     formSelect.value = "Duchy";
-    orderInput.value = "80";
-    stabInput.value = "5";
-    devInput.value = "4";
 
     const applyButton = Array.from(document.querySelectorAll<HTMLButtonElement>(".dialog-window button")).find(
       btn => btn.textContent?.trim() === "Apply"
@@ -272,31 +252,13 @@ describe("openProvinceDetailsDialog", () => {
 
     expect(renameSpy).toHaveBeenCalledWith(1, "Southmarch");
     expect(setFormSpy).toHaveBeenCalledWith(1, "Duchy");
-
-    const pSim = (pack as any).living.provinces[1];
-    expect(pSim.order).toBe(80);
-    expect(pSim.stability).toBe(5);
-    expect(pSim.development).toBe(4);
     expect(onUpdate).toHaveBeenCalled();
   });
 
-  it("computes province capacity and check modifiers correctly", () => {
-    const p = pack.provinces[1]!;
-    const pSim = (pack as any).living.provinces[1];
-    const living = (pack as any).living;
-
-    const cap = computeProvinceCapacity(p, pSim, living);
-    // Base levy (1) + Iron mines POI (1) >= 2 M
-    expect(cap.m).toBeGreaterThanOrEqual(2);
-    // Dev (2) + Resource Extractor (2) >= 4 W
-    expect(cap.w).toBeGreaterThanOrEqual(4);
-    // Dev (2) >= 2 S
-    expect(cap.s).toBeGreaterThanOrEqual(2);
-    // Capital (2) >= 2 C
-    expect(cap.c).toBeGreaterThanOrEqual(2);
-    expect(typeof cap.modM).toBe("number");
-    expect(typeof cap.modW).toBe("number");
-    expect(typeof cap.modS).toBe("number");
-    expect(typeof cap.modC).toBe("number");
+  it("renders stability adjustments section", () => {
+    openProvinceDetailsDialog(1);
+    const dialog = document.getElementById(PROVINCE_DIALOG_ID);
+    expect(dialog?.querySelector("#provDialogStabilityAdjustments")).toBeTruthy();
+    expect(dialog?.querySelector("#provDialogSimStabilityAdjustments")).toBeTruthy();
   });
 });
