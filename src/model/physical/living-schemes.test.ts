@@ -101,6 +101,10 @@ function runtime(overrides: Partial<SchemeRuntime> = {}): SchemeRuntime {
     pushHistory: vi.fn(),
     rng: (tag, id = 0) => createRng(`test:${tag}:${id}`),
     factionDayBalance: vi.fn(() => 100),
+    absorbState: vi.fn(() => true),
+    usurpThrone: vi.fn(() => true),
+    breachDoom: vi.fn(),
+    ascendFaction: vi.fn(() => null),
     ...overrides
   };
 }

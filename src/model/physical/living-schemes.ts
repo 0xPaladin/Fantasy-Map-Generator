@@ -6,6 +6,7 @@ import type { Burg } from "@/model/political/burgs-generator";
 import type { State } from "@/model/political/states-generator";
 import { Characters } from "@/model/society/characters";
 import type { Religion } from "@/model/society/religions-generator";
+import { Religions } from "@/model/society/religions-generator";
 import { Schemes } from "@/model/story/schemes-generator";
 import type { Faction } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef } from "@/types/history";
@@ -26,6 +27,14 @@ export interface SchemeRuntime {
   rng(tag: string, id?: number): Rng;
   /** the faction's current daily balance, from its computed economy */
   factionDayBalance(faction: Faction): number;
+  /** annex a state's cells, burgs and provinces into the conqueror */
+  absorbState(stateId: number, conquerorId: number): boolean;
+  /** put the villain on a state's throne */
+  usurpThrone(stateId: number, villainFigure: number): boolean;
+  /** break a seal: blight the provinces around the cell and hasten the finale */
+  breachDoom(cell: number, schemeId: number): void;
+  /** ascend an ambitious faction into a sovereign state; returns the new state id */
+  ascendFaction(factionId: number): number | null;
 }
 
 /** Seasonal gold a push costs the mastermind; posted as a daily expense line (value / SEASON_DAYS). */
@@ -194,10 +203,256 @@ function finishScheme(living: LivingWorldState, scheme: Scheme, runtime: SchemeR
   if (scheme.status !== "active") return;
   scheme.status = "complete";
   const villain = Characters.get(scheme.villainFigure);
+
+  try {
+    resolveEndState(scheme, villain, runtime);
+  } catch {
+    // a stripped pack must not break the tick; the design still closes
+  }
+
   const label = SCHEME_GOAL_BY_ID[scheme.goal]?.label ?? scheme.goal;
   const text = `${villain?.name ?? "A hidden hand"} completes the design: ${label}.`;
   runtime.pushNews(living, { kind: "faction", text, cell: cellOf(scheme), stateId: stateOf(scheme) });
   runtime.pushHistory("deed", [scheme.mastermind, { kind: "figure", id: scheme.villainFigure }], cellOf(scheme), text);
+}
+
+/** The seven world-altering payoffs; each closes through machinery the map already owns. */
+function resolveEndState(scheme: Scheme, villain: HistoricalFigure | undefined, runtime: SchemeRuntime): void {
+  switch (scheme.goal) {
+    case "divine_ascension":
+      ascendFaith(scheme, villain, runtime);
+      break;
+    case "undying":
+      makeImmortal(scheme, villain, runtime);
+      break;
+    case "universal_empire":
+      completeEmpire(scheme, villain, runtime);
+      break;
+    case "extinguish_faith":
+      extinguishFaith(scheme, villain, runtime);
+      break;
+    case "usurp_throne":
+      usurpThrone(scheme, villain, runtime);
+      break;
+    case "puppeteer":
+      completePuppeteer(scheme, villain, runtime);
+      break;
+    case "unseal_doom":
+      runtime.breachDoom(doomCell(scheme), scheme.i);
+      break;
+  }
+}
+
+function ascendFaith(scheme: Scheme, villain: HistoricalFigure | undefined, runtime: SchemeRuntime): void {
+  if (!villain) return;
+  const year = options?.map?.lore?.calendar?.year ?? 1000;
+  const own =
+    scheme.mastermind.kind === "religion"
+      ? religionById(scheme.mastermind.id)
+      : religionById(pack.cells?.religion?.[cellOf(scheme)] ?? 0);
+
+  if (own && own.i > 0 && !own.removed) {
+    Religions.setDeity(own.i, villain.name);
+    Religions.setType(own.i, "Organized");
+    own.tags = Array.from(new Set([...(own.tags ?? []), "ascended"]));
+    ensureProphetRole(villain, own.i, year);
+    villain.tags = Array.from(new Set([...(villain.tags ?? []), "ascended"]));
+    runtime.pushHistory(
+      "schism",
+      [scheme.mastermind, { kind: "figure", id: villain.i }],
+      own.center,
+      `${villain.name} is named the living deity of ${own.name}.`
+    );
+    return;
+  }
+
+  const cell = cellOf(scheme);
+  const point = pack.cells?.p?.[cell];
+  if (!point) return;
+  try {
+    const religionId = Religions.add(point[0], point[1]);
+    const religion = religionById(religionId);
+    if (!religion) return;
+    Religions.setDeity(religionId, villain.name);
+    Religions.setType(religionId, "Organized");
+    Religions.setForm(religionId, "Monotheism");
+    Religions.setExpansion(religionId, "global");
+    Religions.setExpansionism(religionId, 75);
+    religion.tags = Array.from(new Set([...(religion.tags ?? []), "ascended"]));
+    ensureProphetRole(villain, religionId, year);
+    villain.tags = Array.from(new Set([...(villain.tags ?? []), "ascended"]));
+    runtime.pushHistory(
+      "schism",
+      [scheme.mastermind, { kind: "figure", id: villain.i }],
+      cell,
+      `${villain.name} founds a new faith in their own name.`
+    );
+  } catch {
+    // water, an occupied holy site or a stripped pack: the design closes without a new faith
+  }
+}
+
+function makeImmortal(scheme: Scheme, villain: HistoricalFigure | undefined, runtime: SchemeRuntime): void {
+  if (!villain) return;
+  villain.tags = Array.from(new Set([...(villain.tags ?? []), "immortal"]));
+  runtime.pushHistory(
+    "deed",
+    [scheme.mastermind, { kind: "figure", id: villain.i }],
+    cellOf(scheme),
+    `${villain.name} puts death aside.`
+  );
+}
+
+function completeEmpire(scheme: Scheme, villain: HistoricalFigure | undefined, runtime: SchemeRuntime): void {
+  const targetIds = new Set<number>();
+  if (scheme.keystone?.startsWith("state:")) {
+    targetIds.add(Number(scheme.keystone.slice("state:".length)));
+  }
+  for (const step of scheme.steps) {
+    if (step.verb !== "conquer") continue;
+    for (const target of step.targets) if (target.kind === "state") targetIds.add(target.id);
+  }
+
+  let absorbed = 0;
+  let ascendedStateId: number | null = null;
+  if (scheme.mastermind.kind === "state") {
+    const conquerorId = scheme.mastermind.id;
+    for (const stateId of targetIds) {
+      if (stateId !== conquerorId && runtime.absorbState(stateId, conquerorId)) absorbed += 1;
+    }
+    const state = stateById(conquerorId);
+    if (state) state.tags = Array.from(new Set([...(state.tags ?? []), "empire"]));
+  } else if (scheme.mastermind.kind === "faction") {
+    ascendedStateId = runtime.ascendFaction(scheme.mastermind.id);
+    const faction = factionById(scheme.mastermind.id);
+    if (faction) faction.tags = Array.from(new Set([...(faction.tags ?? []), "ascended"]));
+    const state = stateById(ascendedStateId ?? undefined);
+    if (state) state.tags = Array.from(new Set([...(state.tags ?? []), "empire"]));
+  }
+
+  const masterState =
+    scheme.mastermind.kind === "state" ? stateById(scheme.mastermind.id) : stateById(ascendedStateId ?? undefined);
+  const realm = masterState
+    ? (pack.history?.realms ?? []).find(entry => entry.remnantCulture === masterState.culture)
+    : undefined;
+  if (masterState && realm) {
+    masterState.tags = Array.from(new Set([...(masterState.tags ?? []), `restored_realm:${realm.i}`]));
+    runtime.pushHistory(
+      "founding",
+      [scheme.mastermind, { kind: "figure", id: scheme.villainFigure }],
+      masterState.center,
+      `The fallen realm of ${realm.name} is restored under ${villain?.name ?? "a new hand"}.`
+    );
+  }
+
+  runtime.pushHistory(
+    "conquest",
+    [scheme.mastermind, ...Array.from(targetIds, id => ({ kind: "state" as const, id }))],
+    cellOf(scheme),
+    absorbed > 0
+      ? `${villain?.name ?? "A conqueror"} binds ${absorbed} realm${absorbed === 1 ? "" : "s"} into a single empire.`
+      : `${villain?.name ?? "A conqueror"} proclaims an empire with no rival left to take.`
+  );
+}
+
+function extinguishFaith(scheme: Scheme, _villain: HistoricalFigure | undefined, runtime: SchemeRuntime): void {
+  const religionId = targetReligionId(scheme);
+  if (!religionId) return;
+  const religion = religionById(religionId);
+  if (!religion || religion.i === 0 || religion.removed) return;
+  if (scheme.mastermind.kind === "religion" && scheme.mastermind.id === religion.i) return;
+
+  const center = religion.center;
+  Religions.remove(religion.i);
+  runtime.pushHistory(
+    "schism",
+    [scheme.mastermind, { kind: "religion", id: religion.i }, { kind: "figure", id: scheme.villainFigure }],
+    center,
+    `The last congregation of ${religion.name} is scattered.`
+  );
+}
+
+function usurpThrone(scheme: Scheme, villain: HistoricalFigure | undefined, runtime: SchemeRuntime): void {
+  if (!villain) return;
+  const stateId = targetStateId(scheme);
+  if (!stateId) return;
+  if (!runtime.usurpThrone(stateId, villain.i)) {
+    runtime.pushHistory(
+      "deed",
+      [scheme.mastermind, { kind: "figure", id: villain.i }],
+      cellOf(scheme),
+      `${villain.name} reaches for a crown that is no longer there.`
+    );
+  }
+}
+
+function completePuppeteer(scheme: Scheme, villain: HistoricalFigure | undefined, runtime: SchemeRuntime): void {
+  const puppets = Characters.active().filter(figure => figure.tags?.includes(puppetTag(scheme)));
+  const masterFaction = scheme.mastermind.kind === "faction" ? factionById(scheme.mastermind.id) : undefined;
+  for (const puppet of puppets) {
+    const state = rulerStateOf(puppet);
+    if (!state) continue;
+    state.tags = Array.from(new Set([...(state.tags ?? []), `puppet:${scheme.i}`]));
+    if (masterFaction) {
+      masterFaction.stateRelations ??= {};
+      masterFaction.stateRelations[state.i] = "Ally";
+    }
+  }
+
+  runtime.pushHistory(
+    "deed",
+    [scheme.mastermind, ...puppets.map(puppet => ({ kind: "figure" as const, id: puppet.i }))],
+    cellOf(scheme),
+    `${villain?.name ?? "A hidden hand"}'s shadow court answers from ${puppets.length} throne${puppets.length === 1 ? "" : "s"}.`
+  );
+}
+
+function ensureProphetRole(villain: HistoricalFigure, religionId: number, year: number): void {
+  const open = villain.roles?.some(
+    role =>
+      role.type === "prophet" &&
+      role.to === undefined &&
+      role.target.kind === "religion" &&
+      role.target.id === religionId
+  );
+  if (!open) villain.roles.push({ type: "prophet", target: { kind: "religion", id: religionId }, from: year });
+}
+
+function rulerStateOf(figure: HistoricalFigure): State | undefined {
+  const role = figure.roles?.find(
+    entry => entry.to === undefined && entry.type === "ruler" && entry.target.kind === "state"
+  );
+  return role ? stateById(role.target.id) : undefined;
+}
+
+function targetReligionId(scheme: Scheme): number | undefined {
+  if (scheme.keystone?.startsWith("religion:")) return Number(scheme.keystone.slice("religion:".length));
+  const target = scheme.steps.flatMap(step => step.targets).find(ref => ref.kind === "religion");
+  return target?.id;
+}
+
+function targetStateId(scheme: Scheme): number | undefined {
+  if (scheme.keystone?.startsWith("state:")) return Number(scheme.keystone.slice("state:".length));
+  for (let index = scheme.steps.length - 1; index >= 0; index--) {
+    const step = scheme.steps[index];
+    if (step.verb !== "assassinate") continue;
+    const target = step.targets.find(ref => ref.kind === "figure");
+    const figure = target ? Characters.get(target.id) : undefined;
+    const role = figure?.roles.find(entry => entry.type === "ruler" && entry.target.kind === "state");
+    if (role) return role.target.id;
+  }
+  const target = scheme.steps.flatMap(step => step.targets).find(ref => ref.kind === "state");
+  return target?.id;
+}
+
+function doomCell(scheme: Scheme): number {
+  if (scheme.keystone?.startsWith("marker:")) {
+    const markerId = Number(scheme.keystone.slice("marker:".length));
+    const marker = pack.markers?.find(entry => entry.i === markerId);
+    if (marker) return marker.cell;
+  }
+  const step = [...scheme.steps].reverse().find(entry => entry.cell !== undefined);
+  return step?.cell ?? cellOf(scheme);
 }
 
 function describeCompletion(scheme: Scheme, step: SchemeStep): string {

@@ -349,6 +349,7 @@ class SchemesModule {
         i: ++this.schemeSequence,
         goal: goal.id,
         mastermind: candidate.ref,
+        keystone: draft.keystone,
         villainFigure: villain.i,
         template: draft.template,
         secrecy: candidate.hidden ? rand(55, 85) : rand(20, 50),

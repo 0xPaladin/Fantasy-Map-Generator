@@ -1011,7 +1011,11 @@ class LivingModel {
       pushNews: (state, item) => this.pushNews(state, item),
       pushHistory: (type, actors, cell, text) => this.pushHistory(type, actors, cell, text),
       rng: (tag, id) => this.rng(tag, id),
-      factionDayBalance: faction => this.getFactionYieldBreakdown(faction).economy.dayBalance
+      factionDayBalance: faction => this.getFactionYieldBreakdown(faction).economy.dayBalance,
+      absorbState: (stateId, conquerorId) => this.absorbState(stateId, conquerorId),
+      usurpThrone: (stateId, villainFigure) => this.usurpThrone(stateId, villainFigure),
+      breachDoom: (cell, schemeId) => this.breachDoom(cell, schemeId),
+      ascendFaction: factionId => this.ascendFactionToState(factionId)
     });
   }
 
@@ -1163,6 +1167,7 @@ class LivingModel {
         if (!sSim) continue;
         const ruler = history.figures?.find(fig => fig.i === sSim.rulerId);
         if (!ruler || ruler.death !== undefined) continue;
+        if (ruler.tags?.includes("immortal")) continue;
         const lifespan = createRng(`${living.seed}:living:lifespan:${ruler.i}`).int(55, 95);
         if (year - ruler.birth >= lifespan) {
           candidates.push({
@@ -5561,6 +5566,158 @@ class LivingModel {
   /** Ascend an ambitious faction into a sovereign state. */
   ascendFactionToState(factionId: number, targetBurgId?: number): number | null {
     return LivingThreats.ascendFactionToState(factionId, targetBurgId);
+  }
+
+  /** A scheme's empire annexes a state: cells, burgs and provinces pass to the conqueror. */
+  absorbState(stateId: number, conquerorId: number): boolean {
+    const target = pack.states?.[stateId];
+    const conqueror = pack.states?.[conquerorId];
+    if (!target?.i || target.removed || !conqueror?.i || conqueror.removed || stateId === conquerorId) return false;
+
+    const stateCells = pack.cells?.state;
+    if (!stateCells) return false;
+    const cells: number[] = [];
+    for (let cell = 0; cell < stateCells.length; cell++) {
+      if (stateCells[cell] === stateId) cells.push(cell);
+    }
+    if (!cells.length) return false;
+
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    const ruler = sSim?.rulerId !== undefined ? this.findFigure(sSim.rulerId) : undefined;
+    const year = options.map?.lore?.calendar?.year ?? 1000;
+
+    this.transferCells(conquerorId, cells);
+    for (const burg of pack.burgs ?? []) {
+      if (burg?.i && !burg.removed && burg.state === stateId) burg.state = conquerorId;
+    }
+    for (const province of pack.provinces ?? []) {
+      if (province?.i && !province.removed && province.state === stateId) province.state = conquerorId;
+    }
+
+    target.removed = true;
+    if (sSim) delete living.states[stateId];
+    if (ruler && ruler.death === undefined) {
+      for (const role of ruler.roles) {
+        if (
+          role.type === "ruler" &&
+          role.to === undefined &&
+          role.target.kind === "state" &&
+          role.target.id === stateId
+        ) {
+          role.to = year;
+        }
+      }
+    }
+
+    try {
+      this.spawnRemnantFaction(target, conquerorId);
+    } catch {
+      // stripped packs have no faction registry to seed
+    }
+    const text = `${conqueror.name} absorbs ${target.name}.`;
+    this.pushNews(living, { kind: "conquest", text, cell: target.center, stateId: conquerorId });
+    this.pushHistory(
+      "conquest",
+      [
+        { kind: "state", id: stateId },
+        { kind: "state", id: conquerorId }
+      ],
+      target.center,
+      text
+    );
+    living.economyDirty = true;
+    return true;
+  }
+
+  /** A scheme puts its villain on a state's throne. */
+  usurpThrone(stateId: number, villainFigure: number): boolean {
+    const state = pack.states?.[stateId];
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    const villain = this.findFigure(villainFigure);
+    if (!state?.i || state.removed || !sSim || !villain || villain.death !== undefined) return false;
+
+    const year = options.map?.lore?.calendar?.year ?? 1000;
+    const current = sSim.rulerId !== undefined ? this.findFigure(sSim.rulerId) : undefined;
+    if (current && current.i !== villain.i && current.death === undefined) {
+      for (const role of current.roles) {
+        if (
+          role.type === "ruler" &&
+          role.to === undefined &&
+          role.target.kind === "state" &&
+          role.target.id === stateId
+        ) {
+          role.to = year;
+        }
+      }
+    }
+
+    sSim.rulerId = villain.i;
+    const open = villain.roles.some(
+      role =>
+        role.type === "ruler" && role.to === undefined && role.target.kind === "state" && role.target.id === stateId
+    );
+    if (!open) villain.roles.push({ type: "ruler", target: { kind: "state", id: stateId }, from: year });
+
+    if (state.economy) {
+      const kept = (state.economy.simStabilityAdjustments ?? []).filter(line => line.name !== "Usurpation");
+      state.economy.simStabilityAdjustments = [...kept, { name: "Usurpation", value: -10 }];
+    }
+
+    const text = `${villain.name} seizes the crown of ${state.name}.`;
+    this.pushNews(living, { kind: "succession", text, cell: state.center, stateId });
+    this.pushHistory(
+      "coronation",
+      [
+        { kind: "figure", id: villain.i },
+        { kind: "state", id: stateId }
+      ],
+      state.center,
+      text
+    );
+    return true;
+  }
+
+  /** A scheme breaks a seal: drain troubles in the surrounding provinces and a step toward the finale. */
+  breachDoom(cell: number, _schemeId: number): void {
+    const living = this.getState();
+    const provinces = new Set<number>();
+    const seen = new Set<number>([cell]);
+    let queue = [cell];
+    for (let hop = 0; hop < 3 && queue.length; hop++) {
+      const next: number[] = [];
+      for (const current of queue) {
+        const provinceId = pack.cells?.province?.[current] ?? 0;
+        if (provinceId) provinces.add(provinceId);
+        for (const neighbor of pack.cells?.c?.[current] ?? []) {
+          if (seen.has(neighbor)) continue;
+          seen.add(neighbor);
+          next.push(neighbor);
+        }
+      }
+      queue = next;
+    }
+
+    const seeded: string[] = [];
+    for (const provinceId of Array.from(provinces).slice(0, 3)) {
+      const pSim = living.provinces?.[provinceId];
+      const province = pack.provinces?.[provinceId];
+      if (!province || !pSim || pSim.trouble) continue;
+      const trouble =
+        this.spawnTrouble(provinceId, "leyline_blight", "drain") ??
+        this.spawnTrouble(provinceId, "ancient_curse", "drain");
+      if (trouble) seeded.push(province.name ?? `province ${provinceId}`);
+    }
+
+    this.exaltEschaton(living, 8);
+    living.economyDirty = true;
+    const text =
+      seeded.length > 0
+        ? `Something ancient breaks loose; a blight spreads through ${seeded.join(", ")}.`
+        : "Something ancient breaks loose at the seal.";
+    this.pushNews(living, { kind: "trouble", text, cell });
+    this.pushHistory("deed", [], cell, text);
   }
 
   /** Spawn a remnant rebel faction when a state is annexed. */

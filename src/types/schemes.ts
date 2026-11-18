@@ -51,6 +51,8 @@ export interface Scheme {
   goal: SchemeGoalId;
   /** the institution the mastermind leads: the seat schemes are paid from and retaliation falls on */
   mastermind: HistRef;
+  /** the ultimate target: `state:<id>`, `religion:<id>` or `marker:<id>` */
+  keystone?: string;
   /** the person: always a figure in `pack.history.figures` */
   villainFigure: number;
   template: string;

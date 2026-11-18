@@ -1,6 +1,6 @@
 # Plan — Villain Masterminds: A Roster of Villains and Their World-Altering Schemes
 
-**Status:** In progress — Phases 1–2 delivered
+**Status:** In progress — Phases 1–3 delivered
 **Goal:** On map generation, a **mastermind process** elects 3–5 villains from the people and powers already on the map (state rulers, cult hierarchs, living gods, factions, lair masters), materializes them as figures in `pack.history.figures`, and compiles for each a **scheme**: one of seven generic goals instantiated with 8–12 steps whose targets — relics, victims, provinces, ruins — are all drawn from the map. Schemes advance on the Living World tick by hybrid push (villains spend treasury to work the active step through existing systems) and world-match (a step completes when the world reaches its predicate), opposed by adventurers, suppression, heroes and each other. Completing a scheme alters the world through machinery that already exists: new religions, successions, conquests, emergent states, blights.
 
 ---
@@ -173,3 +173,15 @@ Stored on `pack.history.schemes` (and `pack.history.relics`) beside `figures`; `
 - **Retargeting**: dead figures, destroyed states, lost burgs and missing faiths are replaced from the map; an assassinate target or removed conquest is completion instead. A step with no replacement fails and reroutes to the next pending step; failing the last collapses the scheme.
 - **Succession**: a dead villain hands the design to the best agent/general serving the same mastermind, at 70% channel progress (or collapses when none serves). `Living.killFigure` handles scheme assassinations: a reigning state ruler passes the crown through the existing `succeedRuler`, a faction leader gets a minted successor and `leaderId`, everyone else gets a dated death, dispatch and `deed`.
 - **Tests**: eleven cases in `living-schemes.test.ts` — world-match completion, final-step completion, daily expense line/stall/funding/clear (state), faction line without a stockpile debit, pushed assassination, retargeting, one-time exposure, lieutenant inheritance, heirless collapse, closed-border stall and pushed war; plus a faction-economy case for sim-owned lines. Full suite **3793/3793**; scenarios **50/50**; `tsc --noEmit` clean.
+
+### Phase 3 — end states (delivered)
+
+- **`Scheme.keystone`** is now persisted at generation (`state:<id>`, `religion:<id>` or `marker:<id>`), with derivation fallbacks for schemes generated before this phase. When a scheme completes, `resolveEndState` dispatches once; exceptions from stripped packs are swallowed so the seasonal tick never breaks.
+- **divine_ascension**: a religion mastermind (or the faith at the villain's seat) gets the villain as its deity via `Religions.setDeity`, is raised to `Organized`, tagged `ascended`, and the villain gains an open `prophet` role. With no faith at the seat, `Religions.add` founds one at the seat, then sets deity, Monotheism, global expansion and expansionism 75. Both paths write a `schism` chronicle event.
+- **undying**: the villain is tagged `immortal`; the spring ruler-aging pass skips immortal figures, and a `deed` records the design.
+- **universal_empire**: a state mastermind annexes every conquest target through the new `Living.absorbState` — cells, burgs and provinces pass to the conqueror, the fallen state is retired, a restoration faction spawns, and a `conquest` event is written; the state is tagged `empire`. A faction mastermind instead uses `Living.ascendFactionToState`. A fallen realm whose `remnantCulture` matches the mastermind's culture adds `restored_realm:<id>` and a `founding` event.
+- **extinguish_faith**: `Religions.remove` clears the target's cells, removes the faith and its origins, and a `schism` event records the last congregation.
+- **usurp_throne**: `Living.usurpThrone` closes the sitting ruler's open role, points `sSim.rulerId` at the villain, adds the villain's ruler role, applies a `-10` "Usurpation" stability adjustment and writes a `coronation` dispatch and event.
+- **puppeteer**: every figure tagged `scheme_puppet:<scheme>` contributes its ruler state, which is tagged `puppet:<scheme>`; a faction mastermind also sets `stateRelations[state] = "Ally"`. A `deed` names the shadow court.
+- **unseal_doom**: `Living.breachDoom` walks three cell hops from the keystone marker and seeds up to three nearby provinces with `leyline_blight` / `ancient_curse` drain troubles, raises the eschaton by 8 and dispatches the blight.
+- **Tests**: eight end-state cases (one per goal, plus realm restoration) in `living-schemes-endstates.test.ts`, and three real-mutation cases in `living-generator.test.ts` (absorption, usurpation, breach). Full suite **3804/3804**; scenarios **50/50**; `tsc --noEmit` clean.
