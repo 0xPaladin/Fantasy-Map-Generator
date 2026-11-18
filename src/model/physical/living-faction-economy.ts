@@ -597,8 +597,7 @@ export function computeFactionEconomy(
   const requiredMap: Record<FactionExpenseBucket, number> = {
     administration: rn(FACTION_NEED.administration * staff, 2),
     court: rn(
-      FACTION_NEED.court * staff *
-        (faction.category === "religious" || faction.category === "political" ? 1.2 : 1),
+      FACTION_NEED.court * staff * (faction.category === "religious" || faction.category === "political" ? 1.2 : 1),
       2
     ),
     infrastructure: rn(FACTION_NEED.infrastructure * staff, 2),

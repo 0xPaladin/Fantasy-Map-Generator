@@ -567,9 +567,7 @@ function renderFactionsPage(view: TableView<Faction>): void {
       const breakdown = Living.getFactionYieldBreakdown(f);
       const stabTone = breakdown.stability >= 0.7 ? "positive" : breakdown.stability < 0.4 ? "negative" : "";
       const note = f.note?.replace(/\s+/g, " ").trim();
-      const noteExcerpt = note
-        ? ` — ${note.slice(0, 60)}${note.length > 60 ? "…" : ""}`
-        : "";
+      const noteExcerpt = note ? ` — ${note.slice(0, 60)}${note.length > 60 ? "…" : ""}` : "";
 
       return /* html */ `
       <div id="factionRow-${f.i}" class="states" data-id="${f.i}">
@@ -1416,13 +1414,13 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     ?.querySelectorAll<HTMLInputElement>(".nodePersonnelInput")
     .forEach(input => {
       input.addEventListener("change", () => {
-        const node =
-          input.dataset.node === "hq" ? faction.hq : faction.outposts[Number(input.dataset.index)];
+        const node = input.dataset.node === "hq" ? faction.hq : faction.outposts[Number(input.dataset.index)];
         if (!node) return;
         node.personnel ??= { extraStaff: 0, extraGuards: 0 };
         const atLeast0 = (v: number) => Math.max(0, Math.round(v) || 0);
         if (input.classList.contains("nodeStaffInput")) node.personnel.extraStaff = atLeast0(input.valueAsNumber);
-        else if (input.classList.contains("nodeGuardsInput")) node.personnel.extraGuards = atLeast0(input.valueAsNumber);
+        else if (input.classList.contains("nodeGuardsInput"))
+          node.personnel.extraGuards = atLeast0(input.valueAsNumber);
         else if (input.classList.contains("nodeHostGoldInput"))
           node.hostAdjustments = { ...node.hostAdjustments, gold: rn(input.valueAsNumber || 0, 2) };
         else node.hostAdjustments = { ...node.hostAdjustments, stability: rn(input.valueAsNumber || 0, 1) };
