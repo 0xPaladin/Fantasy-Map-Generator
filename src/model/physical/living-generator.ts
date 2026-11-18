@@ -87,6 +87,7 @@ import {
   TAX_DRIFT
 } from "@/model/physical/living-fiscal";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
+import { tickSchemes } from "@/model/physical/living-schemes";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
@@ -992,12 +993,25 @@ class LivingModel {
       }
 
       const { fiscalChangedStates, readyProjectStates, readyConstructionStates } = this.stepBackgroundSync(living);
+      this.stepSchemes(living);
       this.stepNotableEvents(living, 2, fiscalChangedStates, readyProjectStates, readyConstructionStates);
       this.syncTroubleLines(living);
       this.stepEschaton(living);
     }
 
     return living;
+  }
+
+  /** Villain schemes: world-match, pushes, exposure and succession, once a season. */
+  private stepSchemes(living: LivingWorldState): void {
+    tickSchemes(living, {
+      isAtWar: (stateId, otherId) => this.isAtWar(stateId, otherId),
+      declareWar: (stateId, otherId) => this.declareWar(stateId, otherId),
+      killFigure: figureId => this.killFigure(figureId),
+      pushNews: (state, item) => this.pushNews(state, item),
+      pushHistory: (type, actors, cell, text) => this.pushHistory(type, actors, cell, text),
+      rng: (tag, id) => this.rng(tag, id)
+    });
   }
 
   private tickNewsCount(living: LivingWorldState): number {
@@ -1704,6 +1718,77 @@ class LivingModel {
       state.center,
       text
     );
+  }
+
+  /** A scheme's agent kills a figure; a reigning ruler or faction leader passes the seat on. */
+  killFigure(figureId: number): boolean {
+    const history = Chronicle.sync();
+    const figure = history.figures?.find(entry => entry.i === figureId);
+    if (!figure || figure.removed || figure.death !== undefined) return false;
+
+    const year = options.map?.lore?.calendar?.year ?? 1000;
+    const living = this.getState();
+
+    const stateRole = figure.roles.find(
+      role => role.type === "ruler" && role.to === undefined && role.target.kind === "state"
+    );
+    if (stateRole) {
+      const state = pack.states[stateRole.target.id];
+      const sSim = living.states[stateRole.target.id];
+      if (state?.i && !state.removed && sSim?.rulerId === figure.i) {
+        this.succeedRuler(state, sSim, figure, living, year);
+        return true;
+      }
+    }
+
+    const factionRole = figure.roles.find(
+      role => role.type === "ruler" && role.to === undefined && role.target.kind === "faction"
+    );
+    figure.death = year;
+    for (const role of figure.roles) {
+      if (role.to === undefined) role.to = year;
+    }
+
+    let text = `${figure.name} was assassinated.`;
+    if (factionRole) {
+      const faction = pack.factions?.find(entry => entry.i === factionRole.target.id);
+      if (faction?.i && !faction.removed) {
+        const successor = this.spawnFactionLeader(faction, living, year);
+        if (successor) {
+          faction.leaderId = successor.i;
+          text += ` ${successor.name} takes its lead.`;
+        }
+      }
+    }
+
+    this.pushNews(living, { kind: "succession", text, cell: figure.cell });
+    this.pushHistory("deed", [{ kind: "figure", id: figure.i }], figure.cell, text);
+    return true;
+  }
+
+  /** A new face for a leaderless faction after an assassination. */
+  private spawnFactionLeader(faction: Faction, living: LivingWorldState, year: number): HistoricalFigure | undefined {
+    const history = Chronicle.sync();
+    history.figures ??= [];
+    const cultureId = faction.culture ?? 0;
+    if (!pack.cultures?.[cultureId]) return undefined;
+
+    const index = history.figures.length;
+    const rng = traitsRng(living.seed, "figure", index + faction.i * 1000);
+    const alignment = rollAlignment(rng, pack.cultures[cultureId]?.alignment);
+    const { virtues, vices } = rollFigureTraits(rng, alignment);
+    const figure: HistoricalFigure = {
+      i: index,
+      name: Names.getCulture(cultureId),
+      culture: cultureId,
+      birth: year - rng.int(20, 45),
+      roles: [{ type: "ruler", target: { kind: "faction", id: faction.i }, from: year }],
+      alignment,
+      virtues,
+      vices
+    };
+    history.figures.push(figure);
+    return figure;
   }
 
   private successionCrisis(sSim: StatePolitySim, successor: HistoricalFigure | undefined): boolean {
@@ -6303,7 +6388,7 @@ class LivingModel {
     return pack.states[stateId]?.diplomacy?.[otherId] === "Enemy";
   }
 
-  private declareWar(stateId: number, otherId: number): void {
+  declareWar(stateId: number, otherId: number): void {
     const subject = pack.states[stateId];
     const object = pack.states[otherId];
     if (!subject?.i || subject.removed || !object?.i || object.removed) return;

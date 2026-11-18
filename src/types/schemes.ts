@@ -37,6 +37,8 @@ export interface SchemeStep {
   cell?: number;
   /** seasons the step channels once active (rituals, occupations, breaches) */
   duration?: number;
+  /** seasons of channel work left; runtime-owned, absent on non-channel steps */
+  progress?: number;
   status: SchemeStepStatus;
   /** the relic a seize step is about */
   relicId?: number;
@@ -52,6 +54,8 @@ export interface Scheme {
   template: string;
   /** 0..100; a consequence gate only — the god view always sees the scheme */
   secrecy: number;
+  /** uncovered by a failed move; later phases hang coalitions and suppression on it */
+  exposed?: boolean;
   steps: SchemeStep[];
   status: SchemeStatus;
   startedYear: number;
