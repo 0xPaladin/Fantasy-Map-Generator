@@ -1,6 +1,6 @@
 # Plan — Faction Personnel: State-Style Per-Head Expenses
 
-**Status:** Phases 1–2 delivered; Phases 3–4 pending
+**Status:** Phases 1–3 delivered; Phase 4 pending
 **Goal:** Replace the faction expense model's abstract `nodeScale` footprint with **personnel** — the faction analog of state population. Each HQ and outpost employs **staff** (management and workers, paid through administration / court / infrastructure) and **guards** (garrison and enforcers, paid through military). Assets define the personnel they require; nodes hold **extra** staff and guards beyond that. Nodes also gain flat **hostAdjustments** to the host burg's economy and province's stability, over and above the influence-scaled core presence. Factions gain free-hand **notes**, edited from the manage dialog. Required expenses become per-head rates × heads, exactly how states derive their needs (`PROVISION_NEED`, `ADMINISTRATION_NEED`, `UPKEEP_COST`).
 
 ---
@@ -115,6 +115,14 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 
 **Exit:** personnel and host extras visible and editable per node; notes editable and persisted; budget rows show who is being paid.
 
+### 5.1 Phase 3 delivery notes
+
+- Ledger: `Personnel: {{staff}} staff · {{guards}} guards` line under the required-upkeep line (refreshed with the ledger); each bucket tooltip ends with the driving headcount (`{{n}} staff` / `{{n}} guards`).
+- HQ & Outposts table gained a **Personnel** column: per node it shows `crew+extra = effective` staff and guards plus a `Host +🪙 +%` line — four number inputs (`nodeStaffInput`, `nodeGuardsInput`, `nodeHostGoldInput`, `nodeHostStabInput`), disabled on pillaged nodes, saved on change and re-rendered like the influence inputs.
+- Free-hand notes: a `factionNotesInput` textarea at the bottom of the manage dialog bound to `faction.note` on input; the overview's HQ tooltip appends a ~60-char excerpt.
+- No locale edits: `en.json` intentionally keeps only strings that differ from their key (`i18n.ts` falls back to the English key), so the new strings are live for English and open for translators; `Click to zoom to HQ` was likewise never in the catalog.
+- Tests: a jsdom pass over the real manage dialog — seeded extras render, staff extras and host gold/stability save per node (HQ and outpost), the payroll line renders, and notes bind to `faction.note`.
+
 ---
 
 ## 6. Phase 4 — Docs and context
@@ -135,7 +143,7 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 |---|---|---|
 | 1 — types + seeding + migration | medium | ✅ done |
 | 2 — per-head requirements + host extras | small-medium | ✅ done |
-| 3 — editor + notes + localization | medium | personnel, host extras and notes visible/editable |
+| 3 — editor + notes + localization | medium | ✅ done |
 | 4 — docs + context | small | wiki/data-model current |
 
 **Risks:**

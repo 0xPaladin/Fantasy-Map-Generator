@@ -123,12 +123,16 @@ function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown)
   const expensesHtml = econ.expenses
     .map(exp => {
       const pctMet = Math.round(exp.provision * 100);
-      const tipText = t("Spent: {{spent}} (effective {{effective}}) / Required: {{req}} · {{pct}}% met", {
+      const heads =
+        exp.bucket === "military"
+          ? t("{{n}} guards", { n: econ.personnel.guards })
+          : t("{{n}} staff", { n: econ.personnel.staff });
+      const tipText = `${t("Spent: {{spent}} (effective {{effective}}) / Required: {{req}} · {{pct}}% met", {
         spent: formatPrice(exp.daily),
         effective: formatPrice(exp.effectiveDaily),
         req: formatPrice(exp.requiredDaily),
         pct: pctMet
-      });
+      })} · ${heads}`;
       return `<div class="row budget" data-bucket-row="${exp.bucket}" data-tip="${escapeHtml(tipText)}">
         <span class="name">
           <span>${escapeHtml(t(exp.label))}</span>
@@ -166,6 +170,7 @@ function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown)
     ${corruptionRow}
     ${titheRow}
     <div class="muted" style="margin-top: 2px;">${t("Required upkeep: {{req}}/day · Allocated: {{share}}%", { req: formatPrice(econ.requiredTotalDaily), share: econ.spentShare })}</div>
+    <div class="muted">${t("Personnel: {{staff}} staff · {{guards}} guards", econ.personnel)}</div>
     ${burdenNote}
     ${projectNote}
   `;
@@ -561,6 +566,10 @@ function renderFactionsPage(view: TableView<Faction>): void {
 
       const breakdown = Living.getFactionYieldBreakdown(f);
       const stabTone = breakdown.stability >= 0.7 ? "positive" : breakdown.stability < 0.4 ? "negative" : "";
+      const note = f.note?.replace(/\s+/g, " ").trim();
+      const noteExcerpt = note
+        ? ` — ${note.slice(0, 60)}${note.length > 60 ? "…" : ""}`
+        : "";
 
       return /* html */ `
       <div id="factionRow-${f.i}" class="states" data-id="${f.i}">
@@ -571,7 +580,7 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <select data-col="category" data-action="category">${catOptions}</select>
         <select data-col="allegiance" data-action="allegiance">${allgOptions}</select>
         <select data-col="alignment" data-action="alignment">${alignmentOptions}</select>
-        <span data-col="hq" class="pointer" data-action="locate" data-tip="${t("Click to zoom to HQ")}" style="text-decoration: underline;">${escapeHtml(hqName)}</span>
+        <span data-col="hq" class="pointer" data-action="locate" data-tip="${t("Click to zoom to HQ")}${escapeHtml(noteExcerpt)}" style="text-decoration: underline;">${escapeHtml(hqName)}</span>
         <span data-col="outposts" class="badge pointer" data-action="outposts" data-tip="${t("Click to manage outposts and assets")}">${f.outposts?.length || 0}</span>
         <span data-col="income" style="text-align: center;">${formatDailyIncome(breakdown.dailyIncome)}</span>
         <span data-col="prosperity" style="text-align: center;">${renderProsperityPercent(breakdown.prosperity)}</span>
@@ -799,6 +808,31 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       : `<span class="muted">—</span>`;
   };
 
+  const nodePersonnelHtml = (node: FactionHq | FactionOutpost, kind: "hq" | number): string => {
+    let crew = 0;
+    let garrison = 0;
+    for (const aid of node.assets ?? []) {
+      const def = getFactionAsset(aid);
+      crew += def?.crew ?? 1;
+      garrison += def?.garrison ?? 0;
+    }
+    const extraStaff = node.personnel?.extraStaff ?? 0;
+    const extraGuards = node.personnel?.extraGuards ?? 0;
+    const key = kind === "hq" ? "hq" : `outpost:${kind}`;
+    const dataNode = kind === "hq" ? 'data-node="hq"' : `data-node="outpost" data-index="${kind}"`;
+    const disabled = node.pillaged ? "disabled" : "";
+    const tip = t(
+      "Assets require {{crew}} staff and {{garrison}} guards; extras beyond that are the node's own payroll - staff are paid by administration, court and infrastructure, guards by military. Host adjustments add a flat daily impact on top of the influence-scaled presence",
+      { crew, garrison }
+    );
+    const style = "width: 2.7em; text-align: right; margin: 0;";
+    return `<div data-node-personnel="${key}" data-tip="${escapeHtml(tip)}" style="font-size: 0.82em; line-height: 1.6; text-align: left;">
+        <div>👥${crew}+<input type="number" class="nodeStaffInput nodePersonnelInput" ${dataNode} min="0" step="1" value="${extraStaff}" ${disabled} style="${style}" /> = ${crew + extraStaff}</div>
+        <div>⚔️${garrison}+<input type="number" class="nodeGuardsInput nodePersonnelInput" ${dataNode} min="0" step="1" value="${extraGuards}" ${disabled} style="${style}" /> = ${garrison + extraGuards}</div>
+        <div class="muted" data-tip="${escapeHtml(t("Flat host impact on top of the scaled presence"))}">Host +<input type="number" class="nodeHostGoldInput nodePersonnelInput" ${dataNode} step="0.5" value="${node.hostAdjustments?.gold ?? 0}" ${disabled} style="width: 3.2em; text-align: right; margin: 0;" />🪙 +<input type="number" class="nodeHostStabInput nodePersonnelInput" ${dataNode} step="0.5" value="${node.hostAdjustments?.stability ?? 0}" ${disabled} style="width: 3em; text-align: right; margin: 0;" />%</div>
+      </div>`;
+  };
+
   const hqRowHtml = /* html */ `
     <div class="states" style="background: rgba(255, 255, 255, 0.03);">
       <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">⭐ <b>${escapeHtml(hqName)}</b></div>
@@ -806,6 +840,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         <input type="number" class="nodeInfluenceInput" data-node="hq" min="0" max="100" step="1" value="${Math.round(faction.hq.influence ?? 70)}" style="width: 4em; text-align: right; margin: 0;" />%${hqStatusText}
       </div>
       <div data-node-income="hq" style="justify-content: center; text-align: center;">${hqIncome}</div>
+      <div style="justify-content: center; text-align: center;">${nodePersonnelHtml(faction.hq, "hq")}</div>
       <div data-node-impact="hq" style="justify-content: center; text-align: center; font-size: 0.9em;">${renderHostImpactHtml(faction.hq, true, breakdown.prosperity)}</div>
       <div></div>
     </div>
@@ -827,6 +862,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
           <input type="number" class="nodeInfluenceInput" data-node="outpost" data-index="${idx}" min="0" max="100" step="1" value="${Math.round(op.influence ?? 0)}" style="width: 4em; text-align: right; margin: 0;" />%${statusText}
         </div>
         <div data-node-income="outpost:${idx}" style="justify-content: center; text-align: center;">${income}</div>
+        <div style="justify-content: center; text-align: center;">${nodePersonnelHtml(op, idx)}</div>
         <div data-node-impact="outpost:${idx}" style="justify-content: center; text-align: center; font-size: 0.9em;">${renderHostImpactHtml(op, false, breakdown.prosperity)}</div>
         <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
           <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
@@ -1192,11 +1228,12 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
 
       <!-- Tab 1: HQ & Outposts -->
       <div class="tabPanel" data-panel="outposts" style="display: ${activeTab === "outposts" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
-        <div id="outpostsTable" class="table" style="--table-columns: minmax(11em, 1.6fr) 6.5em 6.5em minmax(9em, 1.2fr) 2.5em; width: 0; min-width: 100%;">
+        <div id="outpostsTable" class="table" style="--table-columns: minmax(10em, 1.5fr) 6em 5.5em 10.5em minmax(8em, 1.1fr) 2.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Burg")}</div>
             <div style="justify-content: center; text-align: center;">${t("Influence")}</div>
             <div style="justify-content: center; text-align: center;" data-tip="${t("Daily gold the node draws from its host's economy")}">${t("Income")}</div>
+            <div style="justify-content: center; text-align: center;" data-tip="${t("Staff paid by administration, court and infrastructure; guards by military")}">${t("Personnel")}</div>
             <div style="justify-content: center; text-align: center;" data-tip="${t("Net daily economy and provincial stability impact on the host")}">${t("Host Impact")}</div>
             <div></div>
           </div>
@@ -1245,6 +1282,10 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
           <input id="newFactionForceTroopsInput" type="number" min="10" step="50" value="100" style="width: 5.5em;" />
           <button id="addFactionForceBtn" class="btn">${t("+ Force")}</button>
         </div>
+      </div>
+
+      <div style="width: 0; min-width: 100%; margin-top: 4px;">
+        <textarea id="factionNotesInput" placeholder="${t("Free-hand notes about this faction")}" style="width: 100%; min-height: 3.4em; resize: vertical;">${escapeHtml(faction.note ?? "")}</textarea>
       </div>
     </div>
   `;
@@ -1370,6 +1411,30 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         factionsTable.refresh();
       });
     });
+
+  ensureEl(dialogDomId)
+    ?.querySelectorAll<HTMLInputElement>(".nodePersonnelInput")
+    .forEach(input => {
+      input.addEventListener("change", () => {
+        const node =
+          input.dataset.node === "hq" ? faction.hq : faction.outposts[Number(input.dataset.index)];
+        if (!node) return;
+        node.personnel ??= { extraStaff: 0, extraGuards: 0 };
+        const atLeast0 = (v: number) => Math.max(0, Math.round(v) || 0);
+        if (input.classList.contains("nodeStaffInput")) node.personnel.extraStaff = atLeast0(input.valueAsNumber);
+        else if (input.classList.contains("nodeGuardsInput")) node.personnel.extraGuards = atLeast0(input.valueAsNumber);
+        else if (input.classList.contains("nodeHostGoldInput"))
+          node.hostAdjustments = { ...node.hostAdjustments, gold: rn(input.valueAsNumber || 0, 2) };
+        else node.hostAdjustments = { ...node.hostAdjustments, stability: rn(input.valueAsNumber || 0, 1) };
+        Living.syncFactionEffects();
+        openOutpostsDialog(factionId, currentTab);
+        factionsTable.refresh();
+      });
+    });
+
+  findEl<HTMLTextAreaElement>("factionNotesInput")?.addEventListener("input", event => {
+    faction.note = (event.target as HTMLTextAreaElement).value;
+  });
 
   // Tab switching listener
   ensureEl(dialogDomId)
