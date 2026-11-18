@@ -268,8 +268,11 @@ Non-territorial organizations stored as an array of objects with strict element 
 - `expansionism`: `number` - `0.2..2.0`, how hard it pushes outward; `expansionScope`: `FactionExpansionScope` - `local`, `province`, `state`, `culture`, `religion` or `global`
 - `sovereignAmbition`, `stateForm?`, `stateRosterId?` - whether it can ascend to a state, and the form and roster it takes then
 - `foundedYear`, `leaderId?`, `memberIds`, `candidateIds?` - founding year and its people, drawn from `pack.history.figures`
-- `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, pillaged?, influence?, secrecy, assets: string[], sim?: BurgSimState }` (`influence` 0–100, defaults to 70; `pillaged` marks a razed urban or wilderness stronghold)
-- `outposts`: `FactionOutpost[]` - `{ burgId, cell, influence, secrecy, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
+- `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, pillaged?, influence?, secrecy, personnel?, hostAdjustments?, assets: string[], sim?: BurgSimState }` (`influence` 0–100, defaults to 70; `pillaged` marks a razed urban or wilderness stronghold)
+- `outposts`: `FactionOutpost[]` - `{ burgId, cell, tier, influence, secrecy, personnel?, hostAdjustments?, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
+- node `personnel?`: `FactionPersonnel` - `{ extraStaff, extraGuards }` headcount the node keeps beyond what its completed assets require (seeded from influence, tier and category; see [faction-personnel.md](../plans/faction-personnel.md))
+- node `hostAdjustments?`: `{ gold?, stability? }` - flat daily impact on the host burg's economy and host province's stability, over and above the influence-scaled core presence; folded into the consolidated `Faction: <name>` line
+- asset `crew?` / `garrison?`: staff and guards a completed work requires (`faction-assets.ts`)
 - `budget?`: `FactionBudget` - user-configured `0..100` daily allocation shares for `{ court, administration, infrastructure, military }` (defaults to `FACTION_EXPENSE_PROFILES[category]`)
 - `revenue?`: `FactionRevenueRates` - user-configured `0..100` extraction rate percentages `{ primary, secondary, charterTithe? }` (defaults to category/allegiance profile)
 - `adjustments?`: `{ name: string; value: number }[]` - user-configured daily revenue/cost adjustments

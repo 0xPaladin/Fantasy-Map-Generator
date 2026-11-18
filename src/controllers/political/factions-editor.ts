@@ -5,7 +5,8 @@ import {
   COMMERCIAL_ASSETS,
   COMMISSION_PER_ASSET,
   factionNodeHostPresence,
-  projectedAssetSeasons
+  projectedAssetSeasons,
+  seedNodeFactionPersonnel
 } from "@/model/physical/living-faction-economy";
 import { Living } from "@/model/physical/living-generator";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
@@ -1467,6 +1468,7 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         assets: [],
         establishedYear: options?.map?.lore?.calendar?.year ?? 1000
       };
+      seedNodeFactionPersonnel(newOutpost, false, faction.category, faction.type);
       faction.outposts.push(newOutpost);
       syncFactionState(faction);
       Living.syncFactionEffects();

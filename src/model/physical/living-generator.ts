@@ -71,7 +71,8 @@ import {
   factionNodeHostPresence,
   factionUpstreamIncome,
   projectedAssetSeasons,
-  SEASON_DAYS
+  SEASON_DAYS,
+  seedNodeFactionPersonnel
 } from "@/model/physical/living-faction-economy";
 import {
   CORRUPTION_DRIFT,
@@ -2124,6 +2125,8 @@ class LivingModel {
       pillaged: false,
       influence: survivor.influence,
       secrecy: survivor.secrecy,
+      personnel: survivor.personnel,
+      hostAdjustments: survivor.hostAdjustments,
       assets: [...survivor.assets],
       sim: survivor.sim
     };
@@ -8270,6 +8273,7 @@ class LivingModel {
             assets: defaultAsset ? [defaultAsset] : [],
             establishedYear: year
           };
+          seedNodeFactionPersonnel(outpost, false, faction.category, faction.type);
           ensureFactionNodeSim(outpost, false);
           faction.outposts.push(outpost);
           this.pushNews(living, {

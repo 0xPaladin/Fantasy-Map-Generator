@@ -18,6 +18,7 @@ import type {
   FactionExpenseLine,
   FactionHq,
   FactionOutpost,
+  FactionPersonnel,
   FactionRevenueLine,
   FactionRevenueRates
 } from "@/types/factions";
@@ -387,6 +388,38 @@ export function factionNodeScale(faction: Faction): number {
     scale += 0.5 + inf / 100;
   }
   return rn(scale, 2);
+}
+
+/** Personnel a node keeps beyond what its assets require, from its influence, tier and category */
+export function factionPersonnelSeed(
+  node: Pick<FactionHq, "influence" | "burgId"> & Partial<Pick<FactionOutpost, "tier">>,
+  isHq: boolean,
+  category: FactionCategory,
+  type?: string
+): FactionPersonnel {
+  const influence = minmax(node.influence ?? (isHq ? 70 : 35), 0, 100) / 100;
+  const guardMult = type === "dread_host" ? 2 : category === "martial" ? 1.5 : 1;
+  if (isHq) {
+    return {
+      extraStaff: Math.round((16 + influence * 14) * (node.burgId ? 1 : 0.75)),
+      extraGuards: Math.round((4 + influence * 8) * guardMult)
+    };
+  }
+  return {
+    extraStaff: 4 + (node.tier ?? 1) * 2 + Math.round(influence * 4),
+    extraGuards: Math.round((2 + influence * 3) * guardMult)
+  };
+}
+
+/** Fill a node's personnel extras and flat host adjustments when missing (new nodes and old saves) */
+export function seedNodeFactionPersonnel(
+  node: FactionHq | FactionOutpost,
+  isHq: boolean,
+  category: FactionCategory,
+  type?: string
+): void {
+  node.personnel ??= factionPersonnelSeed(node, isHq, category, type);
+  node.hostAdjustments ??= {};
 }
 
 export interface FactionNodePresenceImpact {
