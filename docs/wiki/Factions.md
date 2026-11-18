@@ -28,7 +28,7 @@ A faction carries no scale of its own; what it wants and how far it reaches are 
 * **Expansion scope** (`expansionScope`) — `local`, `province`, `state`, `culture`, `religion` or `global`: the ground it seeks and where it plants outposts.
 * **Expansionism** (`expansionism`, 0.2–2.0) — how hard it pushes, folded into its agenda odds.
 * **Sovereign ambition** (`sovereignAmbition`) — whether a successful siege can ascend it to a state, with the `stateForm` and culture roster it takes then.
-* **Its real footprint** — active outposts and their influence, constructed and queued assets, host development, and daily revenue. The _Manage Outposts & Assets_ dialog lists them, and nothing is asserted beyond what the map holds.
+* **Its real footprint** — active outposts and their influence, staff and guards, constructed and queued assets, host development, and daily revenue. The _Manage Outposts & Assets_ dialog lists them, and nothing is asserted beyond what the map holds.
 
 Rival factions and their host states watch that footprint: a busy faction draws suppression, a weak one loses its outposts to rivals.
 
@@ -36,7 +36,7 @@ Rival factions and their host states watch that footprint: a busy faction draws 
 
 ### Headquarters and Outposts
 
-Every HQ and outpost is an anchor on the map: a `FactionHq` or `FactionOutpost` with a `cell`, optional `burgId`, `influence`, `secrecy`, `assets` and a `sim` record for siege HP. Wilderness HQs simulate in place without creating a `pack.burgs` entry until ascension promotes them to a sovereign burg/state. Every faction maintains a single primary base:
+Every HQ and outpost is an anchor on the map: a `FactionHq` or `FactionOutpost` with a `cell`, optional `burgId`, `influence`, `secrecy`, `personnel`, `assets` and a `sim` record for siege HP. Wilderness HQs simulate in place without creating a `pack.burgs` entry until ascension promotes them to a sovereign burg/state. Every faction maintains a single primary base:
 * **Urban Headquarters**: Situated in a populated burg or capital, benefiting from local commerce and population.
 * **Wilderness Headquarters**: Anchored to a danger marker (`dungeon`, `lair`, `ruins`, `cave`, `volcano`, etc.), serving as a stronghold for hostile warbands or cults.
 
@@ -50,7 +50,7 @@ A faction expands into settlements within its reach by establishing **Burg Outpo
 
 ### Means of Income (Daily Economy & Levers)
 
-Factions draw **daily** revenue directly from the host state, province, market, and burg economy ([living-faction-economy.ts](../../src/model/physical/living-faction-economy.ts)) rather than abstract cell yields. Every non-pillaged node's income scales uniformly with its **Influence (`0–100%`)** (`0.5×` at `0%`, `1.0×` at `50%`, `1.5×` at `100%`), and both revenue streams per category are directly adjustable as `%` rates in the ledger:
+Factions draw **daily** revenue directly from the host state, province, market, and burg economy ([living-faction-economy.ts](../../src/model/physical/living-faction-economy.ts)) rather than abstract cell yields; burg-less wilderness nodes instead draw **hinterland dues** from the rural land in their reach (below). Every non-pillaged node's income scales uniformly with its **Influence (`0–100%`)** (`0.5×` at `0%`, `1.0×` at `50%`, `1.5×` at `100%`), and both revenue streams per category are directly adjustable as `%` rates in the ledger:
 
 | Category | Lever 1 (Primary Rate %) | Lever 2 (Secondary Rate %) |
 | :--- | :--- | :--- |
