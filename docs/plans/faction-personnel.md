@@ -1,6 +1,6 @@
 # Plan — Faction Personnel: State-Style Per-Head Expenses
 
-**Status:** Phases 1–3 delivered; Phase 4 pending
+**Status:** Delivered
 **Goal:** Replace the faction expense model's abstract `nodeScale` footprint with **personnel** — the faction analog of state population. Each HQ and outpost employs **staff** (management and workers, paid through administration / court / infrastructure) and **guards** (garrison and enforcers, paid through military). Assets define the personnel they require; nodes hold **extra** staff and guards beyond that. Nodes also gain flat **hostAdjustments** to the host burg's economy and province's stability, over and above the influence-scaled core presence. Factions gain free-hand **notes**, edited from the manage dialog. Required expenses become per-head rates × heads, exactly how states derive their needs (`PROVISION_NEED`, `ADMINISTRATION_NEED`, `UPKEEP_COST`).
 
 ---
@@ -135,6 +135,13 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 
 **Exit:** docs match the code; `npm run lint` and the unit suite green.
 
+### 6.1 Phase 4 delivery notes
+
+- Wiki and `data-model.md` were updated incrementally in Phases 1–3; Phase 4 added the asset `crew`/`garrison` sentence to *Faction Assets*, the state-parity note (`PROVISION_NEED`/`ADMINISTRATION_NEED`/`UPKEEP_COST`) on the personnel fields, and the assistant-context regeneration.
+- `data-model.md` lists the new fields as dotted bullets (`hq.personnel`, `outpost.personnel`, `hq.hostAdjustments`, `outpost.hostAdjustments`, `asset.crew`, `asset.garrison`) — the generator's field extractor skips names with `?` inside the backticks, so optional fields are listed without the marker (the existing convention: `budget?` never appears in `DATA_FIELDS` either). `context.generated.ts` now carries `hq.{personnel, hostAdjustments}; outpost.{personnel, hostAdjustments}; asset.{crew, garrison}`.
+- Glossary skipped deliberately: no language glossary covers faction terms (there is no `en.md`; English is the implicit source), and seeding machine-translated rows into 28 catalogs would mislead translators. The term localizes naturally when the faction UI gets translated.
+- No production code changed in this phase; the unit suite is green from Phase 3's run.
+
 ---
 
 ## 7. Build order and risks
@@ -144,7 +151,7 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 | 1 — types + seeding + migration | medium | ✅ done |
 | 2 — per-head requirements + host extras | small-medium | ✅ done |
 | 3 — editor + notes + localization | medium | ✅ done |
-| 4 — docs + context | small | wiki/data-model current |
+| 4 — docs + context | small | ✅ done |
 
 **Risks:**
 - *Balance drift:* provisions move for factions whose influence-inflated upkeep diverged from headcount (high-influence minimal-node factions get cheaper; many-outpost low-influence ones dearer). The §2 calibration band guards the stock case; if drift is wide, tune per-head rates, not the structure.

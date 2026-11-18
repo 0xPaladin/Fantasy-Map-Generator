@@ -70,7 +70,7 @@ In addition:
 
 ### Faction Assets
 
-Factions build works at their HQ and outposts from a catalog of 20 faction assets ([faction-assets.ts](../../src/data/faction-assets.ts)): commercial depots and counting houses, underworld safe houses and smuggler warrens, shrines and temples, muster camps and chapter lodges. Each asset has a work cost funded from daily revenue, an era gate (`requiredTech` reads as a development threshold), and node rules (`hq_only`, `burg`, `wilderness`).
+Factions build works at their HQ and outposts from a catalog of 20 faction assets ([faction-assets.ts](../../src/data/faction-assets.ts)): commercial depots and counting houses, underworld safe houses and smuggler warrens, shrines and temples, muster camps and chapter lodges. Each asset has a work cost funded from daily revenue, an era gate (`requiredTech` reads as a development threshold), and node rules (`hq_only`, `burg`, `wilderness`). A completed work also brings its `crew` of staff and `garrison` of guards onto the node's personnel payroll.
 
 Assets function like state public works: selecting one places it into the faction's build queue (`faction.project` when idle, or `faction.projectQueue` when a work is already underway) rather than charging lump-sum gold from treasury. Selectable assets are listed by **projected seasons based upon daily infrastructure revenue** (`projectDaily`). On completion (and when dismantled), assets apply current-architecture effects:
 * **Host Burg Economy** (`burg.simAdjustments`): daily `+🪙/day Host` (or drain for underworld dens).
