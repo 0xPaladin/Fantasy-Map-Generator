@@ -3,6 +3,7 @@ import type { Alignment } from "@/data/culture-traits";
 import type { CharacterRelations, HeroProgression, HeroSheet } from "@/types/character";
 import type { Emblem } from "@/types/emblems";
 import type { DisciplineId, HeroArchetypeId, LivingWorldState } from "@/types/living";
+import type { Relic, Scheme } from "@/types/schemes";
 
 export type {
   CharacterAttributes,
@@ -191,6 +192,10 @@ export interface History {
   snapshots?: Uint16Array[];
   /** optional Living World seasonal simulation state */
   living?: LivingWorldState;
+  /** villain masterminds and their schemes, generated with the chronicle */
+  schemes?: Scheme[];
+  /** relics the schemes are built around */
+  relics?: Relic[];
 }
 
 export const emptyHistory = (): History => ({ events: [], realms: [], eras: [] });

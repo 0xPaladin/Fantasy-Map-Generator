@@ -724,6 +724,16 @@ A hero sheet (`HeroSheet`) holds the compact character stat block:
 
 Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them.
 
+## Villain schemes
+
+Generated with the chronicle and stored beside it on `pack.history`, so both travel in the same `.map` record (57):
+
+- `schemes?: Scheme[]` - one per elected mastermind. A scheme has `i`, `goal` (one of seven ids), `mastermind` (a `HistRef` to the state, religion or faction), `villainFigure` (an id into `pack.history.figures`), `template` (the instantiated step order), `secrecy` (`0..100`, a consequence gate only), `steps`, `status` (`active | complete | collapsed`) and `startedYear`.
+- `relics?: Relic[]` - `i`, `name`, `kind`, `at: { cell, markerId? }`, optional `holder: HistRef`, `tags`. `history.relics` is the only registry; `seize_relic` steps point at entries by `relicId`.
+- A **step** (`SchemeStep`) has `verb` (one of the twelve scheme verbs), `targets: HistRef[]`, optional `cell` and `duration` (seasonal channel), `status` (`pending | active | done | failed`) and optional `relicId`. Targets are always existing entities: figures, states, religions, factions or burgs.
+
+Generation runs the `schemes` pipeline step after `history`, so rulers, faction leaders and religions all exist; the runtime that advances steps and resolves end states arrives in later phases. Old saves simply have no schemes (the arrays are optional).
+
 ## Legends
 
 The legend boxes shown on the map are stored in `pack.legends: Legend[]`, in display order. A generated map has none. Where a box sits on the canvas is the viewer's own (`legendPositions`), not map data. Object structure:
