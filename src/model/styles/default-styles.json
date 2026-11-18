@@ -30,6 +30,9 @@
     }
   },
   "burgIcons": {
+    "options": {
+      "zoomSize": "natural"
+    },
     "groups": {
       "capital": {
         "groups": {
@@ -1189,6 +1192,9 @@
     }
   },
   "labels": {
+    "options": {
+      "zoomSize": "arithmetic"
+    },
     "groups": {
       "capital": {
         "attrs": {
@@ -1878,6 +1884,9 @@
     "attrs": {
       "opacity": null,
       "filter": null
+    },
+    "options": {
+      "zoomSize": "geometric"
     }
   },
   "markets": {
