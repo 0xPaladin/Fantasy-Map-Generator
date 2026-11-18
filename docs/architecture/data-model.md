@@ -271,6 +271,7 @@ Non-territorial organizations stored as an array of objects with strict element 
 - `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, pillaged?, influence?, secrecy, assets: string[], sim?: BurgSimState }` (`influence` 0–100, defaults to 70; `pillaged` marks a razed urban or wilderness stronghold)
 - `outposts`: `FactionOutpost[]` - `{ burgId, cell, influence, secrecy, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
 - `budget?`: `FactionBudget` - user-configured `0..100` daily allocation shares for `{ court, administration, infrastructure, military }` (defaults to `FACTION_EXPENSE_PROFILES[category]`)
+- `revenue?`: `FactionRevenueRates` - user-configured `0..100` extraction rate percentages `{ primary, secondary, charterTithe? }` (defaults to category/allegiance profile)
 - `adjustments?`: `{ name: string; value: number }[]` - user-configured daily revenue/cost adjustments
 - `project?` / `projectQueue?` - active asset build (`{ assetId, nodeKey, turnsLeft, totalCost?, remainingCost? }`) funded from daily infrastructure revenue, plus queued builds
 - `treasury`: `number` - faction gold balance (`Day Balance × 90` banked each season)

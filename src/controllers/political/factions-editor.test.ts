@@ -203,7 +203,21 @@ describe("FactionsEditor", () => {
     courtInput.dispatchEvent(new Event("input", { bubbles: true }));
     expect(faction.budget?.court).toBe(35);
 
-    const hqInfInput = dialog.querySelector<HTMLInputElement>('.nodeInfluenceInput[data-node="hq"]')!;
+    // Charter tithe rate is also editable directly in the ledger for chartered factions
+    const titheInput = dialog.querySelector<HTMLInputElement>('.factionRevenueInput[data-rate-key="charterTithe"]');
+    expect(titheInput).toBeNull(); // autonomous Iron Bank has no charter tithe
+    faction.allegiance = "chartered";
+    faction.patronStateId = 1;
+    openOutpostsDialog(faction.i);
+    const charteredDialog = document.querySelector("#factionOutpostsDialog")!;
+    const titheRateInput = charteredDialog.querySelector<HTMLInputElement>(
+      '.factionRevenueInput[data-rate-key="charterTithe"]'
+    )!;
+    titheRateInput.value = "25";
+    titheRateInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(faction.revenue?.charterTithe).toBe(25);
+
+    const hqInfInput = charteredDialog.querySelector<HTMLInputElement>('.nodeInfluenceInput[data-node="hq"]')!;
     hqInfInput.value = "85";
     hqInfInput.dispatchEvent(new Event("change"));
     expect(faction.hq.influence).toBe(85);

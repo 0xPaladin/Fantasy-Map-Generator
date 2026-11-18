@@ -77,6 +77,8 @@ export interface Faction {
   patronStateId?: number;
   /** User-configurable 0..100 allocation shares per expense bucket (defaults to category profile) */
   budget?: FactionBudget;
+  /** User-configurable 0..100 revenue extraction rates (defaults to category profile) */
+  revenue?: FactionRevenueRates;
   /** Active asset build funded from daily infrastructure revenue */
   project?: FactionProject;
   /** Pending asset builds queued after the active work */
@@ -178,11 +180,23 @@ export type FactionExpenseBucket = "court" | "administration" | "infrastructure"
 
 export type FactionBudget = Record<FactionExpenseBucket, number>;
 
+export type FactionRevenueKey = "primary" | "secondary";
+
+export interface FactionRevenueRates {
+  primary: number;
+  secondary: number;
+  charterTithe?: number;
+}
+
 export interface FactionRevenueLine {
   key: string;
   label: string;
   /** Daily gold earned by this stream (before corruption and charter tithe) */
   daily: number;
+  /** Configurable lever backing this stream, if any */
+  rateKey?: FactionRevenueKey;
+  /** Active rate percentage (0..100) for this stream */
+  rate?: number;
 }
 
 export interface FactionExpenseLine {
@@ -224,8 +238,11 @@ export interface FactionEconomyBreakdown {
   /** Corruption / skimming percentage (0..100) and daily gold lost */
   corruptionRate: number;
   corruptionDaily: number;
-  /** Charter tithe paid to patron state (daily) */
+  /** Charter tithe percentage (0..100) and daily gold paid to patron state */
+  charterTitheRate: number;
   charterTitheDaily: number;
+  /** Stability penalty from pushing extraction rates above category defaults (0..0.25) */
+  burdenPenalty: number;
   /** Net daily balance: collectedDaily - expenses - corruptionDaily - charterTitheDaily */
   dayBalance: number;
   /** Net balance as % of collectedDaily */

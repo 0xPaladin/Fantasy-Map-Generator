@@ -253,4 +253,42 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
     expect(uwImpact.goldDaily).toBeLessThan(0);
     expect(uwImpact.stabilityDelta).toBeLessThan(0);
   });
+
+  it("scales node income by influence across all categories and applies extraction rate & burden tradeoffs", () => {
+    const guild50 = faction({ hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 50, assets: [] } });
+    const guild100 = faction({ hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 100, assets: [] } });
+    const g50 = factionUpstreamIncome(guild50, guild50.hq).gold;
+    const g100 = factionUpstreamIncome(guild100, guild100.hq).gold;
+    expect(g100).toBeCloseTo(g50 * 1.5, 2);
+
+    const temple50 = faction({
+      category: "religious",
+      hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 50, assets: [] }
+    });
+    const temple100 = faction({
+      category: "religious",
+      hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, influence: 100, assets: [] }
+    });
+    expect(factionUpstreamIncome(temple100, temple100.hq).gold).toBeCloseTo(
+      factionUpstreamIncome(temple50, temple50.hq).gold * 1.5,
+      2
+    );
+
+    // Raising revenue rates increases income & triggers burden + harsher host drain
+    const squeezed = faction({
+      allegiance: "chartered",
+      patronStateId: 1,
+      revenue: { primary: 35, secondary: 15, charterTithe: 5 }
+    });
+    const squeezedInc = factionUpstreamIncome(squeezed, squeezed.hq);
+    const squeezedEcon = computeFactionEconomy(squeezed, [squeezedInc], 0);
+    expect(squeezedInc.lines[0].rate).toBe(35);
+    expect(squeezedEcon.charterTitheRate).toBe(5);
+    expect(squeezedEcon.burdenPenalty).toBeGreaterThan(0);
+
+    const normalImpact = factionNodeHostPresence(guild50, guild50.hq, true, 0.6);
+    const squeezedImpact = factionNodeHostPresence(squeezed, squeezed.hq, true, 0.6);
+    expect(squeezedImpact.goldDaily).toBeLessThan(normalImpact.goldDaily);
+    expect(squeezedImpact.stabilityDelta).toBeLessThan(normalImpact.stabilityDelta);
+  });
 });

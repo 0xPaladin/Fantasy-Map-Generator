@@ -208,4 +208,29 @@ describe("FactionsGenerator", () => {
       }
     }
   });
+
+  it("seeds scope-respecting outposts and tiered influence so no initial faction is HQ-only", () => {
+    Factions.generate();
+    const active = Factions.active();
+    expect(active.length).toBeGreaterThanOrEqual(7);
+
+    const hqInfluences = new Set<number>();
+    for (const faction of active) {
+      expect(faction.outposts.length).toBeGreaterThanOrEqual(1);
+      expect(faction.hq.influence).toBeGreaterThanOrEqual(60);
+      expect(faction.hq.influence).toBeLessThanOrEqual(85);
+      hqInfluences.add(faction.hq.influence!);
+
+      const burgIds = faction.outposts.map(op => op.burgId);
+      expect(new Set(burgIds).size).toBe(burgIds.length);
+      if (faction.hq.burgId) expect(burgIds).not.toContain(faction.hq.burgId);
+
+      for (const op of faction.outposts) {
+        expect(op.influence).toBeGreaterThanOrEqual(20);
+        expect(op.influence).toBeLessThanOrEqual(60);
+        expect(op.assets.length).toBeGreaterThanOrEqual(1);
+      }
+    }
+    expect(hqInfluences.size).toBeGreaterThan(1);
+  });
 });

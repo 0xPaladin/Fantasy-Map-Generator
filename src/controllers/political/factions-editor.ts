@@ -144,9 +144,14 @@ function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown)
 
   const corruptionRow = `<div class="row budget muted" data-tip="${t("Corruption: share of faction revenue lost to skimming and overhead (curbed by Administration)")}"><span class="name"><span class="swatch" style="background: ${ECONOMY_COLORS.pocketed}"></span>${t("Corruption")}: ${econ.corruptionRate}%</span><span></span><span></span><span class="right negative">${formatPrice(-econ.corruptionDaily)}</span></div>`;
 
-  const titheRow =
-    econ.charterTitheDaily > 0
-      ? `<div class="row budget muted" data-tip="${t("Charter tithe paid daily to the patron state")}"><span class="name"><span class="swatch" style="background: ${ECONOMY_COLORS.spent}"></span>${t("Charter tithe")}: 15%</span><span></span><span></span><span class="right negative">${formatPrice(-econ.charterTitheDaily)}</span></div>`
+  const chartered = faction.allegiance === "chartered" || faction.allegiance === "state_arm";
+  const titheRow = chartered
+    ? `<div class="row budget muted" data-tip="${t("Charter tithe paid daily to the patron state (0..100%)")}"><span class="name"><span class="swatch" style="background: ${ECONOMY_COLORS.spent}"></span>${t("Charter tithe")}</span><span class="right" style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 1px;"><input type="number" class="factionRevenueInput" data-rate-key="charterTithe" min="0" max="100" step="1" value="${econ.charterTitheRate}" style="width: 3.1em; text-align: right; margin: 0;" />%</span><span></span><span class="right negative">${formatPrice(-econ.charterTitheDaily)}</span></div>`
+    : "";
+
+  const burdenNote =
+    econ.burdenPenalty > 0
+      ? `<div class="muted" style="color: ${ECONOMY_COLORS.negative}; margin-top: 2px;">${t("Exaction burden: -{{pct}}% faction stability", { pct: rn(econ.burdenPenalty * 100, 1) })}</div>`
       : "";
 
   const activeDef = faction.project ? getFactionAsset(faction.project.assetId) : undefined;
@@ -160,18 +165,39 @@ function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown)
     ${corruptionRow}
     ${titheRow}
     <div class="muted" style="margin-top: 2px;">${t("Required upkeep: {{req}}/day · Allocated: {{share}}%", { req: formatPrice(econ.requiredTotalDaily), share: econ.spentShare })}</div>
+    ${burdenNote}
     ${projectNote}
   `;
+}
+
+function renderRevenueStreamsHtml(breakdown: FactionYieldBreakdown): string {
+  const econ = breakdown.economy;
+  if (!econ.revenueLines.length) {
+    return `<div class="row plain muted"><span class="name">${t("No active revenue streams")}</span><span class="right">—</span></div>`;
+  }
+  const rateTip = t(
+    "Adjustable extraction rate; raising above category defaults boosts revenue at the cost of host economy and stability"
+  );
+  return econ.revenueLines
+    .map(line => {
+      if (line.rateKey) {
+        return `<div class="row revenueRate" data-tip="${escapeHtml(rateTip)}">
+          <span class="name">${escapeHtml(t(line.label))}</span>
+          <span class="right" style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 1px;">
+            <input type="number" class="factionRevenueInput" data-rate-key="${line.rateKey}" min="0" max="100" step="1" value="${line.rate ?? 0}" style="width: 3.1em; text-align: right; margin: 0;" />%
+          </span>
+          <span class="right positive">${formatPrice(line.daily)}</span>
+        </div>`;
+      }
+      return `<div class="row plain"><span class="name">${escapeHtml(t(line.label))}</span><span class="right positive">${formatPrice(line.daily)}</span></div>`;
+    })
+    .join("");
 }
 
 function renderFactionEconomyLedger(faction: Faction, breakdown: FactionYieldBreakdown): string {
   const econ = breakdown.economy;
   const revRow = (label: string, value: number, tipText = "", rowTone = "positive", id = "") =>
     `<div ${tipText ? `data-tip="${escapeHtml(tipText)}"` : ""} class="row plain"><span class="name">${escapeHtml(label)}</span><span ${id ? `id="${id}"` : ""} class="right ${rowTone}">${formatPrice(value)}</span></div>`;
-
-  const revenueHtml = econ.revenueLines.length
-    ? econ.revenueLines.map(line => revRow(t(line.label), line.daily)).join("")
-    : `<div class="row plain muted"><span class="name">${t("No active revenue streams")}</span><span class="right">—</span></div>`;
 
   const nodeCount = breakdown.nodes.length;
   const subNote =
@@ -182,8 +208,14 @@ function renderFactionEconomyLedger(faction: Faction, breakdown: FactionYieldBre
   return /* html */ `
     <div class="factionLedger columns">
       <div>
-        <h4 data-tip="${t("Daily revenue streams across active HQ and outposts")}"><span>${t("Revenue")}</span><span>🏛️</span></h4>
-        ${revenueHtml}
+        <h4 data-tip="${t("Daily revenue streams across active HQ and outposts; tune rates or add adjustments")}">
+          <span>${t("Revenue")}</span>
+          <span style="display: inline-flex; align-items: center; gap: 4px;">
+            <button type="button" id="resetFactionRevenueBtn" class="btn icon-cw" style="padding: 0 3px; font-size: 0.78em; line-height: 1.1;" data-tip="${t("Reset revenue rates to category defaults")}"></button>
+            <span>🏛️</span>
+          </span>
+        </h4>
+        <div id="factionRevenueStreams">${renderRevenueStreamsHtml(breakdown)}</div>
         <div id="factionRevenueAdjustments"></div>
         <div class="total">${revRow(t("Collected"), econ.collectedDaily, t("Total daily revenue before expenses"), tone(econ.collectedDaily), "factionRevenueCollected")}</div>
         <div class="muted" id="factionRevenueSubnote">${subNote}</div>
@@ -1095,6 +1127,9 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         #${dialogDomId} .factionLedger .row.plain {
           grid-template-columns: minmax(0, 1fr) minmax(6em, max-content);
         }
+        #${dialogDomId} .factionLedger .row.revenueRate {
+          grid-template-columns: minmax(0, 1fr) 4.2em minmax(5.5em, max-content);
+        }
         #${dialogDomId} .factionLedger .row.budget {
           grid-template-columns: minmax(0, 2.2fr) 4.2em minmax(1em, 1fr) minmax(5em, max-content);
         }
@@ -1224,20 +1259,29 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     onClose: () => Dialog.destroy(dialogDomId)
   });
 
-  const refreshHostImpacts = (prosperity: number) => {
-    const hqImpactEl = ensureEl(dialogDomId)?.querySelector<HTMLElement>('[data-node-impact="hq"]');
-    if (hqImpactEl) hqImpactEl.innerHTML = renderHostImpactHtml(faction.hq, true, prosperity);
+  const refreshHostImpacts = (next: FactionYieldBreakdown) => {
+    const dlg = ensureEl(dialogDomId);
+    const hqIncEl = dlg?.querySelector<HTMLElement>('[data-node-income="hq"]');
+    if (hqIncEl) hqIncEl.textContent = formatDailyIncome(next.hq?.dailyIncome);
+    const hqImpactEl = dlg?.querySelector<HTMLElement>('[data-node-impact="hq"]');
+    if (hqImpactEl) hqImpactEl.innerHTML = renderHostImpactHtml(faction.hq, true, next.prosperity);
     faction.outposts.forEach((op, idx) => {
-      const el = ensureEl(dialogDomId)?.querySelector<HTMLElement>(`[data-node-impact="outpost:${idx}"]`);
-      if (el) el.innerHTML = renderHostImpactHtml(op, false, prosperity);
+      const incEl = dlg?.querySelector<HTMLElement>(`[data-node-income="outpost:${idx}"]`);
+      const nodeBreakdown = next.outposts.find(b => b.node === op);
+      if (incEl) incEl.textContent = formatDailyIncome(nodeBreakdown?.dailyIncome);
+      const el = dlg?.querySelector<HTMLElement>(`[data-node-impact="outpost:${idx}"]`);
+      if (el) el.innerHTML = renderHostImpactHtml(op, false, next.prosperity);
     });
   };
 
-  const refreshLedgerAndAssets = (preserveBudgetFocusBucket?: string) => {
+  const refreshLedgerAndAssets = (preserveFocusSelector?: string) => {
     const next = Living.getFactionYieldBreakdown(faction);
     const econ = next.economy;
+    const dlg = ensureEl(dialogDomId);
     const badgesEl = findEl("factionHeaderBadges");
     if (badgesEl) badgesEl.innerHTML = renderHeaderBadges(next);
+    const streamsEl = findEl("factionRevenueStreams");
+    if (streamsEl) streamsEl.innerHTML = renderRevenueStreamsHtml(next);
     const collectedEl = findEl("factionRevenueCollected");
     if (collectedEl) {
       collectedEl.textContent = formatPrice(econ.collectedDaily);
@@ -1252,18 +1296,11 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
           : `${n} ${n === 1 ? t("active node") : t("active nodes")}`;
     }
     const expEl = findEl("factionLedgerExpenses");
-    if (expEl) {
-      expEl.innerHTML = renderExpensesPanel(faction, next);
-      if (preserveBudgetFocusBucket) {
-        const refocused = expEl.querySelector<HTMLInputElement>(
-          `.factionBudgetInput[data-bucket="${preserveBudgetFocusBucket}"]`
-        );
-        if (refocused) {
-          refocused.focus();
-        }
-      }
+    if (expEl) expEl.innerHTML = renderExpensesPanel(faction, next);
+    if (preserveFocusSelector && dlg) {
+      dlg.querySelector<HTMLInputElement>(preserveFocusSelector)?.focus();
     }
-    refreshHostImpacts(next.prosperity);
+    refreshHostImpacts(next);
     const assetSel = findEl<HTMLSelectElement>("newAssetSelect");
     if (assetSel) {
       const selected = assetSel.value;
@@ -1273,14 +1310,31 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
     factionsTable.refresh();
   };
 
-  const expensesContainer = findEl("factionLedgerExpenses");
-  expensesContainer?.addEventListener("input", event => {
-    const input = (event.target as HTMLElement)?.closest<HTMLInputElement>(".factionBudgetInput");
-    const bucket = input?.dataset.bucket as FactionExpenseBucket | undefined;
-    if (!input || !bucket) return;
-    const val = Number.isFinite(input.valueAsNumber) ? input.valueAsNumber : 0;
-    Factions.setBudget(factionId, { [bucket]: val });
-    refreshLedgerAndAssets(bucket);
+  ensureEl(dialogDomId)?.addEventListener("input", event => {
+    const target = event.target as HTMLElement;
+    const budgetInput = target?.closest<HTMLInputElement>(".factionBudgetInput");
+    if (budgetInput?.dataset.bucket) {
+      const bucket = budgetInput.dataset.bucket as FactionExpenseBucket;
+      const val = Number.isFinite(budgetInput.valueAsNumber) ? budgetInput.valueAsNumber : 0;
+      Factions.setBudget(factionId, { [bucket]: val });
+      refreshLedgerAndAssets(`.factionBudgetInput[data-bucket="${bucket}"]`);
+      return;
+    }
+
+    const revInput = target?.closest<HTMLInputElement>(".factionRevenueInput");
+    if (revInput?.dataset.rateKey) {
+      const key = revInput.dataset.rateKey as "primary" | "secondary" | "charterTithe";
+      const val = Number.isFinite(revInput.valueAsNumber) ? revInput.valueAsNumber : 0;
+      Factions.setRevenue(factionId, { [key]: val });
+      Living.syncFactionEffects();
+      refreshLedgerAndAssets(`.factionRevenueInput[data-rate-key="${key}"]`);
+    }
+  });
+
+  findEl("resetFactionRevenueBtn")?.addEventListener("click", () => {
+    Factions.resetRevenue(factionId);
+    Living.syncFactionEffects();
+    refreshLedgerAndAssets();
   });
 
   findEl("resetFactionBudgetBtn")?.addEventListener("click", () => {

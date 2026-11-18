@@ -40,29 +40,29 @@ Every HQ and outpost is an anchor on the map: a `FactionHq` or `FactionOutpost` 
 * **Urban Headquarters**: Situated in a populated burg or capital, benefiting from local commerce and population.
 * **Wilderness Headquarters**: Anchored to a danger marker (`dungeon`, `lair`, `ruins`, `cave`, `volcano`, etc.), serving as a stronghold for hostile warbands or cults.
 
-A faction expands into settlements within its reach by establishing **Burg Outposts**. Multiple factions can co-exist within the same settlement, competing for influence:
+A faction expands into settlements within its reach by establishing **Burg Outposts**. On initial generation, every epic faction receives a scope-appropriate network of 1–4 outposts (avoiding overcrowding on top capitals and falling back outside scope only if its home scope has no eligible towns), with tiered starting **Influence** (`60–85%` at HQs, `20–60%` at outposts) and a starter asset per outpost so no faction begins HQ-only. Multiple factions can co-exist within the same settlement, competing for influence:
 * **Influence (0–100%)**: The faction's share of local political, economic, or shadow leverage in the burg, directly adjustable in the **HQ & Outposts** table.
 * **Secrecy**: Clandestine outposts operate covertly to avoid detection and state crackdowns.
 
 ---
 
-### Means of Income (Daily Economy)
+### Means of Income (Daily Economy & Levers)
 
-Factions draw **daily** revenue directly from the host state, province, market, and burg economy ([living-faction-economy.ts](../../src/model/physical/living-faction-economy.ts)) rather than abstract cell yields:
+Factions draw **daily** revenue directly from the host state, province, market, and burg economy ([living-faction-economy.ts](../../src/model/physical/living-faction-economy.ts)) rather than abstract cell yields. Every non-pillaged node's income scales uniformly with its **Influence (`0–100%`)** (`0.5×` at `0%`, `1.0×` at `50%`, `1.5×` at `100%`), and both revenue streams per category are directly adjustable as `%` rates in the ledger:
 
-| Category | Primary Daily Revenue Streams |
-| :--- | :--- |
-| **Commercial** | **Manufacturing cut**: `20%` of host burg `product` · **Market commissions**: `5%` base (`+3%` per commercial asset, up to `15%`) of host market/burg `Deals` turnover (both scaled by leader `civic`/`cruel` bias). |
-| **Underworld** | **Graft siphon**: `10%–40%` (scales with node `influence`) of the host province's pocketed state graft · **Smuggling & tariffs**: `50%` of host state tariffs (`×1.5` bonus under an embargo). |
-| **Martial** | **Military retainers**: `5%` of a `Friendly` or `Ally` host state's `military` spending · **Raiding & tribute**: `5%` of host burg `product` when `hostile`. |
-| **Religious** | **Court & clergy patronage**: `5%` of host state's `court` spending scaled by `0.5 + burg.prosperity` (plus seasonal influence growth). |
-| **Political** | **Court patronage**: `5%` of host state's `court` spending · **Admin appropriation**: `5%` of host state's `administration` spending, both scaled by `0.5 + burg.prosperity` (plus seasonal influence growth). |
-| **Adventuring** | **Guild charters**: `3%` of host state's `administration` spending (`× (0.5 + prosperity)`) · **Bounties & contracts**: `8%` of host burg `product`. |
+| Category | Lever 1 (Primary Rate %) | Lever 2 (Secondary Rate %) |
+| :--- | :--- | :--- |
+| **Commercial** | **Guild dues**: `20%` default of host burg `product` | **Market commissions**: `5%` default (`+3%` per commercial asset) of market turnover (scaled by leader bias) |
+| **Underworld** | **Graft siphon**: `25%` default of host province pocketed graft | **Smuggling & tariffs**: `50%` default of host state tariffs (`×1.5` under embargo) |
+| **Martial** | **Military retainers**: `5%` default of `Friendly`/`Ally` host state `military` spending | **Raiding & tribute / Protection levy**: `5%` default when `hostile` (`0%` otherwise) of host burg `product` |
+| **Religious** | **Court & clergy tithe**: `5%` default of host state `court` spending × `(0.5 + prosperity)` | **Shrine offerings**: `0%` default of host burg `product` × `(0.5 + prosperity)` |
+| **Political** | **Court patronage**: `5%` default of host state `court` spending × `(0.5 + prosperity)` | **Admin appropriation**: `5%` default of host state `administration` spending × `(0.5 + prosperity)` |
+| **Adventuring** | **Guild charters**: `3%` default of host state `administration` spending × `(0.5 + prosperity)` | **Bounties & contracts**: `8%` default of host burg `product` |
 
 In addition:
-* **Asset Extraction**: Wilderness/extraction works such as `subterranean_delve` generate direct daily output (`+3 🪙/day`).
-* **User Adjustments**: Custom daily revenue/cost lines (`faction.adjustments`) can be edited in the ledger and feed directly into collected daily revenue and asset construction speed.
-* **Charter Tithe**: `chartered` and `state_arm` factions pay `15%` of upstream node revenue daily to their `patronStateId`.
+* **Exaction Burden Tradeoff**: Pushing a faction's revenue rates above its category defaults raises daily income, but adds an internal **Exaction Burden** penalty to faction stability and drains the host burg's daily economy and provincial stability; lowering rates below defaults eases host pressure.
+* **Charter Tithe**: `chartered` and `state_arm` factions pay a configurable tithe (`15%` default) daily to their `patronStateId`.
+* **Asset Extraction & Adjustments**: Wilderness/extraction works such as `subterranean_delve` generate direct daily output (`+3 🪙/day`), and custom daily **Adjustments** (`faction.adjustments`) can be edited in the ledger.
 
 ---
 
@@ -129,7 +129,7 @@ Factions can evolve into recognized sovereign nations:
 
 * **Factions Overview** (_Tools_ → _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV. Columns show Faction, Category, Allegiance, Alignment, HQ, Outposts, daily **Income**, **Prosperity**, **Stability**, and Forces, with footer totals for **Avg daily income** and **Outposts**.
 * **State Inspector suppression**: for a state, the _Suppression_ section lists every eligible hostile faction node (with influence and a wilderness tag for burg-less HQs) and a **Suppress faction** command; the agenda reads `"Suppressing {faction} in {burg or the wildlands}"`.
-* **Faction Editor & Manage Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The **Manage Outposts & Assets** dialog displays daily income, prosperity, and stability badges and a state-style daily **Revenue | Expenses** ledger (category revenue streams, collapsible **Adjustments**, editable `%` shares with **Required** cost and `% met` indicators across the 4 buckets, reset to defaults, **Day Balance**, **Corruption**, and **Charter tithe**) above the **HQ & Outposts** (Burg, editable **Influence**, daily **Income**, **Host Impact**), **Assets** (queued/active/completed works listed by projected seasons from daily revenue, with current-architecture benefits), and **Forces** tabs.
+* **Faction Editor & Manage Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The **Manage Outposts & Assets** dialog displays daily income, prosperity, and stability badges and a state-style daily **Revenue | Expenses** ledger (inline editable `%` revenue rates, collapsible **Adjustments**, editable `%` shares with **Required** cost and `% met` indicators across the 4 buckets, reset to defaults for both Revenue and Expenses, **Day Balance**, **Corruption**, and adjustable **Charter tithe**) above the **HQ & Outposts** (Burg, editable **Influence**, daily **Income**, **Host Impact**), **Assets** (queued/active/completed works listed by projected seasons from daily revenue, with current-architecture benefits), and **Forces** tabs.
 * **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect resident faction HQs and outposts at that burg alongside local influence and secrecy.
 * **Map Layer (`#factions`, Hotkey: `Shift+F`)**: Displays faction HQ badges, outpost pins, and field regiments on the SVG map.
 * **Living HUD**: The god-mode inspector intervenes in the simulation — spark rebellions, smite rulers, resolve troubles, assault lairs, promote emergent states — and the **Suppression** section orders a state to campaign against a hostile faction.
