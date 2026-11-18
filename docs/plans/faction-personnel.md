@@ -1,6 +1,6 @@
 # Plan — Faction Personnel: State-Style Per-Head Expenses
 
-**Status:** Phase 1 delivered; Phases 2–4 pending
+**Status:** Phases 1–2 delivered; Phases 3–4 pending
 **Goal:** Replace the faction expense model's abstract `nodeScale` footprint with **personnel** — the faction analog of state population. Each HQ and outpost employs **staff** (management and workers, paid through administration / court / infrastructure) and **guards** (garrison and enforcers, paid through military). Assets define the personnel they require; nodes hold **extra** staff and guards beyond that. Nodes also gain flat **hostAdjustments** to the host burg's economy and province's stability, over and above the influence-scaled core presence. Factions gain free-hand **notes**, edited from the manage dialog. Required expenses become per-head rates × heads, exactly how states derive their needs (`PROVISION_NEED`, `ADMINISTRATION_NEED`, `UPKEEP_COST`).
 
 ---
@@ -95,6 +95,13 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 
 **Exit:** `grep -r "factionNodeScale\|nodeScale" src/` is clean; calibration table in §2 reproduced as test assertions.
 
+### 4.1 Phase 2 delivery notes
+
+- `factionNodeScale()` deleted; `factionPersonnel(faction)` sums effective headcount (asset crew/garrison + `personnel` extras) over non-pillaged nodes. `FactionEconomyBreakdown.nodeScale` → `personnel: { staff, guards }`.
+- `requiredMap` is per-head: `FACTION_NEED = { administration: 0.06, court: 0.05, infrastructure: 0.03, guard: 0.05 }` 🪙/head/day, court ×1.2 for religious/political, military `max(0.05 × guards, blockUpkeep/90)`. The asset-cost infrastructure term is gone — assets pay in heads.
+- `factionNodeHostPresence()` adds `hostAdjustments` gold/stability flat after presence and asset impact (host burg/host state only; pillaged nodes stay at zero); `syncFactionLines()` carries them into the consolidated `Faction: <name>` line unchanged.
+- Tests: the stock-faction calibration (49 staff / 23 guards → 2.94 / 2.45 / 1.47 / 1.15, total 8.01), religious court ×1.2, regiment floor over guards floor, pillaged-node drop, crew/garrison growth, and flat host adjustments (exact delta, stateless nodes skipped). One tithe test now reads the pre-tick breakdown: the court-provision influence drift mutates income inside `stepFactionEmpire`, so the stored line reflects tick-time income, not the post-tick recomputation.
+
 ---
 
 ## 5. Phase 3 — Editor, ledger, notes and localization
@@ -127,7 +134,7 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 | Phase | Size | Exit |
 |---|---|---|
 | 1 — types + seeding + migration | medium | ✅ done |
-| 2 — per-head requirements + host extras | small-medium | nodeScale deleted, calibration asserted |
+| 2 — per-head requirements + host extras | small-medium | ✅ done |
 | 3 — editor + notes + localization | medium | personnel, host extras and notes visible/editable |
 | 4 — docs + context | small | wiki/data-model current |
 

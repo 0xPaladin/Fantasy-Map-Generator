@@ -375,19 +375,24 @@ const FACTION_CORRUPTION_BASE: Record<FactionCategory, number> = {
   adventuring: 8
 };
 
-/** Effective footprint weight driving daily upkeep needs across active HQ and outposts */
-export function factionNodeScale(faction: Faction): number {
-  let scale = 0;
-  if (faction.hq && !faction.hq.pillaged) {
-    const hqInf = minmax(faction.hq.influence ?? 70, 0, 100);
-    scale += 1.5 * (0.5 + hqInf / 100);
-  }
-  for (const op of faction.outposts ?? []) {
-    if (op.pillaged) continue;
-    const inf = minmax(op.influence ?? 0, 0, 100);
-    scale += 0.5 + inf / 100;
-  }
-  return rn(scale, 2);
+const FACTION_NEED = { administration: 0.06, court: 0.05, infrastructure: 0.03, guard: 0.05 }; // 🪙/head/day
+
+/** Effective personnel across active nodes: what their completed assets require plus the stored extras */
+export function factionPersonnel(faction: Faction): { staff: number; guards: number } {
+  let staff = 0;
+  let guards = 0;
+  const add = (node: FactionHq | FactionOutpost) => {
+    for (const aid of node.assets ?? []) {
+      const def = getFactionAsset(aid);
+      staff += def?.crew ?? 1;
+      guards += def?.garrison ?? 0;
+    }
+    staff += node.personnel?.extraStaff ?? 0;
+    guards += node.personnel?.extraGuards ?? 0;
+  };
+  if (faction.hq && !faction.hq.pillaged) add(faction.hq);
+  for (const op of faction.outposts ?? []) if (!op.pillaged) add(op);
+  return { staff, guards };
 }
 
 /** Personnel a node keeps beyond what its assets require, from its influence, tier and category */
@@ -513,9 +518,13 @@ export function factionNodeHostPresence(
   assetGoldDaily = rn(assetGoldDaily, 2);
   assetStabilityDelta = rn(assetStabilityDelta, 1);
 
+  // the node's flat host adjustments ride on top, unscaled by influence or prosperity
+  const extraGoldDaily = hasBurg ? rn(node.hostAdjustments?.gold ?? 0, 2) : 0;
+  const extraStabilityDelta = hasState ? rn(node.hostAdjustments?.stability ?? 0, 1) : 0;
+
   return {
-    goldDaily: rn(presenceGoldDaily + assetGoldDaily, 2),
-    stabilityDelta: rn(presenceStabilityDelta + assetStabilityDelta, 1),
+    goldDaily: rn(presenceGoldDaily + assetGoldDaily + extraGoldDaily, 2),
+    stabilityDelta: rn(presenceStabilityDelta + assetStabilityDelta + extraStabilityDelta, 1),
     presenceGoldDaily,
     presenceStabilityDelta,
     assetGoldDaily,
@@ -562,27 +571,14 @@ export function computeFactionEconomy(
 
   const budget = factionBudgetFor(faction);
   const militaryBlockDaily = blockUpkeepSeasonal / SEASON_DAYS;
-  const nodeScale = factionNodeScale(faction);
 
   const activeNodes: (FactionHq | FactionOutpost)[] = [];
   if (faction.hq && !faction.hq.pillaged) activeNodes.push(faction.hq);
-  let activeOutposts = 0;
-  for (const op of faction.outposts ?? []) {
-    if (!op.pillaged) {
-      activeNodes.push(op);
-      activeOutposts += 1;
-    }
-  }
-  let totalAssets = 0;
-  let assetCostSum = 0;
+  for (const op of faction.outposts ?? []) if (!op.pillaged) activeNodes.push(op);
   let hostProsperitySum = 0;
   let hostBurgCount = 0;
   const upstreamReadable = canReadUpstreamEconomy();
   for (const node of activeNodes) {
-    for (const aid of node.assets ?? []) {
-      totalAssets += 1;
-      assetCostSum += getFactionAsset(aid)?.cost ?? 50;
-    }
     if (upstreamReadable && node.burgId) {
       try {
         const burgProsperity = Prosperity.getBurg(node.burgId)?.prosperity;
@@ -597,15 +593,16 @@ export function computeFactionEconomy(
   }
   const hostProsperity = hostBurgCount > 0 ? hostProsperitySum / hostBurgCount : 0.5;
 
+  const { staff, guards } = factionPersonnel(faction);
   const requiredMap: Record<FactionExpenseBucket, number> = {
-    administration: rn(0.45 * nodeScale + 0.25 * activeOutposts ** 1.2, 2),
+    administration: rn(FACTION_NEED.administration * staff, 2),
     court: rn(
-      (0.35 * nodeScale + 0.12 * totalAssets) *
+      FACTION_NEED.court * staff *
         (faction.category === "religious" || faction.category === "political" ? 1.2 : 1),
       2
     ),
-    infrastructure: rn(0.25 * nodeScale + assetCostSum * 0.003, 2),
-    military: rn(Math.max(0.2 * nodeScale, militaryBlockDaily), 2)
+    infrastructure: rn(FACTION_NEED.infrastructure * staff, 2),
+    military: rn(Math.max(FACTION_NEED.guard * guards, militaryBlockDaily), 2)
   };
 
   let baseCorruption = FACTION_CORRUPTION_BASE[faction.category] ?? 10;
@@ -697,7 +694,7 @@ export function computeFactionEconomy(
     hostProductShare,
     expenses,
     spentShare,
-    nodeScale,
+    personnel: { staff, guards },
     requiredTotalDaily,
     corruptionRate,
     corruptionDaily,

@@ -1433,17 +1433,16 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
       });
       const treasuryBefore = charter.treasury ?? 0;
-
+      const before = Living.getFactionYieldBreakdown(charter);
       Living.stepFactionEmpire(living);
 
-      const breakdown = Living.getFactionYieldBreakdown(charter);
-      expect(breakdown.charterTithe).toBeGreaterThan(0);
-      expect(breakdown.upstreamGold).toBeGreaterThan(0);
+      expect(before.charterTithe).toBeGreaterThan(0);
+      expect(before.upstreamGold).toBeGreaterThan(0);
       expect(charter.treasury).toBeGreaterThan(treasuryBefore);
 
       const line = pack.states[1].economy.adjustments.find(entry => entry.name === "Chartered Faction Tithes");
       expect(line).toBeDefined();
-      expect(line!.value).toBeCloseTo(breakdown.charterTithe / 90, 2); // a day's tithe, as adjustments are
+      expect(line!.value).toBeCloseTo(before.charterTithe / 90, 2); // a day's tithe, as adjustments are
     });
 
     it("enriches an underworld faction from the host province's official graft", () => {

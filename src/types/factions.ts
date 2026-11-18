@@ -249,8 +249,8 @@ export interface FactionEconomyBreakdown {
   expenses: FactionExpenseLine[];
   /** Total percentage of collected revenue spent across the 4 buckets */
   spentShare: number;
-  /** Effective node scale driving required costs */
-  nodeScale: number;
+  /** Effective headcount across active nodes: asset requirements plus stored extras */
+  personnel: { staff: number; guards: number };
   /** Sum of required daily costs across all 4 buckets */
   requiredTotalDaily: number;
   /** Corruption / skimming percentage (0..100) and daily gold lost */

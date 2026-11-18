@@ -26,7 +26,14 @@ function faction(overrides: Partial<Faction> = {}): Faction {
     culture: 1,
     treasury: 0,
     influence: 50,
-    hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: [...HQ_ASSETS] },
+    hq: {
+      cell: 5,
+      burgId: 1,
+      fortified: false,
+      secrecy: 0,
+      assets: [...HQ_ASSETS],
+      personnel: { extraStaff: 24, extraGuards: 9 }
+    },
     outposts: [],
     stateRelations: {},
     ...overrides
@@ -220,8 +227,8 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
 
     expect(economy.adjustmentsDaily).toBe(2);
     expect(economy.collectedDaily).toBeCloseTo(2.1 + 2, 2);
-    // Infra budget (22% of 4.1 = 0.902) after 5.4% curbed corruption fully meets 0.45 required -> projectDaily = 0.85
-    expect(economy.projectDaily).toBeCloseTo(0.85, 2);
+    // Infra budget (22% of 4.1 = 0.902) after 7.4% curbed corruption over-mets the 0.72 required -> projectDaily = 0.84
+    expect(economy.projectDaily).toBeCloseTo(0.84, 2);
     expect(projectedAssetSeasons(50, economy.projectDaily)).toBe(1);
     expect(projectedAssetSeasons(200, economy.projectDaily)).toBe(3);
     expect(projectedAssetSeasons(50, 0)).toBeNull();
@@ -290,5 +297,129 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
     const squeezedImpact = factionNodeHostPresence(squeezed, squeezed.hq, true, 0.6);
     expect(squeezedImpact.goldDaily).toBeLessThan(normalImpact.goldDaily);
     expect(squeezedImpact.stabilityDelta).toBeLessThan(normalImpact.stabilityDelta);
+  });
+});
+
+describe("Faction personnel requirements and node host adjustments (faction-personnel.md Phase 2)", () => {
+  beforeEach(() => {
+    globalThis.options = {
+      map: { goods: [{ i: 0, name: "None" }], units: { population: { scale: 1, urbanization: { rate: 1 } } } }
+    } as unknown as typeof options;
+    globalThis.pack = {
+      cells: { i: [0, 5], state: [0, 1], province: [0, 1], market: [0, 0] },
+      burgs: [undefined, { i: 1, cell: 5, state: 1, product: 8 }],
+      states: [undefined, { i: 1, culture: 1, economy: { ...noFinance() } }],
+      deals: [],
+      markets: [],
+      history: { figures: [], living: { states: {} } }
+    } as unknown as typeof pack;
+  });
+
+  /** The plan's stock faction: HQ at 60 influence + 3 outposts at 35, four starter assets */
+  function stock(): Faction {
+    return faction({
+      hq: {
+        cell: 5,
+        burgId: 1,
+        fortified: false,
+        secrecy: 0,
+        influence: 60,
+        assets: ["trade_depot", "chapter_lodge"],
+        personnel: { extraStaff: 24, extraGuards: 9 }
+      },
+      outposts: [
+        {
+          burgId: 1,
+          cell: 5,
+          tier: 1,
+          influence: 35,
+          secrecy: 0,
+          assets: ["safe_house"],
+          establishedYear: 1000,
+          personnel: { extraStaff: 7, extraGuards: 3 }
+        },
+        {
+          burgId: 1,
+          cell: 5,
+          tier: 1,
+          influence: 35,
+          secrecy: 0,
+          assets: ["wayside_shrine"],
+          establishedYear: 1000,
+          personnel: { extraStaff: 7, extraGuards: 3 }
+        },
+        {
+          burgId: 1,
+          cell: 5,
+          tier: 1,
+          influence: 35,
+          secrecy: 0,
+          assets: [],
+          establishedYear: 1000,
+          personnel: { extraStaff: 7, extraGuards: 3 }
+        }
+      ]
+    });
+  }
+
+  it("derives each bucket's required cost from effective staff and guards", () => {
+    const f = stock();
+    // 45 extra staff/guards + asset crew 4 (depot, lodge, shrine) + garrison 5 (lodge 3, safe house 2)
+    const economy = computeFactionEconomy(f, [], 0);
+    expect(economy.personnel).toEqual({ staff: 49, guards: 23 });
+    const required = Object.fromEntries(economy.expenses.map(e => [e.bucket, e.requiredDaily]));
+    expect(required.administration).toBeCloseTo(0.06 * 49, 2); // 2.94
+    expect(required.court).toBeCloseTo(0.05 * 49, 2); // 2.45
+    expect(required.infrastructure).toBeCloseTo(0.03 * 49, 2); // 1.47
+    expect(required.military).toBeCloseTo(0.05 * 23, 2); // 1.15, the guards floor
+    expect(economy.requiredTotalDaily).toBeCloseTo(8.01, 2);
+  });
+
+  it("raises court need for religious and political factions", () => {
+    const temple = computeFactionEconomy(faction({ category: "religious" }), [], 0);
+    expect(temple.expenses.find(e => e.bucket === "court")?.requiredDaily).toBeCloseTo(0.05 * 24 * 1.2, 2);
+    const chancery = computeFactionEconomy(faction({ category: "political" }), [], 0);
+    expect(chancery.expenses.find(e => e.bucket === "court")?.requiredDaily).toBeCloseTo(0.05 * 24 * 1.2, 2);
+  });
+
+  it("lets regiment upkeep set the military need over the guards floor", () => {
+    const guardsOnly = computeFactionEconomy(stock(), [], 0);
+    expect(guardsOnly.expenses.find(e => e.bucket === "military")?.requiredDaily).toBeCloseTo(1.15, 2);
+    const regimented = computeFactionEconomy(stock(), [], 180); // 2 🪙/day of block upkeep
+    expect(regimented.expenses.find(e => e.bucket === "military")?.requiredDaily).toBe(2);
+  });
+
+  it("drops pillaged nodes and grows requirements with assets", () => {
+    const f = stock();
+    f.outposts[0].pillaged = true;
+    const razed = computeFactionEconomy(f, [], 0);
+    expect(razed.personnel).toEqual({ staff: 41, guards: 18 }); // loses the safe house node: -8 staff, -5 guards
+
+    f.outposts[2].assets = ["muster_camp"]; // crew 1, garrison 4
+    const mustered = computeFactionEconomy(f, [], 0);
+    expect(mustered.personnel).toEqual({ staff: 42, guards: 22 });
+  });
+
+  it("adds node host adjustments flat, unscaled by influence, and skips razed or stateless nodes", () => {
+    const f = faction({ allegiance: "chartered", patronStateId: 1 });
+    const plain = factionNodeHostPresence(f, { ...f.hq, influence: 60 }, true, 0.6);
+    const boosted = factionNodeHostPresence(
+      f,
+      { ...f.hq, influence: 60, hostAdjustments: { gold: 5, stability: 2 } },
+      true,
+      0.6
+    );
+    expect(boosted.goldDaily - plain.goldDaily).toBeCloseTo(5, 2);
+    expect(boosted.stabilityDelta - plain.stabilityDelta).toBeCloseTo(2, 1);
+
+    const wild = faction({ hq: { cell: 0, fortified: true, secrecy: 0, assets: [] } });
+    const wildImpact = factionNodeHostPresence(
+      wild,
+      { ...wild.hq, hostAdjustments: { gold: 5, stability: 2 } },
+      true,
+      0.6
+    );
+    expect(wildImpact.goldDaily).toBe(0); // no host burg to adjust
+    expect(wildImpact.stabilityDelta).toBe(0); // no host state to adjust
   });
 });
