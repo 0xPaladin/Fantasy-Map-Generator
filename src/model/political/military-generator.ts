@@ -1,4 +1,4 @@
-import { quadtree, sum } from "d3";
+﻿import { least, quadtree, sum } from "d3";
 import { POST_SCARCITY_DEVELOPMENT } from "@/data/development";
 import type { ResolvedRoster, UnitType } from "@/data/roster-content";
 import { currentContent } from "@/data/roster-store";
@@ -21,7 +21,10 @@ import { levies, type State } from "./states-generator";
 export const UPKEEP_COST = 20; // military spending a day that keeps troops of power 1, a population point's worth
 const MIN_UPKEEP = 0.05; // unpaid troops still fight, if barely
 const EQUIPMENT = 0.365; // population points of troops equipped by a unit a day a state consumes of their goods
+const REACH = 150; // how far a platoon joins a regiment of another landmass, map units
 const REGIMENT_SIZE = 3; // regiment box height at the default style, map units; layout ignores the style
+// what the unit's forces are raised by: a change of any calls for raising them anew
+const RAISING = ["rural", "urban", "type", "separate", "biomes", "states", "cultures", "religions", "goods"] as const;
 
 export interface Regiment {
   i: number;
@@ -36,6 +39,8 @@ export interface Regiment {
   by: number; // base y (for movement)
   province?: number; // province id of birth
   u: Record<string, number>; // units composition (unitId -> count)
+  unitOrigins?: Record<string, string>; // roster unit id -> the config unit that raised it
+  composition?: Record<string, Record<string, number>>; // config unit -> roster unit id -> troops
   units?: ArmyBlock[]; // concrete roster unit blocks { type, hp, exp }
   rosterId?: string; // state's assigned roster identifier
   crew?: number[]; // attached figure ids (pack.history.figures): commanders of specialist units (unified-figures)
@@ -84,9 +89,9 @@ export function getCategoryForUnit(unitId: string, unitTypes?: Record<string, Un
 
 /**
  * Mirror the block composition into `reg.u` / `reg.a`. Both stay **headcount**
- * mirrors (`Σ round(hp × quantity)`), because the map badge, saves and the
- * editor all display men (living-openciv-armies.md §5.4). Strength itself
- * lives on `ArmyBlock.hp`. The `fleet` pseudo-slot is skipped — its ship count
+ * mirrors (`╬ú round(hp ├ù quantity)`), because the map badge, saves and the
+ * editor all display men (living-openciv-armies.md ┬º5.4). Strength itself
+ * lives on `ArmyBlock.hp`. The `fleet` pseudo-slot is skipped ΓÇö its ship count
  * survives in `reg.u` and is re-attached below.
  */
 export function syncRegimentTotals(regiment: Regiment, unitTypes?: Record<string, UnitType>): void {
@@ -96,7 +101,7 @@ export function syncRegimentTotals(regiment: Regiment, unitTypes?: Record<string
     let total = 0;
     for (const slot of regiment.units) {
       if (slot.type === "fleet") continue;
-      // Legacy saves carry count-based blocks; convert once, in place (§13.1).
+      // Legacy saves carry count-based blocks; convert once, in place (┬º13.1).
       if (!Number.isFinite(slot.hp) || slot.hp <= 0) {
         const legacy = (slot as unknown as { count?: number }).count;
         slot.hp =
@@ -123,8 +128,8 @@ export function syncRegimentTotals(regiment: Regiment, unitTypes?: Record<string
 }
 
 /**
- * Rebuild `reg.units` from the `reg.u` men mirror — the legacy-save path and
- * the editor's troop editor (living-openciv-armies.md §13.1). New blocks are
+ * Rebuild `reg.units` from the `reg.u` men mirror ΓÇö the legacy-save path and
+ * the editor's troop editor (living-openciv-armies.md ┬º13.1). New blocks are
  * whole (`hp = count / quantity`); the `"fleet"` pseudo-type is kept out of the
  * combat blocks and re-appended as the naval marker.
  */
@@ -291,19 +296,209 @@ interface Platoon {
 }
 
 class MilitaryModule {
-  regenerate(): void {
-    this.generate();
+  /** Raise every state's forces for a new map: the alerts follow the political situation */
+  generate(): void {
+    const states = this.livingStates();
+    this.defineAlerts(states);
+    this.raise(states);
   }
 
-  generate() {
-    const { cells, states } = pack;
-    const { p } = cells;
-    const valid = states.filter(s => s.i && !s.removed); // valid states
+  /** Raise forces anew at the alerts set: of the states named, or of every state */
+  regenerate(stateIds?: number[]): void {
+    const states = this.livingStates(stateIds);
+    if (states.some(state => state.alert === undefined)) this.defineAlerts(states, true);
+    this.raise(states);
+  }
 
+  /** Raise the named units anew, and the levies their equipment leaves, in the states named or in all. Regiments keep all else: a platoon joins the nearest regiment of its province and landmass, those with none form new ones */
+  raiseUnits(names: string[], stateIds?: number[]): void {
+    const { cells } = pack;
+    const roster = options.map.military.units;
+    const raised = new Set(names);
+    const levy = roster.find(unit => unit.type === "levies");
+    if (levy && pack.deals?.length) raised.add(levy.name);
+    const separate = new Set(roster.filter(unit => unit.separate).map(unit => unit.name));
+    const featureOf = (cell: number, naval: number) => cells.f[naval && cells.h[cell] >= 20 ? cells.haven[cell] : cell];
+
+    const states = this.livingStates(stateIds);
+    const drafts = this.draft(states);
+    const raisedKeys = new Set<string>();
+    const keyOrigins = new Map<string, Set<string>>();
+    for (const platoon of [...drafts.values()].flat()) {
+      const origins = keyOrigins.get(platoon.u) ?? new Set<string>();
+      origins.add(platoon.unitName);
+      keyOrigins.set(platoon.u, origins);
+    }
+    for (const [key, origins] of keyOrigins) if ([...origins].every(origin => raised.has(origin))) raisedKeys.add(key);
+
+    for (const state of states) {
+      this.recompose(state, military => {
+        const held = new Map(
+          military.map(regiment => [
+            regiment,
+            new Set(
+              regiment.composition
+                ? Object.keys(regiment.composition)
+                : Object.keys(regiment.u).map(key => regiment.unitOrigins?.[key] ?? key)
+            )
+          ])
+        );
+        for (const regiment of military) {
+          if (regiment.composition) {
+            for (const name of raised) {
+              const group = regiment.composition[name];
+              if (!group) continue;
+              for (const [key, count] of Object.entries(group)) {
+                const remaining = (regiment.u[key] ?? 0) - count;
+                if (remaining > 0) regiment.u[key] = remaining;
+                else delete regiment.u[key];
+              }
+              delete regiment.composition[name];
+            }
+            if (!Object.keys(regiment.composition).length) delete regiment.composition;
+          } else
+            for (const key of Object.keys(regiment.u)) {
+              const origin = regiment.unitOrigins?.[key] ?? key;
+              if (raised.has(origin) || raisedKeys.has(key)) delete regiment.u[key];
+            }
+        }
+        const troops = (regiment: Regiment) => sum(Object.values(regiment.u));
+        const platoons = drafts.get(state.i)!.filter(platoon => raised.has(platoon.unitName));
+        const stray: Platoon[] = [];
+        // separate units first, to their own regiments
+        for (const platoon of platoons.sort((a, b) => b.s - a.s)) {
+          const feature = featureOf(platoon.cell, platoon.n);
+          const distance = (regiment: Regiment) => (regiment.bx - platoon.x) ** 2 + (regiment.by - platoon.y) ** 2;
+          const province = this.provinceOf(state, platoon.cell);
+          // in its province, on its landmass, or across the water as near as platoons merge
+          const fits = (regiment: Regiment) =>
+            regiment.n === platoon.n &&
+            ((regiment.province ?? 0) === province ||
+              featureOf(regiment.cell, regiment.n) === feature ||
+              distance(regiment) < REACH ** 2) &&
+            (regiment.composition
+              ? Object.keys(regiment.composition)
+              : Object.keys(regiment.u).map(key => regiment.unitOrigins?.[key] ?? key)
+            ).every(origin => origin === platoon.unitName || (!platoon.s && !separate.has(origin)));
+          const fitting = military.filter(fits);
+          const local = fitting.filter(regiment => (regiment.province ?? 0) === province);
+          const veterans = fitting.filter(regiment => held.get(regiment)!.has(platoon.unitName)); // had the unit before
+          const localVeterans = veterans.filter(regiment => (regiment.province ?? 0) === province);
+          const pool = localVeterans.length
+            ? localVeterans
+            : veterans.length
+              ? veterans
+              : local.length
+                ? local
+                : fitting;
+          // regiments based at one point share its platoons
+          const home = least(pool, (a, b) => troops(a) - troops(b) || distance(a) - distance(b));
+          if (home) {
+            home.u[platoon.u] = rn((home.u[platoon.u] || 0) + platoon.a, 3);
+            if (home.composition) {
+              home.composition[platoon.unitName] ??= {};
+              const group = home.composition[platoon.unitName];
+              group[platoon.u] = (group[platoon.u] ?? 0) + platoon.a;
+            } else if (platoon.u !== platoon.unitName) {
+              home.unitOrigins ??= {};
+              home.unitOrigins[platoon.u] = platoon.unitName;
+            }
+          } else stray.push(platoon);
+        }
+        military.push(...this.form(stray, state, military));
+      });
+    }
+  }
+
+  /** Replace the roster; `origins` names the unit each new one was, null for an added one. Regiments follow the renames and lose the removed units' troops. Returns the units whose forces are raised differently now */
+  setRoster(units: MilitaryUnit[], origins: (string | null)[]): string[] {
+    const previous = options.map.military.units;
+    const renamed = new Map<string, string>(); // by the old name
+    const stale: string[] = [];
+    units.forEach((unit, index) => {
+      const old = previous.find(({ name }) => name === origins[index]);
+      if (old) renamed.set(old.name, unit.name);
+      const changed = old
+        ? RAISING.some(key => JSON.stringify(old[key]) !== JSON.stringify(unit[key]))
+        : +unit.rural > 0 || +unit.urban > 0;
+      if (changed) stale.push(unit.name);
+    });
+    const removed = new Set(previous.map(({ name }) => name).filter(name => !renamed.has(name)));
+
+    options.map.military.units = units;
+    for (const state of pack.states ?? []) {
+      if (!state.military?.length) continue;
+      const military = state.military;
+      const emblemed = military.filter(regiment => regiment.icon === this.getEmblem(regiment, previous));
+      const manned = military.filter(regiment => regiment.a);
+      for (const regiment of military) {
+        if (regiment.composition) {
+          const nextComposition: Record<string, Record<string, number>> = {};
+          let dropped = false;
+          for (const [origin, group] of Object.entries(regiment.composition)) {
+            if (removed.has(origin)) {
+              dropped = true;
+              continue;
+            }
+            const newOrigin = renamed.get(origin) ?? origin;
+            nextComposition[newOrigin] ??= {};
+            const nextGroup = nextComposition[newOrigin];
+            for (const [key, points] of Object.entries(group)) nextGroup[key] = (nextGroup[key] ?? 0) + points;
+          }
+          const next: Record<string, number> = {};
+          for (const group of Object.values(nextComposition))
+            for (const [key, points] of Object.entries(group)) next[key] = (next[key] ?? 0) + points;
+          const nextOrigins: Record<string, string> = {};
+          for (const [origin, group] of Object.entries(nextComposition)) {
+            const keys = Object.keys(group);
+            if (keys.length === 1) nextOrigins[keys[0]] = origin;
+          }
+          regiment.composition = Object.keys(nextComposition).length ? nextComposition : undefined;
+          regiment.u = next;
+          if (Object.keys(nextOrigins).length) regiment.unitOrigins = nextOrigins;
+          else delete regiment.unitOrigins;
+          if (dropped) {
+            const exactU = { ...regiment.u };
+            const exactA = sum(Object.values(exactU));
+            reconcileRegimentBlocks(regiment, this.getUnitTypes());
+            regiment.u = exactU;
+            regiment.a = exactA;
+          }
+        } else {
+          const next: Record<string, number> = {};
+          const nextOrigins: Record<string, string> = {};
+          let dropped = false;
+          for (const [key, points] of Object.entries(regiment.u)) {
+            const origin = regiment.unitOrigins?.[key] ?? key;
+            if (removed.has(origin)) {
+              dropped = true;
+              continue;
+            }
+            const newOrigin = renamed.get(origin) ?? origin;
+            const newKey = origin === key ? newOrigin : key;
+            next[newKey] = (next[newKey] || 0) + points;
+            if (origin !== key) nextOrigins[newKey] = newOrigin;
+          }
+          regiment.u = next;
+          if (Object.keys(nextOrigins).length) regiment.unitOrigins = nextOrigins;
+          else delete regiment.unitOrigins;
+          if (dropped) reconcileRegimentBlocks(regiment, this.getUnitTypes());
+          else if (regiment.units)
+            for (const block of regiment.units) block.type = renamed.get(block.type) ?? block.type;
+        }
+      }
+      state.military = military.filter(regiment => regiment.a || !manned.includes(regiment));
+      for (const regiment of emblemed) if (state.military.includes(regiment)) regiment.icon = this.getEmblem(regiment);
+    }
+    return stale;
+  }
+
+  /** Define the war alerts of the states, from the fork's political formula */
+  private defineAlerts(states: State[], onlyMissing = false): void {
+    const valid = pack.states.filter(s => s.i && !s.removed);
     const expn = sum(valid.map(s => s.expansionism)); // total expansion
     const area = sum(valid.map(s => s.area)); // total area
     const rate = {
-      x: 0,
       Ally: -0.2,
       Friendly: -0.1,
       Neutral: 0,
@@ -315,6 +510,55 @@ class MilitaryModule {
       Suzerain: -0.5
     };
 
+    for (const s of states) {
+      if (onlyMissing && s.alert !== undefined) continue;
+      const d = s.diplomacy!;
+      const expansionRate = minmax(s.expansionism / expn / (s.area! / area), 0.25, 4); // how much state expansionism is realized
+      const diplomacyRate = d.some(d => d === "Enemy")
+        ? 3
+        : d.some(d => d === "Rival")
+          ? 2
+          : d.some(d => d === "Suspicion")
+            ? 1.5
+            : 1; // peacefulness
+      const neighborsRateRaw = s
+        .neighbors!.map(n => (n ? pack.states[n].diplomacy![s.i] : "Suspicion"))
+        .reduce((s, r) => s + rate[r as keyof typeof rate], 0.5);
+      const neighborsRate = minmax(neighborsRateRaw, 0.5, 3); // neighbors rate
+      s.alert = minmax(rn(expansionRate * diplomacyRate * neighborsRate, 2), 1, 20); // alert rate (area modifier)
+    }
+  }
+
+  private raise(states: State[]): void {
+    const drafts = this.draft(states);
+    for (const state of states) state.military = this.form(drafts.get(state.i)!, state);
+  }
+
+  /** Runs a change of a state's regiments' troops: those on their default emblem follow it, those it empties are disbanded */
+  private recompose(state: State, change: (military: Regiment[]) => void): void {
+    state.military ??= [];
+    const military = state.military;
+    const before = new Map(military.map(regiment => [regiment, JSON.stringify(regiment.u)]));
+    const emblemed = military.filter(regiment => regiment.icon === this.getEmblem(regiment));
+    const manned = military.filter(regiment => regiment.a);
+    change(military);
+    const unitTypes = this.getUnitTypes();
+    for (const regiment of military) {
+      if (before.get(regiment) === JSON.stringify(regiment.u) || !before.has(regiment)) continue;
+      const exactU = { ...regiment.u };
+      const exactA = sum(Object.values(exactU));
+      reconcileRegimentBlocks(regiment, unitTypes);
+      regiment.u = exactU; // partial updates keep the headcount; blocks are capped for battle
+      regiment.a = exactA;
+    }
+    state.military = military.filter(regiment => regiment.a || !manned.includes(regiment));
+    for (const regiment of emblemed) if (state.military.includes(regiment)) regiment.icon = this.getEmblem(regiment);
+  }
+
+  /** The platoons each state's cells and burgs raise, by state: those it cannot equip turned to levies */
+  private draft(valid: State[]): Map<number, Platoon[]> {
+    const { cells, states } = pack;
+    const { p } = cells;
     const stateModifier = {
       melee: {
         Nomadic: 0.5,
@@ -467,21 +711,6 @@ class MilitaryModule {
         regime: astralMode ? classifyAstralRegime(pack.cultures?.[s.culture ?? 0]) : null
       };
       drafts.set(s.i, draft);
-      const d = s.diplomacy!;
-
-      const expansionRate = minmax(s.expansionism / expn / (s.area! / area), 0.25, 4); // how much state expansionism is realized
-      const diplomacyRate = d.some(d => d === "Enemy")
-        ? 3
-        : d.some(d => d === "Rival")
-          ? 2
-          : d.some(d => d === "Suspicion")
-            ? 1.5
-            : 1; // peacefulness
-      const neighborsRateRaw = s
-        .neighbors!.map(n => (n ? pack.states[n].diplomacy![s.i] : "Suspicion"))
-        .reduce((s, r) => s + rate[r as keyof typeof rate], 0.5);
-      const neighborsRate = minmax(neighborsRateRaw, 0.5, 3); // neighbors rate
-      s.alert = minmax(rn(expansionRate * diplomacyRate * neighborsRate, 2), 1, 20); // alert rate (area modifier)
       // apply overall state modifiers for unit types based on state features
       for (const unit of options.map.military.units) {
         if (!stateModifier[unit.type as keyof typeof stateModifier]) continue;
@@ -492,7 +721,7 @@ class MilitaryModule {
           ] || 1;
         if (unit.type === "mounted" && s.formName?.includes("Horde")) modifier *= 2;
         else if (unit.type === "naval" && s.form === "Republic") modifier *= 1.2;
-        draft.modifiers[unit.name] = modifier * s.alert;
+        draft.modifiers[unit.name] = modifier * (s.alert ?? 1);
       }
     });
 
@@ -674,6 +903,7 @@ class MilitaryModule {
       }
     }
 
+    Pack.markChanged(); // burgs may have changed hands since the run
     // conscripts the state cannot equip with their unit's goods serve as levies where they were raised
     const levyUnit = options.map.military.units.find(unit => unit.type === "levies");
     for (const [stateId, draft] of drafts) {
@@ -710,180 +940,219 @@ class MilitaryModule {
       draft.platoons = draft.platoons.filter(platoon => platoon.a).concat([...raised.values()]);
     }
 
+    return new Map([...drafts].map(([stateId, draft]) => [stateId, draft.platoons]));
+  }
+
+  /** Merges a state's platoons into regiments, numbered and named after the `existing` ones */
+  private form(platoons: Platoon[], s: State, existing: Regiment[] = []): Regiment[] {
+    if (!platoons.length) return [];
     const expected = 6 * options.map.units.population.scale; // expected regiment size
+    const first = Math.max(-1, ...existing.map(({ i }) => i)) + 1;
+    const { cells } = pack;
+    const stateProvIds = (s.provinces ?? []).filter(
+      provId => provId && pack.provinces?.[provId] && !pack.provinces[provId].removed
+    );
+    const capitalProvId =
+      cells.province?.[s.center] && stateProvIds.includes(cells.province[s.center])
+        ? cells.province[s.center]
+        : stateProvIds[0] || 0;
+
+    const byProvince = new Map<number, Platoon[]>();
+    for (const platoon of platoons) {
+      let provId = cells.province?.[platoon.cell] || 0;
+      if ((!provId || !stateProvIds.includes(provId)) && capitalProvId) provId = capitalProvId;
+      if (!byProvince.has(provId)) byProvince.set(provId, []);
+      byProvince.get(provId)!.push(platoon);
+    }
+
+    const sortedProvIds = Array.from(byProvince.keys()).sort((a, b) => {
+      if (a === capitalProvId) return -1;
+      if (b === capitalProvId) return 1;
+      return a - b;
+    });
+
+    const regiments: Regiment[] = [];
+    for (const provId of sortedProvIds) {
+      const provPlatoons = byProvince.get(provId) ?? [];
+      regiments.push(...this.createRegimentsForProvince(provPlatoons, s, provId, first + regiments.length, expected));
+    }
+
+    for (const regiment of regiments) {
+      regiment.name = this.getName(regiment, [...existing, ...regiments]);
+      regiment.icon = this.getEmblem(regiment);
+      this.generateNote(regiment, s);
+    }
+    return regiments;
+  }
+
+  private createRegimentsForProvince(
+    nodes: Platoon[],
+    s: State,
+    provId: number,
+    first: number,
+    expected: number
+  ): Regiment[] {
+    const { cells } = pack;
+    const { p } = cells;
     const mergeable = (n0: { s: number; u: string }, n1: { s: number; u: string }) => (!n0.s && !n1.s) || n0.u === n1.u; // check if regiments can be merged
-    const createRegimentsForProvince = (nodes: Platoon[], s: State, provId: number): Regiment[] => {
-      if (!nodes.length) return [];
-      nodes.sort((a, b) => a.a - b.a); // form regiments starting from cells with fewest troops
-      const tree = quadtree(
-        nodes,
-        d => d.x,
-        d => d.y
-      );
+    if (!nodes.length) return [];
+    nodes.sort((a, b) => a.a - b.a); // form regiments starting from cells with fewest troops
+    const tree = quadtree(
+      nodes,
+      d => d.x,
+      d => d.y
+    );
 
-      // add n0 to n1's ultimate parent
-      const merge = (n0: Platoon, n1: Platoon) => {
-        if (!n1.children) n1.children = [n0];
-        else n1.children.push(n0);
-        if (n0.children)
-          n0.children.forEach(n => {
-            n1.children!.push(n);
-          });
-        n1.t += n0.t;
-        n0.t = 0;
-      };
-
-      nodes.forEach(node => {
-        tree.remove(node);
-        const overlap = tree.find(node.x, node.y, 20);
-        if (overlap?.t && mergeable(node, overlap)) {
-          merge(node, overlap);
-          return;
-        }
-        if (node.t > expected) return;
-        const r = (expected - node.t) / (node.s ? 40 : 20); // search radius
-        const candidates = findAllInQuadtree(node.x, node.y, r, tree);
-        for (const c of candidates) {
-          if (c.t < expected && mergeable(node, c)) {
-            merge(node, c);
-            break;
-          }
-        }
-      });
-
-      // parse regiments data
-      const unitTypes = this.getUnitTypes();
-      const prov = provId && pack.provinces ? pack.provinces[provId] : undefined;
-      const capitalCell = prov ? prov.center : s.center;
-      const [capX, capY] = p[capitalCell];
-      const provBurg =
-        prov?.burg && pack.burgs
-          ? pack.burgs[prov.burg]
-          : cells.burg?.[capitalCell] && pack.burgs
-            ? pack.burgs[cells.burg[capitalCell]]
-            : undefined;
-
-      const surviving = nodes.filter(n => n.t).sort((a, b) => b.t - a.t);
-      const landCount = surviving.filter(n => !n.n).length;
-      const fleetCount = surviving.filter(n => n.n).length;
-      let landIdx = 0;
-      let fleetIdx = 0;
-
-      const regiments: Regiment[] = surviving.map((r, i) => {
-        const u: Record<string, number> = {};
-        u[r.u] = r.a;
-        (r.children ?? []).forEach(n => {
-          u[n.u] = (u[n.u] ?? 0) + n.a;
+    // add n0 to n1's ultimate parent
+    const merge = (n0: Platoon, n1: Platoon) => {
+      if (!n1.children) n1.children = [n0];
+      else n1.children.push(n0);
+      if (n0.children)
+        n0.children.forEach(n => {
+          n1.children!.push(n);
         });
-
-        let regCell = capitalCell;
-        let regBx = capX;
-        let regBy = capY;
-        let regX = capX;
-        let regY = capY;
-
-        if (!r.n) {
-          if (landIdx > 0) {
-            const angle = ((landIdx - 1) * (2 * Math.PI)) / Math.max(landCount - 1, 1);
-            regX = rn(capX + Math.cos(angle) * 10, 2);
-            regY = rn(capY + Math.sin(angle) * 10, 2);
-          }
-          landIdx++;
-        } else {
-          let havenCell = provBurg?.port && cells.haven?.[provBurg.cell] ? cells.haven[provBurg.cell] : 0;
-          if (!havenCell && provId && pack.burgs) {
-            const portBurg = pack.burgs.find(
-              b => b?.i && !b.removed && cells.province?.[b.cell] === provId && b.port && cells.haven?.[b.cell]
-            );
-            if (portBurg) havenCell = cells.haven[portBurg.cell];
-          }
-          if (havenCell && u.fleet) {
-            regCell = havenCell;
-            regBx = p[havenCell][0];
-            regBy = p[havenCell][1];
-            regX = rn(regBx + fleetIdx * 6, 2);
-            regY = rn(regBy + fleetIdx * 6, 2);
-          } else {
-            regCell = r.cell;
-            regBx = r.x;
-            regBy = r.y;
-            const angle = (fleetIdx * (2 * Math.PI)) / Math.max(fleetCount, 1);
-            regX = rn(regBx + Math.cos(angle) * 10, 2);
-            regY = rn(regBy + Math.sin(angle) * 10, 2);
-          }
-          fleetIdx++;
-        }
-
-        const reg: Regiment = {
-          i,
-          a: r.t,
-          cell: regCell,
-          x: regX,
-          y: regY,
-          bx: regBx,
-          by: regBy,
-          u,
-          rosterId: s.rosterId,
-          n: r.n,
-          name: "",
-          icon: "",
-          state: s.i,
-          province: provId || undefined,
-          tags: []
-        };
-        reconcileRegimentBlocks(reg, unitTypes);
-        return reg;
-      });
-
-      return regiments;
+      n1.t += n0.t;
+      n0.t = 0;
     };
 
-    // get regiments for each state
-    valid.forEach(s => {
-      const stateProvIds = (s.provinces ?? []).filter(
-        pId => pId && pack.provinces?.[pId] && !pack.provinces[pId].removed
-      );
-      const capitalProvId =
-        cells.province?.[s.center] && stateProvIds.includes(cells.province[s.center])
-          ? cells.province[s.center]
-          : stateProvIds[0] || 0;
-
-      const byProvince = new Map<number, Platoon[]>();
-      for (const pl of drafts.get(s.i)!.platoons) {
-        let provId = cells.province?.[pl.cell] || 0;
-        if ((!provId || !stateProvIds.includes(provId)) && capitalProvId) provId = capitalProvId;
-        if (!byProvince.has(provId)) byProvince.set(provId, []);
-        byProvince.get(provId)!.push(pl);
+    nodes.forEach(node => {
+      tree.remove(node);
+      const overlap = tree.find(node.x, node.y, 20);
+      if (overlap?.t && mergeable(node, overlap)) {
+        merge(node, overlap);
+        return;
       }
-
-      const sortedProvIds = Array.from(byProvince.keys()).sort((a, b) => {
-        if (a === capitalProvId) return -1;
-        if (b === capitalProvId) return 1;
-        return a - b;
-      });
-
-      const stateRegiments: Regiment[] = [];
-      for (const provId of sortedProvIds) {
-        const provPlatoons = byProvince.get(provId) ?? [];
-        const provRegs = createRegimentsForProvince(provPlatoons, s, provId);
-        stateRegiments.push(...provRegs);
+      if (node.t > expected) return;
+      const r = (expected - node.t) / (node.s ? 40 : 20); // search radius
+      const candidates = findAllInQuadtree(node.x, node.y, r, tree);
+      for (const c of candidates) {
+        if (c.t < expected && mergeable(node, c)) {
+          merge(node, c);
+          break;
+        }
       }
-
-      stateRegiments.forEach((r, idx) => {
-        r.i = idx;
-        r.name = this.getName(r, stateRegiments);
-        r.icon = this.getEmblem(r);
-        this.generateNote(r, s);
-      });
-
-      s.military = stateRegiments;
     });
+
+    // parse regiments data
+    const unitTypes = this.getUnitTypes();
+    const prov = provId && pack.provinces ? pack.provinces[provId] : undefined;
+    const capitalCell = prov ? prov.center : s.center;
+    const [capX, capY] = p[capitalCell];
+    const provBurg =
+      prov?.burg && pack.burgs
+        ? pack.burgs[prov.burg]
+        : cells.burg?.[capitalCell] && pack.burgs
+          ? pack.burgs[cells.burg[capitalCell]]
+          : undefined;
+
+    const surviving = nodes.filter(n => n.t).sort((a, b) => b.t - a.t);
+    const landCount = surviving.filter(n => !n.n).length;
+    const fleetCount = surviving.filter(n => n.n).length;
+    let landIdx = 0;
+    let fleetIdx = 0;
+
+    const regiments: Regiment[] = surviving.map((r, i) => {
+      const u: Record<string, number> = {};
+      u[r.u] = r.a;
+      const unitOrigins: Record<string, string> = {};
+      const composition: Record<string, Record<string, number>> = {};
+      const addComposition = (platoon: Platoon) => {
+        if (platoon.u !== platoon.unitName) unitOrigins[platoon.u] = platoon.unitName;
+        composition[platoon.unitName] ??= {};
+        const group = composition[platoon.unitName];
+        group[platoon.u] = (group[platoon.u] ?? 0) + platoon.a;
+        platoon.children?.forEach(addComposition);
+      };
+      addComposition(r);
+      (r.children ?? []).forEach(n => {
+        u[n.u] = (u[n.u] ?? 0) + n.a;
+      });
+
+      let regCell = capitalCell;
+      let regBx = capX;
+      let regBy = capY;
+      let regX = capX;
+      let regY = capY;
+
+      if (!r.n) {
+        if (landIdx > 0) {
+          const angle = ((landIdx - 1) * (2 * Math.PI)) / Math.max(landCount - 1, 1);
+          regX = rn(capX + Math.cos(angle) * 10, 2);
+          regY = rn(capY + Math.sin(angle) * 10, 2);
+        }
+        landIdx++;
+      } else {
+        let havenCell = provBurg?.port && cells.haven?.[provBurg.cell] ? cells.haven[provBurg.cell] : 0;
+        if (!havenCell && provId && pack.burgs) {
+          const portBurg = pack.burgs.find(
+            b => b?.i && !b.removed && cells.province?.[b.cell] === provId && b.port && cells.haven?.[b.cell]
+          );
+          if (portBurg) havenCell = cells.haven[portBurg.cell];
+        }
+        if (havenCell && u.fleet) {
+          regCell = havenCell;
+          regBx = p[havenCell][0];
+          regBy = p[havenCell][1];
+          regX = rn(regBx + fleetIdx * 6, 2);
+          regY = rn(regBy + fleetIdx * 6, 2);
+        } else {
+          regCell = r.cell;
+          regBx = r.x;
+          regBy = r.y;
+          const angle = (fleetIdx * (2 * Math.PI)) / Math.max(fleetCount, 1);
+          regX = rn(regBx + Math.cos(angle) * 10, 2);
+          regY = rn(regBy + Math.sin(angle) * 10, 2);
+        }
+        fleetIdx++;
+      }
+
+      const reg: Regiment = {
+        i: first + i,
+        a: r.t,
+        cell: regCell,
+        x: regX,
+        y: regY,
+        bx: regBx,
+        by: regBy,
+        u,
+        unitOrigins: Object.keys(unitOrigins).length ? unitOrigins : undefined,
+        composition: Object.keys(composition).length ? composition : undefined,
+        rosterId: s.rosterId,
+        n: r.n,
+        name: "",
+        icon: "",
+        state: s.i,
+        province: provId || undefined,
+        tags: []
+      };
+      const exactU = { ...reg.u };
+      const exactA = sum(Object.values(exactU));
+      reconcileRegimentBlocks(reg, unitTypes);
+      reg.u = exactU;
+      reg.a = exactA;
+      return reg;
+    });
+
+    return regiments;
+  }
+
+  /** The province a platoon belongs to, with the state's capital province as the fallback */
+  private provinceOf(state: State, cell: number): number {
+    const stateProvIds = (state.provinces ?? []).filter(
+      provId => provId && pack.provinces?.[provId] && !pack.provinces[provId].removed
+    );
+    const capitalProvId =
+      pack.cells.province?.[state.center] && stateProvIds.includes(pack.cells.province[state.center])
+        ? pack.cells.province[state.center]
+        : stateProvIds[0] || 0;
+    const provId = pack.cells.province?.[cell] || 0;
+    return !provId || !stateProvIds.includes(provId) ? capitalProvId : provId;
   }
 
   getDefaultOptions() {
     const units = [
       {
-        icon: "⚔️",
+        icon: "ΓÜö∩╕Å",
         name: "infantry",
         rural: 0.25,
         urban: 0.2,
@@ -893,7 +1162,7 @@ class MilitaryModule {
         separate: 0
       },
       {
-        icon: "🏹",
+        icon: "≡ƒÅ╣",
         name: "archers",
         rural: 0.12,
         urban: 0.2,
@@ -903,7 +1172,7 @@ class MilitaryModule {
         separate: 0
       },
       {
-        icon: "🐴",
+        icon: "≡ƒÉ┤",
         name: "cavalry",
         rural: 0.12,
         urban: 0.03,
@@ -913,7 +1182,7 @@ class MilitaryModule {
         separate: 0
       },
       {
-        icon: "💣",
+        icon: "≡ƒÆú",
         name: "artillery",
         rural: 0,
         urban: 0.03,
@@ -923,7 +1192,7 @@ class MilitaryModule {
         separate: 0
       },
       {
-        icon: "🌊",
+        icon: "≡ƒîè",
         name: "fleet",
         rural: 0,
         urban: 0.015,
@@ -1058,13 +1327,13 @@ class MilitaryModule {
    * `MIN_UPKEEP`.
    */
   getLivingBattleUpkeep(stateId: number): number {
-    const upkeep = this.getUpkeep(stateId) * stateEconomyModifiers(stateId).upkeep; // §5.2: a martial ruler keeps troops keen
+    const upkeep = this.getUpkeep(stateId) * stateEconomyModifiers(stateId).upkeep; // ┬º5.2: a martial ruler keeps troops keen
     const funded = Number(pack.states[stateId]?.economy?.treasury ?? 0) > 0;
     return funded ? minmax(upkeep, 0.5, 1.15) : Math.max(MIN_UPKEEP, upkeep);
   }
 
   /**
-   * Spare equipment kits of a trade good (§4.3): a day's consumption scaled by
+   * Spare equipment kits of a trade good (┬º4.3): a day's consumption scaled by
    * `EQUIPMENT` and military coverage, minus every fielded block whose type
    * needs the good. `Infinity` before the run or where the good is not traded.
    */
@@ -1080,12 +1349,12 @@ class MilitaryModule {
     return kits - fielded;
   }
 
-  /** The state's forces' battle power: troops × unit power × battle upkeep */
+  /** The state's forces' battle power: troops ├ù unit power ├ù battle upkeep */
   getPower(stateId: number): number {
     return this.getNominalPower(stateId) * this.getBattleUpkeep(stateId);
   }
 
-  /** A regiment's battle power: troops × unit power × its state's battle upkeep */
+  /** A regiment's battle power: troops ├ù unit power ├ù its state's battle upkeep */
   getRegimentPower(regiment: Regiment): number {
     return this.getTroopsPower(regiment) * this.getBattleUpkeep(regiment.state);
   }
@@ -1147,7 +1416,7 @@ class MilitaryModule {
 
     const composition = r.a
       ? Object.keys(r.u)
-          .map(t => `— ${t}: ${r.u[t as keyof typeof r.u]}`)
+          .map(t => `ΓÇö ${t}: ${r.u[t as keyof typeof r.u]}`)
           .join("\r\n")
       : null;
     const cal = options.map.lore?.calendar ?? { year: 1000, era: "AE", eraShort: "AE" };
@@ -1196,7 +1465,7 @@ class MilitaryModule {
       bx: cx,
       by: cy,
       state: stateId,
-      icon: Icons.glyph("🛡️"),
+      icon: Icons.glyph("≡ƒ¢í∩╕Å"),
       name: "",
       t: 0,
       s: 0,
@@ -1215,17 +1484,25 @@ class MilitaryModule {
     if (typeof units !== "object" || units === null || Array.isArray(units))
       throw new Error("Units are an object of unit names and troop numbers");
     for (const [name, count] of Object.entries(units)) {
-      if (!Number.isInteger(count) || count < 0)
-        throw new Error(`The number of ${name} must be a non-negative integer`);
+      if (typeof count !== "number" || !Number.isFinite(count) || count < 0)
+        throw new Error(`The number of ${name} must be a non-negative number`);
     }
     regiment.u = { ...units };
+    delete regiment.unitOrigins;
+    delete regiment.composition;
+    const exactU = { ...regiment.u };
+    const exactA = sum(Object.values(exactU));
     reconcileRegimentBlocks(regiment, this.getUnitTypes());
+    regiment.u = exactU;
+    regiment.a = exactA;
   }
 
   /** Set a regiment's explicit unit slots directly */
   setUnitSlots(stateId: number, regimentId: number, slots: ArmyBlock[]): void {
     const regiment = this.living(stateId, regimentId);
     regiment.units = slots.map(s => ({ ...s }));
+    delete regiment.unitOrigins;
+    delete regiment.composition;
     syncRegimentTotals(regiment, this.getUnitTypes());
   }
 
@@ -1240,6 +1517,8 @@ class MilitaryModule {
     const change = previous ? state.alert / previous : 0; // the stored value, so the next change divides by it
     for (const regiment of state.military ?? []) {
       for (const unit of Object.keys(regiment.u)) regiment.u[unit] = rn(regiment.u[unit] * change);
+      for (const group of Object.values(regiment.composition ?? {}))
+        for (const unit of Object.keys(group)) group[unit] = rn(group[unit] * change);
       reconcileRegimentBlocks(regiment, this.getUnitTypes());
     }
   }
@@ -1286,8 +1565,16 @@ class MilitaryModule {
     const half = Object.fromEntries(Object.entries(regiment.u).map(([unit, count]) => [unit, Math.floor(count / 2)]));
     const a = sum(Object.values(half));
     if (!a) throw new Error(`Regiment ${stateId}-${regimentId} has too few troops to split`);
-    regiment.u = Object.fromEntries(Object.entries(regiment.u).map(([unit, count]) => [unit, Math.ceil(count / 2)]));
+    regiment.u = Object.fromEntries(
+      Object.entries(regiment.u).map(([unit, count]) => [unit, count - Math.floor(count / 2)])
+    );
+    const origins = regiment.unitOrigins ? { ...regiment.unitOrigins } : undefined;
+    delete regiment.composition;
+    const remainingU = { ...regiment.u };
+    const remainingA = sum(Object.values(remainingU));
     reconcileRegimentBlocks(regiment, this.getUnitTypes());
+    regiment.u = remainingU;
+    regiment.a = remainingA;
 
     const shift = REGIMENT_SIZE * 2;
     let y = regiment.y + shift;
@@ -1300,6 +1587,7 @@ class MilitaryModule {
       i,
       n: regiment.n,
       u: half,
+      unitOrigins: origins,
       rosterId: regiment.rosterId,
       x: regiment.x,
       y,
@@ -1313,7 +1601,11 @@ class MilitaryModule {
       type: regiment.type,
       tags: [...(regiment.tags ?? [])]
     };
+    const addedU = { ...added.u };
+    const addedA = sum(Object.values(addedU));
     reconcileRegimentBlocks(added, this.getUnitTypes());
+    added.u = addedU;
+    added.a = addedA;
     added.name = this.getName(added, military);
     military.push(added);
     this.generateNote(added, state);
@@ -1326,6 +1618,17 @@ class MilitaryModule {
     const target = this.living(targetStateId, targetId);
     if (regiment === target) throw new Error("A regiment cannot attach to itself");
     for (const [unit, count] of Object.entries(regiment.u)) if (count) target.u[unit] = (target.u[unit] || 0) + count;
+    if (regiment.composition && target.composition) {
+      for (const [origin, group] of Object.entries(regiment.composition)) {
+        target.composition[origin] ??= {};
+        const targetGroup = target.composition[origin];
+        for (const [unit, count] of Object.entries(group)) targetGroup[unit] = (targetGroup[unit] ?? 0) + count;
+      }
+    } else if (regiment.composition || target.composition) delete target.composition;
+    if (regiment.unitOrigins) {
+      target.unitOrigins ??= {};
+      for (const unit of Object.keys(regiment.u)) target.unitOrigins[unit] = regiment.unitOrigins[unit] ?? unit;
+    }
     reconcileRegimentBlocks(target, this.getUnitTypes());
 
     const { year, eraShort } = options.map.lore.calendar;
@@ -1333,6 +1636,10 @@ class MilitaryModule {
     const merger = `${regiment.name} merged into the regiment (${year} ${eraShort}).${record}`;
     target.note = target.note ? `${target.note}<br><br>${merger}` : merger;
     this.remove(stateId, regimentId);
+  }
+
+  private livingStates(only?: number[]): State[] {
+    return pack.states.filter(state => state.i && !state.removed && (!only || only.includes(state.i)));
   }
 
   private living(stateId: number, regimentId: number): Regiment {
@@ -1343,35 +1650,45 @@ class MilitaryModule {
   }
 
   // get default regiment emblem
-  getEmblem(r: Regiment) {
-    if (!r.n && !Object.values(r.u).length) return Icons.glyph("🔰"); // "Newbie" regiment without troops
-    const astralMode = isAstralMilitaryUnits(options.map.military?.units);
+  getEmblem(r: Regiment, roster = options.map.military.units) {
+    if (!r.n && !Object.values(r.u).length) return Icons.glyph("≡ƒö░"); // "Newbie" regiment without troops
+    const astralMode = isAstralMilitaryUnits(roster);
     if (
       !r.n &&
       pack.states[r.state]?.form === "Monarchy" &&
       pack.cells.burg[r.cell] &&
       pack.burgs[pack.cells.burg[r.cell]]?.capital
     )
-      return Icons.glyph("👑"); // "Royal" regiment based in capital
-    const sorted = Object.entries(r.u).sort((a, b) => b[1] - a[1]);
+      return Icons.glyph("≡ƒææ"); // "Royal" regiment based in capital
+    const totals = new Map<string, number>();
+    if (r.composition) {
+      for (const [origin, group] of Object.entries(r.composition))
+        totals.set(origin, (totals.get(origin) ?? 0) + sum(Object.values(group)));
+    } else {
+      for (const [key, count] of Object.entries(r.u)) {
+        const origin = r.unitOrigins?.[key] ?? key;
+        totals.set(origin, (totals.get(origin) ?? 0) + count);
+      }
+    }
+    const sorted = [...totals].sort((a, b) => b[1] - a[1]);
     const mainUnit = sorted.length > 0 ? sorted[0][0] : undefined;
-    if (!mainUnit) return Icons.glyph(r.n ? (astralMode ? "🚀" : "🌊") : "⚔️");
-    const unit = options.map.military.units.find((u: { name: string; icon: string }) => u.name === mainUnit);
+    if (!mainUnit) return Icons.glyph(r.n ? (astralMode ? "≡ƒÜÇ" : "≡ƒîè") : "ΓÜö∩╕Å");
+    const unit = roster.find((u: { name: string; icon: string }) => u.name === mainUnit);
     if (unit) return unit.icon;
     const cat = this.getCategory(mainUnit);
     if (astralMode && r.n) {
-      if (cat === "monster") return Icons.glyph("🪐");
-      if (cat === "artillery") return Icons.glyph("🛰️");
-      if (cat === "cavalry") return Icons.glyph("🛸");
-      return Icons.glyph("🚀");
+      if (cat === "monster") return Icons.glyph("≡ƒ¬É");
+      if (cat === "artillery") return Icons.glyph("≡ƒ¢░∩╕Å");
+      if (cat === "cavalry") return Icons.glyph("≡ƒ¢╕");
+      return Icons.glyph("≡ƒÜÇ");
     }
-    if (cat === "spellcaster") return Icons.glyph("🔮");
-    if (cat === "monster") return Icons.glyph("🐉");
-    if (cat === "cavalry") return Icons.glyph("🐴");
-    if (cat === "ranged") return Icons.glyph("🏹");
-    if (cat === "artillery") return Icons.glyph("💣");
-    if (cat === "naval") return Icons.glyph("🌊");
-    return Icons.glyph("⚔️");
+    if (cat === "spellcaster") return Icons.glyph("≡ƒö«");
+    if (cat === "monster") return Icons.glyph("≡ƒÉë");
+    if (cat === "cavalry") return Icons.glyph("≡ƒÉ┤");
+    if (cat === "ranged") return Icons.glyph("≡ƒÅ╣");
+    if (cat === "artillery") return Icons.glyph("≡ƒÆú");
+    if (cat === "naval") return Icons.glyph("≡ƒîè");
+    return Icons.glyph("ΓÜö∩╕Å");
   }
 }
 

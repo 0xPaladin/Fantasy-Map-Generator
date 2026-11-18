@@ -1,4 +1,5 @@
 // Regenerating one element on real generated maps
+import { sum } from "d3";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Accounts } from "@/model/economy/accounts";
 import { Goods } from "@/model/economy/goods-generator";
@@ -145,6 +146,139 @@ describe("army figures", () => {
     options.map.units.population.scale *= 100;
     Pack.markChanged();
     expect(troops()).toEqual(before);
+  });
+});
+
+describe("Military regeneration", () => {
+  const unitTroops = (
+    regiment: {
+      u: Record<string, number>;
+      unitOrigins?: Record<string, string>;
+      composition?: Record<string, Record<string, number>>;
+    },
+    unit: string
+  ) => {
+    if (regiment.composition)
+      return Object.values(regiment.composition[unit] ?? {}).reduce((total, troops) => total + troops, 0);
+    return Object.entries(regiment.u).reduce(
+      (total, [key, troops]) => total + ((regiment.unitOrigins?.[key] ?? key) === unit ? troops : 0),
+      0
+    );
+  };
+  const hasUnit = (
+    regiment: {
+      u: Record<string, number>;
+      unitOrigins?: Record<string, string>;
+      composition?: Record<string, Record<string, number>>;
+    },
+    unit: string
+  ) =>
+    regiment.composition
+      ? Boolean(regiment.composition[unit])
+      : Object.entries(regiment.u).some(([key]) => (regiment.unitOrigins?.[key] ?? key) === unit);
+  const troopsOf = (unit: string) =>
+    living(pack.states).map(s => (s.military ?? []).reduce((total, r) => total + unitTroops(r, unit), 0));
+
+  it("of one state keeps the others' regiments and the alert set", async () => {
+    await generateMap({ seed: "military-state" });
+    const [state, ...others] = living(pack.states).filter(s => s.military?.length);
+    const kept = others.map(s => s.military);
+    Military.setAlert(state.i, 4);
+    const before = state.military;
+    Military.regenerate([state.i]);
+    expect(state.alert).toBe(4);
+    expect(state.military).not.toBe(before);
+    expect(others.map(s => s.military)).toEqual(kept);
+    for (const [index, other] of others.entries()) expect(other.military).toBe(kept[index]);
+  });
+
+  it("is not called for by a unit's name, icon, crew or power, and follows a rename", async () => {
+    await generateMap({ seed: "military-roster" });
+    const roster = options.map.military.units;
+    const renamed = roster.find(unit => unit.type === "melee")!;
+    const infantry = troopsOf(renamed.name);
+    const names = living(pack.states).map(s => (s.military ?? []).map(r => r.name));
+    const edited = roster.map(unit =>
+      unit === renamed ? { ...unit, name: "guards", icon: "glyph-58", crew: 2, power: 3 } : unit
+    );
+    const stale = Military.setRoster(
+      edited,
+      roster.map(unit => unit.name)
+    );
+    expect(stale).toEqual([]);
+    expect(troopsOf("guards")).toEqual(infantry);
+    expect(troopsOf(renamed.name).every(total => !total)).toBe(true);
+    expect(living(pack.states).map(s => (s.military ?? []).map(r => r.name))).toEqual(names);
+    const led = living(pack.states)
+      .flatMap(s => s.military ?? [])
+      .filter(r => Military.getEmblem(r) === "glyph-58");
+    expect(led.length).toBeGreaterThan(0);
+    expect(led.every(r => r.icon === "glyph-58")).toBe(true);
+    Military.setRoster(
+      roster,
+      edited.map(unit => unit.name)
+    ); // the roster outlives the map
+  });
+
+  it("raising every unit anew keeps the state's troops and most regiments", async () => {
+    await generateMap({ seed: "military-update" });
+    const regiments = () => living(pack.states).flatMap(s => s.military ?? []);
+    const describe = () => regiments().map(r => [r.state, r.i, r.name, r.x, r.y, r.n]);
+    const before = describe();
+    const totals = living(pack.states).map(s => sum(s.military ?? [], r => r.a));
+    Military.raiseUnits(options.map.military.units.map(unit => unit.name));
+    const after = describe();
+    const retained = before.filter(regiment =>
+      after.some(candidate => JSON.stringify(candidate) === JSON.stringify(regiment))
+    );
+    expect(retained.length).toBeGreaterThanOrEqual(before.length - 3); // a few tiny province regiments may fold
+    expect(after.length - before.length).toBeLessThan(3); // a far island with no regiment forms its own
+    for (const [index, state] of living(pack.states).entries())
+      expect(sum(state.military ?? [], r => r.a)).toBeCloseTo(totals[index], 2);
+  });
+
+  it("drops a removed unit's troops, and raises a changed unit alone", async () => {
+    await generateMap({ seed: "military-units" });
+    const roster = options.map.military.units;
+    const regiments = () => living(pack.states).flatMap(s => s.military ?? []);
+    const changed = roster.find(unit => unit.type === "melee")!;
+    const removed = roster.find(unit => unit.type === "ranged")!;
+    const mounted = roster.find(unit => unit.type === "mounted");
+    const archers = troopsOf(removed.name);
+    const cavalry = regiments().map(r => [r.state, r.i, r.name, r.x, r.y, mounted ? unitTroops(r, mounted.name) : 0]);
+
+    const edited = roster
+      .filter(unit => unit !== removed)
+      .map(unit => (unit === changed ? { ...unit, rural: unit.rural * 2, urban: unit.urban * 2 } : unit));
+    const stale = Military.setRoster(
+      edited,
+      edited.map(unit => unit.name)
+    );
+    expect(stale).toEqual([changed.name]);
+    expect(archers.some(Boolean)).toBe(true);
+    expect(regiments().some(r => hasUnit(r, removed.name))).toBe(false);
+    expect(regiments().every(r => r.a > 0)).toBe(true);
+
+    const infantry = troopsOf(changed.name);
+    const kept = regiments();
+    Military.raiseUnits(stale);
+    const raised = [troopsOf(changed.name), troopsOf("levies")];
+    // more conscripts than before; goods scarcity moves the surplus to levies
+    expect(sum(raised[0]) + sum(raised[1])).toBeGreaterThan(sum(infantry) * 1.2);
+    expect(sum(raised[0])).toBeGreaterThan(0);
+    expect(kept.filter(regiment => regiments().includes(regiment)).length).toBeGreaterThanOrEqual(kept.length - 3);
+    const after = new Map(regiments().map(r => [`${r.state}-${r.i}`, r]));
+    for (const [state, i, name, x, y, troops] of cavalry) {
+      const regiment = after.get(`${state}-${i}`);
+      if (!regiment) continue; // it was archers alone
+      expect([regiment.name, regiment.x, regiment.y, mounted ? unitTroops(regiment, mounted.name) : 0]).toEqual([
+        name,
+        x,
+        y,
+        troops
+      ]);
+    }
+    options.map.military.units = roster;
   });
 });
 

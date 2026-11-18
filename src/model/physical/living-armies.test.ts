@@ -95,7 +95,7 @@ describe("getUnitRequiredGoods (economy alignment Phase 4)", () => {
   });
 
   it("asks mounts of cavalry and Arms of its heavy lancers", () => {
-    expect(getUnitRequiredGoods(roster.units.knight!, roster)).toEqual(["Horses", "Harnesses"]); // its category's only peer
+    expect(getUnitRequiredGoods(roster.units.knight!, roster)).toEqual(["Horses", "Tack"]); // its category's only peer
     const mounted: ResolvedRoster = {
       ...roster,
       units: {
@@ -105,7 +105,7 @@ describe("getUnitRequiredGoods (economy alignment Phase 4)", () => {
         lancer: unit({ id: "lancer", name: "Lancers", category: "cavalry", upkeep: 0.45 })
       }
     };
-    expect(getUnitRequiredGoods(mounted.units.lancer!, mounted)).toEqual(["Horses", "Harnesses", "Arms"]);
+    expect(getUnitRequiredGoods(mounted.units.lancer!, mounted)).toEqual(["Horses", "Tack", "Arms"]);
   });
 
   it("asks powder of gunpowder artillery and timber of the older engines", () => {

@@ -40,8 +40,10 @@ import {
   adjustmentsFromText,
   adjustmentsToText,
   EconomyTerms,
+  getStateFigures,
   prosperityTip,
-  renderProsperityPercent
+  renderProsperityPercent,
+  STATE_FIGURES
 } from "@/ui/economy-view";
 import type { FillBoxElement } from "@/ui/elements/fill-box";
 import { createAnnexMode } from "@/ui/map/annex-mode";
@@ -1569,7 +1571,9 @@ function mergeStates(statesToMerge: number[], rulingStateId: number, asProvinces
 
 function downloadStatesCsv(): void {
   const { scale, urbanization } = options.map.units.population;
-  const headers = CSV_COLUMNS.map(column => (column === "Area" ? `Area ${getAreaUnit("2")}` : column));
+  const headers = [...CSV_COLUMNS, ...STATE_FIGURES].map(column =>
+    column === "Area" ? `Area ${getAreaUnit("2")}` : column
+  );
   const rows = statesTable.view().all.map(s => {
     const rural = Math.round((s.rural || 0) * scale);
     const urban = Math.round((s.urban || 0) * scale * urbanization.rate);
@@ -1600,7 +1604,8 @@ function downloadStatesCsv(): void {
       ...EXPENSES.map(expense => (s.i ? s.economy.budget[expense] : "")),
       s.i ? s.economy.budget.corruption || 0 : "",
       s.i ? s.economy.treasury || 0 : "",
-      s.i ? (s.tags || []).join(";") : ""
+      s.i ? (s.tags || []).join(";") : "",
+      ...getStateFigures(s.i)
     ];
   });
 
@@ -1613,7 +1618,7 @@ async function uploadStatesCsv(text: string): Promise<void> {
   const find = (id: number) => (pack.states[id]?.removed ? undefined : pack.states[id]);
   const updated = await Controllers.CsvUpload.update(
     text,
-    CSV_COLUMNS,
+    [...CSV_COLUMNS, ...STATE_FIGURES],
     { find, units: ["Area"], text: ["State", "Full Name", "Form", "Tags"] },
     (id, row) => {
       const state = find(id)!;

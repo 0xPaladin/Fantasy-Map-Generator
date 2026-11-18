@@ -829,6 +829,7 @@ describe("Lore", () => {
   it("renames the map and sets its calendar and description", () => {
     const lore = { name: "Old", description: "", calendar: { year: 1, era: "Old Era", eraShort: "OE" } };
     vi.stubGlobal("options", { map: { lore } });
+    vi.stubGlobal("pack", { burgs: [], states: [{ i: 0 }] });
     Lore.rename(" Saltmarsh ");
     Lore.setYear(1204.4);
     Lore.setEra("Age of Ash", "AA");
@@ -877,6 +878,19 @@ describe("Lore", () => {
     expect(lore.history.ruins).toBe(5);
     expect(() => Lore.setHistory({ ruins: 0 })).toThrow("from 1 to 5");
     expect(() => Lore.setHistory({ ruins: 2.5 })).toThrow("from 1 to 5");
+  });
+
+  it("moves state campaigns with the year", () => {
+    const war = { name: "War", start: 1195, attacker: 1, defender: 2 };
+    const old = { name: "Old", start: 1000, end: 1010, attacker: 1, defender: 0 };
+    vi.stubGlobal("options", { map: { lore: { calendar: { year: 1200 } } } });
+    vi.stubGlobal("pack", {
+      burgs: [],
+      states: [{ i: 0 }, { i: 1, campaigns: [old, war] }, { i: 2, campaigns: [war] }]
+    });
+    Lore.setYear(1500);
+    expect(war).toEqual({ name: "War", start: 1495, attacker: 1, defender: 2 });
+    expect(old).toMatchObject({ start: 1300, end: 1310 });
   });
 });
 
@@ -1068,8 +1082,10 @@ describe("Military", () => {
     expect(pack.states[1].military![1]).toMatchObject({ u: { infantry: 4 }, a: 4 });
     Military.setUnits(1, id, { dragons: 1 }); // a unit type since removed stays attached
     expect(pack.states[1].military![1]).toMatchObject({ u: { dragons: 1 } });
-    expect(() => Military.setUnits(1, id, { dragons: 1.5 })).toThrow(
-      "The number of dragons must be a non-negative integer"
+    Military.setUnits(1, id, { dragons: 1.5 });
+    expect(pack.states[1].military![1]).toMatchObject({ u: { dragons: 1.5 }, a: 1.5 });
+    expect(() => Military.setUnits(1, id, { dragons: -1 })).toThrow(
+      "The number of dragons must be a non-negative number"
     );
     const half = Military.split(1, 0);
     expect(pack.states[1].military!.find(({ i }) => i === half)).toMatchObject({
@@ -1200,6 +1216,7 @@ describe("Goods and Markets", () => {
     );
     expect(() => Goods.setProduction(1, { recipes: [{ 9: 1 }] })).toThrow("unknown 9");
     expect(() => Goods.setProduction(1, { deposits: [3, 1] })).toThrow("must not exceed");
+    expect(() => Goods.setProduction(1, { clustering: 1.5 })).toThrow("from 0 to 1");
     expect(() => Goods.setCarriage(1, -1)).toThrow("non-negative");
     Goods.setDevelopment(1, 18);
     expect(options.map.goods[0].development).toBe(18);

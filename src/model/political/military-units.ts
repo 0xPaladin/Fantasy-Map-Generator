@@ -48,7 +48,7 @@ export function getDefaultMilitaryUnits(): MilitaryUnit[] {
       power: 2,
       type: "mounted",
       separate: 0,
-      goods: ["Horses", "Camels", "Harnesses"]
+      goods: ["Horses", "Camels", "Tack"]
     },
     {
       icon: "💣",
