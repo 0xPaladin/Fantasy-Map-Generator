@@ -399,6 +399,7 @@ Each slice should leave the app working.
 5. **Docs and manual check — docs shipped 2026-11-18**
    - Update `docs/wiki/Markers.md` with the lazy behavior, the profile sections and the reroll
      button.
+   - The dedicated user guide is `docs/wiki/Dungeon-generation.md`.
    - Update `docs/architecture/data-model.md` with the `generated` field.
    - Open a dungeon on an old map, verify the profile appears and the save grows only after that.
 
