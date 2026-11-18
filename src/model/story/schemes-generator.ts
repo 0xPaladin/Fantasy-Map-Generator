@@ -362,6 +362,42 @@ class SchemesModule {
     return schemes;
   }
 
+  /** Recompile one scheme for the same mastermind with a fresh goal and targets (god tool). */
+  reroll(scheme: Scheme): boolean {
+    const candidate = collectCandidates().find(
+      entry => entry.ref.kind === scheme.mastermind.kind && entry.ref.id === scheme.mastermind.id
+    );
+    if (!candidate) return false;
+
+    const relics = this.ensureRelics();
+    this.relicSequence = relics.reduce((max, relic) => Math.max(max, relic.i), 0);
+    this.usedRelicNames = new Set(relics.map(relic => relic.name));
+
+    const existing = Characters.get(scheme.villainFigure);
+    const villain =
+      existing && !existing.removed && existing.death === undefined ? existing : this.materialize(candidate);
+    const goal = chooseGoal(candidate.pool);
+    const draft = this.instantiate(candidate, villain, goal, new Set());
+
+    const orphaned = new Set(scheme.steps.map(step => step.relicId).filter((id): id is number => id !== undefined));
+    if (orphaned.size) {
+      for (let index = relics.length - 1; index >= 0; index--) {
+        if (orphaned.has(relics[index].i)) relics.splice(index, 1);
+      }
+    }
+
+    scheme.goal = goal.id;
+    scheme.villainFigure = villain.i;
+    scheme.template = draft.template;
+    scheme.keystone = draft.keystone;
+    scheme.steps = draft.steps;
+    scheme.secrecy = candidate.hidden ? rand(55, 85) : rand(20, 50);
+    scheme.status = "active";
+    delete scheme.exposed;
+    scheme.startedYear = this.year();
+    return true;
+  }
+
   private history(): History {
     if (!pack.history) pack.history = emptyHistory();
     return pack.history;

@@ -87,7 +87,14 @@ import {
   TAX_DRIFT
 } from "@/model/physical/living-fiscal";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
-import { tickSchemes } from "@/model/physical/living-schemes";
+import {
+  abortScheme as abortVillainScheme,
+  clearSchemePushLine,
+  exposeScheme as exposeVillainScheme,
+  forceSchemeStep as forceVillainStep,
+  type SchemeRuntime,
+  tickSchemes
+} from "@/model/physical/living-schemes";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
@@ -101,6 +108,7 @@ import { Stability } from "@/model/political/stability";
 import { noFinance, type State, States } from "@/model/political/states-generator";
 import { type AstralTechRegime, classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
+import { Schemes } from "@/model/story/schemes-generator";
 import { getMoneyUnit } from "@/model/units";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type { Good } from "@/types/economy";
@@ -1004,7 +1012,11 @@ class LivingModel {
 
   /** Villain schemes: world-match, pushes, exposure and succession, once a season. */
   private stepSchemes(living: LivingWorldState): void {
-    tickSchemes(living, {
+    tickSchemes(living, this.schemeRuntime());
+  }
+
+  private schemeRuntime(): SchemeRuntime {
+    return {
       isAtWar: (stateId, otherId) => this.isAtWar(stateId, otherId),
       declareWar: (stateId, otherId) => this.declareWar(stateId, otherId),
       killFigure: figureId => this.killFigure(figureId),
@@ -1016,7 +1028,33 @@ class LivingModel {
       usurpThrone: (stateId, villainFigure) => this.usurpThrone(stateId, villainFigure),
       breachDoom: (cell, schemeId) => this.breachDoom(cell, schemeId),
       ascendFaction: factionId => this.ascendFactionToState(factionId)
-    });
+    };
+  }
+
+  /** God mode: complete the active scheme step without payment or a roll. */
+  forceSchemeStep(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    return scheme ? forceVillainStep(this.getState(), scheme, this.schemeRuntime()) : false;
+  }
+
+  /** God mode: make a scheme public. */
+  exposeScheme(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    return scheme ? exposeVillainScheme(this.getState(), scheme, this.schemeRuntime()) : false;
+  }
+
+  /** God mode: abandon a scheme. */
+  abortScheme(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    return scheme ? abortVillainScheme(this.getState(), scheme, this.schemeRuntime()) : false;
+  }
+
+  /** God mode: recompile a scheme around the same mastermind. */
+  rerollScheme(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    if (!scheme) return false;
+    clearSchemePushLine(scheme);
+    return Schemes.reroll(scheme);
   }
 
   private tickNewsCount(living: LivingWorldState): number {

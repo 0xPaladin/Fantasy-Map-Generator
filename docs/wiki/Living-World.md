@@ -32,6 +32,8 @@ A **state** card shows:
 - **Issues & Crises** — **Instability** (provinces at or below 55% stability, each marked `⚠️`, with `🔥[seasons]` beside a rebelling province), dangerous factions, troubles (with daily drain), casus belli claims and grudges.
 - **Sandbox God Mode** — spark rebellion, smite ruler, force war, assault/delve/ascend/smite/spawn factions.
 
+The HUD's 🗡 **Villain Schemes** button opens the world god view: each mastermind (linked to their character sheet), goal and template, seat, secrecy meter, the ordered step list with status, channel seasons left and push counts, and **Force step**, **Expose**, **Abort** and **Re-roll** actions.
+
 A **province** or **burg** card shows stock stability (`Stability N%`), active rebellion status (`Rebellion: <Name>`), silent trouble flavor (`Flavor` or `Drain`), resident faction presence and quick links to the native editors (`Provinces Editor`, `Burg Editor`, `Regiments`).
 
 A **cell** card shows biome, owner state/province/burg, development with its era, prosperity, deposit, the Builder improvement (or pillage), and what its people produce a day by good.

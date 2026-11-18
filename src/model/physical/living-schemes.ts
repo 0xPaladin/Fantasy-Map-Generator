@@ -73,6 +73,47 @@ export function tickSchemes(living: LivingWorldState, runtime: SchemeRuntime): v
   }
 }
 
+/** God mode: complete the active step without payment or a roll. */
+export function forceSchemeStep(living: LivingWorldState, scheme: Scheme, runtime: SchemeRuntime): boolean {
+  if (scheme.status !== "active") return false;
+  if (!ensureVillain(living, scheme, runtime)) return false;
+
+  const step = activeStep(scheme) ?? scheme.steps.find(candidate => candidate.status === "pending");
+  if (!step) {
+    finishScheme(living, scheme, runtime);
+    return true;
+  }
+  if (step.status !== "active") activateStep(step, scheme);
+  completeStep(living, scheme, step, runtime);
+  return true;
+}
+
+/** God mode: make the design public. */
+export function exposeScheme(living: LivingWorldState, scheme: Scheme, runtime: SchemeRuntime): boolean {
+  if (scheme.status !== "active" || scheme.exposed) return false;
+  scheme.secrecy = 0;
+  expose(living, scheme, runtime);
+  return true;
+}
+
+/** God mode: abandon the design. */
+export function abortScheme(living: LivingWorldState, scheme: Scheme, runtime: SchemeRuntime): boolean {
+  if (scheme.status !== "active") return false;
+  clearSchemeLine(scheme);
+  collapse(
+    living,
+    scheme,
+    runtime,
+    `${Characters.get(scheme.villainFigure)?.name ?? "The mastermind"} abandons the design.`
+  );
+  return true;
+}
+
+/** Clear a scheme's one-season push line (the god tool clears before re-rolling). */
+export function clearSchemePushLine(scheme: Scheme): void {
+  clearSchemeLine(scheme);
+}
+
 function advance(living: LivingWorldState, scheme: Scheme, runtime: SchemeRuntime): void {
   if (!ensureVillain(living, scheme, runtime)) return;
 

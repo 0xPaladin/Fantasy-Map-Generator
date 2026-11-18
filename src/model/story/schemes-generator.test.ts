@@ -322,6 +322,21 @@ describe("Schemes generator", () => {
     }
   });
 
+  it("re-rolls a scheme around the same mastermind", () => {
+    richMap();
+    const schemes = Schemes.generate();
+    const scheme = schemes[0];
+    const mastermind = JSON.stringify(scheme.mastermind);
+    const villain = scheme.villainFigure;
+
+    expect(Schemes.reroll(scheme)).toBe(true);
+    expect(scheme.status).toBe("active");
+    expect(JSON.stringify(scheme.mastermind)).toBe(mastermind);
+    expect(scheme.villainFigure).toBe(villain);
+    expect(scheme.steps.length).toBeGreaterThanOrEqual(8);
+    expect(scheme.steps.some(step => step.status === "active")).toBe(true);
+  });
+
   it("compiles the same schemes for the same map and random stream", () => {
     const build = (): string => {
       richMap();

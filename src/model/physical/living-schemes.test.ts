@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type SchemeRuntime, tickSchemes } from "@/model/physical/living-schemes";
+import {
+  abortScheme,
+  exposeScheme,
+  forceSchemeStep,
+  type SchemeRuntime,
+  tickSchemes
+} from "@/model/physical/living-schemes";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { State } from "@/model/political/states-generator";
 import { Characters } from "@/model/society/characters";
@@ -393,6 +399,27 @@ describe("Scheme runtime", () => {
     }
     expect(victim.death).toBeDefined();
     expect(step.status).toBe("done");
+  });
+
+  it("applies the god tools: force step, expose and abort", () => {
+    setup();
+    const villain = addFigure();
+    const first = makeStep("research_lore", { targets: [{ kind: "burg", id: 1 }], status: "active", progress: 2 });
+    const second = makeStep("perform_ritual", { targets: [], status: "pending" });
+    const scheme = makeScheme(villain, [first, second]);
+    pack.history!.schemes = [scheme];
+    const rt = runtime();
+
+    expect(forceSchemeStep(living(), scheme, rt)).toBe(true);
+    expect(first.status).toBe("done");
+    expect(second.status).toBe("active");
+
+    expect(exposeScheme(living(), scheme, rt)).toBe(true);
+    expect(scheme.exposed).toBe(true);
+    expect(scheme.secrecy).toBe(0);
+
+    expect(abortScheme(living(), scheme, rt)).toBe(true);
+    expect(scheme.status).toBe("collapsed");
   });
 
   it("pushes two states into war", () => {

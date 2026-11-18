@@ -1,6 +1,6 @@
 # Plan — Villain Masterminds: A Roster of Villains and Their World-Altering Schemes
 
-**Status:** In progress — Phases 1–3 delivered
+**Status:** In progress — Phases 1–4 delivered
 **Goal:** On map generation, a **mastermind process** elects 3–5 villains from the people and powers already on the map (state rulers, cult hierarchs, living gods, factions, lair masters), materializes them as figures in `pack.history.figures`, and compiles for each a **scheme**: one of seven generic goals instantiated with 8–12 steps whose targets — relics, victims, provinces, ruins — are all drawn from the map. Schemes advance on the Living World tick by hybrid push (villains spend treasury to work the active step through existing systems) and world-match (a step completes when the world reaches its predicate), opposed by adventurers, suppression, heroes and each other. Completing a scheme alters the world through machinery that already exists: new religions, successions, conquests, emergent states, blights.
 
 ---
@@ -185,3 +185,12 @@ Stored on `pack.history.schemes` (and `pack.history.relics`) beside `figures`; `
 - **puppeteer**: every figure tagged `scheme_puppet:<scheme>` contributes its ruler state, which is tagged `puppet:<scheme>`; a faction mastermind also sets `stateRelations[state] = "Ally"`. A `deed` names the shadow court.
 - **unseal_doom**: `Living.breachDoom` walks three cell hops from the keystone marker and seeds up to three nearby provinces with `leyline_blight` / `ancient_curse` drain troubles, raises the eschaton by 8 and dispatches the blight.
 - **Tests**: eight end-state cases (one per goal, plus realm restoration) in `living-schemes-endstates.test.ts`, and three real-mutation cases in `living-generator.test.ts` (absorption, usurpation, breach). Full suite **3804/3804**; scenarios **50/50**; `tsc --noEmit` clean.
+
+### Phase 4 — UI (delivered)
+
+- **HUD entry**: the Living World header gained a 🗡 **Villain Schemes** button that opens the god view in the existing inspector panel; selecting a map entity or closing the inspector leaves the view.
+- **Scheme card**: active/closed counts, then for each scheme the villain's name linked to the **Characters Editor**, goal + template label, mastermind seat, `done/total` step progress (or complete/collapsed), the active step, a secrecy meter (`danger` when exposed, `exposed` tag), and the full ordered step list with status icons, target names, channel seasons left and paid-push counts.
+- **God actions** per scheme: **Force step** (completes the active step without payment or a roll), **Expose** (sets secrecy to 0 and dispatches the reveal), **Abort** (collapses the design) and **Re-roll** (recompiles around the same mastermind with a new goal and targets, reuses a living villain and removes orphaned relics). Finished schemes show disabled actions.
+- **Living API**: `forceSchemeStep`, `exposeScheme`, `abortScheme`, `rerollScheme`; `Schemes.reroll` and `clearSchemePushLine` support the tools, and the push expense line is cleared before a re-roll.
+- **Tests**: HUD cases for the schemes view, the villain link and all four actions; unit cases for reroll and for force/expose/abort. Full suite **3807/3807**; scenarios **50/50**; `tsc --noEmit` clean.
+- **Wiki**: the Living World page now names the 🗡 schemes view and its actions.

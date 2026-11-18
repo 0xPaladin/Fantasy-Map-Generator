@@ -277,3 +277,18 @@ export const SCHEME_GOAL_BY_ID = Object.fromEntries(SCHEME_GOALS.map(goal => [go
   SchemeGoalId,
   SchemeGoalDef
 >;
+
+export const SCHEME_VERB_LABELS: Record<SchemeVerb, string> = {
+  seize_relic: "Seize a relic",
+  assassinate: "Assassinate",
+  conquer: "Conquer",
+  occupy_site: "Occupy a site",
+  perform_ritual: "Perform a ritual",
+  convert: "Convert the faith",
+  corrupt_official: "Corrupt an official",
+  engineer_war: "Engineer a war",
+  infiltrate: "Infiltrate",
+  build: "Build",
+  research_lore: "Research lore",
+  breach_seal: "Breach the seal"
+};
