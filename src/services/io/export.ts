@@ -4,6 +4,7 @@ import { Grid } from "@/model/graph/grid-generator";
 import { type IconSetId, IconSets } from "@/model/icon-sets";
 import { Icons } from "@/model/icons";
 import { Rivers } from "@/model/physical/river-generator";
+import { Notes } from "@/model/story/notes";
 import { getCellPopulation, getFriendlyHeight } from "@/model/units";
 import { renderEmblemDefinitions } from "@/renderers/draw-emblems";
 import { drawScaleBar } from "@/renderers/draw-scalebar";
@@ -877,12 +878,13 @@ function saveGeoJsonRivers(): void {
 
 function saveGeoJsonMarkers(): void {
   const features = pack.markers.map(marker => {
-    const { i, type, icon, x, y, size, fill, stroke, name, note } = marker as typeof marker & {
+    const { i, type, icon, x, y, size, fill, stroke, name } = marker as typeof marker & {
       size?: number;
       fill?: string;
       stroke?: string;
     };
     const coordinates = toGeoCoordinates(x, y);
+    const note = Notes.getFull({ type: "marker", id: i }, { cache: false }) ?? "";
     const properties = { id: i, type, icon, x, y, name, note, size, fill, stroke };
     return { type: "Feature", geometry: { type: "Point", coordinates }, properties };
   });

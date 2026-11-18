@@ -6,6 +6,7 @@ vi.mock("@/model/icons", () => ({
 }));
 vi.mock("@/renderers/draw-markers", () => ({ drawMarkers: vi.fn(), setEditedMarker: vi.fn() }));
 vi.mock("@/controllers", () => ({ Controllers: {} }));
+vi.mock("@/ui/tooltips", () => ({ tip: vi.fn(), clearMainTip: vi.fn() }));
 vi.mock("@/ui/dialog/dialog-helpers", async importActual => ({
   noteButton: (await importActual<typeof import("@/ui/dialog/dialog-helpers")>()).noteButton,
   refreshEditors: vi.fn()
@@ -57,4 +58,30 @@ it("displays type default impacts and updates or resets overrides via Markers.se
   expect(setImpact).toHaveBeenCalledWith(5, { economy: null, stability: null });
   expect(econ.value).toBe("-3");
   expect(stab.value).toBe("-5");
+});
+
+it("rerolls the dungeon profile from the marker editor", () => {
+  document.body.innerHTML = '<div id="dialogs"></div><svg><svg id="marker6"></svg></svg>';
+  options.app.mode = null;
+  vi.stubGlobal("pack", {
+    markers: [{ i: 6, type: "dungeons", name: "Dungeon", cell: 0, x: 0, y: 0 }]
+  });
+  const reroll = vi.spyOn(Markers, "regenerateDungeonProfile").mockImplementation(() => {});
+
+  MarkersEditor.open(6);
+  const button = document.getElementById("markerDungeonReroll");
+  expect(button).not.toBeNull();
+
+  button!.click();
+  expect(reroll).toHaveBeenCalledWith(6);
+  reroll.mockRestore();
+});
+
+it("hides the dungeon reroll for other marker types", () => {
+  document.body.innerHTML = '<div id="dialogs"></div><svg><svg id="marker7"></svg></svg>';
+  options.app.mode = null;
+  vi.stubGlobal("pack", { markers: [{ i: 7, type: "inns", name: "Inn", cell: 0, x: 0, y: 0 }] });
+
+  MarkersEditor.open(7);
+  expect(document.getElementById("markerDungeonReroll")).toBeNull();
 });

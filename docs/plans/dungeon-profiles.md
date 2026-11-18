@@ -1,9 +1,10 @@
 # Plan — Lazy Alternate Dungeon Profiles in Marker Notes
 
-Updated: 2026-11-18. Status: **slices 1–3 shipped** (lazy marker content plumbing; the
+Updated: 2026-11-18. Status: **slices 1–4 shipped** (lazy marker content plumbing; the
 genericized dungeon data and deterministic profile/area generator; marker integration and the
-dungeon renderer). Slice 4, reroll and exports, is next. Source procedure: *Freebooters on the
-Frontier 2e,
+dungeon renderer; reroll, old-map backfill and exports). The feature is complete; remaining work
+is verification and any future generated kinds. Source procedure: *Freebooters on the Frontier
+2e,
 Vol. III — Overland & Underworld* (`FotF2e - 03 Overland & Underworld.md`, dungeon procedure
 lines 1237–3083). The source is a **procedure reference only**: every table string in the
 implementation is rewritten in the generator’s own generic vocabulary. See
@@ -390,12 +391,12 @@ Each slice should leave the app working.
    - Register the dungeon renderer in `dungeon-marker.ts`.
    - Tests: no profile html before first read; profile present after `ensureGenerated`; Watabou
      prefix preserved.
-4. **Reroll and exports**
+4. **Reroll and exports — shipped 2026-11-18**
    - `Markers.regenerateDungeonProfile(markerId, salt?)` on top of `generated.html`.
    - Marker-editor reroll button, visible for dungeons only.
    - Markers overview, CSV and GeoJSON use `getFull(..., { cache: false })`.
    - Tests: reroll replaces html, not the Watabou note; export does not cache.
-5. **Docs and manual check**
+5. **Docs and manual check — docs shipped 2026-11-18**
    - Update `docs/wiki/Markers.md` with the lazy behavior, the profile sections and the reroll
      button.
    - Update `docs/architecture/data-model.md` with the `generated` field.

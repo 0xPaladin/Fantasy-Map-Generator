@@ -7,6 +7,7 @@ vi.mock("@/renderers/layers", () => ({
 vi.mock("@/renderers/draw-markers", () => ({
   setMarkersFilter: vi.fn()
 }));
+vi.mock("@/services/io/csv", () => ({ Csv: { download: vi.fn() } }));
 vi.mock("@/controllers", () => ({
   Controllers: {
     MarkerCreator: { toggle: vi.fn() },
@@ -16,6 +17,7 @@ vi.mock("@/controllers", () => ({
 }));
 
 import { Markers } from "@/model/story/markers-generator";
+import { Csv } from "@/services/io/csv";
 import { dialogState } from "@/ui/dialog/state";
 import { MarkersOverview } from "./markers-overview";
 
@@ -105,5 +107,47 @@ describe("MarkersOverview", () => {
     targetButton.click();
 
     expect(zoom.zoomTo).toHaveBeenCalledWith(100, 200, 8, 2000);
+  });
+
+  it("exports the generated profile without caching it on the marker", () => {
+    const marker = {
+      i: 9,
+      type: "dungeons",
+      icon: "🗝️",
+      name: "Dungeon",
+      note: "Watabou legend",
+      cell: 10,
+      x: 100,
+      y: 200,
+      generated: { kind: "dungeon", version: 1, seed: "12345" }
+    };
+    Object.assign(pack, { markers: [marker] });
+    Object.assign(pack.cells, {
+      biome: Array(31).fill(1),
+      h: Array(31).fill(42),
+      province: Array(31).fill(0),
+      religion: Array(31).fill(0)
+    });
+    Object.assign(pack, {
+      cultures: [
+        { i: 0, name: "Wildlands" },
+        { i: 1, name: "Aeloran", alignment: "neutral" }
+      ],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      states: [{ i: 0, name: "Neutrals" }],
+      provinces: [{ i: 0, name: "" }],
+      religions: [{ i: 0, name: "" }]
+    });
+    options.map.seed = "12345";
+    vi.mocked(Csv.download).mockClear();
+
+    MarkersOverview.exportCsv();
+
+    const rows = vi.mocked(Csv.download).mock.calls.at(-1)?.[2] as string[][];
+    expect(rows[0][4]).toContain("Dungeon profile");
+    expect((marker.generated as { html?: string }).html).toBeUndefined();
   });
 });

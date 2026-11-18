@@ -506,4 +506,41 @@ describe("MarkersModule dungeons", () => {
     expect(marker.generated?.html).toBe(html);
     expect(marker.note).toBe(note);
   });
+
+  it("rerolls the profile and keeps the Watabou note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+    markers.addDungeon(marker, CELL);
+    pack.markers = [marker];
+    const note = marker.note;
+    const first = ensureGenerated(marker);
+
+    markers.regenerateDungeonProfile(0, "reroll");
+
+    expect(marker.note).toBe(note);
+    expect(marker.generated).toMatchObject({ kind: "dungeon", version: 1, seed: "12345" });
+    expect(marker.generated?.html).not.toBe(first);
+  });
+
+  it("backfills an older dungeon marker and its generic name", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 1, type: "dungeons", name: "Dungeon", note: "Watabou legend", cell: CELL } as Marker;
+    pack.markers = [marker];
+
+    markers.regenerateDungeonProfile(1, "backfill");
+
+    expect(marker.name).not.toBe("Dungeon");
+    expect(marker.note).toBe("Watabou legend");
+    expect(marker.generated?.html).toContain("Alternate dungeon profile");
+  });
+
+  it("refuses to reroll a marker that is not a dungeon", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    pack.markers = [{ i: 2, type: "inns", name: "Inn", cell: CELL } as Marker];
+
+    expect(() => markers.regenerateDungeonProfile(2)).toThrow("not a dungeon");
+  });
 });

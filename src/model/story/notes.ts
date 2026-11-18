@@ -22,10 +22,10 @@ class NotesStore {
   }
 
   /** The full note, including lazily generated content when the entity has it */
-  getFull(ref: EntityRef): string | undefined {
+  getFull(ref: EntityRef, { cache = true }: { cache?: boolean } = {}): string | undefined {
     const item = entity(ref);
     if (!item) return undefined;
-    return ref.type === "marker" ? fullNote(item as Marker) : item.note;
+    return ref.type === "marker" ? fullNote(item as Marker, { cache }) : item.note;
   }
 
   /** Set the short note, or remove the field when the html is empty. Returns false if the entity is gone */

@@ -50,7 +50,14 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
-import { createDungeonContent, DUNGEON_KIND, DUNGEON_VERSION, dungeonName } from "@/model/story/dungeon-marker";
+import { generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
+import {
+  createDungeonContent,
+  DUNGEON_KIND,
+  DUNGEON_VERSION,
+  dungeonContext,
+  dungeonName
+} from "@/model/story/dungeon-marker";
 import type { MarkerGeneratedContent } from "@/model/story/marker-content";
 import { Notes } from "@/model/story/notes";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
@@ -473,6 +480,25 @@ class MarkersModule {
     const marker = this.living(markerId);
     if (locked) marker.lock = true;
     else delete marker.lock;
+  }
+
+  /** Rebuild a dungeon marker's profile from its cell, keeping the short note and any custom name */
+  regenerateDungeonProfile(markerId: number, salt?: string): void {
+    const marker = this.living(markerId);
+    if (marker.type !== "dungeons" && marker.type !== "dungeon" && marker.generated?.kind !== DUNGEON_KIND)
+      throw new Error(`Marker ${markerId} is not a dungeon`);
+
+    if (!marker.name || marker.name === "Dungeon") marker.name = dungeonName(marker.cell, options.map.seed);
+    const context = dungeonContext(marker.cell, options.map.seed, marker.name);
+    const profile = generateDungeonProfile(context, salt ?? String(Date.now()));
+
+    marker.generated = {
+      kind: DUNGEON_KIND,
+      version: DUNGEON_VERSION,
+      seed: options.map.seed,
+      html: renderDungeonProfile(profile)
+    };
+    Pack.markChanged();
   }
 
   /** Set how a marker looks: size (marker), px (icon size), dx and dy (icon shift, %), pin shape, fill and stroke (pin), iconFill and iconStroke. null restores a default */

@@ -53,6 +53,10 @@ function renderDialog(): void {
   const typeTip = `Marker type. Style changes will apply to all markers of the same type. Leave blank if the marker is unique${
     isAstralView() && reading ? `. On this chart: ${reading.reading}` : ""
   }`;
+  const isDungeon =
+    selectedMarker.type === "dungeons" ||
+    selectedMarker.type === "dungeon" ||
+    selectedMarker.generated?.kind === "dungeon";
 
   const html = /* html */ `<div id="markerEditor" class="dialog">
     <div id="markerBody" style="padding-bottom: 0.3em">
@@ -127,6 +131,7 @@ function renderDialog(): void {
     </div>
     <div id="markerBottom">
       ${noteButton("markerNotes", t("Edit free text notes (legend)"))}
+      ${isDungeon ? `<button id="markerDungeonReroll" data-tip="${t("Reroll the dungeon profile")}" class="icon-cw"></button>` : ""}
       <button id="markerRadius" data-tip="${t("Show markers within a radius of this one")}" class="icon-dot-circled"></button>
       <button id="markerLock" class="icon-lock-open" data-lock-tip></button>
       <button id="markerAdd" data-tip="${t("Add additional marker of that type")}" class="icon-plus"></button>
@@ -136,6 +141,7 @@ function renderDialog(): void {
   ensureEl("dialogs").insertAdjacentHTML("beforeend", html);
 
   // add listeners — dropped together with the dialog HTML on close
+  findEl("markerDungeonReroll")?.addEventListener("click", rerollDungeonProfile);
   ensureEl("markerName").addEventListener("change", changeMarkerName);
   ensureEl("markerType").addEventListener("change", changeMarkerType);
   ensureEl("markerTags").addEventListener("change", changeMarkerTags);
@@ -270,6 +276,21 @@ function resetMarkerImpact(): void {
   Markers.setImpact(selectedMarker.i, { economy: null, stability: null });
   updateImpactInputs();
   refreshEditors();
+}
+
+function rerollDungeonProfile(): void {
+  try {
+    Markers.regenerateDungeonProfile(selectedMarker.i);
+  } catch {
+    tip(t("Could not reroll the dungeon profile"), false, "error", 4000);
+    return;
+  }
+
+  updateInputs();
+  drawMarkers();
+  refreshEditors();
+  if (findEl("notesEditor")) void Controllers.NotesEditor.refresh();
+  tip(t("Dungeon profile rerolled"), true, "success", 3000);
 }
 
 function changeMarkerTags(this: HTMLInputElement): void {

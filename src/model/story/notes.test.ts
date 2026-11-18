@@ -136,6 +136,13 @@ describe("generated notes", () => {
     expect(pack.markers[1].generated?.html).toBe("<p>Generated lazy</p>");
   });
 
+  it("reads a generated note without caching it for exports", () => {
+    makeGenerated();
+
+    expect(Notes.getFull(ref, { cache: false })).toContain("<p>Generated seed</p>");
+    expect(pack.markers[0].generated?.html).toBeUndefined();
+  });
+
   it("splits a full note back into the user note and generated html", () => {
     makeGenerated();
 
