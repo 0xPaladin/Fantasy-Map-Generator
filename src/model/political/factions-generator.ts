@@ -504,7 +504,7 @@ class FactionsModule {
         for (const s of states) {
           stateRelations[s.i] = "Enemy";
         }
-      } else if (allegiance === "chartered" && optionsOverride.patronStateId) {
+      } else if ((allegiance === "chartered" || category === "martial") && optionsOverride.patronStateId) {
         stateRelations[optionsOverride.patronStateId] = "Friendly";
       }
 

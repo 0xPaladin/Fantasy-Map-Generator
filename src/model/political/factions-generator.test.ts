@@ -265,5 +265,10 @@ describe("FactionsGenerator", () => {
       }
     }
     expect(hqInfluences.size).toBeGreaterThan(1);
+
+    const merc = active.find(f => f.type === "mercenary_company");
+    if (merc?.patronStateId) {
+      expect(merc.stateRelations[merc.patronStateId]).toBe("Friendly");
+    }
   });
 });
