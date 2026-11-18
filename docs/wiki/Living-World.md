@@ -99,7 +99,7 @@ Armies stay culture-unique combined-arms stacks: every FMG regiment is up to 20 
 
 Map generation produces at most 10 unique epic archetypes (*Grand Merchant Consortium, Adventurers' Conclave, Arcane Conclave, Frontier Warden Order, Crusader Knightly Order, Apocalyptic Cult, Shadow Brotherhood, Claimant Confederacy, Iron Free Company, Dread Sovereign Host*).
 
-- **Income** comes from the economy underneath: commercial factions take a commission on their host market's trade, underworld ones siphon provincial graft and smuggle past tariffs, martial ones draw retainers, religious and political ones take court tithes, and charters pay a tithe to their patron as a named budget line.
+- **Income** comes from the economy underneath: commercial factions take a commission on their host market's trade, underworld ones siphon provincial graft and smuggle past tariffs, martial ones draw retainers, religious and political ones take court tithes, and charters pay a tithe to their patron as a named budget line. Burg-less wilderness nodes live off the land instead, taking **hinterland dues** from the rural earnings within their reach.
 - **5 Unified Faction Agendas**: factions act via `expand_network` (found/upgrade outposts), `build_work` (commission HQ/outpost assets), `subvert` (write negative provincial `Subversion:` stability lines), `crusade_or_raid` (clear troubles / strike hostiles or raid vulnerable burgs), and `ascend` (seize a collapsing province at development 18+ to found a new sovereign state).
 
 #### Religion

@@ -223,6 +223,65 @@ describe("FactionsEditor", () => {
     expect(faction.hq.influence).toBe(85);
   });
 
+  it("edits node personnel extras, host adjustments and free-hand notes in the manage dialog", () => {
+    const faction = Factions.add({
+      name: "Gilded Compass",
+      category: "commercial",
+      type: "merchant_consortium",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
+    });
+    faction.outposts.push({
+      burgId: 2,
+      cell: 2,
+      tier: 1,
+      influence: 40,
+      secrecy: 0,
+      assets: [],
+      establishedYear: 1000
+    });
+    syncFactionState(faction);
+
+    openOutpostsDialog(faction.i);
+    let dialog = document.querySelector("#factionOutpostsDialog")!;
+
+    // Personnel column: asset crew + seeded extras, editable per node
+    const hqStaff = dialog.querySelector<HTMLInputElement>('.nodeStaffInput[data-node="hq"]')!;
+    expect(Number(hqStaff.value)).toBe(faction.hq.personnel?.extraStaff ?? 0);
+    expect(dialog.querySelector('.nodeGuardsInput[data-node="outpost"][data-index="0"]')).not.toBeNull();
+
+    hqStaff.value = "30";
+    hqStaff.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(faction.hq.personnel?.extraStaff).toBe(30);
+
+    dialog = document.querySelector("#factionOutpostsDialog")!;
+    const outpostStaff = dialog.querySelector<HTMLInputElement>('.nodeStaffInput[data-node="outpost"]')!;
+    outpostStaff.value = "12";
+    outpostStaff.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(faction.outposts[0].personnel?.extraStaff).toBe(12);
+
+    dialog = document.querySelector("#factionOutpostsDialog")!;
+    const goldInput = dialog.querySelector<HTMLInputElement>('.nodeHostGoldInput[data-node="hq"]')!;
+    goldInput.value = "2.5";
+    goldInput.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(faction.hq.hostAdjustments?.gold).toBe(2.5);
+
+    dialog = document.querySelector("#factionOutpostsDialog")!;
+    const stabInput = dialog.querySelector<HTMLInputElement>('.nodeHostStabInput[data-node="hq"]')!;
+    stabInput.value = "-1";
+    stabInput.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(faction.hq.hostAdjustments?.stability).toBe(-1);
+
+    // The ledger reports the payroll
+    expect(dialog.innerHTML).toContain("staff");
+    expect(dialog.innerHTML).toContain("guards");
+
+    // Free-hand notes save as you type
+    const notes = dialog.querySelector<HTMLTextAreaElement>("#factionNotesInput")!;
+    notes.value = "Founded by the salt guilds of Aelor";
+    notes.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(faction.note).toBe("Founded by the salt guilds of Aelor");
+  });
+
   it("formats asset benefits using FMG-native simulation effects", () => {
     expect(formatAssetBenefits("trade_depot")).toBe("+1 🪙/day Host, +3% Market Cut, +1 Influence");
     expect(formatAssetBenefits("safe_house")).toBe("-1 🪙/day Host, -1% Host Stability, +15 Secrecy");

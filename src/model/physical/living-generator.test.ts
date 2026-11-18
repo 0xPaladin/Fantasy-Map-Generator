@@ -4,6 +4,7 @@ import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
 import { getTroubleDef } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
 import { Deals } from "@/model/economy/deals";
+import { Markets } from "@/model/economy/markets-generator";
 import { nextRosterUnitInCategory, requiredDevelopmentFor } from "@/model/physical/living-armies";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
@@ -1433,17 +1434,16 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
         hq: { cell: 5, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] }
       });
       const treasuryBefore = charter.treasury ?? 0;
-
+      const before = Living.getFactionYieldBreakdown(charter);
       Living.stepFactionEmpire(living);
 
-      const breakdown = Living.getFactionYieldBreakdown(charter);
-      expect(breakdown.charterTithe).toBeGreaterThan(0);
-      expect(breakdown.upstreamGold).toBeGreaterThan(0);
+      expect(before.charterTithe).toBeGreaterThan(0);
+      expect(before.upstreamGold).toBeGreaterThan(0);
       expect(charter.treasury).toBeGreaterThan(treasuryBefore);
 
       const line = pack.states[1].economy.adjustments.find(entry => entry.name === "Chartered Faction Tithes");
       expect(line).toBeDefined();
-      expect(line!.value).toBeCloseTo(breakdown.charterTithe / 90, 2); // a day's tithe, as adjustments are
+      expect(line!.value).toBeCloseTo(before.charterTithe / 90, 2); // a day's tithe, as adjustments are
     });
 
     it("enriches an underworld faction from the host province's official graft", () => {
@@ -3882,13 +3882,15 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     it("buys its goods from the town's market, and stalls without them", () => {
       projectWorld();
       options.map.goods = [{ i: 1, name: "Stone", value: 1.5 }] as unknown as typeof options.map.goods;
-      const market = { i: 1, centerBurgId: 1, goods: { 1: { stock: 10, price: 1.5 } } };
-      pack.markets = [market] as unknown as typeof pack.markets;
+      const stocked = { i: 1, centerBurgId: 1, goods: { 1: { stock: 10, price: 1.5 } } };
+      pack.markets = [{ i: 1, centerBurgId: 1, goods: {} }] as unknown as typeof pack.markets; // the run's to rebuild
       pack.cells.market = new Uint16Array([0, 1, 1, 1, 0, 0]);
+      // the work buys through the town's market; the economy run owns pack.markets.goods, not this stocked copy
+      vi.spyOn(Markets, "ofBurg").mockReturnValue(stocked as never);
 
       expect(Living.commissionProject(1, "walls", 1)).toBe(true);
       Living.tick(2);
-      expect(market.goods[1].stock).toBe(4); // six units of stone spent
+      expect(stocked.goods[1].stock).toBe(4); // six units of stone spent
 
       // The next wall cannot be built twice at the same burg.
       expect(Living.commissionProject(1, "walls", 1)).toBe(false);

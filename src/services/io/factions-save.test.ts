@@ -126,6 +126,30 @@ describe("Factions .map Serialization and Legacy Migration", () => {
     expect(history.events[0].text).toBe("Border war");
   });
 
+  it("round-trips personnel extras and host adjustments on faction nodes", () => {
+    const faction: Faction = {
+      ...sampleFaction,
+      hq: {
+        ...sampleFaction.hq,
+        personnel: { extraStaff: 24, extraGuards: 9 },
+        hostAdjustments: { gold: 1.5, stability: -0.5 }
+      },
+      outposts: [
+        {
+          ...sampleFaction.outposts[0],
+          personnel: { extraStaff: 7, extraGuards: 3 },
+          hostAdjustments: { gold: -1 }
+        }
+      ]
+    };
+    const factions: Faction[] = JSON.parse(JSON.stringify([{ i: 0 }, faction]));
+
+    expect(factions[1].hq.personnel).toEqual({ extraStaff: 24, extraGuards: 9 });
+    expect(factions[1].hq.hostAdjustments).toEqual({ gold: 1.5, stability: -0.5 });
+    expect(factions[1].outposts[0].personnel).toEqual({ extraStaff: 7, extraGuards: 3 });
+    expect(factions[1].outposts[0].hostAdjustments).toEqual({ gold: -1 });
+  });
+
   it("handles ancient maps with no faction record", () => {
     const data: string[] = Array.from({ length: 50 }, () => "");
 

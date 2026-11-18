@@ -11,6 +11,7 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "pottery",
     location: "any",
     description: "Warehousing and caravansary coordinating local and regional exchange.",
+    crew: 1,
     yields: { influence: 1 },
     burgImpact: { gold: 1 }
   },
@@ -23,6 +24,7 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "currency",
     location: "burg",
     description: "Financial hub handling credit, coin exchange, and commercial loans.",
+    crew: 2,
     yields: { influence: 2 },
     burgImpact: { gold: 2 }
   },
@@ -35,6 +37,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "banking",
     location: "burg",
     description: "Continental trading floor driving international commodity monopolies.",
+    crew: 3,
+    garrison: 1,
     yields: { influence: 4, development: 1 },
     burgImpact: { gold: 4 }
   },
@@ -46,6 +50,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     cost: 40,
     location: "any",
     description: "Meeting hall and posting board for wandering heroes and scouts.",
+    crew: 1,
+    garrison: 3,
     yields: { influence: 2 },
     burgImpact: { stability: 2 }
   },
@@ -58,6 +64,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "writing",
     location: "any",
     description: "Repository of ancient cartography, relic histories, and monster lore.",
+    crew: 2,
+    garrison: 1,
     yields: { influence: 3, development: 2 },
     burgImpact: { stability: 1 }
   },
@@ -70,6 +78,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "education",
     location: "hq_only",
     description: "Sovereign hall uniting legendary guilds and artifact researchers.",
+    crew: 3,
+    garrison: 1,
     yields: { influence: 6, development: 4 },
     burgImpact: { stability: 4 }
   },
@@ -81,6 +91,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     cost: 35,
     location: "burg",
     description: "Concealed cellar and bolt-hole for covert operators and contraband.",
+    crew: 1,
+    garrison: 2,
     yields: { secrecy: 15 },
     burgImpact: { gold: -1, stability: -1 }
   },
@@ -93,6 +105,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "masonry",
     location: "any",
     description: "Subterranean canal network bypassing city walls and state customs gates.",
+    crew: 2,
+    garrison: 2,
     yields: { secrecy: 25 },
     burgImpact: { gold: -2, stability: -3 }
   },
@@ -105,6 +119,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "guilds",
     location: "hq_only",
     description: "Clandestine underworld senate orchestrating black markets and contract hits.",
+    crew: 3,
+    garrison: 1,
     yields: { influence: 4, secrecy: 10 },
     burgImpact: { stability: -6 }
   },
@@ -116,6 +132,7 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     cost: 30,
     location: "any",
     description: "Consecrated sanctuary offering shelter and receiving pious tithes.",
+    crew: 1,
     yields: { influence: 2 },
     burgImpact: { stability: 2 }
   },
@@ -128,6 +145,7 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "philosophy",
     location: "any",
     description: "Scholarly cloister illuminating sacred manuscripts and compiling historical annals.",
+    crew: 2,
     yields: { influence: 3, development: 2 },
     burgImpact: { stability: 1 }
   },
@@ -140,6 +158,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "theology",
     location: "any",
     description: "Grand sanctum radiating divine zeal, mystical rites, or forbidden sorceries.",
+    crew: 3,
+    garrison: 1,
     yields: { influence: 5, militaryCap: 1 },
     burgImpact: { stability: -2 }
   },
@@ -151,6 +171,7 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     cost: 45,
     location: "burg",
     description: "Loose web of tavern whispers, palace servants, and courier intercepts.",
+    crew: 1,
     yields: { influence: 2, secrecy: 15 },
     burgImpact: { stability: 1 }
   },
@@ -163,6 +184,7 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "machinery",
     location: "burg",
     description: "Movable-type workshop printing doctrine, royal edicts, or subversive manifestos.",
+    crew: 2,
     yields: { influence: 5, development: 2 },
     burgImpact: { stability: 2 }
   },
@@ -175,6 +197,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "civil_service",
     location: "hq_only",
     description: "Administrative intelligence center coordinating diplomatic intrigue and state coups.",
+    crew: 3,
+    garrison: 1,
     yields: { influence: 6, militaryCap: 1 },
     burgImpact: { stability: 3 }
   },
@@ -186,6 +210,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     cost: 50,
     location: "any",
     description: "Fortified drill grounds training foot soldiers and housing mercenary recruits.",
+    crew: 1,
+    garrison: 4,
     yields: { militaryCap: 1 },
     burgImpact: { stability: 1 }
   },
@@ -198,6 +224,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "iron_working",
     location: "any",
     description: "Blacksmith forge manufacturing arms, heavy armor, and siege gear.",
+    crew: 2,
+    garrison: 2,
     yields: { militaryCap: 1, development: 1 },
     burgImpact: { gold: 2 }
   },
@@ -210,6 +238,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "chivalry",
     location: "hq_only",
     description: "High stone fortress anchoring heavy garrisons, war councils, and siege engines.",
+    crew: 3,
+    garrison: 3,
     yields: { militaryCap: 2 },
     burgImpact: { stability: 4 }
   },
@@ -222,6 +252,7 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "chemistry",
     location: "any",
     description: "Laboratory refining explosive reagents, healing draughts, and transmutations.",
+    crew: 2,
     yields: { influence: 2, development: 3 },
     burgImpact: { gold: 1 }
   },
@@ -234,6 +265,8 @@ export const FACTION_ASSETS_CATALOG: Record<string, FactionAssetDef> = {
     requiredTech: "mining",
     location: "wilderness",
     description: "Excavated mine tapping deep ore veins and subterranean fortifications.",
+    crew: 2,
+    garrison: 1,
     yields: { gold: 3, development: 2 }
   }
 };
@@ -253,6 +286,8 @@ export function getFactionAsset(id: string): FactionAssetDef | undefined {
     requiredTech: civ.requiredTech,
     location: civ.factionLocation ?? "any",
     description: civ.name,
+    crew: tier,
+    garrison: tier >= 3 ? 1 : 0,
     yields: {
       influence: civ.stats.culture
     }

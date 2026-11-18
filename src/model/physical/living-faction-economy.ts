@@ -18,6 +18,7 @@ import type {
   FactionExpenseLine,
   FactionHq,
   FactionOutpost,
+  FactionPersonnel,
   FactionRevenueLine,
   FactionRevenueRates
 } from "@/types/factions";
@@ -113,6 +114,92 @@ export function factionExtractionNetShift(faction: Faction): number {
 function nodeInfluenceFactor(node: FactionHq | FactionOutpost): number {
   const influence = minmax(node.influence ?? 50, 0, 100);
   return 0.5 + influence / 100;
+}
+
+const HINTERLAND_RADIUS = { hq: 5, outpost: 2 }; // hops: outposts reach 2 + tier
+
+const HINTERLAND_LABELS: Record<FactionCategory, string> = {
+  commercial: "Hinterland dues",
+  underworld: "Rural extortion",
+  martial: "Forage & tribute",
+  religious: "Rural tithes",
+  political: "Rural levies",
+  adventuring: "Patrol fees"
+};
+
+/** Rural earnings within a burg-less node's reach that no closer burg-less node claims */
+function hinterlandEarned(node: FactionHq | FactionOutpost): number {
+  const { cells, factions } = pack;
+  if (node.burgId || node.pillaged || !cells?.c || !cells.pop || !factions?.length) return 0;
+
+  const reach = (entry: FactionHq | FactionOutpost) =>
+    "tier" in entry ? HINTERLAND_RADIUS.outpost + entry.tier : HINTERLAND_RADIUS.hq;
+  const candidates: {
+    node: FactionHq | FactionOutpost;
+    cell: number;
+    influence: number;
+    factionId: number;
+    radius: number;
+  }[] = [];
+  for (const faction of factions) {
+    if (!faction?.i || faction.removed) continue;
+    for (const entry of [faction.hq, ...(faction.outposts ?? [])]) {
+      if (!entry || entry.burgId || entry.pillaged) continue;
+      candidates.push({
+        node: entry,
+        cell: entry.cell,
+        influence: entry.influence ?? 50,
+        factionId: faction.i,
+        radius: reach(entry)
+      });
+    }
+  }
+  const self = candidates.find(entry => entry.node === node);
+  if (!self) return 0;
+
+  const distance = (candidate: (typeof candidates)[number]) => {
+    const hops: number[] = [];
+    hops[candidate.cell] = 0;
+    const queue = [candidate.cell];
+    while (queue.length) {
+      const cellId = queue.shift()!;
+      if (hops[cellId] >= candidate.radius) continue;
+      for (const neighbor of cells.c![cellId] ?? []) {
+        if (hops[neighbor] !== undefined) continue;
+        hops[neighbor] = hops[cellId] + 1;
+        queue.push(neighbor);
+      }
+    }
+    return hops;
+  };
+  const distances = new Map(candidates.map(candidate => [candidate, distance(candidate)]));
+
+  const owns = (cellId: number): boolean => {
+    const hops = distances.get(self)?.[cellId];
+    if (hops === undefined) return false;
+    for (const candidate of candidates) {
+      if (candidate === self) continue;
+      const other = distances.get(candidate)?.[cellId];
+      if (other === undefined) continue;
+      const beats =
+        other < hops ||
+        (other === hops && candidate.influence > self.influence) ||
+        (other === hops && candidate.influence === self.influence && candidate.factionId < self.factionId);
+      if (beats) return false;
+    }
+    return true;
+  };
+
+  let earned = 0;
+  for (const cellId of cells.i ?? []) {
+    if (!cells.pop[cellId] || cells.burg?.[cellId] || !owns(cellId)) continue;
+    try {
+      earned += Prosperity.getRuralCell(cellId)?.earned ?? 0;
+    } catch {
+      // minimal maps without the economy fall back to no dues
+    }
+  }
+  return rn(earned, 2);
 }
 
 export { COMMISSION_PER_ASSET };
@@ -309,6 +396,20 @@ export function factionUpstreamIncome(faction: Faction, node: FactionHq | Factio
     }
   }
 
+  // burg-less nodes live off the land: dues from the rural earnings in their reach
+  if (!burgId) {
+    const reach = hinterlandEarned(node);
+    if (reach > 0) {
+      lines.push({
+        key: "hinterland_dues",
+        label: HINTERLAND_LABELS[faction.category] ?? "Hinterland dues",
+        daily: reach * (rates.primary / 100) * infFactor,
+        rateKey: "primary",
+        rate: rates.primary
+      });
+    }
+  }
+
   const assetDaily = (node.assets ?? []).reduce((sum, aid) => sum + (getFactionAsset(aid)?.yields?.gold ?? 0), 0);
   if (assetDaily > 0) lines.push({ key: "asset_extraction", label: "Asset extraction", daily: assetDaily });
   if (!lines.length && (!hostStateId || !state?.i || state.removed)) return NONE;
@@ -374,19 +475,56 @@ const FACTION_CORRUPTION_BASE: Record<FactionCategory, number> = {
   adventuring: 8
 };
 
-/** Effective footprint weight driving daily upkeep needs across active HQ and outposts */
-export function factionNodeScale(faction: Faction): number {
-  let scale = 0;
-  if (faction.hq && !faction.hq.pillaged) {
-    const hqInf = minmax(faction.hq.influence ?? 70, 0, 100);
-    scale += 1.5 * (0.5 + hqInf / 100);
+const FACTION_NEED = { administration: 0.06, court: 0.05, infrastructure: 0.03, guard: 0.05 }; // 🪙/head/day
+
+/** Effective personnel across active nodes: what their completed assets require plus the stored extras */
+export function factionPersonnel(faction: Faction): { staff: number; guards: number } {
+  let staff = 0;
+  let guards = 0;
+  const add = (node: FactionHq | FactionOutpost) => {
+    for (const aid of node.assets ?? []) {
+      const def = getFactionAsset(aid);
+      staff += def?.crew ?? 1;
+      guards += def?.garrison ?? 0;
+    }
+    staff += node.personnel?.extraStaff ?? 0;
+    guards += node.personnel?.extraGuards ?? 0;
+  };
+  if (faction.hq && !faction.hq.pillaged) add(faction.hq);
+  for (const op of faction.outposts ?? []) if (!op.pillaged) add(op);
+  return { staff, guards };
+}
+
+/** Personnel a node keeps beyond what its assets require, from its influence, tier and category */
+export function factionPersonnelSeed(
+  node: Pick<FactionHq, "influence" | "burgId"> & Partial<Pick<FactionOutpost, "tier">>,
+  isHq: boolean,
+  category: FactionCategory,
+  type?: string
+): FactionPersonnel {
+  const influence = minmax(node.influence ?? (isHq ? 70 : 35), 0, 100) / 100;
+  const guardMult = type === "dread_host" ? 2 : category === "martial" ? 1.5 : 1;
+  if (isHq) {
+    return {
+      extraStaff: Math.round((16 + influence * 14) * (node.burgId ? 1 : 0.75)),
+      extraGuards: Math.round((4 + influence * 8) * guardMult)
+    };
   }
-  for (const op of faction.outposts ?? []) {
-    if (op.pillaged) continue;
-    const inf = minmax(op.influence ?? 0, 0, 100);
-    scale += 0.5 + inf / 100;
-  }
-  return rn(scale, 2);
+  return {
+    extraStaff: 4 + (node.tier ?? 1) * 2 + Math.round(influence * 4),
+    extraGuards: Math.round((2 + influence * 3) * guardMult)
+  };
+}
+
+/** Fill a node's personnel extras and flat host adjustments when missing (new nodes and old saves) */
+export function seedNodeFactionPersonnel(
+  node: FactionHq | FactionOutpost,
+  isHq: boolean,
+  category: FactionCategory,
+  type?: string
+): void {
+  node.personnel ??= factionPersonnelSeed(node, isHq, category, type);
+  node.hostAdjustments ??= {};
 }
 
 export interface FactionNodePresenceImpact {
@@ -480,9 +618,13 @@ export function factionNodeHostPresence(
   assetGoldDaily = rn(assetGoldDaily, 2);
   assetStabilityDelta = rn(assetStabilityDelta, 1);
 
+  // the node's flat host adjustments ride on top, unscaled by influence or prosperity
+  const extraGoldDaily = hasBurg ? rn(node.hostAdjustments?.gold ?? 0, 2) : 0;
+  const extraStabilityDelta = hasState ? rn(node.hostAdjustments?.stability ?? 0, 1) : 0;
+
   return {
-    goldDaily: rn(presenceGoldDaily + assetGoldDaily, 2),
-    stabilityDelta: rn(presenceStabilityDelta + assetStabilityDelta, 1),
+    goldDaily: rn(presenceGoldDaily + assetGoldDaily + extraGoldDaily, 2),
+    stabilityDelta: rn(presenceStabilityDelta + assetStabilityDelta + extraStabilityDelta, 1),
     presenceGoldDaily,
     presenceStabilityDelta,
     assetGoldDaily,
@@ -529,27 +671,14 @@ export function computeFactionEconomy(
 
   const budget = factionBudgetFor(faction);
   const militaryBlockDaily = blockUpkeepSeasonal / SEASON_DAYS;
-  const nodeScale = factionNodeScale(faction);
 
   const activeNodes: (FactionHq | FactionOutpost)[] = [];
   if (faction.hq && !faction.hq.pillaged) activeNodes.push(faction.hq);
-  let activeOutposts = 0;
-  for (const op of faction.outposts ?? []) {
-    if (!op.pillaged) {
-      activeNodes.push(op);
-      activeOutposts += 1;
-    }
-  }
-  let totalAssets = 0;
-  let assetCostSum = 0;
+  for (const op of faction.outposts ?? []) if (!op.pillaged) activeNodes.push(op);
   let hostProsperitySum = 0;
   let hostBurgCount = 0;
   const upstreamReadable = canReadUpstreamEconomy();
   for (const node of activeNodes) {
-    for (const aid of node.assets ?? []) {
-      totalAssets += 1;
-      assetCostSum += getFactionAsset(aid)?.cost ?? 50;
-    }
     if (upstreamReadable && node.burgId) {
       try {
         const burgProsperity = Prosperity.getBurg(node.burgId)?.prosperity;
@@ -564,15 +693,15 @@ export function computeFactionEconomy(
   }
   const hostProsperity = hostBurgCount > 0 ? hostProsperitySum / hostBurgCount : 0.5;
 
+  const { staff, guards } = factionPersonnel(faction);
   const requiredMap: Record<FactionExpenseBucket, number> = {
-    administration: rn(0.45 * nodeScale + 0.25 * activeOutposts ** 1.2, 2),
+    administration: rn(FACTION_NEED.administration * staff, 2),
     court: rn(
-      (0.35 * nodeScale + 0.12 * totalAssets) *
-        (faction.category === "religious" || faction.category === "political" ? 1.2 : 1),
+      FACTION_NEED.court * staff * (faction.category === "religious" || faction.category === "political" ? 1.2 : 1),
       2
     ),
-    infrastructure: rn(0.25 * nodeScale + assetCostSum * 0.003, 2),
-    military: rn(Math.max(0.2 * nodeScale, militaryBlockDaily), 2)
+    infrastructure: rn(FACTION_NEED.infrastructure * staff, 2),
+    military: rn(Math.max(FACTION_NEED.guard * guards, militaryBlockDaily), 2)
   };
 
   let baseCorruption = FACTION_CORRUPTION_BASE[faction.category] ?? 10;
@@ -664,7 +793,7 @@ export function computeFactionEconomy(
     hostProductShare,
     expenses,
     spentShare,
-    nodeScale,
+    personnel: { staff, guards },
     requiredTotalDaily,
     corruptionRate,
     corruptionDaily,

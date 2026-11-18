@@ -27,6 +27,18 @@ export interface FactionAgenda {
   required: number;
 }
 
+/** Staff and guards a node keeps beyond what its assets require */
+export interface FactionPersonnel {
+  extraStaff: number;
+  extraGuards: number;
+}
+
+/** Flat host impact a node's user sets, over and above the influence-scaled core presence */
+export interface FactionHostAdjustments {
+  gold?: number;
+  stability?: number;
+}
+
 export interface FactionHq {
   cell: number;
   burgId?: number;
@@ -37,6 +49,8 @@ export interface FactionHq {
   pillaged?: boolean;
   influence?: number; // 0..100, urban HQ suppression health (defaults to 70)
   secrecy: number; // 0..100
+  personnel?: FactionPersonnel;
+  hostAdjustments?: FactionHostAdjustments;
   assets: string[];
   sim?: BurgSimState;
 }
@@ -49,6 +63,8 @@ export interface FactionOutpost {
   tier: 1 | 2 | 3;
   influence: number; // 0..100
   secrecy: number; // 0..100
+  personnel?: FactionPersonnel;
+  hostAdjustments?: FactionHostAdjustments;
   assets: string[];
   establishedYear: number;
   pillaged?: boolean;
@@ -145,6 +161,8 @@ export interface FactionAssetDef {
   requiredTech?: string;
   location: FactionAssetLocation;
   description: string;
+  crew?: number; // staff the completed work requires
+  garrison?: number; // guards the completed work requires
   yields: {
     gold?: number;
     influence?: number;
@@ -231,8 +249,8 @@ export interface FactionEconomyBreakdown {
   expenses: FactionExpenseLine[];
   /** Total percentage of collected revenue spent across the 4 buckets */
   spentShare: number;
-  /** Effective node scale driving required costs */
-  nodeScale: number;
+  /** Effective headcount across active nodes: asset requirements plus stored extras */
+  personnel: { staff: number; guards: number };
   /** Sum of required daily costs across all 4 buckets */
   requiredTotalDaily: number;
   /** Corruption / skimming percentage (0..100) and daily gold lost */

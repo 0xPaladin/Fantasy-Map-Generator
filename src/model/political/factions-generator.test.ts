@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { factionPersonnelSeed } from "@/model/physical/living-faction-economy";
 import type { Burg } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions } from "@/model/political/factions-generator";
 import type { State } from "@/model/political/states-generator";
@@ -155,6 +156,38 @@ describe("FactionsGenerator", () => {
     expect(Factions.active().length).toBe(initialCount);
   });
 
+  it("seeds personnel extras and empty host adjustments on every generated node", () => {
+    Factions.generate();
+    for (const faction of Factions.active()) {
+      for (const [node, _isHq] of [[faction.hq, true], ...faction.outposts.map(op => [op, false] as const)] as const) {
+        expect(node.personnel).toBeDefined();
+        expect(node.personnel!.extraStaff).toBeGreaterThan(0);
+        expect(Number.isInteger(node.personnel!.extraStaff)).toBe(true);
+        expect(node.personnel!.extraGuards).toBeGreaterThan(0);
+        expect(Number.isInteger(node.personnel!.extraGuards)).toBe(true);
+        expect(node.hostAdjustments).toEqual({});
+      }
+    }
+  });
+
+  it("sizes personnel from influence, tier, category and node kind", () => {
+    // urban HQ at 60 influence: 16 + 0.6 × 14 staff, 4 + 0.6 × 8 guards
+    expect(factionPersonnelSeed({ influence: 60, burgId: 1 }, true, "commercial")).toEqual({
+      extraStaff: 24,
+      extraGuards: 9
+    });
+    // wilderness dread host HQ: staff ×0.75, guards ×2
+    expect(factionPersonnelSeed({ influence: 60 }, true, "martial", "dread_host")).toEqual({
+      extraStaff: 18,
+      extraGuards: 18
+    });
+    // martial outpost tier 2 at 40 influence: staff 4 + 4 + 2, guards (2 + 1) × 1.5
+    expect(factionPersonnelSeed({ influence: 40, burgId: 2, tier: 2 }, false, "martial")).toEqual({
+      extraStaff: 10,
+      extraGuards: 5
+    });
+  });
+
   it("ensureFactionNodeSim creates a node sim with civBuildings and hp", () => {
     const outpost: FactionOutpost = {
       burgId: 2,
@@ -232,5 +265,10 @@ describe("FactionsGenerator", () => {
       }
     }
     expect(hqInfluences.size).toBeGreaterThan(1);
+
+    const merc = active.find(f => f.type === "mercenary_company");
+    if (merc?.patronStateId) {
+      expect(merc.stateRelations[merc.patronStateId]).toBe("Friendly");
+    }
   });
 });

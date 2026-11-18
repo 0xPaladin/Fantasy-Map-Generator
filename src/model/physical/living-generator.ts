@@ -71,7 +71,8 @@ import {
   factionNodeHostPresence,
   factionUpstreamIncome,
   projectedAssetSeasons,
-  SEASON_DAYS
+  SEASON_DAYS,
+  seedNodeFactionPersonnel
 } from "@/model/physical/living-faction-economy";
 import {
   CORRUPTION_DRIFT,
@@ -2124,6 +2125,8 @@ class LivingModel {
       pillaged: false,
       influence: survivor.influence,
       secrecy: survivor.secrecy,
+      personnel: survivor.personnel,
+      hostAdjustments: survivor.hostAdjustments,
       assets: [...survivor.assets],
       sim: survivor.sim
     };
@@ -2878,7 +2881,8 @@ class LivingModel {
       if (!state?.i || state.removed) continue;
       const others = (state.economy.adjustments ?? []).filter(line => line.name !== CHARTER_TITHE);
       const value = Math.round(((charters.get(state.i) ?? 0) / SEASON_DAYS) * 100) / 100; // a day's, as adjustments are
-      if (value === (state.economy.adjustments ?? []).find(line => line.name === CHARTER_TITHE)?.value) continue;
+      const current = (state.economy.adjustments ?? []).find(line => line.name === CHARTER_TITHE)?.value ?? 0;
+      if (value === current) continue; // unchanged; a charter-less state must not re-dirty the economy every season
       state.economy.adjustments = value > 0 ? [...others, { name: CHARTER_TITHE, value }] : others;
       living.economyDirty = true;
     }
@@ -8270,6 +8274,7 @@ class LivingModel {
             assets: defaultAsset ? [defaultAsset] : [],
             establishedYear: year
           };
+          seedNodeFactionPersonnel(outpost, false, faction.category, faction.type);
           ensureFactionNodeSim(outpost, false);
           faction.outposts.push(outpost);
           this.pushNews(living, {

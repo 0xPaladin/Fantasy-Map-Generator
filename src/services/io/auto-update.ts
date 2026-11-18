@@ -21,6 +21,7 @@ import type { MapData } from "@/model/options/options-schema";
 import { Biomes } from "@/model/physical/biomes-generator";
 import { type Feature, Features, LAKE_SUBTYPES, OCEAN_SUBTYPES } from "@/model/physical/features-generator";
 import { Lakes } from "@/model/physical/lakes";
+import { seedNodeFactionPersonnel } from "@/model/physical/living-faction-economy";
 import { Relief, type ReliefIcon, type ReliefIconType, type ReliefSet } from "@/model/physical/relief-generator";
 import { Rivers } from "@/model/physical/river-generator";
 import { Armoria } from "@/model/political/armoria";
@@ -2383,6 +2384,14 @@ async function migrateLegacyMap(mapVersion: string, data: string[], svg: LegacyS
   }
 
   pack.factions ??= [{ i: 0 } as Faction];
+
+  // faction-personnel.md: nodes carry personnel extras and flat host adjustments
+  for (const faction of pack.factions) {
+    if (!faction?.i || faction.removed || !faction.hq) continue;
+    seedNodeFactionPersonnel(faction.hq, true, faction.category, faction.type);
+    for (const outpost of faction.outposts ?? [])
+      seedNodeFactionPersonnel(outpost, false, faction.category, faction.type);
+  }
 }
 
 // rendered for the geometry the steps measure, in a shadow root so its ids never meet the live map's

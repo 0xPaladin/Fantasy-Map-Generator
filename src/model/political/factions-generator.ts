@@ -4,7 +4,11 @@ import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers
 import { getFactionAsset } from "@/data/faction-assets";
 import { EPIC_FACTION_IDS, FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
 import { assignStateRoster } from "@/data/roster-content";
-import { defaultFactionBudget, defaultFactionRevenueRates } from "@/model/physical/living-faction-economy";
+import {
+  defaultFactionBudget,
+  defaultFactionRevenueRates,
+  seedNodeFactionPersonnel
+} from "@/model/physical/living-faction-economy";
 import {
   Military,
   type Regiment,
@@ -500,7 +504,7 @@ class FactionsModule {
         for (const s of states) {
           stateRelations[s.i] = "Enemy";
         }
-      } else if (allegiance === "chartered" && optionsOverride.patronStateId) {
+      } else if ((allegiance === "chartered" || category === "martial") && optionsOverride.patronStateId) {
         stateRelations[optionsOverride.patronStateId] = "Friendly";
       }
 
@@ -521,6 +525,8 @@ class FactionsModule {
           rng
         );
       for (const op of outposts) markBurgHost(op.burgId);
+      seedNodeFactionPersonnel(hq, true, category, type);
+      for (const op of outposts) seedNodeFactionPersonnel(op, false, category, type);
 
       let military: Regiment[] = [];
       if (category === "martial" || allegiance === "hostile") {
@@ -925,6 +931,8 @@ class FactionsModule {
     };
 
     syncFactionState(faction);
+    if (faction.hq) seedNodeFactionPersonnel(faction.hq, true, faction.category, faction.type);
+    for (const op of faction.outposts) seedNodeFactionPersonnel(op, false, faction.category, faction.type);
     pack.factions.push(faction);
     return faction;
   }
