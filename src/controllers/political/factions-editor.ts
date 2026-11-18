@@ -806,40 +806,53 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       : `<span class="muted">—</span>`;
   };
 
-  const nodePersonnelHtml = (node: FactionHq | FactionOutpost, kind: "hq" | number): string => {
+  const nodeBurgNameHtml = (node: FactionHq | FactionOutpost, name: string): string =>
+    node.burgId
+      ? `<span class="openBurgBtn pointer" data-burg="${node.burgId}" data-tip="${t("Click to open the Burg Editor")}" style="text-decoration: underline;">${escapeHtml(name)}</span>`
+      : escapeHtml(name);
+
+  const nodeStaffHtml = (node: FactionHq | FactionOutpost, kind: "hq" | number): string => {
     let crew = 0;
-    let garrison = 0;
-    for (const aid of node.assets ?? []) {
-      const def = getFactionAsset(aid);
-      crew += def?.crew ?? 1;
-      garrison += def?.garrison ?? 0;
-    }
-    const extraStaff = node.personnel?.extraStaff ?? 0;
-    const extraGuards = node.personnel?.extraGuards ?? 0;
-    const key = kind === "hq" ? "hq" : `outpost:${kind}`;
+    for (const aid of node.assets ?? []) crew += getFactionAsset(aid)?.crew ?? 1;
+    const extra = node.personnel?.extraStaff ?? 0;
     const dataNode = kind === "hq" ? 'data-node="hq"' : `data-node="outpost" data-index="${kind}"`;
     const disabled = node.pillaged ? "disabled" : "";
     const tip = t(
-      "Assets require {{crew}} staff and {{garrison}} guards; extras beyond that are the node's own payroll - staff are paid by administration, court and infrastructure, guards by military. Host adjustments add a flat daily impact on top of the influence-scaled presence",
-      { crew, garrison }
+      "Assets require {{crew}} staff; extras are the node's own payroll, paid by administration, court and infrastructure",
+      { crew }
     );
-    const style = "width: 2.7em; text-align: right; margin: 0;";
-    return `<div data-node-personnel="${key}" data-tip="${escapeHtml(tip)}" style="font-size: 0.82em; line-height: 1.6; text-align: left;">
-        <div>👥${crew}+<input type="number" class="nodeStaffInput nodePersonnelInput" ${dataNode} min="0" step="1" value="${extraStaff}" ${disabled} style="${style}" /> = ${crew + extraStaff}</div>
-        <div>⚔️${garrison}+<input type="number" class="nodeGuardsInput nodePersonnelInput" ${dataNode} min="0" step="1" value="${extraGuards}" ${disabled} style="${style}" /> = ${garrison + extraGuards}</div>
-        <div class="muted" data-tip="${escapeHtml(t("Flat host impact on top of the scaled presence"))}">Host +<input type="number" class="nodeHostGoldInput nodePersonnelInput" ${dataNode} step="0.5" value="${node.hostAdjustments?.gold ?? 0}" ${disabled} style="width: 3.2em; text-align: right; margin: 0;" />🪙 +<input type="number" class="nodeHostStabInput nodePersonnelInput" ${dataNode} step="0.5" value="${node.hostAdjustments?.stability ?? 0}" ${disabled} style="width: 3em; text-align: right; margin: 0;" />%</div>
-      </div>`;
+    return `<div data-tip="${escapeHtml(tip)}" style="justify-content: center; text-align: center;">👥${crew}+<input type="number" class="nodeStaffInput nodePersonnelInput" ${dataNode} min="0" step="1" value="${extra}" ${disabled} style="width: 2.6em; text-align: right; margin: 0;" /> = ${crew + extra}</div>`;
+  };
+
+  const nodeGuardsHtml = (node: FactionHq | FactionOutpost, kind: "hq" | number): string => {
+    let garrison = 0;
+    for (const aid of node.assets ?? []) garrison += getFactionAsset(aid)?.garrison ?? 0;
+    const extra = node.personnel?.extraGuards ?? 0;
+    const dataNode = kind === "hq" ? 'data-node="hq"' : `data-node="outpost" data-index="${kind}"`;
+    const disabled = node.pillaged ? "disabled" : "";
+    const tip = t("Assets require {{garrison}} guards; extras are the node's own garrison, paid by military", {
+      garrison
+    });
+    return `<div data-tip="${escapeHtml(tip)}" style="justify-content: center; text-align: center;">⚔️${garrison}+<input type="number" class="nodeGuardsInput nodePersonnelInput" ${dataNode} min="0" step="1" value="${extra}" ${disabled} style="width: 2.6em; text-align: right; margin: 0;" /> = ${garrison + extra}</div>`;
+  };
+
+  const nodeHostAdjustHtml = (node: FactionHq | FactionOutpost, kind: "hq" | number): string => {
+    const dataNode = kind === "hq" ? 'data-node="hq"' : `data-node="outpost" data-index="${kind}"`;
+    const disabled = node.pillaged ? "disabled" : "";
+    return `<div class="muted" data-tip="${escapeHtml(t("Flat host impact on top of the scaled presence"))}" style="justify-content: center; text-align: center;">🪙<input type="number" class="nodeHostGoldInput nodePersonnelInput" ${dataNode} step="0.5" value="${node.hostAdjustments?.gold ?? 0}" ${disabled} style="width: 3.2em; text-align: right; margin: 0;" /> %<input type="number" class="nodeHostStabInput nodePersonnelInput" ${dataNode} step="0.5" value="${node.hostAdjustments?.stability ?? 0}" ${disabled} style="width: 2.8em; text-align: right; margin: 0;" /></div>`;
   };
 
   const hqRowHtml = /* html */ `
     <div class="states" style="background: rgba(255, 255, 255, 0.03);">
-      <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">⭐ <b>${escapeHtml(hqName)}</b></div>
+      <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">⭐ <b>${nodeBurgNameHtml(faction.hq, hqName)}</b></div>
       <div style="justify-content: center; text-align: center; gap: 2px;">
         <input type="number" class="nodeInfluenceInput" data-node="hq" min="0" max="100" step="1" value="${Math.round(faction.hq.influence ?? 70)}" style="width: 4em; text-align: right; margin: 0;" />%${hqStatusText}
       </div>
       <div data-node-income="hq" style="justify-content: center; text-align: center;">${hqIncome}</div>
-      <div style="justify-content: center; text-align: center;">${nodePersonnelHtml(faction.hq, "hq")}</div>
+      ${nodeStaffHtml(faction.hq, "hq")}
+      ${nodeGuardsHtml(faction.hq, "hq")}
       <div data-node-impact="hq" style="justify-content: center; text-align: center; font-size: 0.9em;">${renderHostImpactHtml(faction.hq, true, breakdown.prosperity)}</div>
+      ${nodeHostAdjustHtml(faction.hq, "hq")}
       <div></div>
     </div>
   `;
@@ -855,13 +868,15 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
         : "";
       return /* html */ `
       <div class="states">
-        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><b>${escapeHtml(burgName)}</b></div>
+        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><b>${nodeBurgNameHtml(op, burgName)}</b></div>
         <div style="justify-content: center; text-align: center; gap: 2px;">
           <input type="number" class="nodeInfluenceInput" data-node="outpost" data-index="${idx}" min="0" max="100" step="1" value="${Math.round(op.influence ?? 0)}" style="width: 4em; text-align: right; margin: 0;" />%${statusText}
         </div>
         <div data-node-income="outpost:${idx}" style="justify-content: center; text-align: center;">${income}</div>
-        <div style="justify-content: center; text-align: center;">${nodePersonnelHtml(op, idx)}</div>
+        ${nodeStaffHtml(op, idx)}
+        ${nodeGuardsHtml(op, idx)}
         <div data-node-impact="outpost:${idx}" style="justify-content: center; text-align: center; font-size: 0.9em;">${renderHostImpactHtml(op, false, breakdown.prosperity)}</div>
+        ${nodeHostAdjustHtml(op, idx)}
         <div style="justify-content: flex-end; text-align: right; white-space: nowrap;">
           <button class="btn icon-trash removeOutpostBtn" data-index="${idx}" data-tip="${t("Abandon outpost")}"></button>
         </div>
@@ -1226,13 +1241,15 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
 
       <!-- Tab 1: HQ & Outposts -->
       <div class="tabPanel" data-panel="outposts" style="display: ${activeTab === "outposts" ? "block" : "none"}; width: 0; min-width: 100%; margin-bottom: 12px;">
-        <div id="outpostsTable" class="table" style="--table-columns: minmax(10em, 1.5fr) 6em 5.5em 10.5em minmax(8em, 1.1fr) 2.5em; width: 0; min-width: 100%;">
+        <div id="outpostsTable" class="table" style="--table-columns: minmax(9em, 1.4fr) 6em 5.5em 6.9em 6.9em minmax(8em, 1fr) 9.5em 2.5em; width: 0; min-width: 100%;">
           <div class="header">
             <div>${t("Burg")}</div>
             <div style="justify-content: center; text-align: center;">${t("Influence")}</div>
             <div style="justify-content: center; text-align: center;" data-tip="${t("Daily gold the node draws from its host's economy")}">${t("Income")}</div>
-            <div style="justify-content: center; text-align: center;" data-tip="${t("Staff paid by administration, court and infrastructure; guards by military")}">${t("Personnel")}</div>
+            <div style="justify-content: center; text-align: center;" data-tip="${t("Staff paid by administration, court and infrastructure")}">${t("Staff")}</div>
+            <div style="justify-content: center; text-align: center;" data-tip="${t("Guards paid by military")}">${t("Guards")}</div>
             <div style="justify-content: center; text-align: center;" data-tip="${t("Net daily economy and provincial stability impact on the host")}">${t("Host Impact")}</div>
+            <div style="justify-content: center; text-align: center;" data-tip="${t("Flat host impact on top of the scaled presence")}">${t("Host Adj.")}</div>
             <div></div>
           </div>
           ${locationsTableRows}
@@ -1391,6 +1408,15 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       refreshLedgerAndAssets();
     });
   }
+
+  ensureEl(dialogDomId)
+    ?.querySelectorAll<HTMLElement>(".openBurgBtn")
+    .forEach(element => {
+      element.addEventListener("click", () => {
+        const burgId = Number(element.dataset.burg);
+        if (burgId) void Controllers.BurgEditor.open(burgId);
+      });
+    });
 
   ensureEl(dialogDomId)
     ?.querySelectorAll<HTMLInputElement>(".nodeInfluenceInput")
