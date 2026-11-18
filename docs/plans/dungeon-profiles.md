@@ -1,8 +1,9 @@
 # Plan — Lazy Alternate Dungeon Profiles in Marker Notes
 
-Updated: 2026-11-18. Status: **slices 1–2 shipped** (lazy marker content plumbing; the
-genericized dungeon data and deterministic profile/area generator). Slice 3, marker integration,
-is next. Source procedure: *Freebooters on the Frontier 2e,
+Updated: 2026-11-18. Status: **slices 1–3 shipped** (lazy marker content plumbing; the
+genericized dungeon data and deterministic profile/area generator; marker integration and the
+dungeon renderer). Slice 4, reroll and exports, is next. Source procedure: *Freebooters on the
+Frontier 2e,
 Vol. III — Overland & Underworld* (`FotF2e - 03 Overland & Underworld.md`, dungeon procedure
 lines 1237–3083). The source is a **procedure reference only**: every table string in the
 implementation is rewritten in the generator’s own generic vocabulary. See
@@ -116,6 +117,10 @@ export function setFullNote(marker: Marker, html: string): void;
   recipe is dropped; the next reroll rebuilds it.
 - The renderer registry starts with `dungeon`; a later `ruin` or `monster` renderer registers
   alongside it. No dungeon code needs to live in the marker generator.
+
+`src/model/story/dungeon-marker.ts` is the bridge for the first kind: it reads the cell's culture,
+alignment, biome and place names into a `DungeonContext`, produces the eager name and registers
+the `dungeon` renderer with the registry.
 
 ### Notes API
 
@@ -380,9 +385,9 @@ Each slice should leave the app working.
    - Genericized `src/data/dungeons.ts`.
    - Big-picture generator, area draft, dangers, rumors.
    - Tests for determinism, counts, redirect limits, escaping and banned terms.
-3. **Marker integration**
+3. **Marker integration — shipped 2026-11-18**
    - `addDungeon` writes name, Watabou note and the lazy `generated` seed.
-   - Register the dungeon renderer in `marker-content.ts`.
+   - Register the dungeon renderer in `dungeon-marker.ts`.
    - Tests: no profile html before first read; profile present after `ensureGenerated`; Watabou
      prefix preserved.
 4. **Reroll and exports**

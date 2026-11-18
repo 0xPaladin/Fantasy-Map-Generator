@@ -50,6 +50,7 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import { createDungeonContent, DUNGEON_KIND, DUNGEON_VERSION, dungeonName } from "@/model/story/dungeon-marker";
 import type { MarkerGeneratedContent } from "@/model/story/marker-content";
 import { Notes } from "@/model/story/notes";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
@@ -1349,11 +1350,19 @@ class MarkersModule {
   }
 
   private addDungeon(marker: Marker, cell: number) {
-    const dungeonSeed = `${options.map.seed}${cell}`;
-    const name = "Dungeon";
-    const legend = `<div>Undiscovered dungeon. See <a href="https://watabou.github.io/one-page-dungeon/?seed=${dungeonSeed}" target="_blank">One page dungeon</a></div><iframe style="pointer-events: none;" src="https://watabou.github.io/one-page-dungeon/?seed=${dungeonSeed}" sandbox="allow-scripts allow-same-origin"></iframe>`;
+    const watabouSeed = `${options.map.seed}${cell}`;
+    const name = dungeonName(cell, options.map.seed);
+    const legend = `<div>Undiscovered dungeon. See <a href="https://watabou.github.io/one-page-dungeon/?seed=${watabouSeed}" target="_blank" rel="noopener">One page dungeon</a></div><iframe style="pointer-events: none;" src="https://watabou.github.io/one-page-dungeon/?seed=${watabouSeed}" sandbox="allow-scripts allow-same-origin"></iframe>`;
     marker.name = name;
     marker.note = legend;
+
+    const existing = marker.generated;
+    if (existing?.kind === DUNGEON_KIND) {
+      existing.version = DUNGEON_VERSION;
+      existing.seed = options.map.seed;
+    } else {
+      marker.generated = createDungeonContent();
+    }
   }
 
   private listLakeMonsters({ features }: PackedGraph) {

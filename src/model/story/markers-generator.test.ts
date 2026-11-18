@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Goods } from "@/model/economy/goods-generator";
 import { Names } from "@/model/society/names-generator";
+import { ensureGenerated } from "./marker-content";
 import type { Marker } from "./markers-generator";
 import { Markers } from "./markers-generator";
 
@@ -434,5 +435,75 @@ describe("MarkersModule provincial impacts and attribution", () => {
     // Hiding a marker removes its provincial impact; moving shifts it
     Markers.setHidden(1, true);
     expect(Markers.getProvinceAdjustments(1).economy).toEqual([{ name: "House A", value: 4 }]);
+  });
+});
+
+describe("MarkersModule dungeons", () => {
+  const CELL = 1;
+
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      markers: [],
+      cells: {
+        i: [0, 1],
+        culture: Uint8Array.from([1, 1]),
+        biome: Uint8Array.from([1, 1]),
+        h: Uint8Array.from([42, 42]),
+        state: Uint8Array.from([1, 1]),
+        province: Uint8Array.from([1, 1]),
+        religion: Uint8Array.from([1, 1])
+      },
+      cultures: [
+        { i: 0, name: "Wildlands" },
+        { i: 1, name: "Aeloran", alignment: "neutral" }
+      ],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      states: [
+        { i: 0, name: "Neutrals" },
+        { i: 1, name: "Ardenia" }
+      ],
+      provinces: [
+        { i: 0, name: "" },
+        { i: 1, name: "Green March" }
+      ],
+      religions: [
+        { i: 0, name: "" },
+        { i: 1, name: "The Dawn" }
+      ]
+    } as any;
+  });
+
+  it("keeps the Watabou preview and stores only the lazy dungeon recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+
+    markers.addDungeon(marker, CELL);
+
+    expect(marker.name).not.toBe("Dungeon");
+    expect(marker.note).toContain("https://watabou.github.io/one-page-dungeon/?seed=123451");
+    expect(marker.note).toContain('rel="noopener"');
+    expect(marker.note).not.toContain("Dungeon profile");
+    expect(marker.generated).toMatchObject({ kind: "dungeon", version: 1, seed: "12345" });
+    expect(marker.generated?.html).toBeUndefined();
+  });
+
+  it("materializes the profile on first read without changing the stored note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+    markers.addDungeon(marker, CELL);
+    const note = marker.note;
+
+    const html = ensureGenerated(marker);
+
+    expect(html).toContain(marker.name);
+    expect(html).toContain("Alternate dungeon profile");
+    expect(marker.generated?.html).toBe(html);
+    expect(marker.note).toBe(note);
   });
 });
