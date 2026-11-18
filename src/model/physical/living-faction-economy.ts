@@ -116,6 +116,92 @@ function nodeInfluenceFactor(node: FactionHq | FactionOutpost): number {
   return 0.5 + influence / 100;
 }
 
+const HINTERLAND_RADIUS = { hq: 5, outpost: 2 }; // hops: outposts reach 2 + tier
+
+const HINTERLAND_LABELS: Record<FactionCategory, string> = {
+  commercial: "Hinterland dues",
+  underworld: "Rural extortion",
+  martial: "Forage & tribute",
+  religious: "Rural tithes",
+  political: "Rural levies",
+  adventuring: "Patrol fees"
+};
+
+/** Rural earnings within a burg-less node's reach that no closer burg-less node claims */
+function hinterlandEarned(node: FactionHq | FactionOutpost): number {
+  const { cells, factions } = pack;
+  if (node.burgId || node.pillaged || !cells?.c || !cells.pop || !factions?.length) return 0;
+
+  const reach = (entry: FactionHq | FactionOutpost) =>
+    "tier" in entry ? HINTERLAND_RADIUS.outpost + entry.tier : HINTERLAND_RADIUS.hq;
+  const candidates: {
+    node: FactionHq | FactionOutpost;
+    cell: number;
+    influence: number;
+    factionId: number;
+    radius: number;
+  }[] = [];
+  for (const faction of factions) {
+    if (!faction?.i || faction.removed) continue;
+    for (const entry of [faction.hq, ...(faction.outposts ?? [])]) {
+      if (!entry || entry.burgId || entry.pillaged) continue;
+      candidates.push({
+        node: entry,
+        cell: entry.cell,
+        influence: entry.influence ?? 50,
+        factionId: faction.i,
+        radius: reach(entry)
+      });
+    }
+  }
+  const self = candidates.find(entry => entry.node === node);
+  if (!self) return 0;
+
+  const distance = (candidate: (typeof candidates)[number]) => {
+    const hops: number[] = [];
+    hops[candidate.cell] = 0;
+    const queue = [candidate.cell];
+    while (queue.length) {
+      const cellId = queue.shift()!;
+      if (hops[cellId] >= candidate.radius) continue;
+      for (const neighbor of cells.c![cellId] ?? []) {
+        if (hops[neighbor] !== undefined) continue;
+        hops[neighbor] = hops[cellId] + 1;
+        queue.push(neighbor);
+      }
+    }
+    return hops;
+  };
+  const distances = new Map(candidates.map(candidate => [candidate, distance(candidate)]));
+
+  const owns = (cellId: number): boolean => {
+    const hops = distances.get(self)?.[cellId];
+    if (hops === undefined) return false;
+    for (const candidate of candidates) {
+      if (candidate === self) continue;
+      const other = distances.get(candidate)?.[cellId];
+      if (other === undefined) continue;
+      const beats =
+        other < hops ||
+        (other === hops && candidate.influence > self.influence) ||
+        (other === hops && candidate.influence === self.influence && candidate.factionId < self.factionId);
+      if (beats) return false;
+    }
+    return true;
+  };
+
+  let earned = 0;
+  for (const cellId of cells.i ?? []) {
+    if (!cells.pop[cellId] || cells.burg?.[cellId] || !owns(cellId)) continue;
+    try {
+      earned += Prosperity.getRuralCell(cellId)?.earned ?? 0;
+    } catch {
+      // minimal maps without the economy fall back to no dues
+    }
+  }
+  return rn(earned, 2);
+}
+
 export { COMMISSION_PER_ASSET };
 
 /** Upstream accounts are readable only after a full economy run on a whole map */
@@ -307,6 +393,20 @@ export function factionUpstreamIncome(faction: Faction, node: FactionHq | Factio
         break;
       default:
         break;
+    }
+  }
+
+  // burg-less nodes live off the land: dues from the rural earnings in their reach
+  if (!burgId) {
+    const reach = hinterlandEarned(node);
+    if (reach > 0) {
+      lines.push({
+        key: "hinterland_dues",
+        label: HINTERLAND_LABELS[faction.category] ?? "Hinterland dues",
+        daily: reach * (rates.primary / 100) * infFactor,
+        rateKey: "primary",
+        rate: rates.primary
+      });
     }
   }
 

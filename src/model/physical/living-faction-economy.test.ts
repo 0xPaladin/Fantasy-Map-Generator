@@ -300,6 +300,106 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
   });
 });
 
+describe("Faction hinterland dues for burg-less nodes (faction-hinterland-dues.md)", () => {
+  const EARNED: Record<number, number> = { 2: 2, 3: 4, 4: 6 };
+
+  beforeEach(() => {
+    globalThis.options = {
+      map: { goods: [{ i: 0, name: "None" }], units: { population: { scale: 1, urbanization: { rate: 1 } } } }
+    } as unknown as typeof options;
+    // a line of cells: a wild HQ at 1, rural cells 2-4, a rival wild HQ at 5, a burg cell at 6
+    globalThis.pack = {
+      cells: {
+        i: [0, 1, 2, 3, 4, 5, 6],
+        c: [[1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5]],
+        pop: [0, 10, 10, 10, 10, 10, 10],
+        burg: [0, 0, 0, 0, 0, 0, 7],
+        state: [0, 0, 0, 0, 0, 0, 0],
+        province: [0, 0, 0, 0, 0, 0, 0],
+        market: [0, 1, 1, 1, 1, 1, 1]
+      },
+      burgs: [undefined, undefined, undefined, undefined, undefined, undefined, { i: 7, cell: 6 }],
+      states: [undefined],
+      factions: [],
+      deals: [[1, 1, 0, 2, 1, 1, 0, 0, 0]],
+      markets: [{ i: 1 }],
+      history: { figures: [], living: { states: {} } }
+    } as unknown as typeof pack;
+
+    vi.spyOn(Prosperity, "getRuralCell").mockImplementation(
+      (cellId: number) => ({ earned: EARNED[cellId] ?? 0 }) as never
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function wildFaction(id: number, cell: number, influence = 80): Faction {
+    const wild = faction({
+      i: id,
+      name: `Wild ${id}`,
+      category: "religious",
+      hq: { cell, fortified: true, secrecy: 0, assets: [], influence }
+    });
+    wild.hq.personnel = { extraStaff: 8, extraGuards: 4 };
+    pack.factions.push(wild);
+    return wild;
+  }
+
+  it("pays a burg-less HQ a share of the rural earnings in its reach, under its category label", () => {
+    const wild = wildFaction(1, 1);
+    // cells 2-4 within five hops: 2 + 4 + 6 earned; 5% tithes × 1.3 influence factor (80)
+    const income = factionUpstreamIncome(wild, wild.hq);
+    const line = income.lines.find(entry => entry.key === "hinterland_dues");
+    expect(line).toBeDefined();
+    expect(line!.label).toBe("Rural tithes");
+    expect(line!.daily).toBeCloseTo((2 + 4 + 6) * 0.05 * 1.3, 2);
+    expect(income.gold).toBeCloseTo((2 + 4 + 6) * 0.05 * 1.3 * SEASON_DAYS, 2);
+  });
+
+  it("earns dues in the wildlands, where no host state runs an economy", () => {
+    const wild = wildFaction(1, 1);
+    const income = factionUpstreamIncome(wild, wild.hq);
+    expect(income.lines.length).toBe(1); // dues alone
+    expect(income.gold).toBeGreaterThan(0);
+  });
+
+  it("claims each cell only for the nearest burg-less node, ties by influence", () => {
+    const west = wildFaction(1, 1, 80);
+    const east = wildFaction(2, 5, 40);
+
+    // west: cells 2 (1 hop) and 3 (2 hops, tie with east) → 2 + 4; east: cell 4
+    const westLine = factionUpstreamIncome(west, west.hq).lines.find(entry => entry.key === "hinterland_dues");
+    const eastLine = factionUpstreamIncome(east, east.hq).lines.find(entry => entry.key === "hinterland_dues");
+    expect(westLine!.daily).toBeCloseTo(6 * 0.05 * 1.3, 2);
+    expect(eastLine!.daily).toBeCloseTo(6 * 0.05 * 0.9, 2);
+  });
+
+  it("scales with influence, skips burg and unpeopled cells, and stops when pillaged", () => {
+    const quiet = wildFaction(1, 1, 12);
+    const quietDues = factionUpstreamIncome(quiet, quiet.hq).lines.find(
+      entry => entry.key === "hinterland_dues"
+    )!.daily;
+
+    pack.factions.length = 0;
+    const loud = wildFaction(1, 1, 100);
+    const loudDues = factionUpstreamIncome(loud, loud.hq).lines.find(entry => entry.key === "hinterland_dues")!;
+    expect(loudDues.daily).toBeGreaterThan(quietDues);
+    // cell 6 hosts a burg and pays nothing: 12 × 0.05 × 1.5 is the ceiling with cells 2-4 only
+    expect(loudDues.daily).toBeCloseTo(12 * 0.05 * 1.5, 2);
+
+    loud.hq.pillaged = true;
+    expect(factionUpstreamIncome(loud, loud.hq).lines.length).toBe(0);
+  });
+
+  it("leaves burg-hosted nodes on their host lines only", () => {
+    const burgFaction = faction({ hq: { cell: 6, burgId: 7, fortified: false, secrecy: 0, assets: [] } });
+    const income = factionUpstreamIncome(burgFaction, burgFaction.hq);
+    expect(income.lines.some(entry => entry.key === "hinterland_dues")).toBe(false);
+  });
+});
+
 describe("Faction personnel requirements and node host adjustments (faction-personnel.md Phase 2)", () => {
   beforeEach(() => {
     globalThis.options = {
