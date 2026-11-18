@@ -24,6 +24,23 @@ describe("dungeon table sizes", () => {
     expect(D.DUNGEON_HAZARD_KINDS).toHaveLength(12);
     expect(D.DUNGEON_MONSTERS).toHaveLength(10);
     expect(D.DUNGEON_HUMANOIDS).toHaveLength(10);
+    expect(D.DUNGEON_INHABITANT_GROUPS).toHaveLength(10);
+    expect(D.DUNGEON_INHABITANT_RELATIONS).toHaveLength(6);
+  });
+
+  it("has weighted inhabitant groups for every dungeon type", () => {
+    const ids = D.DUNGEON_INHABITANT_GROUPS.map(group => group.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(D.DUNGEON_INHABITANT_GROUPS.every(group => group.label.trim())).toBe(true);
+
+    for (const [type, weights] of Object.entries(D.DUNGEON_INHABITANT_WEIGHTS)) {
+      const entries = Object.entries(weights);
+      expect(entries.length, type).toBeGreaterThan(0);
+      for (const [id, weight] of entries) {
+        expect(ids).toContain(id);
+        expect(weight).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("has twelve alignment outcomes per prevailing alignment", () => {

@@ -20,10 +20,12 @@ The short note stays small. Hovering a dungeon shows only the Watabou preview; t
 | Name | A dungeon name built from a place, adjective and noun table, with the local culture name as one possible element |
 | Size | Small, medium, large or huge; the number of areas and themes follows from it |
 | Alignment and safety | The dungeon's moral character and a safety tag. Safety shifts the creature danger roll |
+| Ratings | Five 1–10 summaries: Danger, Treasure, Scale, Mystery and Weirdness |
 | Themes | One to five motifs, depending on size: greed, transformation, forbidden knowledge or cosmic alignment. Themes are prompts for connecting rooms and occupants |
 | Overview | Dungeon type, accessibility, builder, situation, condition and cause of ruin |
 | Type details | The special overview for the dungeon type: occupant and defenses, cave type, mined resource, prisoners, crypt occupant, temple dedication, laboratory focus and so on |
 | Areas | A numbered node map of rooms and passages, each with an area type, dressing, discoveries, dangers and exits |
+| Inhabitants | A 1–6 encounter rating and one or two inhabitant groups, with a relation when there are two |
 | Rumors | Two or three local claims about the place, ready to be true, false or somewhere in between |
 
 ### What it looks like
@@ -31,6 +33,8 @@ The short note stays small. Hovering a dungeon shows only the Watabou preview; t
 A profile reads as a short gazetteer entry followed by a numbered draft:
 
 * **The House of Aeloran** — medium, 14 areas, two themes: elemental magic (stars or cosmos), forbidden knowledge
+* **Ratings:** Danger 5/10 · Treasure 5/10 · Scale 5/10 · Mystery 5/10 · Weirdness 3/10
+* **Inhabitants:** 4/6 (d6 ≤ 4 each turn) · Aeloran humanoids + Outsiders (predator and prey)
 * **Overview:** neutral, unsafe, temple or sanctuary; clear and obvious; built by a sorcerer-king or queen; belowground; a decayed skeleton of a structure; being overrun by monsters
 * **Area 3:** antechamber or vestry — an echo. **Find:** evidence of a creature. **Exits:** unexplored (left, locked door)
 * **Danger in area 9:** a pale elemental
@@ -68,6 +72,52 @@ An area can roll a special area such as a burial vault, underground lake, sealed
 
 Contents decide how many discoveries and dangers an area holds. Discoveries are either **features** (a pit, a slope, a ledge, a carved wall) or **finds** (supplies, a key, a body, a treasure cache). Dangers are leaders, creatures or hazards. Safety shifts the creature roll: safer dungeons lean toward ordinary animals and people, while perilous ones leave more room for monsters. Treasure is left as dice notation, such as `treasure cache (1d6+1)`, rather than converted into a made-up value.
 
+### Ratings
+
+Five **1–10 ratings** summarize the finished draft. They are derived from what was generated, not rolled independently, so they always agree with the rooms and dangers below them.
+
+| Rating | What it measures | Derived from |
+| --- | --- | --- |
+| **Danger** | How likely the place is to kill or drive off a party | safety, danger density, leaders and monstrous creatures |
+| **Treasure** | Value and quality of what can be taken | treasure caches, dungeon type, special vaults and size |
+| **Scale** | Size and campaign importance | size, area count and the importance of the builder |
+| **Mystery** | Secrets, lore, hidden paths and unanswered questions | accessibility, secretive themes, clues, hidden areas and type |
+| **Weirdness** | Supernatural, alien or impossible content | magic, element and strange results, strange areas, type and alignment |
+
+A rating of **1** is a bumbling-commoner problem in that category; **10** is world-shattering. The ratings are the quickest way to answer “is this a cellar, a regional problem or a campaign centrepiece?”
+
+### Inhabitants
+
+**Inhabitants 1–6** is the encounter rating. Each dungeon turn, roll a `d6`; an encounter happens on a result **less than or equal to** the rating.
+
+| Rating | Meaning | Chance |
+| --- | --- | --- |
+| 1 | abandoned or one hidden squatter | 1-in-6 |
+| 2 | one small group, rare patrols | 2-in-6 |
+| 3 | one settled group, occasional traffic | 3-in-6 |
+| 4 | one large group or two groups, regular patrols | 4-in-6 |
+| 5 | two active groups, frequent traffic | 5-in-6 |
+| 6 | swarming, encounter nearly every turn | always |
+
+The rating starts from the dungeon's size, then rises for two inhabitant groups, for at least one danger per area, and for a leader. It is clamped to 1–6.
+
+The inhabitants themselves are one top-level group half the time, and two distinct groups the other half. Each dungeon type weights the possibilities: crypts lean undead, caves lean beasts and vermin, laboratories lean constructs and outsiders, and so on.
+
+| Group | Examples |
+| --- | --- |
+| Humans | local people, soldiers, bandits, cultists, prisoners |
+| Humanoids | dwarves, halflings, goblins, orcs, giant-kin |
+| Beasts | natural animals and giant animals |
+| Monsters | dragons, chimeras, magical predators, aberrations |
+| Undead | skeletons, zombies, ghouls, wraiths, vampires |
+| Constructs | golems, animated armour, machines |
+| Outsiders | demons, celestials, elementals, extraplanar beings |
+| Fey & spirits | fey, nature spirits, local supernatural powers |
+| Plants & fungi | moulds, carnivorous plants, fungal colonies |
+| Vermin & swarms | insects, rats, bats, crawling swarms |
+
+Humans and Humanoids borrow the local culture name, so a result can read **Aeloran humans**. When there are two groups, the profile also rolls a relation: hostile, uneasy truce, master and servants, predator and prey, competing for the same resource, or unaware of each other.
+
 ### Determinism and map context
 
 The profile is rolled from its own seeded stream, keyed by the map seed and the marker's cell. The same map and cell produce the same dungeon name and profile. The profile also reads the local map context:
@@ -95,6 +145,8 @@ Marker CSV and GeoJSON exports include the full profile, including the Watabou n
 ### Limits
 
 * The profile is system-agnostic. Creatures, hazards and treasure are prompts; hit points, damage and exact treasure values are not generated.
+* The ratings are summaries derived from the table results, not a challenge-rating formula. They describe the draft, not a guaranteed difficulty for a particular party.
+* Inhabitant groups are top-level categories, not specific factions. Two human groups are still “humans” at this level.
 * A roll of a megadungeon is treated as a huge dungeon in this version. Nested megadungeon wings are a possible later extension.
 * The profile follows the map context at the moment it is generated. If the culture or biome changes before the first read, the profile uses the changed map; the eager marker name stays.
 * Astral view keeps the fantasy profile under the anomaly legend. A separate derelict profile is not generated.

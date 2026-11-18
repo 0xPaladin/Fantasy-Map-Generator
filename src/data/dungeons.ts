@@ -1826,3 +1826,77 @@ export const DUNGEON_RUMOR_TEMPLATES = [
   "The road to [name] is watched, and no one agrees by whom.",
   "A drunken guide swears the entrance to [name] moves when no one looks."
 ] as const;
+
+export type InhabitantGroupId =
+  | "humans"
+  | "humanoids"
+  | "beasts"
+  | "monsters"
+  | "undead"
+  | "constructs"
+  | "outsiders"
+  | "fey"
+  | "plants"
+  | "vermin";
+
+export interface InhabitantGroup {
+  id: InhabitantGroupId;
+  label: string;
+}
+
+export const DUNGEON_INHABITANT_GROUPS: readonly InhabitantGroup[] = [
+  { id: "humans", label: "Humans" },
+  { id: "humanoids", label: "Humanoids" },
+  { id: "beasts", label: "Beasts" },
+  { id: "monsters", label: "Monsters" },
+  { id: "undead", label: "Undead" },
+  { id: "constructs", label: "Constructs" },
+  { id: "outsiders", label: "Outsiders" },
+  { id: "fey", label: "Fey & spirits" },
+  { id: "plants", label: "Plants & fungi" },
+  { id: "vermin", label: "Vermin & swarms" }
+];
+
+/** Relative odds of each top-level group in a dungeon type; omitted groups are rare */
+export const DUNGEON_INHABITANT_WEIGHTS: Record<DungeonTypeId, Partial<Record<InhabitantGroupId, number>>> = {
+  lair: {
+    humans: 2,
+    humanoids: 2,
+    beasts: 2,
+    monsters: 2,
+    undead: 1,
+    constructs: 1,
+    outsiders: 1,
+    fey: 1,
+    plants: 1,
+    vermin: 1
+  },
+  caves: { beasts: 4, vermin: 3, monsters: 2, plants: 2, humanoids: 1, undead: 1, constructs: 1, fey: 1 },
+  mine: { humanoids: 3, vermin: 3, constructs: 2, monsters: 2, humans: 1, beasts: 1, outsiders: 1 },
+  prison: { humans: 3, humanoids: 2, undead: 2, monsters: 2, vermin: 1, constructs: 1 },
+  stronghold: { humans: 4, humanoids: 3, constructs: 1, outsiders: 1, undead: 1, beasts: 1 },
+  crypt: { undead: 5, fey: 2, constructs: 2, monsters: 1, humans: 1, vermin: 1 },
+  temple: { humans: 3, humanoids: 2, outsiders: 2, fey: 2, undead: 1, constructs: 1, plants: 1 },
+  laboratory: { constructs: 3, outsiders: 3, monsters: 2, plants: 2, humans: 1, humanoids: 1, fey: 1, undead: 1 },
+  unknown: {
+    humans: 1,
+    humanoids: 1,
+    beasts: 1,
+    monsters: 1,
+    undead: 1,
+    constructs: 1,
+    outsiders: 1,
+    fey: 1,
+    plants: 1,
+    vermin: 1
+  }
+};
+
+export const DUNGEON_INHABITANT_RELATIONS = [
+  "hostile",
+  "uneasy truce",
+  "master and servants",
+  "predator and prey",
+  "competing for the same resource",
+  "unaware of each other"
+] as const;

@@ -1,10 +1,10 @@
 # Plan — Lazy Alternate Dungeon Profiles in Marker Notes
 
-Updated: 2026-11-18. Status: **slices 1–4 shipped** (lazy marker content plumbing; the
+Updated: 2026-11-18. Status: **slices 1–5 shipped** (lazy marker content plumbing; the
 genericized dungeon data and deterministic profile/area generator; marker integration and the
-dungeon renderer; reroll, old-map backfill and exports). The feature is complete; remaining work
-is verification and any future generated kinds. Source procedure: *Freebooters on the Frontier
-2e,
+dungeon renderer; reroll, old-map backfill and exports; profile ratings and inhabitant groups).
+The feature is complete; remaining work is verification and future generated kinds. Source
+procedure: *Freebooters on the Frontier 2e,
 Vol. III — Overland & Underworld* (`FotF2e - 03 Overland & Underworld.md`, dungeon procedure
 lines 1237–3083). The source is a **procedure reference only**: every table string in the
 implementation is rewritten in the generator’s own generic vocabulary. See
@@ -221,6 +221,30 @@ Generate 2–3 short rumors from established facts, not new mechanics:
 Use the existing `RUMOR_SOURCES` voice in `src/data/markers.ts` where it fits. Mark them as
 rumors so the user can decide what is true.
 
+### 5. Profile ratings and inhabitants
+
+Five **1–10 ratings** summarize the generated draft. They are derived from the content, not
+rolled independently, so they cannot contradict the profile:
+
+| Rating | Derived from |
+|---|---|
+| Danger | safety, danger density, leaders, monstrous creatures |
+| Treasure | treasure caches, dungeon type and special vaults, size |
+| Scale | size, area count and the importance of the builder |
+| Mystery | accessibility, secret/hidden themes, clues, hidden areas and type |
+| Weirdness | magic/element/strange themes, strange special areas, type and alignment |
+
+**Inhabitants** uses a different 1–6 scale. Roll `d6` each dungeon turn; an encounter happens on
+a result less than or equal to the rating. The rating starts from size, then adds one for two
+groups, one for at least one danger per area, and one for a leader. It is clamped to 1–6.
+
+Group selection is 50% one group and 50% two distinct groups. The top-level groups are Humans,
+Humanoids, Beasts, Monsters, Undead, Constructs, Outsiders, Fey & spirits, Plants & fungi,
+Vermin & swarms. Each dungeon type weights the table; Humans and Humanoids borrow the local
+culture name (`Aeloran humans`). Two groups also get a relation such as hostile, uneasy truce,
+master and servants, predator and prey, competing for the same resource, or unaware of each
+other.
+
 ## Data and module layout
 
 ### `src/data/dungeons.ts`
@@ -396,7 +420,12 @@ Each slice should leave the app working.
    - Marker-editor reroll button, visible for dungeons only.
    - Markers overview, CSV and GeoJSON use `getFull(..., { cache: false })`.
    - Tests: reroll replaces html, not the Watabou note; export does not cache.
-5. **Docs and manual check — docs shipped 2026-11-18**
+5. **Ratings and inhabitants — shipped 2026-11-18**
+   - Five derived 1–10 ratings: Danger, Treasure, Scale, Mystery, Weirdness.
+   - Inhabitants 1–6 encounter rating; 50% one group, 50% two distinct weighted groups.
+   - Two groups also roll a relation.
+   - Tests: ranges, group counts, relation only with two groups and render output.
+6. **Docs and manual check — docs shipped 2026-11-18**
    - Update `docs/wiki/Markers.md` with the lazy behavior, the profile sections and the reroll
      button.
    - The dedicated user guide is `docs/wiki/Dungeon-generation.md`.
@@ -416,6 +445,8 @@ Each slice should leave the app working.
   - size rolls map to the correct area/theme ranges
   - culture alignment honored; neutral fallback
   - area graph closes, exits resolve, recursive redirects stop
+  - ratings stay within 1–10; inhabitant rating within 1–6
+  - one or two inhabitant groups; a relation only when there are two
   - 100 seeds produce no `undefined`, `NaN` or empty headings
   - rendered profile passes `isSafeHtml` and escapes `<script>` in culture names
   - generated table strings contain none of the banned source terms
@@ -438,7 +469,7 @@ Each slice should leave the app working.
   later “strip generated html on save” option can make the cache purely transient, at the cost of
   losing edits to generated text.
 - **Map edits between generation and first open**: the profile is derived from the current
-  culture/biome/state context. If those are regenerated first, the profile may differ from what
+  culture and biome context. If those are regenerated first, the profile may differ from what
   the map implied at marker creation. The eager name roll is stored on the marker, so at least
   the name stays.
 - **Divider edits**: if a user removes or rewrites the profile heading, `setFullNote` treats the

@@ -66,6 +66,43 @@ describe("dungeon generator", () => {
     }
   });
 
+  it("rates the dungeon from its generated content", () => {
+    for (let seed = 0; seed < 60; seed++) {
+      const profile = generateDungeonProfile({ ...context, seed: String(seed) });
+      for (const rating of Object.values(profile.ratings)) {
+        expect(rating).toBeGreaterThanOrEqual(1);
+        expect(rating).toBeLessThanOrEqual(10);
+      }
+      expect(profile.inhabitants.rating).toBeGreaterThanOrEqual(1);
+      expect(profile.inhabitants.rating).toBeLessThanOrEqual(6);
+      expect([1, 2]).toContain(profile.inhabitants.groups.length);
+      expect(profile.inhabitants.groups.every(group => group.label.trim())).toBe(true);
+      expect(Boolean(profile.inhabitants.relationship)).toBe(profile.inhabitants.groups.length === 2);
+    }
+  });
+
+  it("rolls both one and two inhabitant groups", () => {
+    const sizes = new Set(
+      Array.from(
+        { length: 80 },
+        (_, seed) => generateDungeonProfile({ ...context, seed: String(seed) }).inhabitants.groups.length
+      )
+    );
+    expect(sizes).toEqual(new Set([1, 2]));
+  });
+
+  it("renders the ratings and inhabitant encounter line", () => {
+    const html = renderDungeonProfile(generateDungeonProfile(context));
+    expect(html).toContain("<strong>Danger</strong>");
+    expect(html).toContain("<strong>Treasure</strong>");
+    expect(html).toContain("<strong>Scale</strong>");
+    expect(html).toContain("<strong>Mystery</strong>");
+    expect(html).toContain("<strong>Weirdness</strong>");
+    expect(html).toContain("<strong>Inhabitants</strong>");
+    expect(html).toContain("each turn");
+    expect(html).toContain("d6 ≤");
+  });
+
   it("produces no empty or missing text across many seeds", () => {
     for (let seed = 0; seed < 100; seed++) {
       const profile = generateDungeonProfile({ ...context, seed: String(seed) });

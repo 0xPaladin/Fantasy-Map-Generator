@@ -18,6 +18,9 @@ import {
   DUNGEON_HAZARD_KINDS,
   DUNGEON_HAZARDS,
   DUNGEON_HUMANOIDS,
+  DUNGEON_INHABITANT_GROUPS,
+  DUNGEON_INHABITANT_RELATIONS,
+  DUNGEON_INHABITANT_WEIGHTS,
   DUNGEON_LEADER_KINDS,
   DUNGEON_LEADERS,
   DUNGEON_MONSTERS,
@@ -32,6 +35,8 @@ import {
   DUNGEON_TYPES,
   type DungeonSize,
   type DungeonTypeId,
+  type InhabitantGroup,
+  type InhabitantGroupId,
   type Safety,
   type SpecialAreaEntry
 } from "@/data/dungeons";
@@ -68,6 +73,20 @@ export interface DungeonArea {
   exits: DungeonExit[];
 }
 
+export interface DungeonRatings {
+  danger: number;
+  treasure: number;
+  scale: number;
+  mystery: number;
+  weirdness: number;
+}
+
+export interface DungeonInhabitants {
+  rating: number;
+  groups: InhabitantGroup[];
+  relationship?: string;
+}
+
 export interface DungeonProfile {
   name: string;
   size: DungeonSize;
@@ -77,6 +96,8 @@ export interface DungeonProfile {
   safety: Safety;
   type: DungeonTypeId;
   overview: { label: string; value: string }[];
+  ratings: DungeonRatings;
+  inhabitants: DungeonInhabitants;
   areas: DungeonArea[];
   rumors: string[];
 }
@@ -326,6 +347,134 @@ function buildAreas(
   return areas;
 }
 
+const SIZE_RANK: Record<DungeonSize, number> = { small: 1, medium: 2, large: 3, huge: 4 };
+const SIZE_SCALE: Record<DungeonSize, number> = { small: 1, medium: 3, large: 5, huge: 7 };
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+const countMatching = (values: readonly string[], pattern: RegExp): number =>
+  values.filter(value => pattern.test(value)).length;
+
+function chooseInhabitantGroup(rng: Rng, type: DungeonTypeId, excluded?: InhabitantGroupId): InhabitantGroup {
+  const weights = DUNGEON_INHABITANT_WEIGHTS[type];
+  const weighted = DUNGEON_INHABITANT_GROUPS.filter(group => group.id !== excluded)
+    .map(group => ({ value: group, weight: weights[group.id] ?? 0 }))
+    .filter(({ weight }) => weight > 0);
+
+  if (weighted.length) return pickWeighted(rng, weighted);
+  const fallback = DUNGEON_INHABITANT_GROUPS.filter(group => group.id !== excluded);
+  return pick(rng, fallback.length ? fallback : DUNGEON_INHABITANT_GROUPS);
+}
+
+function inhabitantLabel(group: InhabitantGroup, cultureName: string): string {
+  const culture = cultureName && cultureName !== "the local folk" ? cultureName : "";
+  if (group.id === "humans") return culture ? `${culture} humans` : group.label;
+  if (group.id === "humanoids") return culture ? `${culture} humanoids` : group.label;
+  return group.label;
+}
+
+function rollInhabitants(
+  rng: Rng,
+  type: DungeonTypeId,
+  size: DungeonSize,
+  areaCount: number,
+  areas: DungeonArea[],
+  cultureName: string
+): DungeonInhabitants {
+  const first = chooseInhabitantGroup(rng, type);
+  const groups = [first];
+  if (rng.chance(0.5)) groups.push(chooseInhabitantGroup(rng, type, first.id));
+
+  const dangers = areas.flatMap(area => area.dangers);
+  const hasLeader = dangers.some(danger => danger.startsWith("Leader:"));
+  const crowded = dangers.length >= areaCount;
+  const rating = clamp(SIZE_RANK[size] + (groups.length === 2 ? 1 : 0) + (crowded ? 1 : 0) + (hasLeader ? 1 : 0), 1, 6);
+
+  return {
+    rating,
+    groups: groups.map(group => ({ ...group, label: inhabitantLabel(group, cultureName) })),
+    relationship: groups.length === 2 ? pick(rng, DUNGEON_INHABITANT_RELATIONS) : undefined
+  };
+}
+
+function rollRatings(
+  size: DungeonSize,
+  areaCount: number,
+  themes: string[],
+  alignment: Alignment,
+  safety: Safety,
+  type: DungeonTypeId,
+  accessibility: string,
+  builder: string,
+  areas: DungeonArea[]
+): DungeonRatings {
+  const dangers = areas.flatMap(area => area.dangers);
+  const discoveries = areas.flatMap(area => area.discoveries);
+  const areaTypes = areas.map(area => area.type);
+
+  const safetyBase = { safe: 1, unsafe: 2, dangerous: 3, perilous: 4 }[safety];
+  const dangerDensity = Math.min(3, Math.floor((dangers.length / Math.max(1, areaCount)) * 2));
+  const leaders = countMatching(dangers, /^Leader:/);
+  const monstrous = dangers.filter(
+    danger =>
+      danger.startsWith("Creature:") &&
+      /extraplanar|undead|elemental|ooze|construct|fey|dragon|giant|horror|legendary/i.test(danger)
+  ).length;
+  const danger = clamp(safetyBase + dangerDensity + (leaders ? 1 : 0) + (monstrous ? 1 : 0), 1, 10);
+
+  const caches = countMatching(discoveries, /treasure cache/i);
+  const richType = ["mine", "crypt", "temple", "stronghold", "lair"].includes(type);
+  const richArea = countMatching(areaTypes, /treasure|vault|hoard|mother lode|reliquary|strongroom/i) > 0;
+  const treasure = clamp(SIZE_RANK[size] + Math.min(4, caches) + (richType ? 1 : 0) + (richArea ? 1 : 0), 1, 10);
+
+  const grandBuilder = /otherworldly|extraplanar|sorcerer-king|monarch|warlord/i.test(builder);
+  const scale = clamp(SIZE_SCALE[size] + Math.floor(areaCount / 10) + (grandBuilder ? 1 : 0), 1, 10);
+
+  const accessibilityBase = accessibility.includes("sealed")
+    ? 4
+    : /hidden|concealed|buried/.test(accessibility)
+      ? 3
+      : accessibility.includes("partly")
+        ? 2
+        : 1;
+  const mysteryThemes = countMatching(
+    themes,
+    /secret|mystery|forbidden|cryptic|shadow|madness|prophecy|transformation|inversion|imitation|knowledge|divine/i
+  );
+  const clues = countMatching(
+    discoveries,
+    /map|message|clue|inscription|epitaph|omen|record|pictograph|warning|letter|books|scrolls|charts|formulae|notebook/i
+  );
+  const hiddenAreas = countMatching(
+    areaTypes,
+    /secret|hidden|vault|sanctum|oracle|labyrinth|maze|catacomb|archive|library|burial/i
+  );
+  const mysteriousType = ["temple", "laboratory", "unknown", "crypt"].includes(type);
+  const mystery = clamp(
+    accessibilityBase +
+      Math.min(2, mysteryThemes) +
+      Math.min(2, clues) +
+      (hiddenAreas ? 1 : 0) +
+      (mysteriousType ? 1 : 0),
+    1,
+    10
+  );
+
+  const weirdThemes = countMatching(
+    themes,
+    /magic|element|strange|cosmic|alien|elder|insane|wild|transformation|shadow|spirit|divine|plane|curse|fey/i
+  );
+  const weirdAreas = countMatching(
+    areaTypes,
+    /strange|portal|summon|gateway|vault of|sanctum|oracle|vivification|preservation|foresight|laboratory|crystal|underground lake|lava/i
+  );
+  const weirdType = type === "laboratory" ? 2 : ["unknown", "temple"].includes(type) ? 1 : 0;
+  const weirdAlignment = alignment === "chaotic" || alignment === "evil" ? 1 : 0;
+  const weirdness = clamp(1 + Math.min(3, weirdThemes) + Math.min(3, weirdAreas) + weirdType + weirdAlignment, 1, 10);
+
+  return { danger, treasure, scale, mystery, weirdness };
+}
+
 function rollRumors(rng: Rng, tokens: TokenValues): string[] {
   const templates = [...DUNGEON_RUMOR_TEMPLATES];
   const count = rng.int(2, 3);
@@ -370,6 +519,18 @@ export function generateDungeonProfile(context: DungeonContext, salt = ""): Dung
   // A lair borrows the area layout of another kind, as the source's lair tables do.
   const areaSource = type === "lair" ? randomAreaType(rng, "lair") : type;
   const areas = buildAreas(rng, areaSource, areaCount, tokens, outcome.modifier);
+  const inhabitants = rollInhabitants(rng, type, size.size, areaCount, areas, context.cultureName);
+  const ratings = rollRatings(
+    size.size,
+    areaCount,
+    themes,
+    outcome.alignment,
+    outcome.safety,
+    type,
+    accessibility,
+    builder,
+    areas
+  );
   const rumors = rollRumors(rng, tokens);
 
   return {
@@ -381,6 +542,8 @@ export function generateDungeonProfile(context: DungeonContext, salt = ""): Dung
     safety: outcome.safety,
     type,
     overview,
+    ratings,
+    inhabitants,
     areas,
     rumors
   };
@@ -409,6 +572,18 @@ export function renderDungeonProfile(profile: DungeonProfile): string {
     })
     .join("");
   const rumors = profile.rumors.map(rumor => `<li>${e(rumor)}</li>`).join("");
+  const ratings = [
+    `<strong>Danger</strong> ${profile.ratings.danger}/10`,
+    `<strong>Treasure</strong> ${profile.ratings.treasure}/10`,
+    `<strong>Scale</strong> ${profile.ratings.scale}/10`,
+    `<strong>Mystery</strong> ${profile.ratings.mystery}/10`,
+    `<strong>Weirdness</strong> ${profile.ratings.weirdness}/10`
+  ].join(" · ");
+  const inhabitants = `<strong>Inhabitants</strong> ${profile.inhabitants.rating}/6 (d6 ≤ ${
+    profile.inhabitants.rating
+  } each turn) · ${profile.inhabitants.groups.map(group => e(group.label)).join(" + ")}${
+    profile.inhabitants.relationship ? ` (${e(profile.inhabitants.relationship)})` : ""
+  }`;
 
   return [
     `<h3>${e(profile.name)}</h3>`,
@@ -416,6 +591,8 @@ export function renderDungeonProfile(profile: DungeonProfile): string {
     `<p><strong>${capitalize(profile.alignment)}</strong> · <strong>${e(profile.safety)}</strong> · ${e(
       DUNGEON_TYPE_TABLES[profile.type].label
     )}</p>`,
+    `<p>${ratings}</p>`,
+    `<p>${inhabitants}</p>`,
     `<h4>Overview</h4><ul>${overview}</ul>`,
     `<h4>Themes</h4><ul>${themes}</ul>`,
     `<h4>Areas</h4><ol>${areas}</ol>`,
