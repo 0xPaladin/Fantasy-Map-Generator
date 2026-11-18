@@ -236,7 +236,6 @@ const getRealmEconomy = (burg: Burg): RealmEconomy | undefined =>
 
 export class ProductionModule {
   regenerate(): void {
-    Markets.claimWaterDeposits();
     pack.deals = [];
     for (const market of pack.markets) market.goods = {};
     this.produce();
@@ -456,7 +455,7 @@ export class ProductionModule {
       produced: [],
       log: recording ? [] : undefined,
       deposit,
-      depositLeft: deposit?.value ? MAX_DEPOSIT_VALUE / deposit.value : Infinity,
+      depositLeft: deposit?.value ? (MAX_DEPOSIT_VALUE * (deposit.depositYield ?? 1)) / deposit.value : Infinity,
       goals,
       taxRate: Taxes.getSalesTax(burg),
       ingredientCosts: 0,
@@ -599,7 +598,7 @@ export class ProductionModule {
 
   /** The quote `acquire` would buy at */
   private quote(index: ProductionIndex, day: BurgDay, goodId: number): MarketQuote {
-    const local = Trade.quoteMarket(day.market, goodId, day.burg);
+    const local = Trade.quoteMarket(day.market, goodId, day.burg, index.tradeTerms);
     const good = Goods.get(goodId);
     const supplier = good && this.getSupplier(index, day, good);
     const { sellPrice, carriage } = local;
@@ -619,7 +618,7 @@ export class ProductionModule {
   }
 
   private getSupplier(index: ProductionIndex, day: BurgDay, good: Good): Market | null {
-    return Trade.getSupplier(day.market, good, () => this.getSource(index, day, good)?.source);
+    return Trade.getSupplier(day.burg, good, () => this.getSource(index, day, good)?.source, index.tradeTerms);
   }
 
   /** The turn's cheapest other market for the good, null when none sells it */
@@ -797,7 +796,7 @@ export class ProductionModule {
         if (!own && quote.stock <= 0.01) {
           if (poor) continue; // the poor signal no shortage
           const costPerCoverage =
-            Trade.quoteMarket(day.market, candidate.goodId, burg).buyPrice / candidate.coverageWeight;
+            Trade.quoteMarket(day.market, candidate.goodId, burg, index.tradeTerms).buyPrice / candidate.coverageWeight;
           if (costPerCoverage > 0) missing.push({ candidate, costPerCoverage });
           continue;
         }
@@ -932,7 +931,9 @@ export class ProductionModule {
         .map(candidate => {
           const quote = this.quote(index, day, candidate.goodId);
           const price =
-            quote.stock > 0.01 ? quote.buyPrice : Trade.quoteMarket(day.market, candidate.goodId, burg).buyPrice;
+            quote.stock > 0.01
+              ? quote.buyPrice
+              : Trade.quoteMarket(day.market, candidate.goodId, burg, index.tradeTerms).buyPrice;
           return { candidate, stocked: quote.stock > 0.01, price, costPerCoverage: price / candidate.coverageWeight };
         })
         .filter(({ price }) => price > 0);
@@ -1026,7 +1027,7 @@ export class ProductionModule {
   private getSaleValue(index: ProductionIndex, day: BurgDay, good: Good, modifier: number, workers: number): number {
     const units = -modifier * workers;
     const outlet = this.getOutlet(index, day, good);
-    const local = Trade.quoteSale(day.market, good, day.burg);
+    const local = Trade.quoteSale(day.market, good, day.burg, index.tradeTerms);
     let price = Trade.atLot(local.sellPrice, local.carriage, day.market, good, units);
     // a lot never fetches more than a unit, so an outlet paying no more for a unit cannot win
     if (outlet && outlet.market !== day.market && outlet.price > price)

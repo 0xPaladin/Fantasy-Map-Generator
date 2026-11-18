@@ -218,7 +218,7 @@ export function getUnitRequiredGoods(unit: UnitType, roster: ResolvedRoster): st
     case "ranged":
       return rank === 0 ? [] : ["Arms"];
     case "cavalry":
-      return rank >= HEAVY_RANK ? ["Horses", "Harnesses", "Arms"] : ["Horses", "Harnesses"];
+      return rank >= HEAVY_RANK ? ["Horses", "Tack", "Arms"] : ["Horses", "Tack"];
     case "artillery":
       return requiredDevelopmentFor(unit, roster) >= 43 ? ["Artillery", "Gunpowder"] : ["Wood", "Ropes", "Iron"];
     case "monster":

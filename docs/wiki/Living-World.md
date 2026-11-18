@@ -91,7 +91,7 @@ There is no research tree. A people's **development** (1–100) is the technolog
 
 Armies stay culture-unique combined-arms stacks: every FMG regiment is up to 20 roster blocks (`{ type, hp, exp }`), and `hp` is a block's capability (0–1), not a headcount.
 
-- **Mustering is gated twice.** A unit opens at a development threshold (plus buildings/goods where the roster asks), and a state can equip only as many blocks of a type as its markets supply of the required goods (arms, horses and harnesses, artillery and gunpowder). Blocks beyond the equipment take the field as levies.
+- **Mustering is gated twice.** A unit opens at a development threshold (plus buildings/goods where the roster asks), and a state can equip only as many blocks of a type as its markets supply of the required goods (arms, horses and tack, artillery and gunpowder). Blocks beyond the equipment take the field as levies.
 - **Upkeep is the stock military budget**: a state's battle power is multiplied by `Military.getLivingBattleUpkeep` — fully funded forces hold the line, a bankrupt state's melt toward nothing.
 - Movement, stances, terrain, walls, sieges, city strikes, replenishment, refits and the shared battle engine are unchanged. Army camps improve replenishment.
 

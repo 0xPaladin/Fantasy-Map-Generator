@@ -2,10 +2,10 @@ import { type D3ZoomEvent, interpolateZoom, select, type ZoomView, zoom, zoomIde
 import { Layers } from "@/renderers/layers";
 import { isStateHaloVisible } from "@/renderers/performance";
 import {
+  FIXED_ZOOMED_LAYERS,
   setViewportTransform,
   viewport,
-  ZOOM_CURVES,
-  type ZoomedLayer,
+  ZOOMED_LAYERS,
   zoomFontSize
 } from "@/renderers/viewport/viewport";
 import { ViewportLayers } from "@/renderers/viewport/viewport-renderer";
@@ -110,7 +110,7 @@ export function redrawTracedImage(): void {
 
 /** The zoomed layers' font sizes follow the zoom; per frame or once it settles, as the viewport redraw does */
 function applyZoomFontSize(): void {
-  for (const layer of Object.keys(ZOOM_CURVES) as ZoomedLayer[]) {
+  for (const layer of [...ZOOMED_LAYERS, ...FIXED_ZOOMED_LAYERS]) {
     findEl(layer)?.setAttribute("font-size", `${zoomFontSize(layer, viewport.scale)}px`);
   }
 }
