@@ -1,6 +1,7 @@
 // Villain scheme runtime: world-match, seasonal pushes, exposure, retargeting and succession.
 // See docs/plans/villain-schemes.md. Called once a season by the Living World, beside Phase B.
 import { SCHEME_GOAL_BY_ID } from "@/data/scheme-goals";
+import { SEASON_DAYS } from "@/model/physical/living-faction-economy";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { State } from "@/model/political/states-generator";
 import { Characters } from "@/model/society/characters";
@@ -23,9 +24,11 @@ export interface SchemeRuntime {
   ): unknown;
   pushHistory(type: HistoryEventType, actors: HistRef[], cell: number | undefined, text: string): void;
   rng(tag: string, id?: number): Rng;
+  /** the faction's current daily balance, from its computed economy */
+  factionDayBalance(faction: Faction): number;
 }
 
-/** Daily gold a push costs the mastermind's purse. */
+/** Seasonal gold a push costs the mastermind; posted as a daily expense line (value / SEASON_DAYS). */
 const PUSH_COST: Record<SchemeVerb, number> = {
   seize_relic: 12,
   assassinate: 15,
@@ -55,6 +58,7 @@ const puppetTag = (scheme: Scheme): string => `scheme_puppet:${scheme.i}`;
 
 export function tickSchemes(living: LivingWorldState, runtime: SchemeRuntime): void {
   for (const scheme of Schemes.ensureSchemes()) {
+    clearSchemeLine(scheme);
     if (scheme.status !== "active") continue;
     advance(living, scheme, runtime);
   }
@@ -297,15 +301,18 @@ function channelDone(step: SchemeStep): boolean {
 function pushStep(living: LivingWorldState, scheme: Scheme, step: SchemeStep, runtime: SchemeRuntime): void {
   if (bordersClosed(scheme, step, runtime)) return; // enemy territory: agents cannot work
   const rng = runtime.rng(`scheme:${scheme.i}`, living.tick);
-  const cost = PUSH_COST[step.verb];
+  const seasonalCost = PUSH_COST[step.verb];
   const purse = purseOf(scheme.mastermind);
 
   if (purse === undefined) {
     if (!rng.chance(0.5)) return; // a faith with no patron lives on donations
   } else {
-    if (purse < cost) return; // a broke mastermind stalls
-    spend(scheme.mastermind, cost);
+    const daily = Math.round((seasonalCost / SEASON_DAYS) * 100) / 100;
+    if (!canAfford(purse, daily, runtime)) return; // a broke mastermind stalls
+    postSchemeLine(living, purse, scheme, daily);
   }
+
+  step.attempts = (step.attempts ?? 0) + 1;
 
   let succeeded = false;
   switch (step.verb) {
@@ -560,41 +567,59 @@ function bordersClosed(scheme: Scheme, step: SchemeStep, runtime: SchemeRuntime)
   return owner > 0 && owner !== master.id && runtime.isAtWar(master.id, owner);
 }
 
-function purseOf(mastermind: HistRef): number | undefined {
-  if (mastermind.kind === "state") return stateById(mastermind.id)?.economy?.treasury;
-  if (mastermind.kind === "faction") return factionById(mastermind.id)?.treasury;
+type Purse = { state: State } | { faction: Faction };
+
+function purseOf(mastermind: HistRef): Purse | undefined {
+  if (mastermind.kind === "state") {
+    const state = stateById(mastermind.id);
+    return state ? { state } : undefined;
+  }
+  if (mastermind.kind === "faction") {
+    const faction = factionById(mastermind.id);
+    return faction ? { faction } : undefined;
+  }
   if (mastermind.kind === "religion") {
-    const religion = religionById(mastermind.id);
-    if (!religion) return undefined;
     const host = (pack.factions ?? []).find(
       faction => faction?.i > 0 && !faction.removed && faction.religion === mastermind.id
     );
-    if (host) return host.treasury;
-    const stateId = pack.cells?.state?.[religion.center ?? 0];
-    return stateId ? stateById(stateId)?.economy?.treasury : undefined;
+    if (host) return { faction: host };
+    const religion = religionById(mastermind.id);
+    const stateId = religion ? pack.cells?.state?.[religion.center ?? 0] : 0;
+    const state = stateId ? stateById(stateId) : undefined;
+    return state ? { state } : undefined;
   }
   return undefined;
 }
 
-function spend(mastermind: HistRef, cost: number): void {
-  if (mastermind.kind === "state") {
-    const state = stateById(mastermind.id);
-    if (state?.economy) state.economy.treasury -= cost;
-  } else if (mastermind.kind === "faction") {
-    const faction = factionById(mastermind.id);
-    if (faction) faction.treasury -= cost;
-  } else if (mastermind.kind === "religion") {
-    const host = (pack.factions ?? []).find(
-      faction => faction?.i > 0 && !faction.removed && faction.religion === mastermind.id
-    );
-    if (host) {
-      host.treasury -= cost;
-      return;
-    }
-    const religion = religionById(mastermind.id);
-    const stateId = religion ? pack.cells?.state?.[religion.center ?? 0] : 0;
-    const state = stateId ? stateById(stateId) : undefined;
-    if (state?.economy) state.economy.treasury -= cost;
+function schemeLineName(scheme: Scheme): string {
+  const label = SCHEME_GOAL_BY_ID[scheme.goal]?.label ?? scheme.goal;
+  return `Scheme ${scheme.i}: ${label}`;
+}
+
+/** The previous season's push charge is a one-season expense: clear it before this season's push. */
+function clearSchemeLine(scheme: Scheme): void {
+  const purse = purseOf(scheme.mastermind);
+  if (!purse) return;
+  const name = schemeLineName(scheme);
+  if ("state" in purse) {
+    purse.state.economy.simAdjustments = (purse.state.economy.simAdjustments ?? []).filter(line => line.name !== name);
+  } else {
+    purse.faction.simAdjustments = (purse.faction.simAdjustments ?? []).filter(line => line.name !== name);
+  }
+}
+
+function canAfford(purse: Purse, daily: number, runtime: SchemeRuntime): boolean {
+  if ("state" in purse) return (purse.state.economy.treasury ?? 0) >= daily;
+  return runtime.factionDayBalance(purse.faction) >= daily;
+}
+
+function postSchemeLine(living: LivingWorldState, purse: Purse, scheme: Scheme, daily: number): void {
+  const line = { name: schemeLineName(scheme), value: -daily };
+  if ("state" in purse) {
+    purse.state.economy.simAdjustments = [...(purse.state.economy.simAdjustments ?? []), line];
+    living.economyDirty = true;
+  } else {
+    purse.faction.simAdjustments = [...(purse.faction.simAdjustments ?? []), line];
   }
 }
 

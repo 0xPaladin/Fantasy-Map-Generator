@@ -39,6 +39,8 @@ export interface SchemeStep {
   duration?: number;
   /** seasons of channel work left; runtime-owned, absent on non-channel steps */
   progress?: number;
+  /** paid pushes spent on this step; runtime-owned */
+  attempts?: number;
   status: SchemeStepStatus;
   /** the relic a seize step is about */
   relicId?: number;

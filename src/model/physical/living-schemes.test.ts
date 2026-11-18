@@ -100,6 +100,7 @@ function runtime(overrides: Partial<SchemeRuntime> = {}): SchemeRuntime {
     pushNews: vi.fn(),
     pushHistory: vi.fn(),
     rng: (tag, id = 0) => createRng(`test:${tag}:${id}`),
+    factionDayBalance: vi.fn(() => 100),
     ...overrides
   };
 }
@@ -179,7 +180,7 @@ describe("Scheme runtime", () => {
     );
   });
 
-  it("stalls a channel when the purse cannot pay", () => {
+  it("charges a push as a one-season daily expense line and stalls when the day balance cannot pay", () => {
     setup();
     const villain = addFigure();
     const step = makeStep("research_lore", {
@@ -191,6 +192,7 @@ describe("Scheme runtime", () => {
     pack.history!.schemes = [scheme];
 
     const stateOne = pack.states[1];
+    const line = () => (stateOne.economy.simAdjustments ?? []).find(entry => entry.name.startsWith("Scheme 1:"));
     stateOne.economy.treasury = 0;
     const rt = runtime();
     const world = living(1);
@@ -198,16 +200,58 @@ describe("Scheme runtime", () => {
     tickSchemes(world, rt);
     expect(step.progress).toBe(2);
     expect(step.status).toBe("active");
+    expect(line()).toBeUndefined();
 
     stateOne.economy.treasury = 100;
     world.tick = 2;
     tickSchemes(world, rt);
     expect(step.progress).toBe(1);
+    expect(line()).toBeDefined();
+    expect(line()!.value).toBeLessThan(0);
+    expect(step.attempts).toBe(1);
+    expect(world.economyDirty).toBe(true);
 
     world.tick = 3;
     tickSchemes(world, rt);
     expect(step.status).toBe("done");
     expect(scheme.status).toBe("complete");
+    expect(step.attempts).toBe(2);
+    expect(line()).toBeDefined();
+
+    world.tick = 4;
+    tickSchemes(world, rt);
+    expect(line()).toBeUndefined();
+  });
+
+  it("charges faction pushes through its daily expense line, not a stockpile", () => {
+    setup();
+    const villain = addFigure();
+    const step = makeStep("research_lore", {
+      targets: [{ kind: "burg", id: 1 }],
+      status: "active",
+      duration: 2
+    });
+    const scheme = makeScheme(villain, [step], { mastermind: { kind: "faction", id: 1 } });
+    pack.history!.schemes = [scheme];
+    const host = pack.factions.find(candidate => candidate.i === 1)!;
+    host.simAdjustments = [];
+    let balance = 10;
+    const rt = runtime({ factionDayBalance: () => balance });
+    const world = living(1);
+    const line = () => (host.simAdjustments ?? []).find(entry => entry.name.startsWith("Scheme 1:"));
+
+    tickSchemes(world, rt);
+    expect(step.progress).toBe(1);
+    expect(step.attempts).toBe(1);
+    expect(line()).toBeDefined();
+    expect(line()!.value).toBeLessThan(0);
+    expect(host.treasury).toBe(500); // the ledger line is the charge
+
+    balance = 0;
+    world.tick = 2;
+    tickSchemes(world, rt);
+    expect(step.progress).toBe(1);
+    expect(line()).toBeUndefined(); // last season's line cleared and the push stalled
   });
 
   it("pushes an assassination until the victim dies", () => {

@@ -1010,7 +1010,8 @@ class LivingModel {
       killFigure: figureId => this.killFigure(figureId),
       pushNews: (state, item) => this.pushNews(state, item),
       pushHistory: (type, actors, cell, text) => this.pushHistory(type, actors, cell, text),
-      rng: (tag, id) => this.rng(tag, id)
+      rng: (tag, id) => this.rng(tag, id),
+      factionDayBalance: faction => this.getFactionYieldBreakdown(faction).economy.dayBalance
     });
   }
 
