@@ -168,6 +168,7 @@ export const METHODS = {
     "place",
     "remove",
     "move",
+    "setImpact",
     "setPinned",
     "setLocked",
     "setAppearance"

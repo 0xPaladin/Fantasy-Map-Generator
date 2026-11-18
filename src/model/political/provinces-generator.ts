@@ -11,7 +11,7 @@ import { FlatQueue } from "@/utils/flat-queue";
 import { replaceWholeWord } from "@/utils/language-utils";
 import { getPolesOfInaccessibility } from "@/utils/path-utils";
 import { gauss, generateSeed, P, rand, rw } from "@/utils/probability-utils";
-import { requireName } from "@/utils/validation-utils";
+import { requireAdjustments, requireName } from "@/utils/validation-utils";
 import { Burgs, isSurfaceBurg } from "./burgs-generator";
 import { States } from "./states-generator";
 
@@ -40,6 +40,8 @@ export interface Province {
   stabilityAdjustments?: { name: string; value: number }[];
   /** sim-owned stability adjustments in percentage points */
   simStabilityAdjustments?: { name: string; value: number }[];
+  /** user-owned revenue or cost lines a day, local to the province */
+  adjustments?: { name: string; value: number }[];
 }
 
 class ProvinceModule {
@@ -512,6 +514,16 @@ class ProvinceModule {
     const province = this.living(provinceId);
     if (locked) province.lock = true;
     else delete province.lock;
+  }
+
+  /** Set province stability adjustments in percentage points, e.g. [{ name: "Festival", value: 10 }] */
+  setStabilityAdjustments(provinceId: number, adjustments: { name: string; value: number }[]): void {
+    this.living(provinceId).stabilityAdjustments = requireAdjustments(adjustments);
+  }
+
+  /** Set a province's revenue or cost lines a day, e.g. [{ name: "Tolls", value: 12 }] */
+  setAdjustments(provinceId: number, adjustments: { name: string; value: number }[]): void {
+    this.living(provinceId).adjustments = requireAdjustments(adjustments);
   }
 
   /** Give land cells of the province's state to a province; another province's center cannot move */

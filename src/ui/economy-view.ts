@@ -297,12 +297,13 @@ const ADJUSTMENTS_STYLE = /* css */ `<style>
 
 let expanded = false; // the last choice, kept for the next row shown
 
-/** Read-only rows for the simulation's own adjustment lines (works, troubles, factions) */
+/** Read-only rows for non-user adjustment lines (Living World or map markers) */
 export function renderSimAdjustments(
   container: HTMLElement,
   lines: Adjustment[],
   tip: string,
-  formatTotal: (value: number) => string = formatPrice
+  formatTotal: (value: number) => string = formatPrice,
+  label = t("Of which the Living World")
 ): void {
   if (!lines.length) {
     container.innerHTML = "";
@@ -318,7 +319,7 @@ export function renderSimAdjustments(
     )
     .join("");
   container.innerHTML = /* html */ `<style>.simAdjustments .line { grid-template-columns: 1fr 6.5em }</style><div class="adjustments sim simAdjustments">
-    <div class="simHead" data-tip="${escapeHtml(tip)}">${t("Of which the Living World")} (${lines.length}) <span class="${total > 0 ? "positive" : total < 0 ? "negative" : ""}">${formatTotal(total)}</span></div>
+    <div class="simHead" data-tip="${escapeHtml(tip)}">${escapeHtml(label)} (${lines.length}) <span class="${total > 0 ? "positive" : total < 0 ? "negative" : ""}">${formatTotal(total)}</span></div>
     <div class="lines">${rows}</div>
   </div>`;
 }

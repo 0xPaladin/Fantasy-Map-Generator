@@ -17,7 +17,7 @@ import { MarkersEditor } from "./markers-editor";
 it("renames through Markers.rename, the same method the Assistant proposes", () => {
   document.body.innerHTML = '<div id="dialogs"></div><svg><svg id="marker4"></svg></svg>';
   options.app.mode = null;
-  vi.stubGlobal("pack", { markers: [{ i: 4, name: "Old Well" }] });
+  vi.stubGlobal("pack", { markers: [{ i: 4, type: "inns", name: "Old Well" }] });
   const rename = vi.fn();
   Object.assign(Markers, { rename });
   MarkersEditor.open(4);
@@ -25,4 +25,36 @@ it("renames through Markers.rename, the same method the Assistant proposes", () 
   input.value = "Wishing Well";
   input.dispatchEvent(new Event("change"));
   expect(rename).toHaveBeenCalledWith(4, "Wishing Well");
+});
+
+it("displays type default impacts and updates or resets overrides via Markers.setImpact", () => {
+  document.body.innerHTML = '<div id="dialogs"></div><svg><svg id="marker5"></svg></svg>';
+  options.app.mode = null;
+  vi.stubGlobal("pack", { markers: [{ i: 5, type: "brigands", name: "Highwaymen", cell: 0, x: 0, y: 0 }] });
+  const setImpact = vi.fn((_id: number, impact: { economy?: number | null; stability?: number | null }) => {
+    if (impact.economy === null) delete pack.markers[0].economy;
+    else if (impact.economy !== undefined) pack.markers[0].economy = impact.economy;
+    if (impact.stability === null) delete pack.markers[0].stability;
+    else if (impact.stability !== undefined) pack.markers[0].stability = impact.stability;
+  });
+  Object.assign(Markers, { setImpact });
+
+  MarkersEditor.open(5);
+  const econ = document.getElementById("markerEconomy") as HTMLInputElement;
+  const stab = document.getElementById("markerStability") as HTMLInputElement;
+  expect(econ.value).toBe("-3");
+  expect(stab.value).toBe("-5");
+
+  econ.value = "2";
+  econ.dispatchEvent(new Event("change"));
+  expect(setImpact).toHaveBeenCalledWith(5, { economy: 2 });
+
+  stab.value = "-1";
+  stab.dispatchEvent(new Event("change"));
+  expect(setImpact).toHaveBeenCalledWith(5, { stability: -1 });
+
+  document.getElementById("markerImpactReset")!.click();
+  expect(setImpact).toHaveBeenCalledWith(5, { economy: null, stability: null });
+  expect(econ.value).toBe("-3");
+  expect(stab.value).toBe("-5");
 });

@@ -1,8 +1,12 @@
 import { EXPENSE_LABELS } from "@/data/id-labels";
 import { Corruption } from "@/model/economy/corruption";
 import { StateOrders } from "@/model/economy/state-orders";
+import type { Burg } from "@/model/political/burgs-generator";
+import { Provinces } from "@/model/political/provinces-generator";
 import { STABILITY_PARTS, Stability, type StabilityPart } from "@/model/political/stability";
 import { States } from "@/model/political/states-generator";
+import { Markers } from "@/model/story/markers-generator";
+import { getDecima } from "@/model/units";
 import { Dialog } from "@/ui/dialog/dialog";
 import { ECONOMY_COLORS, EconomyTerms, mountAdjustments, renderSimAdjustments, tone } from "@/ui/economy-view";
 import { tip } from "@/ui/tooltips";
@@ -12,6 +16,7 @@ import { rn } from "@/utils/number-utils";
 import { escapeHtml } from "@/utils/string-utils";
 
 const dialogPrefix = "stabilityOverview";
+const REMOTE_DECIMAS = 2; // as the province table counts remoteness
 
 const STYLE = /* html */ `<style>
   .stabilityDialog > div { width: auto }
@@ -33,7 +38,8 @@ const STYLE = /* html */ `<style>
 function open(stateId: number): void {
   const state = pack.states[stateId];
   if (!stateId || !state || state.removed) return;
-  if (!Stability.get(stateId)) {
+  const stability = Stability.get(stateId);
+  if (!stability) {
     tip(EconomyTerms.noData(), true, "error", 5000);
     return;
   }
@@ -43,15 +49,63 @@ function open(stateId: number): void {
   ensureEl("dialogs").insertAdjacentHTML(
     "beforeend",
     /* html */ `<div id="${id}" class="dialog stable stabilityDialog">${STYLE}
-      <div id="stabilityParts${stateId}">${renderParts(stateId)}</div>
+      <div id="stabilityParts${stateId}">${renderParts(stability)}</div>
       <div id="stabilityAdjustments${stateId}"></div>
       <div id="stabilitySimAdjustments${stateId}"></div>
+      <div id="stabilityMarkerAdjustments${stateId}"></div>
       <div id="stabilityProvinces${stateId}">${renderProvinces(stateId)}</div>
+      <div style="margin-top: 3px"><button id="${id}Refresh" type="button" data-tip="${t("Refresh")}" class="icon-cw"></button></div>
     </div>`
   );
+  ensureEl(`${id}Refresh`).addEventListener("click", () => {
+    const updated = Stability.get(stateId);
+    if (!updated) return;
+    ensureEl(`stabilityParts${stateId}`).innerHTML = renderParts(updated);
+    mountStabilityAdjustments(stateId);
+    ensureEl(`stabilityProvinces${stateId}`).innerHTML = renderProvinces(stateId);
+  });
   mountStabilityAdjustments(stateId);
   Dialog.open(id, {
     title: t("Stability of {{- state}}", { state: state.fullName || state.name }),
+    width: "fit-content",
+    onClose: () => Dialog.destroy(id),
+    position: { my: "right top", at: "right-10 top+10", of: "svg" }
+  });
+}
+
+/** Opens one dialog per province, listing the province's burgs where the state's lists its provinces */
+function openProvince(provinceId: number): void {
+  const province = pack.provinces?.[provinceId];
+  if (!provinceId || !province || province.removed) return;
+  const stability = Stability.getProvince(provinceId);
+  if (!stability) {
+    tip(EconomyTerms.noData(), true, "error", 5000);
+    return;
+  }
+
+  const id = `${dialogPrefix}Province${provinceId}`;
+  Dialog.destroy(id);
+  ensureEl("dialogs").insertAdjacentHTML(
+    "beforeend",
+    /* html */ `<div id="${id}" class="dialog stable stabilityDialog">${STYLE}
+      <div id="stabilityProvinceParts${provinceId}">${renderParts(stability)}</div>
+      <div id="stabilityProvinceAdjustments${provinceId}"></div>
+      <div id="stabilityProvinceSimAdjustments${provinceId}"></div>
+      <div id="stabilityProvinceMarkerAdjustments${provinceId}"></div>
+      <div id="stabilityProvinceBurgs${provinceId}">${renderBurgs(provinceId)}</div>
+      <div style="margin-top: 3px"><button id="${id}Refresh" type="button" data-tip="${t("Refresh")}" class="icon-cw"></button></div>
+    </div>`
+  );
+  ensureEl(`${id}Refresh`).addEventListener("click", () => {
+    const updated = Stability.getProvince(provinceId);
+    if (!updated) return;
+    ensureEl(`stabilityProvinceParts${provinceId}`).innerHTML = renderParts(updated);
+    mountProvinceStabilityAdjustments(provinceId);
+    ensureEl(`stabilityProvinceBurgs${provinceId}`).innerHTML = renderBurgs(provinceId);
+  });
+  mountProvinceStabilityAdjustments(provinceId);
+  Dialog.open(id, {
+    title: t("Stability of {{- province}}", { province: province.fullName || province.name }),
     width: "fit-content",
     onClose: () => Dialog.destroy(id),
     position: { my: "right top", at: "right-10 top+10", of: "svg" }
@@ -68,7 +122,9 @@ function mountStabilityAdjustments(stateId: number): void {
     t("Adjustments: percentage-point modifiers to state stability, set by you"),
     adjustments => {
       States.setStabilityAdjustments(stateId, adjustments);
-      ensureEl(`stabilityParts${stateId}`).innerHTML = renderParts(stateId);
+      const updated = Stability.get(stateId);
+      if (!updated) return;
+      ensureEl(`stabilityParts${stateId}`).innerHTML = renderParts(updated);
       ensureEl(`stabilityProvinces${stateId}`).innerHTML = renderProvinces(stateId);
     },
     formatPct,
@@ -90,11 +146,78 @@ function mountStabilityAdjustments(stateId: number): void {
     t("Stability modifiers written by the Living World"),
     formatPct
   );
+  const markerLines = (pack.provinces ?? [])
+    .filter(p => p?.i && !p.removed && p.state === stateId)
+    .flatMap(p =>
+      Markers.getProvinceAdjustments(p.i).stability.map(line => ({
+        name: `${p.name}: ${line.name}`,
+        value: line.value
+      }))
+    );
+  renderSimAdjustments(
+    ensureEl(`stabilityMarkerAdjustments${stateId}`),
+    markerLines,
+    t("Stability modifiers from markers in the state's provinces"),
+    formatPct,
+    t("Of which markers")
+  );
 }
 
-/** Each part of the state's stability, for or against; the base is the same for all */
-function renderParts(stateId: number): string {
-  const stability = Stability.get(stateId)!;
+/** A province's own stability, with its burgs where the state dialog lists its provinces */
+function mountProvinceStabilityAdjustments(provinceId: number): void {
+  const province = pack.provinces[provinceId];
+  const state = pack.states[province.state];
+
+  const refresh = () => {
+    const updated = Stability.getProvince(provinceId);
+    if (!updated) return;
+    ensureEl(`stabilityProvinceParts${provinceId}`).innerHTML = renderParts(updated);
+    ensureEl(`stabilityProvinceBurgs${provinceId}`).innerHTML = renderBurgs(provinceId);
+  };
+
+  mountAdjustments(
+    ensureEl(`stabilityProvinceAdjustments${provinceId}`),
+    province.stabilityAdjustments ?? [],
+    t("Adjustments: percentage-point modifiers to provincial stability, set by you"),
+    adjustments => {
+      Provinces.setStabilityAdjustments(provinceId, adjustments);
+      refresh();
+    },
+    formatPct,
+    {
+      step: "1",
+      valueTip: t("Stability points (%); negative to lower stability"),
+      addTip: t("Add stability modifier")
+    }
+  );
+
+  const simLines = [
+    ...(province.simStabilityAdjustments ?? []).map(line => ({
+      name: `${province.name}: ${line.name}`,
+      value: line.value
+    })),
+    ...(state.economy.simStabilityAdjustments ?? []).map(line => ({
+      name: `${state.name}: ${line.name}`,
+      value: line.value
+    }))
+  ];
+  renderSimAdjustments(
+    ensureEl(`stabilityProvinceSimAdjustments${provinceId}`),
+    simLines,
+    t("Stability modifiers written by the Living World"),
+    formatPct
+  );
+  renderSimAdjustments(
+    ensureEl(`stabilityProvinceMarkerAdjustments${provinceId}`),
+    Markers.getProvinceAdjustments(provinceId).stability,
+    t("Stability modifiers from markers in this province"),
+    formatPct,
+    t("Of which markers")
+  );
+}
+
+/** Each part of a state's or province's stability, for or against; the base is the same for all */
+function renderParts(stability: NonNullable<ReturnType<typeof Stability.get>>): string {
   const labels: Record<StabilityPart, string> = {
     base: t("Base"),
     prosperity: t("Prosperity"),
@@ -149,4 +272,50 @@ function renderProvinces(stateId: number): string {
   return `<h4>${t("Provinces")}</h4><div class="scroll"><table class="provinces"><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-export const StabilityOverview = { open };
+/** Each burg in the province: its people, distance and minorities */
+function renderBurgs(provinceId: number): string {
+  const province = pack.provinces[provinceId];
+  const state = pack.states[province.state];
+  if (!Stability.getProvince(provinceId)) return "";
+
+  const burgs = (province.burgs ?? [])
+    .map(id => pack.burgs[id])
+    .filter((burg): burg is Burg => Boolean(burg?.i && !burg.removed && burg.state === province.state));
+  if (burgs.length === 0) return `<h4>${t("Burgs")}</h4><div class="right">${t("No burgs")}</div>`;
+
+  const spread = Corruption.getProvinces(province.state).find(entry => entry.id === provinceId);
+  const people = spread?.people ?? 0;
+  const center = pack.burgs[province.burg ?? 0];
+  const reach = REMOTE_DECIMAS * getDecima();
+  const stateFaith = pack.cells.religion?.[pack.burgs[state.capital]?.cell ?? -1] || 0;
+  const percent = (value: number) => `${rn(value * 100)}%`;
+
+  const remoteness = (burg: Burg): number => {
+    if (!center?.i || burg === center || center.removed) return 0;
+    const overseas = pack.cells.f?.[burg.cell] !== pack.cells.f?.[center.cell];
+    return overseas ? 1 : Math.min(1, Math.hypot(burg.x - center.x, burg.y - center.y) / reach);
+  };
+  const minorities = (burg: Burg): number =>
+    (pack.cells.culture?.[burg.cell] !== state.culture ? 0.5 : 0) +
+    ((pack.cells.religion?.[burg.cell] ?? 0) !== stateFaith ? 0.5 : 0);
+
+  const rows = burgs
+    .toSorted((a, b) => (b.population ?? 0) - (a.population ?? 0))
+    .map(burg => {
+      const share = people ? (burg.population ?? 0) / people : 0;
+      return `<tr><td>${escapeHtml(burg.name ?? "—")}</td><td>${percent(share)}</td><td>${percent(remoteness(burg))}</td><td>${percent(minorities(burg))}</td></tr>`;
+    })
+    .join("");
+
+  const header = [
+    [t("Burg"), ""],
+    [t("People"), t("Share of the province's people")],
+    [t("Remoteness"), t("Distance from the province's capital")],
+    [t("Minorities"), t("Share of other cultures and faiths")]
+  ]
+    .map(([label, tipText]) => `<th${tipText ? ` data-tip="${tipText}"` : ""}>${label}</th>`)
+    .join("");
+  return `<h4>${t("Burgs")}</h4><div class="scroll"><table class="provinces"><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+export const StabilityOverview = { open, openProvince };

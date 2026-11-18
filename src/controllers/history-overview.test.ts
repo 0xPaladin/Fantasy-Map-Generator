@@ -266,4 +266,28 @@ describe("LegendsOverview", () => {
     LegendsOverview.open();
     expect(document.getElementById("legendsBrowser")).toBeNull();
   });
+
+  it("wraps each era in a group for per-era zebra striping and lays out 3 filter columns", () => {
+    LegendsOverview.open();
+    const groups = [...body().querySelectorAll(".legendsEraGroup")];
+    expect(groups).toHaveLength(2);
+    expect(groups[0].querySelectorAll(".legendsEvent")).toHaveLength(2);
+    expect(groups[1].querySelectorAll(".legendsEvent")).toHaveLength(2);
+    expect(document.querySelectorAll("#legendsFilters label")).toHaveLength(3);
+  });
+
+  it("does not fire a full-body tooltip overlay when hovering the scrollable legends body", async () => {
+    LegendsOverview.open();
+    const { showDataTip } = await import("@/ui/tooltips");
+    const tooltip = document.createElement("div");
+    tooltip.id = "tooltip";
+    document.body.appendChild(tooltip);
+
+    const el = body();
+    Object.defineProperty(el, "scrollWidth", { value: 1200, configurable: true });
+    Object.defineProperty(el, "clientWidth", { value: 400, configurable: true });
+    showDataTip({ target: el } as unknown as Event);
+
+    expect(tooltip.textContent).toBe("");
+  });
 });

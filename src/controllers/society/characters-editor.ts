@@ -1,6 +1,7 @@
 // Characters editor: the table and the sheet dialog. See docs/plans/characters.md.
-import { ACTION_DEFS, ACTIONS, DICE } from "@/data/character-actions";
-import { ALIGNMENTS, type Alignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
+import { ACTION_DEFS, ACTIONS, DICE, heroStartingPackage } from "@/data/character-actions";
+import { ALIGNMENTS, type Alignment, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
+import { HERO_ARCHETYPE_IDS, HERO_ARCHETYPES } from "@/data/hero-archetypes";
 import { Characters } from "@/model/society/characters";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
@@ -8,6 +9,7 @@ import type { CharacterStatus, HeroCondition, HeroSheet } from "@/types/characte
 import type { ActionId, Die } from "@/types/character-actions";
 import type { FactionRelation } from "@/types/factions";
 import type { Character, HistoricalFigure, HistoricalRole, HistRefKind } from "@/types/history";
+import type { HeroArchetypeId } from "@/types/living";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -64,10 +66,18 @@ let filterState: { search: string; status: string; kind: string };
 const columns: EditorColumn<HistoricalFigure>[] = [
   { key: "locate", width: "1.2em", permanent: true },
   { key: "name", label: t("Name"), width: "12em", permanent: true, sortBy: c => c.name, sortType: "alpha" },
-  { key: "culture", label: t("Culture"), width: "8em", sortBy: cultureName, sortType: "alpha" },
   { key: "status", label: t("Status"), width: "6em", sortBy: statusOf, sortType: "alpha" },
   { key: "age", label: t("Age"), width: "4em", sortBy: ageOf, sortType: "number" },
-  { key: "role", label: t("Role"), width: "12em", sortBy: roleSummary, sortType: "alpha" },
+  { key: "culture", label: t("Culture"), width: "8em", sortBy: cultureName, sortType: "alpha" },
+  { key: "alignment", label: t("Alignment"), width: "6em", sortBy: c => c.alignment ?? "", sortType: "alpha" },
+  {
+    key: "traits",
+    label: t("Virtues/Vices"),
+    width: "18em",
+    sortBy: c => traitSummary(c),
+    sortType: "alpha"
+  },
+  { key: "role", label: t("Role"), width: "16em", sortBy: roleSummary, sortType: "alpha" },
   { key: "faction", label: t("Faction"), width: "11em", sortBy: factionSummary, sortType: "alpha" },
   { key: "hero", label: t("Hero"), width: "4em", sortBy: c => (c.hero ? 1 : 0), sortType: "number" },
   { key: "details", width: "1.2em" },
@@ -103,7 +113,35 @@ function openRole(character: HistoricalFigure): HistoricalRole | undefined {
 function roleSummary(character: HistoricalFigure): string {
   const role = openRole(character);
   if (!role) return "";
-  return `${capitalize(role.type)} ${role.target.kind} ${role.target.id}`;
+  return `${capitalize(role.type)} ${targetName(role.target)}`;
+}
+
+function traitSummary(character: HistoricalFigure): string {
+  return [...(character.virtues ?? []), ...(character.vices ?? [])].join(", ");
+}
+
+/** The name behind a role's target reference, with its kind and id only when the target is gone */
+function targetName(target: HistoricalRole["target"]): string {
+  const { kind, id } = target;
+  const fallback = `${capitalize(kind)} ${id}`;
+  switch (kind) {
+    case "state":
+      return pack.states?.[id]?.name ?? fallback;
+    case "burg":
+      return pack.burgs?.[id]?.name ?? fallback;
+    case "culture":
+      return pack.cultures?.[id]?.name ?? fallback;
+    case "religion":
+      return pack.religions?.[id]?.name ?? fallback;
+    case "faction":
+      return pack.factions?.find(faction => faction.i === id)?.name ?? fallback;
+    case "figure":
+      return Characters.get(id)?.name ?? fallback;
+    case "realm":
+      return pack.history?.realms?.[id]?.name ?? fallback;
+    case "polity":
+      return pack.history?.polities?.find(polity => polity.id === id)?.name ?? fallback;
+  }
 }
 
 function factionSummary(character: HistoricalFigure): string {
@@ -248,6 +286,7 @@ function renderDialog(): void {
 
   const body = ensureEl("charactersBodySection");
   body.addEventListener("click", handleTableClick);
+  body.addEventListener("change", handleTableChange);
   renderEditorPagination(ensureEl("charactersFooter"), charactersTable.view(), page => charactersTable.goto(page));
 }
 
@@ -276,6 +315,7 @@ function renderRow(character: HistoricalFigure): string {
   const hero = character.hero
     ? `<span class="badge" data-tip="${escapeHtml(heroSummary(character))}">${t("Hero")}</span>`
     : "—";
+  const traits = traitSummary(character) || "—";
   const locate = character.cell !== undefined ? "icon-dot-circled" : "";
   const removedClass = character.removed ? " removed" : "";
   const removeAction = character.removed ? "restore" : "remove";
@@ -286,9 +326,19 @@ function renderRow(character: HistoricalFigure): string {
     <div id="characterRow-${character.i}" class="states${removedClass}" data-id="${character.i}">
       <div data-col="locate" class="pointer ${locate}" data-action="locate" data-tip="${t("Locate on map")}"></div>
       <span data-col="name" class="pointer" data-action="details" style="text-decoration: underline;">${escapeHtml(character.name)}</span>
-      <span data-col="culture">${escapeHtml(culture)}</span>
       <span data-col="status" class="badge">${capitalize(status)}</span>
       <span data-col="age" style="text-align: center;">${ageOf(character)}</span>
+      <span data-col="culture">${escapeHtml(culture)}</span>
+      <span data-col="alignment">
+        <select data-action="alignment" aria-label="${t("Alignment")}">
+          <option value="">${t("None")}</option>
+          ${ALIGNMENTS.map(option => `<option value="${option}" ${character.alignment === option ? "selected" : ""}>${capitalize(option)}</option>`).join("")}
+        </select>
+      </span>
+      <span data-col="traits" data-tip="${escapeHtml(traits)}">
+        <span class="pointer icon-cw" data-action="reroll-traits" data-tip="${t("Reroll virtues and vices")}"></span>
+        ${escapeHtml(traits)}
+      </span>
       <span data-col="role">${escapeHtml(role)}</span>
       <span data-col="faction">${escapeHtml(faction)}</span>
       <span data-col="hero" style="text-align: center;">${hero}</span>
@@ -307,6 +357,8 @@ function handleTableClick(event: MouseEvent): void {
 
   if (target.dataset.action === "details") {
     openCharacterDetails(character.i);
+  } else if (target.dataset.action === "reroll-traits") {
+    rerollTraits(character);
   } else if (target.dataset.action === "locate") {
     locate(character);
   } else if (target.dataset.action === "remove") {
@@ -323,9 +375,49 @@ function handleTableClick(event: MouseEvent): void {
   }
 }
 
+function handleTableChange(event: Event): void {
+  const select = (event.target as HTMLElement)?.closest<HTMLSelectElement>('[data-action="alignment"]');
+  if (!select) return;
+  const row = select.closest<HTMLElement>("[data-id]");
+  const id = Number(row?.dataset.id);
+  if (!Number.isFinite(id) || !Characters.get(id)) return;
+  Characters.update(id, { alignment: (select.value as Alignment) || undefined });
+  if (Layers.has("characters")) Layers.draw("characters");
+}
+
 function refreshCharacters(): void {
   charactersTable.refresh();
   if (Layers.has("characters")) Layers.draw("characters");
+}
+
+/** Roll new virtues and vices in the counts the character's alignment dictates */
+function rerollTraits(character: HistoricalFigure): void {
+  const rng = traitsRng(`${options.map?.seed ?? ""}:${Math.random()}`, "figure", character.i);
+  const alignment = character.alignment ?? rollAlignment(rng, pack.cultures?.[character.culture]?.alignment);
+  const { virtues, vices } = rollFigureTraits(rng, alignment);
+  Characters.update(character.i, { alignment, virtues, vices });
+  refreshCharacters();
+}
+
+/** Reset the hero's attributes, actions and ability to the selected archetype's starting package */
+function rerollHero(characterId: number): void {
+  const character = Characters.get(characterId);
+  const hero = character?.hero;
+  if (!character || !hero) return;
+  const select = findEl<HTMLSelectElement>("characterArchetype");
+  const archetype = (select?.value ?? hero.archetype ?? "freeblade") as HeroArchetypeId;
+  const start = heroStartingPackage(archetype);
+  Characters.update(characterId, {
+    hero: {
+      ...hero,
+      archetype,
+      attributes: { ...start.attributes },
+      actions: { ...start.actions },
+      abilities: [start.ability]
+    }
+  });
+  refreshCharacters();
+  openCharacterDetails(characterId);
 }
 
 function locate(character: HistoricalFigure): void {
@@ -360,15 +452,16 @@ export function openCharacterDetails(characterId: number): void {
     title: `${character.name} — ${t("Character Sheet")}`,
     width: 560,
     height: "auto",
+    maxHeight: window.innerHeight - 50,
     resizable: true
   });
 
   ensureEl("saveCharacterButton").addEventListener("click", () => saveCharacter(characterId));
   ensureEl("cancelCharacterButton").addEventListener("click", () => Dialog.close(detailsId));
   ensureEl("deleteCharacterButton").addEventListener("click", () => deleteCharacter(characterId));
-  ensureEl("regenerateCharacterTraitsButton").addEventListener("click", () => regenerateCharacterTraits(characterId));
   ensureEl("addRoleButton").addEventListener("click", () => appendRoleRow());
   ensureEl("addRelationButton").addEventListener("click", () => appendRelationRow());
+  findEl("rerollHeroButton")?.addEventListener("click", () => rerollHero(characterId));
 
   const promote = findEl("promoteCharacterButton");
   promote?.addEventListener("click", () => {
@@ -388,7 +481,14 @@ function renderDetails(character: HistoricalFigure): string {
     .join("");
 
   return /* html */ `
-    <div id="${detailsId}" class="dialog stable" style="padding: 8px; max-height: 72vh; overflow-y: auto; font-size: 0.85em;">
+    <div id="${detailsId}" class="dialog stable" style="padding: 8px; font-size: 0.85em;">
+      <style>
+        #${detailsId} .characterTable { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+        #${detailsId} .characterTable th { text-align: left; border-bottom: 1px solid var(--dark-solid); padding: 2px 4px; }
+        #${detailsId} .characterTable td { padding: 2px 4px; border-bottom: 1px solid #e5e5e5; }
+        #${detailsId} .characterTable td input, #${detailsId} .characterTable td select { width: 100%; margin: 0; }
+        #${detailsId} .characterTable th:last-child, #${detailsId} .characterTable td:last-child { width: 1.6em; text-align: right; }
+      </style>
       <section class="editorSection">
         <h4>${t("Identity")}</h4>
         <div style="display: flex; gap: 6px; margin-bottom: 4px;">
@@ -410,109 +510,125 @@ function renderDetails(character: HistoricalFigure): string {
       </section>
 
       <section class="editorSection">
-        <h4>${t("Traits")}</h4>
-        <div style="display: flex; gap: 6px; align-items: end; margin-bottom: 4px;">
-          <label style="flex: 1; display: flex; flex-direction: column;">${t("Alignment")}<select id="characterAlignment" style="width: 100%;">
-            <option value="">${t("None")}</option>
-            ${ALIGNMENTS.map(alignment => `<option value="${alignment}" ${character.alignment === alignment ? "selected" : ""}>${capitalize(alignment)}</option>`).join("")}
-          </select></label>
-          <button id="regenerateCharacterTraitsButton" type="button" class="btn icon-cw" data-tip="${t("Regenerate virtues and vices from alignment")}"></button>
-        </div>
-        <label style="display: flex; flex-direction: column;">${t("Virtues")}<input id="characterVirtues" value="${escapeHtml((character.virtues ?? []).join(", "))}" style="width: 100%;" /></label>
-        <label style="display: flex; flex-direction: column;">${t("Vices")}<input id="characterVices" value="${escapeHtml((character.vices ?? []).join(", "))}" style="width: 100%;" /></label>
-      </section>
-
-      <section class="editorSection">
         <h4>${t("Roles")}</h4>
-        <div id="characterRolesRows">${(character.roles ?? []).map(roleRow).join("")}</div>
+        <table class="characterTable">
+          <thead><tr>
+            <th>${t("Type")}</th><th>${t("Target")}</th><th>${t("Id")}</th><th>${t("From")}</th><th>${t("To")}</th><th>${t("Specialty")}</th><th></th>
+          </tr></thead>
+          <tbody id="characterRolesRows">${(character.roles ?? []).map(roleRow).join("")}</tbody>
+        </table>
         <button id="addRoleButton" class="btn">${t("+ Role")}</button>
       </section>
 
       <section class="editorSection">
-        <h4>${t("Hero")}</h4>
-        ${character.hero ? renderHeroSection(character.hero) : `<div class="livingMuted">${t("Background character")}</div><button id="promoteCharacterButton" class="btn">${t("Promote to hero")}</button>`}
-      </section>
-
-      <section class="editorSection">
         <h4>${t("Relations")}</h4>
-        <div id="characterRelationsRows">${relationRows(character)}</div>
-        <div style="display: flex; gap: 4px; align-items: end;">
-          <label style="flex: 1; display: flex; flex-direction: column;">${t("Kind")}<select id="newRelationKind" style="width: 100%;">${RELATION_KINDS.map(kind => `<option value="${kind}">${capitalize(kind)}</option>`).join("")}</select></label>
-          <label style="flex: 0 0 5em; display: flex; flex-direction: column;">${t("Target")}<input id="newRelationTarget" type="number" min="0" style="width: 100%;" /></label>
-          <label style="flex: 1; display: flex; flex-direction: column;">${t("Relation")}<select id="newRelationTier" style="width: 100%;">${RELATIONS.map(rel => `<option value="${rel}">${rel}</option>`).join("")}</select></label>
+        <table class="characterTable">
+          <thead><tr>
+            <th>${t("Kind")}</th><th>${t("Target")}</th><th>${t("Relation")}</th><th></th>
+          </tr></thead>
+          <tbody id="characterRelationsRows">${relationRows(character)}</tbody>
+        </table>
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <select id="newRelationKind" style="flex: 1;" aria-label="${t("Kind")}">${RELATION_KINDS.map(kind => `<option value="${kind}">${capitalize(kind)}</option>`).join("")}</select>
+          <input id="newRelationTarget" type="number" min="0" style="flex: 0 0 5em;" aria-label="${t("Target")}" />
+          <select id="newRelationTier" style="flex: 1;" aria-label="${t("Relation")}">${RELATIONS.map(rel => `<option value="${rel}">${rel}</option>`).join("")}</select>
           <button id="addRelationButton" class="btn">${t("+ Relation")}</button>
         </div>
       </section>
 
-      <div style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px;">
+      ${
+        character.hero
+          ? `<section class="editorSection">
+              <h4>${t("Hero")}</h4>
+              ${renderHeroSection(character.hero)}
+            </section>`
+          : ""
+      }
+
+      <div style="display: flex; gap: 6px; align-items: center; margin-top: 8px;">
         <button id="deleteCharacterButton" class="btn icon-trash" data-tip="${t("Remove character")}"></button>
+        <span style="flex: 1;"></span>
         <button id="cancelCharacterButton" class="btn">${t("Cancel")}</button>
+        ${character.hero ? "" : `<button id="promoteCharacterButton" class="btn">${t("Promote to hero")}</button>`}
         <button id="saveCharacterButton" class="btn">${t("Save")}</button>
       </div>
     </div>`;
 }
 
 function renderHeroSection(hero: HeroSheet): string {
+  const archetypes = HERO_ARCHETYPE_IDS.map(
+    id =>
+      `<option value="${id}" ${hero.archetype === id ? "selected" : ""}>${escapeHtml(HERO_ARCHETYPES[id].name)}</option>`
+  ).join("");
   const attributes = (["might", "agility", "wits", "presence"] as const)
     .map(
       attribute =>
         `<label style="flex: 1; display: flex; flex-direction: column;">${capitalize(attribute)}<input data-attr="${attribute}" type="number" min="-1" max="2" step="1" value="${hero.attributes[attribute]}" style="width: 100%;" /></label>`
     )
     .join("");
-  const actions = ACTIONS.map(
-    action =>
-      `<label style="display: flex; flex-direction: column;">${escapeHtml(ACTION_DEFS[action].label)}<select data-action="${action}" style="width: 100%;">
-        ${DICE.map(die => `<option value="${die}" ${hero.actions[action] === die ? "selected" : ""}>${die}</option>`).join("")}
-      </select></label>`
-  ).join("");
+  const actionField = (action: ActionId) =>
+    `<label style="display: flex; flex-direction: column;">${escapeHtml(ACTION_DEFS[action].label)}<select data-action="${action}" style="width: 100%;">
+      ${DICE.map(die => `<option value="${die}" ${hero.actions[action] === die ? "selected" : ""}>${die}</option>`).join("")}
+    </select></label>`;
+  const primaryActions = ACTIONS.slice(0, 6).map(actionField).join("");
+  const otherActions = ACTIONS.slice(6).map(actionField).join("");
   const condition = hero.condition;
 
   return /* html */ `
-    <div style="margin-bottom: 4px;"><b>${t("Archetype")}:</b> ${escapeHtml(hero.archetype ?? "—")}</div>
-    <div style="display: flex; gap: 4px; margin-bottom: 4px;">${attributes}</div>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 4px;">${actions}</div>
-    <label style="display: flex; flex-direction: column;">${t("Abilities")}<textarea id="heroAbilities" style="width: 100%; height: 2.5em;">${escapeHtml((hero.abilities ?? []).join("\n"))}</textarea></label>
-    <label style="display: flex; flex-direction: column;">${t("Inventory")}<textarea id="heroInventory" style="width: 100%; height: 2em;">${escapeHtml((hero.inventory ?? []).join("\n"))}</textarea></label>
-    <div style="display: flex; gap: 4px; margin-top: 4px;">
+    <div style="display: flex; gap: 4px; align-items: end; margin-bottom: 4px;">
+      <label style="flex: 1; display: flex; flex-direction: column;">${t("Archetype")}<select id="characterArchetype" style="width: 100%;">${archetypes}</select></label>
+      <button id="rerollHeroButton" type="button" class="btn icon-cw" data-tip="${t("Reroll the stats of this archetype")}"></button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 4px;">
       <label style="flex: 1; display: flex; flex-direction: column;">${t("XP")}<input id="heroXp" type="number" min="0" value="${hero.xp ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Resolve")}<input id="heroResolve" type="number" value="${condition?.resolve ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Stamina")}<input id="heroStamina" type="number" value="${condition?.stamina ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Max Resolve")}<input id="heroMaxResolve" type="number" value="${condition?.maxResolve ?? 0}" style="width: 100%;" /></label>
       <label style="flex: 1; display: flex; flex-direction: column;">${t("Max Stamina")}<input id="heroMaxStamina" type="number" value="${condition?.maxStamina ?? 0}" style="width: 100%;" /></label>
-      <label style="display: flex; align-items: center;"><input id="heroPush" type="checkbox" ${condition?.push ? "checked" : ""}/> ${t("Push")}</label>
     </div>
-    <div style="display: flex; gap: 4px; margin-top: 4px;">
-      <label style="flex: 1; display: flex; flex-direction: column;">${t("Applied Level")}<input id="heroAppliedLevel" type="number" min="0" value="${hero.progression?.appliedLevel ?? 0}" style="width: 100%;" /></label>
-      <label style="flex: 1; display: flex; flex-direction: column;">${t("Pending Choices")}<input id="heroPendingChoices" type="number" min="0" max="2" value="${hero.progression?.pendingChoices ?? 0}" style="width: 100%;" /></label>
-      <label style="flex: 2; display: flex; flex-direction: column;">${t("Picks")}<input id="heroPicks" value="${escapeHtml((hero.progression?.picks ?? []).join(", "))}" style="width: 100%;" /></label>
-    </div>`;
+    <div style="display: flex; gap: 4px; margin-bottom: 4px;">${attributes}</div>
+    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 4px;">${primaryActions}</div>
+    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 4px;">${otherActions}</div>
+    <label style="display: flex; flex-direction: column;">${t("Abilities")}<textarea id="heroAbilities" style="width: 100%; height: 2.5em;">${escapeHtml((hero.abilities ?? []).join("\n"))}</textarea></label>
+    <label style="display: flex; flex-direction: column;">${t("Inventory")}<textarea id="heroInventory" style="width: 100%; height: 2em;">${escapeHtml((hero.inventory ?? []).join("\n"))}</textarea></label>`;
 }
 
 function roleRow(role: HistoricalRole): string {
   return /* html */ `
-    <div class="characterRoleRow" data-role-row style="display: flex; gap: 4px; align-items: end; margin-bottom: 3px;">
-      <label style="flex: 1; display: flex; flex-direction: column;">${t("Type")}<select data-role="type" style="width: 100%;">${ROLE_TYPES.map(type => `<option value="${type}" ${role.type === type ? "selected" : ""}>${capitalize(type)}</option>`).join("")}</select></label>
-      <label style="flex: 1; display: flex; flex-direction: column;">${t("Target")}<select data-role="targetKind" style="width: 100%;">${REF_KINDS.map(kind => `<option value="${kind}" ${role.target.kind === kind ? "selected" : ""}>${capitalize(kind)}</option>`).join("")}</select></label>
-      <label style="flex: 0 0 4em; display: flex; flex-direction: column;">${t("Id")}<input data-role="targetId" type="number" min="0" value="${role.target.id}" style="width: 100%;" /></label>
-      <label style="flex: 0 0 5em; display: flex; flex-direction: column;">${t("From")}<input data-role="from" type="number" value="${role.from}" style="width: 100%;" /></label>
-      <label style="flex: 0 0 5em; display: flex; flex-direction: column;">${t("To")}<input data-role="to" type="number" value="${role.to ?? ""}" style="width: 100%;" /></label>
-      <label style="flex: 2; display: flex; flex-direction: column;">${t("Specialty")}<input data-role="specialty" value="${escapeHtml(role.specialty ?? "")}" style="width: 100%;" /></label>
-      <button class="btn icon-trash" data-remove-role></button>
-    </div>`;
+    <tr class="characterRoleRow" data-role-row>
+      <td><select data-role="type">${ROLE_TYPES.map(type => `<option value="${type}" ${role.type === type ? "selected" : ""}>${capitalize(type)}</option>`).join("")}</select></td>
+      <td><select data-role="targetKind">${REF_KINDS.map(kind => `<option value="${kind}" ${role.target.kind === kind ? "selected" : ""}>${capitalize(kind)}</option>`).join("")}</select></td>
+      <td><input data-role="targetId" type="number" min="0" value="${role.target.id}"/></td>
+      <td><input data-role="from" type="number" value="${role.from}"/></td>
+      <td><input data-role="to" type="number" value="${role.to ?? ""}"/></td>
+      <td><input data-role="specialty" value="${escapeHtml(role.specialty ?? "")}"/></td>
+      <td><button class="btn icon-trash" data-remove-role></button></td>
+    </tr>`;
 }
 
 function relationRows(character: HistoricalFigure): string {
   return RELATION_KINDS.flatMap(kind => {
     const relations = character.relations?.[kind] ?? {};
-    return Object.entries(relations).map(
-      ([targetId, tier]) => /* html */ `
-        <div class="characterRelationRow" data-relation-row data-kind="${kind}" data-target="${targetId}" style="display: flex; gap: 6px; align-items: center; margin-bottom: 3px;">
-          <span>${capitalize(kind)} ${targetId}</span>
-          <select data-relation-tier>${RELATIONS.map(rel => `<option value="${rel}" ${tier === rel ? "selected" : ""}>${rel}</option>`).join("")}</select>
-          <button class="btn icon-trash" data-remove-relation></button>
-        </div>`
-    );
+    return Object.entries(relations).map(([targetId, tier]) => relationRow(kind, Number(targetId), tier));
   }).join("");
+}
+
+function relationRow(kind: RelationKind, targetId: number, tier: FactionRelation): string {
+  return /* html */ `
+    <tr class="characterRelationRow" data-relation-row data-kind="${kind}" data-target="${targetId}">
+      <td>${capitalize(kind)}</td>
+      <td>${escapeHtml(relationTargetName(kind, targetId))}</td>
+      <td><select data-relation-tier>${RELATIONS.map(rel => `<option value="${rel}" ${tier === rel ? "selected" : ""}>${rel}</option>`).join("")}</select></td>
+      <td><button class="btn icon-trash" data-remove-relation></button></td>
+    </tr>`;
+}
+
+/** The name behind a relation's target, with its kind and id only when the target is gone */
+function relationTargetName(kind: RelationKind, targetId: number): string {
+  if (kind === "factions")
+    return pack.factions?.find(faction => faction.i === targetId)?.name ?? `${t("Faction")} ${targetId}`;
+  if (kind === "states") return pack.states?.[targetId]?.name ?? `${t("State")} ${targetId}`;
+  return Characters.get(targetId)?.name ?? `${t("Character")} ${targetId}`;
 }
 
 function appendRoleRow(): void {
@@ -527,15 +643,7 @@ function appendRelationRow(): void {
   const rawTarget = Number(ensureEl<HTMLInputElement>("newRelationTarget").value);
   const tier = ensureEl<HTMLSelectElement>("newRelationTier").value as FactionRelation;
   if (!Number.isInteger(rawTarget) || rawTarget < 0) return;
-  ensureEl("characterRelationsRows").insertAdjacentHTML(
-    "beforeend",
-    /* html */ `
-      <div class="characterRelationRow" data-relation-row data-kind="${kind}" data-target="${rawTarget}" style="display: flex; gap: 6px; align-items: center; margin-bottom: 3px;">
-        <span>${capitalize(kind)} ${rawTarget}</span>
-        <select data-relation-tier>${RELATIONS.map(rel => `<option value="${rel}" ${tier === rel ? "selected" : ""}>${rel}</option>`).join("")}</select>
-        <button class="btn icon-trash" data-remove-relation></button>
-      </div>`
-  );
+  ensureEl("characterRelationsRows").insertAdjacentHTML("beforeend", relationRow(kind, rawTarget, tier));
 }
 
 function readNumber(id: string, fallback: number): number {
@@ -614,6 +722,9 @@ function readRelations(character: Character): Character["relations"] {
 function readHero(character: HistoricalFigure): HeroSheet | undefined {
   if (!character.hero) return undefined;
   const previous = character.hero;
+  const archetype = (findEl<HTMLSelectElement>("characterArchetype")?.value ??
+    previous.archetype ??
+    "freeblade") as HeroArchetypeId;
   const attributes = { ...previous.attributes };
   for (const input of Array.from(document.querySelectorAll<HTMLInputElement>("[data-attr]"))) {
     const key = input.dataset.attr as keyof typeof attributes;
@@ -632,50 +743,26 @@ function readHero(character: HistoricalFigure): HeroSheet | undefined {
     resolve: readNumber("heroResolve", previous.condition?.resolve ?? 0),
     stamina: readNumber("heroStamina", previous.condition?.stamina ?? 0),
     maxResolve: readNumber("heroMaxResolve", previous.condition?.maxResolve ?? 0),
-    maxStamina: readNumber("heroMaxStamina", previous.condition?.maxStamina ?? 0),
-    push: Boolean(findEl<HTMLInputElement>("heroPush")?.checked)
+    maxStamina: readNumber("heroMaxStamina", previous.condition?.maxStamina ?? 0)
   };
 
   return {
     ...previous,
+    archetype,
     attributes,
     actions,
     abilities: readLines("heroAbilities"),
     inventory: readLines("heroInventory"),
     xp: readNumber("heroXp", previous.xp ?? 0),
     condition,
-    progression: {
-      ...(previous.progression ?? {}),
-      appliedLevel: readNumber("heroAppliedLevel", previous.progression?.appliedLevel ?? 0),
-      pendingChoices: Math.max(
-        0,
-        Math.min(2, readNumber("heroPendingChoices", previous.progression?.pendingChoices ?? 0))
-      ),
-      picks: readList("heroPicks")
-    }
+    progression: previous.progression
   };
-}
-
-function regenerateCharacterTraits(characterId: number): void {
-  const alignment = readText("characterAlignment") as Alignment | "";
-  const virtuesInput = ensureEl<HTMLInputElement>("characterVirtues");
-  const vicesInput = ensureEl<HTMLInputElement>("characterVices");
-  if (!alignment || !ALIGNMENTS.includes(alignment)) {
-    virtuesInput.value = "";
-    vicesInput.value = "";
-    return;
-  }
-  const rng = traitsRng(`${options.map?.seed ?? ""}:${Math.random()}`, "figure", characterId);
-  const { virtues, vices } = rollFigureTraits(rng, alignment);
-  virtuesInput.value = virtues.join(", ");
-  vicesInput.value = vices.join(", ");
 }
 
 function saveCharacter(characterId: number): void {
   const character = Characters.get(characterId);
   if (!character) return;
   const culture = readNumber("characterCulture", character.culture);
-  const alignment = readText("characterAlignment") as Alignment;
 
   Characters.update(characterId, {
     name: readText("characterName") || character.name,
@@ -688,9 +775,6 @@ function saveCharacter(characterId: number): void {
     lock: Boolean(findEl<HTMLInputElement>("characterLock")?.checked),
     tags: readList("characterTags"),
     note: readText("characterNote") || undefined,
-    alignment: ALIGNMENTS.includes(alignment) ? alignment : undefined,
-    virtues: readList("characterVirtues"),
-    vices: readList("characterVices"),
     roles: readRoles(),
     relations: readRelations(character),
     hero: readHero(character)

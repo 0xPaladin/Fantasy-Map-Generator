@@ -65,9 +65,12 @@ import {
   toBattleUnitsMen
 } from "@/model/physical/living-armies";
 import {
+  canReadUpstreamEconomy,
   computeFactionEconomy,
   type FactionUpstreamIncome,
+  factionNodeHostPresence,
   factionUpstreamIncome,
+  projectedAssetSeasons,
   SEASON_DAYS
 } from "@/model/physical/living-faction-economy";
 import {
@@ -136,6 +139,7 @@ import type {
 } from "@/types/living";
 import { SEASON_NAMES } from "@/types/living";
 import { minmax } from "@/utils";
+import { getRandomColor } from "@/utils/color-utils";
 import { SEA_LEVEL } from "@/utils/height-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { Chronicle } from "./history-generator";
@@ -929,8 +933,8 @@ class LivingModel {
         ? province.burg
         : this.pickProvinceSettlement(province.i, state.i);
     const burg = settlementId !== undefined ? pack.burgs[settlementId] : undefined;
-    if (burg?.i && !burg.removed && burg.state === state.i) {
-      this.breakAway(state, burg, living);
+    if (burg?.i && !burg.removed && !burg.capital && burg.state === state.i) {
+      this.secedeProvince(state, province, burg, living);
       return true;
     }
 
@@ -2310,10 +2314,16 @@ class LivingModel {
 
   /** Factions keep a small standing guard: muster one roster block per season while under strength and funded. */
   private musterFactionBlock(faction: Faction, living: LivingWorldState): void {
+    const assetMilitaryCap = this.factionNodes(faction).reduce(
+      (sum, { node }) =>
+        sum + (node.assets ?? []).reduce((aSum, aid) => aSum + (getFactionAsset(aid)?.yields?.militaryCap ?? 0), 0),
+      0
+    );
     const desired =
       1 +
       Math.floor((faction.outposts ?? []).length / 2) +
-      (faction.allegiance === "hostile" || faction.category === "martial" || faction.sovereignAmbition ? 1 : 0);
+      (faction.allegiance === "hostile" || faction.category === "martial" || faction.sovereignAmbition ? 1 : 0) +
+      assetMilitaryCap;
     const combatRegiments = (faction.military ?? []).filter(r => !isCivilianUnit((r.type ?? "").toLowerCase()));
     if (combatRegiments.length >= desired) return;
 
@@ -2425,26 +2435,50 @@ class LivingModel {
     return nodes;
   }
 
-  /** Best next asset a faction can currently afford and build. */
+  /** Best next asset a faction can currently fund from daily revenue and build. */
   private pickNextFactionAsset(faction: Faction): FactionAssetDef | null {
-    const treasury = Number(faction.treasury ?? 0);
+    const breakdown = this.getFactionYieldBreakdown(faction);
+    const canFund =
+      breakdown.economy.projectDaily > 0 ||
+      (!canReadUpstreamEconomy() && Number(faction.treasury ?? 0) >= FACTION_PROJECT_RESERVE);
+    if (!canFund) return null;
+
     const development = this.factionDevelopment(faction);
     const candidates = getAllFactionAssets()
       .filter(def => factionCanBuildAsset(faction, def, development))
-      .filter(def => treasury >= def.cost + FACTION_PROJECT_RESERVE)
       .filter(def => this.pickFactionAssetNode(faction, def) !== null)
       .sort((a, b) => a.tier - b.tier || a.cost - b.cost || a.id.localeCompare(b.id));
     return candidates[0] ?? null;
   }
 
-  /** A faction's next work: advance it, or commission the best asset its track and purse allow. */
+  /** Advance the active asset build using daily infrastructure revenue, or queue the next eligible work. */
   private stepFactionProject(faction: Faction, living: LivingWorldState): void {
+    if (!faction.project && faction.projectQueue?.length) {
+      this.promoteNextQueuedFactionProject(faction);
+    }
+
     if (faction.project) {
-      if (faction.project.turnsLeft > 1) {
-        faction.project.turnsLeft -= 1;
+      const def = getFactionAsset(faction.project.assetId);
+      const breakdown = this.getFactionYieldBreakdown(faction);
+      const seasonalDraw = breakdown.economy.projectDaily * SEASON_DAYS;
+      if (seasonalDraw > 0 && def) {
+        const remaining = (faction.project.remainingCost ?? def.cost) - seasonalDraw;
+        if (remaining <= 0) {
+          this.completeFactionProject(faction, living);
+        } else {
+          faction.project.remainingCost = Math.round(remaining * 100) / 100;
+          faction.project.turnsLeft = Math.max(1, Math.ceil(remaining / seasonalDraw));
+        }
         return;
       }
-      this.completeFactionProject(faction, living);
+
+      if (!canReadUpstreamEconomy()) {
+        if (faction.project.turnsLeft > 1) {
+          faction.project.turnsLeft -= 1;
+          return;
+        }
+        this.completeFactionProject(faction, living);
+      }
       return;
     }
 
@@ -2452,28 +2486,72 @@ class LivingModel {
     if (next) this.commissionFactionAsset(faction.i, next.id);
   }
 
-  /** God mode / editor: pay for and begin one faction asset at a node. */
+  /** Begin one queued asset directly if it fits its target node. */
+  private startFactionProjectEntry(faction: Faction, assetId: string, nodeKey: FactionNodeKey): boolean {
+    const def = getFactionAsset(assetId);
+    const target = this.factionNodeByKey(faction, nodeKey);
+    if (!def || !target || (target.node.assets ?? []).includes(assetId)) return false;
+
+    const breakdown = this.getFactionYieldBreakdown(faction);
+    const turns = projectedAssetSeasons(def.cost, breakdown.economy.projectDaily) ?? def.tier;
+    faction.project = {
+      assetId,
+      nodeKey: factionSuppressionNodeKey(target.node, target.isHq),
+      turnsLeft: turns,
+      totalCost: def.cost,
+      remainingCost: def.cost
+    };
+    return true;
+  }
+
+  private promoteNextQueuedFactionProject(faction: Faction): void {
+    while (faction.projectQueue?.length && !faction.project) {
+      const next = faction.projectQueue.shift()!;
+      this.startFactionProjectEntry(faction, next.assetId, next.nodeKey);
+    }
+  }
+
+  /** God mode / editor: place a faction asset in the active/queued build list funded by daily revenue. */
   commissionFactionAsset(factionId: number, assetId: string, nodeKey?: FactionNodeKey): boolean {
     const faction = Factions.active().find(entry => entry.i === factionId);
     const def = getFactionAsset(assetId);
-    if (!faction?.i || faction.removed || !def || faction.project) return false;
-    if (Number(faction.treasury ?? 0) < def.cost) return false;
+    if (!faction?.i || faction.removed || !def) return false;
     if (!factionCanBuildAsset(faction, def, this.factionDevelopment(faction))) return false;
 
     const target = nodeKey ? this.factionNodeByKey(faction, nodeKey) : this.pickFactionAssetNode(faction, def);
     if (!target || (target.node.assets ?? []).includes(assetId)) return false;
 
-    faction.treasury = Math.round((Number(faction.treasury) - def.cost) * 100) / 100;
-    faction.project = {
-      assetId,
-      nodeKey: factionSuppressionNodeKey(target.node, target.isHq),
-      turnsLeft: def.tier
-    };
+    const resolvedKey = factionSuppressionNodeKey(target.node, target.isHq);
+    const duplicateActive = faction.project?.assetId === assetId && faction.project?.nodeKey === resolvedKey;
+    const duplicateQueued = (faction.projectQueue ?? []).some(q => q.assetId === assetId && q.nodeKey === resolvedKey);
+    if (duplicateActive || duplicateQueued) return false;
+
+    if (!faction.project) {
+      if (!this.startFactionProjectEntry(faction, assetId, resolvedKey)) return false;
+    } else {
+      faction.projectQueue ??= [];
+      faction.projectQueue.push({ assetId, nodeKey: resolvedKey });
+    }
     if (pack.history?.living) pack.history.living.economyDirty = true;
     return true;
   }
 
-  /** Finish a faction work: add it to the node and let the host town feel it. */
+  /** Cancel the active project or remove a queued asset build. */
+  dequeueFactionProject(factionId: number, kind: "active" | "queued", queueIndex = 0): boolean {
+    const faction = Factions.active().find(entry => entry.i === factionId);
+    if (!faction?.i || faction.removed) return false;
+    if (kind === "active") {
+      if (!faction.project) return false;
+      faction.project = undefined;
+      this.promoteNextQueuedFactionProject(faction);
+      return true;
+    }
+    if (!faction.projectQueue || queueIndex < 0 || queueIndex >= faction.projectQueue.length) return false;
+    faction.projectQueue.splice(queueIndex, 1);
+    return true;
+  }
+
+  /** Finish a faction work: add it to the node, apply node/province effects, and start the next queued work. */
   private completeFactionProject(faction: Faction, living: LivingWorldState): void {
     const active = faction.project;
     if (!active) return;
@@ -2481,14 +2559,15 @@ class LivingModel {
     const target = this.factionNodeByKey(faction, active.nodeKey);
     if (!def || !target) {
       faction.project = undefined;
+      this.promoteNextQueuedFactionProject(faction);
       return;
     }
 
     target.node.assets = [...(target.node.assets ?? []), def.id];
-    if (target.node.sim) target.node.sim.civBuildings = [...target.node.assets];
-    this.applyFactionAssetImpacts(target.node, def);
-    faction.influence = minmax((faction.influence ?? 0) + 2, 0, 100);
+    this.applyFactionAssetImpacts(target.node, def, living);
+    faction.influence = minmax((faction.influence ?? 0) + (def.yields?.influence ?? 2), 0, 100);
     faction.project = undefined;
+    this.promoteNextQueuedFactionProject(faction);
     living.economyDirty = true;
 
     const location = target.node.burgId ? (pack.burgs[target.node.burgId]?.name ?? "a burg") : "the wilds";
@@ -2502,33 +2581,89 @@ class LivingModel {
     this.pushHistory("deed", [{ kind: "state", id: faction.patronStateId ?? 0 }], target.node.cell, text);
   }
 
-  private applyFactionAssetImpacts(_node: FactionHq | FactionOutpost, _def: FactionAssetDef): void {}
+  private applyFactionAssetImpacts(
+    node: FactionHq | FactionOutpost,
+    def: FactionAssetDef,
+    living: LivingWorldState
+  ): void {
+    if (def.yields?.secrecy) {
+      node.secrecy = minmax((node.secrecy ?? 0) + def.yields.secrecy, 0, 100);
+    }
+    if (def.yields?.development) {
+      const cell = node.burgId ? (pack.burgs[node.burgId]?.cell ?? node.cell) : node.cell;
+      const provId = pack.cells?.province?.[cell] ?? 0;
+      if (provId) this.raiseProvinceDevelopment(provId, def.yields.development, living);
+    }
+  }
 
-  /** Rebuild every faction money line on its host towns: one per asset with a gold bite. */
-  private syncFactionLines(living: LivingWorldState): void {
+  /** Sync all faction asset economy and stability lines on burgs and provinces. */
+  syncFactionEffects(living: LivingWorldState | undefined = pack.history?.living): void {
+    this.syncFactionLines(living);
+  }
+
+  /** Rebuild consolidated faction presence & asset lines on host burgs and provinces. */
+  private syncFactionLines(living?: LivingWorldState): void {
     const prefix = "Faction: ";
+    const legacyStabPrefix = "Faction Work: ";
+
+    const byBurg = new Map<number, Map<number, { name: string; value: number }>>();
+    const byProvince = new Map<number, Map<number, { name: string; value: number }>>();
+
+    for (const faction of Factions.active()) {
+      const prosperity = this.getFactionYieldBreakdown(faction).prosperity;
+      for (const { node, isHq } of this.factionNodes(faction)) {
+        const impact = factionNodeHostPresence(faction, node, isHq, prosperity);
+        if (node.burgId && Math.abs(impact.goldDaily) >= 0.01) {
+          let m = byBurg.get(node.burgId);
+          if (!m) {
+            m = new Map();
+            byBurg.set(node.burgId, m);
+          }
+          const prev = m.get(faction.i)?.value ?? 0;
+          m.set(faction.i, {
+            name: `${prefix}${faction.name}`,
+            value: Math.round((prev + impact.goldDaily) * 100) / 100
+          });
+        }
+        const cell = node.burgId ? (pack.burgs?.[node.burgId]?.cell ?? node.cell) : node.cell;
+        const provId = pack.cells?.province?.[cell] ?? 0;
+        if (provId && Math.abs(impact.stabilityDelta) >= 0.05) {
+          let m = byProvince.get(provId);
+          if (!m) {
+            m = new Map();
+            byProvince.set(provId, m);
+          }
+          const prev = m.get(faction.i)?.value ?? 0;
+          m.set(faction.i, {
+            name: `${prefix}${faction.name}`,
+            value: Math.round((prev + impact.stabilityDelta) * 10) / 10
+          });
+        }
+      }
+    }
+
     for (const burg of pack.burgs) {
       if (!burg?.i || burg.removed) continue;
       const current = burg.simAdjustments ?? [];
       const kept = current.filter(line => !line.name.startsWith(prefix));
-      const lines: { name: string; value: number }[] = [];
-
-      for (const faction of Factions.active()) {
-        for (const { node } of this.factionNodes(faction)) {
-          if (!node.burgId || node.burgId !== burg.i) continue;
-          for (const assetId of node.assets ?? []) {
-            const def = getFactionAsset(assetId);
-            const value = def?.burgImpact?.gold ?? 0;
-            if (!def || !value) continue;
-            lines.push({ name: `${prefix}${faction.name} ${def.name}`, value });
-          }
-        }
-      }
-
+      const lines = [...(byBurg.get(burg.i)?.values() ?? [])].filter(line => Math.abs(line.value) >= 0.01);
       const next = [...kept, ...lines];
       if (JSON.stringify(next) === JSON.stringify(current)) continue;
       burg.simAdjustments = next;
-      living.economyDirty = true;
+      if (living) living.economyDirty = true;
+    }
+
+    for (const province of pack.provinces ?? []) {
+      if (!province?.i || province.removed) continue;
+      const currentStab = province.simStabilityAdjustments ?? [];
+      const keptStab = currentStab.filter(
+        line => !line.name.startsWith(prefix) && !line.name.startsWith(legacyStabPrefix)
+      );
+      const stabLines = [...(byProvince.get(province.i)?.values() ?? [])].filter(line => Math.abs(line.value) >= 0.05);
+      const nextStab = [...keptStab, ...stabLines];
+      if (JSON.stringify(nextStab) === JSON.stringify(currentStab)) continue;
+      province.simStabilityAdjustments = nextStab;
+      if (living) living.economyDirty = true;
     }
   }
 
@@ -2586,6 +2721,7 @@ class LivingModel {
       const breakdown: FactionNodeYieldBreakdown = {
         node,
         isHq,
+        dailyIncome: Math.round((upstream.gold / SEASON_DAYS) * 100) / 100,
         upstreamGold: upstream.gold,
         charterTithe: upstream.charterTithe
       };
@@ -2616,12 +2752,22 @@ class LivingModel {
       nodes,
       hq: hqBreakdown,
       outposts: outpostsBreakdown,
+      dailyIncome: Math.round((economy.collectedDaily - economy.charterTitheDaily) * 100) / 100,
       upstreamGold: Math.round(totalUpstreamGold * 100) / 100,
       charterTithe: Math.round(totalCharterTithe * 100) / 100,
       charterPatronId,
       influence: Math.round(totalInfluence * 100) / 100,
+      prosperity: economy.prosperity,
+      stability: economy.stability,
       economy
     };
+  }
+
+  /** Combat multiplier from how fully the faction funded its required military expenses (0.5..1.0) */
+  private factionCombatMult(faction: Faction | undefined): number {
+    if (!faction?.i || faction.removed || !canReadUpstreamEconomy()) return 1;
+    const mil = this.getFactionYieldBreakdown(faction).economy.expenses.find(e => e.bucket === "military");
+    return mil ? 0.5 + 0.5 * minmax(mil.provision, 0, 1) : 1;
   }
 
   /** The faction's season on the upstream economy: Day Balance × SEASON_DAYS. */
@@ -2677,11 +2823,53 @@ class LivingModel {
         charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
       }
       this.applyFactionTreasury(faction, living);
+      this.applyFactionStabilityDrift(faction, breakdown, living);
       this.musterFactionBlock(faction, living);
       this.stepFactionProject(faction, living);
     }
     this.syncFactionLines(living);
     this.applyCharterTithes(living, charters);
+  }
+
+  /** Stability & court provision move node influence seasonally and can collapse hollow outposts. */
+  private applyFactionStabilityDrift(
+    faction: Faction,
+    breakdown: FactionYieldBreakdown,
+    living: LivingWorldState
+  ): void {
+    if (!canReadUpstreamEconomy()) return;
+    const courtProv = breakdown.economy.expenses.find(e => e.bucket === "court")?.provision ?? 1;
+    let delta = 0;
+    if (breakdown.stability >= 0.7 || courtProv >= 0.8) delta = 1;
+    else if (breakdown.stability < 0.4) delta = -2;
+    else if (courtProv < 0.5) delta = -1;
+
+    if (delta !== 0) {
+      if (faction.hq && !faction.hq.pillaged) {
+        faction.hq.influence = minmax((faction.hq.influence ?? 70) + delta, 0, 100);
+      }
+      for (const op of faction.outposts ?? []) {
+        if (op.pillaged) continue;
+        op.influence = minmax((op.influence ?? 35) + delta, 0, 100);
+      }
+    }
+
+    if (breakdown.stability < 0.25 && (faction.outposts ?? []).length > 0) {
+      const weakestIdx = faction.outposts
+        .map((op, i) => ({ op, i }))
+        .filter(e => !e.op.pillaged && e.op.influence <= 15)
+        .sort((a, b) => a.op.influence - b.op.influence)[0]?.i;
+      if (weakestIdx !== undefined) {
+        const [removed] = faction.outposts.splice(weakestIdx, 1);
+        const burgName = removed.burgId ? (pack.burgs?.[removed.burgId]?.name ?? "a burg") : "the frontier";
+        this.pushNews(living, {
+          kind: "faction",
+          text: `${faction.name}'s outpost in ${burgName} collapsed from internal instability.`,
+          cell: removed.cell,
+          ...(removed.burgId ? { burgId: removed.burgId } : {})
+        });
+      }
+    }
   }
 
   /** §5.1: charters pay their patron states, as a named line of the state's budget */
@@ -3662,6 +3850,7 @@ class LivingModel {
     const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
     const burg = burgId ? pack.burgs[burgId] : undefined;
     const attackerLordMult = this.stateCombatMult(attackerState.i, living);
+    const defenderLordMult = this.factionCombatMult(defenderFaction);
     const session = initBattleSession({
       config,
       unitTypes: toBattleTypes(types),
@@ -3687,7 +3876,8 @@ class LivingModel {
           Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0,
         defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
         labels: [],
-        ...(attackerLordMult !== 1 ? { attackerLordMult } : {})
+        ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
+        ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
       }
     });
 
@@ -3835,7 +4025,12 @@ class LivingModel {
       cell: defenderRegiment.cell,
       regionId: pack.cells.province?.[defenderRegiment.cell] ?? 0,
       assault: false,
-      modifiers: this.factionBattleModifiers(attackerRegiment, defenderRegiment, defenderKind, defenderId)
+      modifiers: {
+        ...this.factionBattleModifiers(attackerRegiment, defenderRegiment, defenderKind, defenderId),
+        ...(this.factionCombatMult(attackerFaction) !== 1
+          ? { attackerLordMult: this.factionCombatMult(attackerFaction) }
+          : {})
+      }
     });
 
     const rng = this.rng("faction:army:battle", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
@@ -3953,7 +4148,10 @@ class LivingModel {
     const attackerCrossedRiver =
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
       Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
-    const defenderLordMult = defenderKind === "state" ? this.stateCombatMult(defenderId, living) : 1;
+    const defenderLordMult =
+      defenderKind === "state"
+        ? this.stateCombatMult(defenderId, living)
+        : this.factionCombatMult(pack.factions?.[defenderId]);
     return {
       walls,
       defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
@@ -5149,7 +5347,16 @@ class LivingModel {
           );
     if (!targetBurg?.i || targetBurg.removed || targetBurg.state !== stateId || targetBurg.capital) return false;
 
-    this.breakAway(state, targetBurg, living);
+    const provId = pack.cells.province?.[targetBurg.cell] ?? 0;
+    const province = provId ? pack.provinces?.[provId] : undefined;
+    const hasStateCapital = Boolean(
+      province?.i && pack.cells.province?.[pack.burgs[state.capital]?.cell ?? -1] === province.i
+    );
+    if (province?.i && !province.removed && province.state === stateId && !hasStateCapital) {
+      this.secedeProvince(state, province, targetBurg, living);
+    } else {
+      this.breakAway(state, targetBurg, living);
+    }
     return true;
   }
 
@@ -5749,12 +5956,21 @@ class LivingModel {
             this.defectProvinceToState(state, foreign.state, province, living);
             continue;
           }
-          const rebelBurg = pack.burgs.find(
-            b => b?.i && !b.removed && !b.capital && b.state === state.i && pack.cells.province?.[b.cell] === province.i
-          );
+          const provCapital = province.burg ? pack.burgs[province.burg] : undefined;
+          const rebelBurg =
+            provCapital && !provCapital.removed && !provCapital.capital && provCapital.state === state.i
+              ? provCapital
+              : pack.burgs.find(
+                  b =>
+                    b?.i &&
+                    !b.removed &&
+                    !b.capital &&
+                    b.state === state.i &&
+                    pack.cells.province?.[b.cell] === province.i
+                );
           if (rebelBurg) {
             pSim.rebellion = null;
-            this.breakAway(state, rebelBurg, living);
+            this.secedeProvince(state, province, rebelBurg, living);
             continue;
           }
         }
@@ -5958,7 +6174,55 @@ class LivingModel {
     return 0;
   }
 
-  private foundSecessionState(oldOwner: State, burg: Burg): number {
+  /** Secede an entire rebellious province as a new sovereign state. */
+  private secedeProvince(oldOwner: State, province: Province, capitalBurg: Burg, living: LivingWorldState): void {
+    const newStateId = this.foundSecessionState(oldOwner, capitalBurg, province);
+    const newState = pack.states[newStateId];
+    if (!newState) return;
+
+    const provCells = this.provinceCells(province.i).filter(
+      cell => cell !== oldOwner.center && pack.cells.burg?.[cell] !== oldOwner.capital
+    );
+    this.transferCells(newStateId, provCells);
+    province.state = newStateId;
+    if (oldOwner.provinces) oldOwner.provinces = oldOwner.provinces.filter(id => id !== province.i);
+    newState.provinces = [province.i];
+
+    for (const burg of pack.burgs) {
+      if (!burg?.i || burg.removed || burg.capital || burg.state !== oldOwner.i) continue;
+      if (pack.cells.province?.[burg.cell] !== province.i) continue;
+      burg.state = newStateId;
+      const bSim = living.burgs[burg.i];
+      if (bSim) bSim.conqueredBy = undefined;
+      this.recordClaim(oldOwner.i, burg, newStateId);
+      this.recordGrudge(oldOwner.i, burg, "repulsed", `${province.name ?? burg.name} seceded from ${oldOwner.name}`);
+    }
+
+    capitalBurg.state = newStateId;
+    capitalBurg.capital = 1;
+    this.raiseRebelRegiment(newStateId, capitalBurg);
+    const rebel = this.spawnRebel(oldOwner, capitalBurg, living);
+    const text = `${province.name ?? capitalBurg.name ?? "A province"} seceded from ${oldOwner.name}, proclaiming ${newState.name}!`;
+    this.pushNews(living, {
+      kind: "revolt",
+      text,
+      cell: province.center ?? capitalBurg.cell,
+      stateId: newStateId,
+      burgId: capitalBurg.i
+    });
+    this.pushHistory(
+      "independence",
+      [
+        { kind: "figure", id: rebel.i },
+        { kind: "state", id: oldOwner.i },
+        { kind: "state", id: newStateId }
+      ],
+      province.center ?? capitalBurg.cell,
+      text
+    );
+  }
+
+  private foundSecessionState(oldOwner: State, burg: Burg, province?: Province): number {
     const i = pack.states.length;
     const culture = burg.culture ?? oldOwner.culture ?? 0;
     const relations: string[] = [];
@@ -5975,16 +6239,23 @@ class LivingModel {
     }
     relations[i] = "x";
 
+    const seedName = province?.name ?? burg.name ?? Names.getCulture(culture);
+    const usedColors = new Set(pack.states.filter(s => s?.i && !s.removed && s.color).map(s => s.color));
+    let color = getRandomColor();
+    for (let attempt = 0; attempt < 12 && (color === oldOwner.color || usedColors.has(color)); attempt++) {
+      color = getRandomColor();
+    }
+
     pack.states.push({
       i,
-      name: Names.getState(burg.name ?? Names.getCulture(culture), culture),
+      name: Names.getState(seedName, culture),
       diplomacy: relations,
-      provinces: [],
-      color: oldOwner.color ?? "#8a8a8a",
+      provinces: province ? [province.i] : [],
+      color,
       expansionism: 0.5,
       capital: burg.i,
       type: "Generic",
-      center: burg.cell,
+      center: province?.center ?? burg.cell,
       culture,
       rosterId: assignStateRoster({ culture, type: "Generic" }, pack.cultures),
       military: [],
@@ -7719,6 +7990,7 @@ class LivingModel {
     burg: Burg;
     outpost?: import("@/types/factions").FactionOutpost;
   } | null {
+    if (canReadUpstreamEconomy() && this.getFactionYieldBreakdown(faction).prosperity < 0.4) return null;
     const treasury = Number(faction.treasury ?? 0);
     const existingUpgrade = (faction.outposts ?? []).find(o => !o.pillaged && o.tier < 3);
     if (existingUpgrade && treasury >= 80 && (faction.outposts?.length ?? 0) >= 2) {

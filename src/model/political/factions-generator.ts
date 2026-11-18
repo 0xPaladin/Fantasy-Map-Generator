@@ -1,8 +1,10 @@
 import { hcl } from "d3";
 import { rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
+import { getFactionAsset } from "@/data/faction-assets";
 import { EPIC_FACTION_IDS, FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
 import { assignStateRoster } from "@/data/roster-content";
+import { defaultFactionBudget, defaultFactionRevenueRates } from "@/model/physical/living-faction-economy";
 import {
   Military,
   type Regiment,
@@ -12,13 +14,17 @@ import {
 import type {
   Faction,
   FactionAllegiance,
+  FactionBudget,
   FactionCategory,
   FactionHq,
   FactionOutpost,
-  FactionRelation
+  FactionRelation,
+  FactionRevenueRates
 } from "@/types/factions";
 import type { BurgSimState } from "@/types/living";
+import { minmax } from "@/utils/number-utils";
 import { createRng, type Rng } from "@/utils/rng";
+import { requireAdjustments } from "@/utils/validation-utils";
 
 /** Initialize or reconcile the OpenCiv BurgSimState for a Faction HQ or Outpost */
 export function ensureFactionNodeSim(node: FactionHq | FactionOutpost, isHq: boolean): BurgSimState {
@@ -277,6 +283,170 @@ class FactionsModule {
     const religions = pack.religions?.filter(r => r?.i && !r.removed) ?? [];
 
     let nextFactionId = 1;
+    const hostCountByBurg = new Map<number, number>();
+    const markBurgHost = (burgId?: number) => {
+      if (burgId) hostCountByBurg.set(burgId, (hostCountByBurg.get(burgId) ?? 0) + 1);
+    };
+
+    const pickInitialOutposts = (
+      type: string,
+      allegiance: FactionAllegiance,
+      scope: Faction["expansionScope"],
+      hq: FactionHq,
+      cultureId: number,
+      religionId: number | undefined,
+      patronStateId: number | undefined,
+      foundingAge: number,
+      desiredAssets: readonly string[],
+      rng: Rng
+    ): FactionOutpost[] => {
+      const available = burgs.filter(b => b.i !== hq.burgId);
+      if (!available.length) return [];
+
+      let desired = 2;
+      switch (type) {
+        case "merchant_consortium":
+          desired = Math.min(4, Math.max(2, Math.floor(burgs.length / 8)));
+          break;
+        case "adventurer_guild":
+        case "mercenary_company":
+        case "holy_order":
+        case "shadow_syndicate":
+          desired = Math.min(3, Math.max(2, Math.floor(burgs.length / 10)));
+          break;
+        case "noble_league":
+        case "arcane_college":
+        case "ranger_wardens":
+        case "heretical_cult":
+          desired = burgs.length >= 6 ? 2 : 1;
+          break;
+        case "dread_host":
+          desired = 1;
+          break;
+      }
+      const targetCount = Math.min(desired, available.length);
+
+      const hqProv = hq.provinceId ?? (hq.cell ? pack.cells?.province?.[hq.cell] : 0) ?? 0;
+      const hqState = patronStateId ?? (hq.burgId ? pack.burgs?.[hq.burgId]?.state : pack.cells?.state?.[hq.cell]) ?? 0;
+      const [hqX, hqY] =
+        pack.cells?.p?.[hq.cell] ??
+        (hq.burgId && pack.burgs?.[hq.burgId] ? [pack.burgs[hq.burgId].x, pack.burgs[hq.burgId].y] : [0, 0]);
+
+      const matchesScope = (b: (typeof available)[number]) => {
+        switch (scope) {
+          case "province":
+            return hqProv ? (pack.cells?.province?.[b.cell] ?? 0) === hqProv : true;
+          case "state":
+            return !hqState || b.state === hqState;
+          case "culture":
+            return b.culture === cultureId;
+          case "religion":
+            return !religionId || (pack.cells?.religion?.[b.cell] ?? 0) === religionId;
+          default:
+            return true;
+        }
+      };
+
+      const dangerCells = markers.filter(isDangerMarker).map(m => m.cell);
+      const scoreBurg = (b: (typeof available)[number]) => {
+        const pop = b.population || 0;
+        const dist = Math.hypot((b.x || 0) - hqX, (b.y || 0) - hqY);
+        const crowdPenalty = -100 * (hostCountByBurg.get(b.i) ?? 0);
+        const provId = pack.cells?.province?.[b.cell] ?? 0;
+        const rel = pack.cells?.religion?.[b.cell] ?? 0;
+        let affinity = rng.next() * 15;
+
+        switch (type) {
+          case "merchant_consortium":
+            affinity += pop * 1.5 + (b.port ? 55 : 0) + (hqState && b.state !== hqState ? 35 : 0);
+            break;
+          case "shadow_syndicate":
+            affinity += pop * 1.3 + (b.port ? 45 : 0);
+            break;
+          case "arcane_college":
+            affinity += pop * 1.2;
+            break;
+          case "adventurer_guild": {
+            const nearDanger = dangerCells.some(dc => {
+              const [dx, dy] = pack.cells?.p?.[dc] ?? [0, 0];
+              return Math.hypot((b.x || 0) - dx, (b.y || 0) - dy) < 120;
+            });
+            affinity += pop * 0.8 + (nearDanger ? 35 : 0) + (hqState && b.state !== hqState ? 20 : 0);
+            break;
+          }
+          case "mercenary_company":
+            affinity +=
+              (hqState && b.state !== hqState ? 45 : 0) +
+              (b.capital ? 30 : 0) +
+              (b.walls || b.citadel ? 35 : 0) +
+              pop * 0.6;
+            break;
+          case "holy_order":
+            affinity +=
+              (religionId && rel === religionId ? 50 : 0) + (b.temple ? 35 : 0) + (b.walls ? 20 : 0) + pop * 0.8;
+            break;
+          case "noble_league":
+            affinity +=
+              (b.capital ? -40 : 40) + (provId && pack.provinces?.[provId]?.burg === b.i ? 45 : 0) + pop * 0.7;
+            break;
+          case "ranger_wardens":
+            affinity += Math.max(0, 60 - pop * 0.5) + dist * 0.05;
+            break;
+          case "heretical_cult":
+            affinity += (religionId && rel === religionId ? 45 : 0) + Math.max(0, 50 - pop * 0.4);
+            break;
+          case "dread_host":
+            affinity += -dist * 0.25 + Math.max(0, 50 - pop * 0.4);
+            break;
+          default:
+            affinity += pop;
+        }
+        return crowdPenalty + affinity;
+      };
+
+      const scoped = available.filter(matchesScope).sort((a, b) => scoreBurg(b) - scoreBurg(a));
+      // Global factions span everywhere; non-global factions stay in-scope unless scope yields 0 candidates
+      const picked =
+        scoped.length > 0
+          ? scoped.slice(0, scope === "global" ? targetCount : scoped.length).slice(0, targetCount)
+          : available
+              .slice()
+              .sort((a, b) => scoreBurg(b) - scoreBurg(a))
+              .slice(0, 1);
+
+      const starterAsset = desiredAssets.find(aid => {
+        const def = getFactionAsset(aid);
+        return def && def.location !== "hq_only" && def.location !== "wilderness";
+      });
+
+      return picked.map((outBurg, idx) => {
+        const isCore = idx === 0;
+        const ageShare = isCore ? 0.4 + rng.next() * 0.3 : 0.1 + rng.next() * 0.25;
+        const age = Math.max(1, Math.floor(foundingAge * ageShare));
+        const influence =
+          type === "dread_host"
+            ? Math.round(25 + rng.next() * 15)
+            : isCore
+              ? Math.round(40 + rng.next() * 20)
+              : Math.round(20 + rng.next() * 18);
+        const secrecy =
+          allegiance === "clandestine"
+            ? Math.round(45 + rng.next() * 25)
+            : allegiance === "hostile"
+              ? Math.round(35 + rng.next() * 20)
+              : 0;
+
+        return {
+          burgId: outBurg.i,
+          cell: outBurg.cell,
+          tier: 1 as const,
+          influence,
+          secrecy,
+          assets: starterAsset ? [starterAsset] : [],
+          establishedYear: Math.max(1, currentYear - age)
+        };
+      });
+    };
 
     const createFaction = (
       type: string,
@@ -315,6 +485,13 @@ class FactionsModule {
       const foundingAge = Math.floor(rng.next() * 150 + 20);
       const foundedYear = Math.max(1, currentYear - foundingAge);
       const color = getFactionColor(id, category);
+      const expansionism = Number((0.6 + rng.next() * 1.0).toFixed(2));
+      const expansionScope = arch?.defaultExpansionScope || "state";
+      if (hq.influence === undefined) {
+        const ageFactor = minmax((foundingAge - 20) / 150, 0, 1);
+        hq.influence = minmax(Math.round(56 + ageFactor * 16 + (expansionism - 0.6) * 12 + rng.next() * 5), 60, 85);
+      }
+      markBurgHost(hq.burgId);
 
       const stateRelations: Record<number, FactionRelation> = {};
       if (allegiance === "state_arm" && optionsOverride.patronStateId) {
@@ -329,7 +506,21 @@ class FactionsModule {
 
       const factionRelations: Record<number, FactionRelation> = {};
 
-      const outposts = optionsOverride.outposts ?? [];
+      const outposts =
+        optionsOverride.outposts ??
+        pickInitialOutposts(
+          type,
+          allegiance,
+          expansionScope,
+          hq,
+          cultureId,
+          religionId,
+          optionsOverride.patronStateId,
+          foundingAge,
+          arch?.desiredAssets ?? [],
+          rng
+        );
+      for (const op of outposts) markBurgHost(op.burgId);
 
       let military: Regiment[] = [];
       if (category === "martial" || allegiance === "hostile") {
@@ -367,8 +558,8 @@ class FactionsModule {
         memberIds: [],
         alignment,
         values,
-        expansionism: Number((0.6 + rng.next() * 1.0).toFixed(2)),
-        expansionScope: arch?.defaultExpansionScope || "state",
+        expansionism,
+        expansionScope,
         sovereignAmbition: Boolean(arch?.sovereignAmbition),
         stateForm: arch?.stateForm,
         stateRosterId: arch?.stateRosterId,
@@ -416,18 +607,6 @@ class FactionsModule {
     // 1. Grand Merchant Consortium at the top commercial hub (or largest port)
     const tradeHub = sortedBurgs.find(b => b.port) ?? sortedBurgs[0];
     if (tradeHub) {
-      const outposts: FactionOutpost[] = burgs
-        .filter(b => b.i !== tradeHub.i && (b.state === tradeHub.state || masterRng.next() > 0.6))
-        .slice(0, 2)
-        .map(outBurg => ({
-          burgId: outBurg.i,
-          cell: outBurg.cell,
-          tier: 1 as const,
-          influence: 40,
-          secrecy: 0,
-          assets: ["trade_depot"],
-          establishedYear: currentYear - 15
-        }));
       spawnEpic(
         "merchant_consortium",
         {
@@ -442,8 +621,7 @@ class FactionsModule {
         {
           patronStateId: tradeHub.state || undefined,
           burgName: tradeHub.name,
-          cultureId: tradeHub.culture,
-          outposts
+          cultureId: tradeHub.culture
         }
       );
     }
@@ -451,7 +629,6 @@ class FactionsModule {
     // 2. Adventurers' Conclave (guaranteed when burgs exist)
     const advBurg = sortedBurgs[1] ?? sortedBurgs[0];
     if (advBurg) {
-      const neighbor = burgs.find(nb => nb.i !== advBurg.i && nb.state === advBurg.state);
       spawnEpic(
         "adventurer_guild",
         {
@@ -466,20 +643,7 @@ class FactionsModule {
         {
           patronStateId: advBurg.state || undefined,
           burgName: advBurg.name,
-          cultureId: advBurg.culture,
-          outposts: neighbor
-            ? [
-                {
-                  burgId: neighbor.i,
-                  cell: neighbor.cell,
-                  tier: 1,
-                  influence: 40,
-                  secrecy: 0,
-                  assets: ["chapter_lodge"],
-                  establishedYear: currentYear - 20
-                }
-              ]
-            : []
+          cultureId: advBurg.culture
         }
       );
     }
@@ -751,6 +915,9 @@ class FactionsModule {
       doctrine: params.doctrine,
       agenda: params.agenda ?? null,
       seasonsActive: params.seasonsActive || 0,
+      budget: params.budget,
+      revenue: params.revenue,
+      adjustments: params.adjustments,
       tags: params.tags,
       lock: params.lock,
       removed: false,
@@ -768,6 +935,68 @@ class FactionsModule {
     if (!f || f.removed) return false;
     f.removed = true;
     return true;
+  }
+
+  /** Set daily revenue/cost adjustments on a faction */
+  setAdjustments(id: number, adjustments: { name: string; value: number }[]): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    f.adjustments = requireAdjustments(adjustments);
+  }
+
+  /** Set 0..100 allocation shares per expense bucket (omitted buckets keep current or default profile share) */
+  setBudget(id: number, budget: Partial<FactionBudget>): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    const base = { ...defaultFactionBudget(f.category), ...(f.budget ?? {}) };
+    f.budget = {
+      court:
+        budget.court !== undefined && Number.isFinite(budget.court)
+          ? minmax(Math.round(budget.court), 0, 100)
+          : base.court,
+      administration:
+        budget.administration !== undefined && Number.isFinite(budget.administration)
+          ? minmax(Math.round(budget.administration), 0, 100)
+          : base.administration,
+      infrastructure:
+        budget.infrastructure !== undefined && Number.isFinite(budget.infrastructure)
+          ? minmax(Math.round(budget.infrastructure), 0, 100)
+          : base.infrastructure,
+      military:
+        budget.military !== undefined && Number.isFinite(budget.military)
+          ? minmax(Math.round(budget.military), 0, 100)
+          : base.military
+    };
+  }
+
+  /** Reset custom budget shares back to the faction category's default profile */
+  resetBudget(id: number): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    delete f.budget;
+  }
+
+  /** Set 0..100 configurable revenue rates (omitted keys keep current or default category rate) */
+  setRevenue(id: number, revenue: Partial<FactionRevenueRates>): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    const base = { ...defaultFactionRevenueRates(f.category, f.allegiance), ...(f.revenue ?? {}) };
+    const clampRate = (v: number | undefined, fallback: number) =>
+      v !== undefined && Number.isFinite(v) ? minmax(Math.round(v), 0, 100) : fallback;
+    f.revenue = {
+      primary: clampRate(revenue.primary, base.primary),
+      secondary: clampRate(revenue.secondary, base.secondary),
+      ...(revenue.charterTithe !== undefined || base.charterTithe !== undefined
+        ? { charterTithe: clampRate(revenue.charterTithe, base.charterTithe ?? 15) }
+        : {})
+    };
+  }
+
+  /** Reset custom revenue rates back to category/allegiance defaults */
+  resetRevenue(id: number): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    delete f.revenue;
   }
 }
 

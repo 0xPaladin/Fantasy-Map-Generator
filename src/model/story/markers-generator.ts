@@ -25,7 +25,9 @@ import {
   JOUST_TYPES,
   JOUST_VIRTUES,
   LIBRARY_TYPES,
+  MARKER_IMPACTS,
   MARKER_PINS,
+  type MarkerImpact,
   MIGRATING_ANIMALS,
   MIRAGE_ADJECTIVES,
   NECROPOLIS_LEGENDS,
@@ -107,6 +109,10 @@ export interface Marker {
   year?: number;
   tags?: string[];
   threatId?: string;
+  /** optional per-marker daily economy impact override (gold/day); defaults to the marker type's impact */
+  economy?: number;
+  /** optional per-marker provincial stability impact override (percentage points); defaults to the marker type's impact */
+  stability?: number;
 }
 
 type MarkerConfig = {
@@ -135,7 +141,41 @@ export type MarkerDetails = {
   icon?: string;
   chronicle?: boolean;
   year?: number;
+  economy?: number;
+  stability?: number;
 };
+
+export type MarkerImpactInput = {
+  economy?: number | null;
+  stability?: number | null;
+};
+
+export type MarkerAdjustments = {
+  economy: { name: string; value: number }[];
+  stability: { name: string; value: number }[];
+};
+
+const TYPE_ALIASES: Record<string, string> = {
+  bandit: "brigands",
+  bandits: "brigands",
+  brigand: "brigands",
+  highwaymen: "brigands",
+  robbers: "brigands",
+  monster: "hill-monsters",
+  monsters: "hill-monsters",
+  necropolis: "necropolises",
+  "disturbed-burial": "disturbed-burials"
+};
+
+function resolveImpactType(type: string | undefined): string {
+  const key = (type ?? "").toLowerCase().trim();
+  if (!key) return "";
+  if (key in MARKER_IMPACTS) return key;
+  if (TYPE_ALIASES[key]) return TYPE_ALIASES[key];
+  if (`${key}s` in MARKER_IMPACTS) return `${key}s`;
+  if (`${key}es` in MARKER_IMPACTS) return `${key}es`;
+  return key;
+}
 
 export type MarkerAppearance = Partial<
   Record<"size" | "px" | "dx" | "dy", number | null> &
@@ -177,6 +217,8 @@ class MarkersModule {
   private occupied: boolean[] = [];
   private tradeIndex?: TradeIndex;
   private tradeSource: unknown = null; // the deals the index sums: each economy run replaces them
+  private provinceIndex = new Map<number, MarkerAdjustments>();
+  private provinceSources: unknown[] = [];
 
   private get config(): MarkerConfig[] {
     this.configuration ??= this.getDefaultConfig();
@@ -199,6 +241,7 @@ class MarkersModule {
     this.resetConfig();
     pack.markers = [];
     this.generateTypes();
+    Pack.markChanged();
   }
 
   regenerate() {
@@ -209,6 +252,7 @@ class MarkersModule {
     });
 
     this.generateTypes();
+    Pack.markChanged();
   }
 
   add(marker: Marker) {
@@ -217,6 +261,7 @@ class MarkersModule {
       const { icon, type, dx, dy, px, size, pin, fill, stroke } = base;
       marker = this.addMarker({ icon, type, dx, dy, px, size, pin, fill, stroke }, marker)!; // a full marker has its cell
       base.add(marker, marker.cell);
+      Pack.markChanged();
       return marker;
     }
 
@@ -224,6 +269,7 @@ class MarkersModule {
     const added = { ...marker, i, name: marker.name || getDefaultMarkerName(marker.type), tags: marker.tags ?? [] };
     pack.markers.push(added);
     this.occupied[marker.cell] = true;
+    Pack.markChanged();
     return added;
   }
 
@@ -232,6 +278,7 @@ class MarkersModule {
     const marker = pack.markers.find(m => m.i === markerId);
     if (!marker) throw new Error(`Marker ${markerId} does not exist`);
     marker.name = requireName(name);
+    Pack.markChanged();
   }
 
   /** Set a marker's icon: an emoji or an icon id */
@@ -242,6 +289,7 @@ class MarkersModule {
   /** Set a marker's type, a free label such as volcano or ruins */
   setType(markerId: number, type: string): void {
     this.living(markerId).type = requireName(type);
+    Pack.markChanged();
   }
 
   /** Hide or show a marker */
@@ -249,6 +297,7 @@ class MarkersModule {
     const marker = this.living(markerId);
     if (hidden) marker.hidden = true;
     else delete marker.hidden;
+    Pack.markChanged();
   }
 
   /** Move a marker to a map point */
@@ -256,6 +305,156 @@ class MarkersModule {
     const marker = this.living(markerId);
     const cell = Pack.requireCell(x, y);
     Object.assign(marker, { x: rn(x, 1), y: rn(y, 1), cell });
+    Pack.markChanged();
+  }
+
+  /** Set a marker's provincial economy (gold/day) and stability (%) impact overrides; null restores the type default */
+  setImpact(markerId: number, impact: MarkerImpactInput): void {
+    const marker = this.living(markerId);
+    if (typeof impact !== "object" || impact === null || Array.isArray(impact))
+      throw new Error("The marker impact must be an object: { economy, stability }");
+    for (const [key, value] of Object.entries(impact)) {
+      if (key !== "economy" && key !== "stability")
+        throw new Error(`Unknown marker impact ${key}; known: economy, stability`);
+      if (value === null) {
+        delete marker[key];
+      } else if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new Error(`Marker ${key} impact must be a number or null`);
+      } else {
+        marker[key] = key === "economy" ? rn(value, 2) : rn(value, 1);
+      }
+    }
+    Pack.markChanged();
+  }
+
+  /** Default provincial economy and stability impact for a marker based on its type and generated state */
+  getDefaultImpact(marker: Pick<Marker, "type" | "name" | "note">): MarkerImpact {
+    const canonical = resolveImpactType(marker.type);
+    const note = marker.note ?? "";
+    if (canonical === "mines" && (marker.name?.includes("old ") || note.includes("played out")))
+      return { economy: 0, stability: -2 };
+    if (canonical === "volcanoes") {
+      if (note.startsWith("Erupting")) return { economy: -4, stability: -8 };
+      if (note.startsWith("Active")) return { economy: -1, stability: -3 };
+      if (note.startsWith("Dormant")) return { economy: 0, stability: 0 };
+    }
+    if (canonical === "caves") {
+      if (note.includes("hid treasure")) return { economy: 1, stability: 0 };
+      if (note.includes("monsters") || note.includes("lava")) return { economy: 0, stability: -2 };
+    }
+    return MARKER_IMPACTS[canonical] ?? { economy: 0, stability: 0 };
+  }
+
+  /** Effective provincial economy (gold/day) and stability (%) impact for a marker */
+  getImpact(marker: Pick<Marker, "type" | "name" | "note" | "economy" | "stability">): MarkerImpact {
+    const base = this.getDefaultImpact(marker);
+    return {
+      economy: typeof marker.economy === "number" && Number.isFinite(marker.economy) ? marker.economy : base.economy,
+      stability:
+        typeof marker.stability === "number" && Number.isFinite(marker.stability) ? marker.stability : base.stability
+    };
+  }
+
+  /** Resolve the living province id a marker impacts (direct land province, or nearest shore/route-endpoint province for water markers) */
+  getProvinceId(marker: Pick<Marker, "cell" | "x" | "y">): number {
+    const { cells, provinces } = pack;
+    if (!cells || !provinces?.length) return 0;
+    const isLiving = (id: number) => id > 0 && Boolean(provinces[id] && !provinces[id].removed);
+    const direct = cells.province?.[marker.cell] || 0;
+    if (isLiving(direct)) return direct;
+    if (cells.h?.[marker.cell] === undefined || cells.h[marker.cell] >= 20) return 0;
+    return this.findWaterMarkerProvince(marker, isLiving);
+  }
+
+  /** Daily economy and stability adjustment lines from active markers attributed to a province */
+  getProvinceAdjustments(provinceId: number): MarkerAdjustments {
+    if (!provinceId) return { economy: [], stability: [] };
+    this.indexProvinces();
+    const entry = this.provinceIndex.get(provinceId);
+    return entry ? { economy: [...entry.economy], stability: [...entry.stability] } : { economy: [], stability: [] };
+  }
+
+  private indexProvinces(): void {
+    const sources = [
+      pack.markers,
+      pack.markers?.length,
+      pack.provinces,
+      pack.routes,
+      pack.cells?.province,
+      Pack.revision
+    ];
+    if (sources.every((source, k) => source === this.provinceSources[k])) return;
+    this.provinceSources = sources;
+    this.provinceIndex.clear();
+    for (const marker of pack.markers ?? []) {
+      if (!marker || marker.hidden) continue;
+      const impact = this.getImpact(marker);
+      if (!impact.economy && !impact.stability) continue;
+      const provinceId = this.getProvinceId(marker);
+      if (!provinceId) continue;
+      let entry = this.provinceIndex.get(provinceId);
+      if (!entry) {
+        entry = { economy: [], stability: [] };
+        this.provinceIndex.set(provinceId, entry);
+      }
+      const name = marker.name || getDefaultMarkerName(marker.type);
+      if (impact.economy) entry.economy.push({ name, value: impact.economy });
+      if (impact.stability) entry.stability.push({ name, value: impact.stability });
+    }
+  }
+
+  private findWaterMarkerProvince(marker: Pick<Marker, "cell" | "x" | "y">, isLiving: (id: number) => boolean): number {
+    const { cells, routes } = pack;
+    const origin = cells.p?.[marker.cell];
+    const mx = marker.x ?? origin?.[0] ?? 0;
+    const my = marker.y ?? origin?.[1] ?? 0;
+    let bestProv = 0;
+    let bestDist2 = Infinity;
+
+    const consider = (cellId: number) => {
+      const provId = cells.province?.[cellId] || 0;
+      if (!isLiving(provId)) return false;
+      const pt = cells.p?.[cellId];
+      const dist2 = pt ? (pt[0] - mx) ** 2 + (pt[1] - my) ** 2 : 0;
+      if (!bestProv || dist2 < bestDist2) {
+        bestDist2 = dist2;
+        bestProv = provId;
+      }
+      return true;
+    };
+
+    if (cells.routes?.[marker.cell] && routes?.length) {
+      for (const routeId of new Set(Object.values(cells.routes[marker.cell] ?? {}))) {
+        const points = routes.find(route => route.i === routeId)?.points;
+        if (!points?.length) continue;
+        consider(points[0][2]);
+        consider(last(points)[2]);
+      }
+    }
+
+    if (cells.c?.[marker.cell]) {
+      const visited = new Set<number>([marker.cell]);
+      let queue = [marker.cell];
+      const MAX_VISITED = 2000;
+      while (queue.length) {
+        const next: number[] = [];
+        let foundShore = false;
+        for (const cell of queue) {
+          for (const neighbor of cells.c[cell] ?? []) {
+            if ((cells.h?.[neighbor] ?? 20) >= 20) {
+              if (consider(neighbor)) foundShore = true;
+            } else if (!visited.has(neighbor) && visited.size < MAX_VISITED) {
+              visited.add(neighbor);
+              next.push(neighbor);
+            }
+          }
+        }
+        if (foundShore) break;
+        queue = next;
+      }
+    }
+
+    return bestProv;
   }
 
   /** Pin a marker so it shows even when its type is filtered out, or unpin it */
@@ -294,18 +493,27 @@ class MarkersModule {
     return marker;
   }
 
-  /** Place a marker at a map point with details: its name, legend note (HTML, as Notes.write takes), icon (an emoji or icon id), chronicle, to mark it as the chronicle's own (cleared on the next history regeneration), and year, the historical year it belongs to (the historical view hides it before then). A type from the markers config, such as volcanoes or ruins, generates all three, each replaced by the one given; any other type needs a note. Returns its id */
+  /** Place a marker at a map point with details: its name, legend note (HTML, as Notes.write takes), icon (an emoji or icon id), chronicle, to mark it as the chronicle's own (cleared on the next history regeneration), year, the historical year it belongs to (the historical view hides it before then), and optional economy (gold/day) and stability (%) overrides. A type from the markers config, such as volcanoes or ruins, generates all three, each replaced by the one given; any other type needs a note. Returns its id */
   place(x: number, y: number, type: string, details: MarkerDetails = {}): number {
     if (typeof details !== "object" || details === null || Array.isArray(details))
-      throw new Error("The marker details must be an object: { name, note, icon, chronicle, year }");
-    const unknown = Object.keys(details).find(key => !["name", "note", "icon", "chronicle", "year"].includes(key));
-    if (unknown) throw new Error(`Unknown marker detail ${unknown}; known: name, note, icon, chronicle, year`);
-    const { name, note, icon, year } = details;
+      throw new Error(
+        "The marker details must be an object: { name, note, icon, chronicle, year, economy, stability }"
+      );
+    const known = ["name", "note", "icon", "chronicle", "year", "economy", "stability"];
+    const unknown = Object.keys(details).find(key => !known.includes(key));
+    if (unknown) throw new Error(`Unknown marker detail ${unknown}; known: ${known.join(", ")}`);
+    const { name, note, icon, year, economy, stability } = details;
     if (year !== undefined && typeof year !== "number") throw new Error("The marker year must be a number");
+    if (economy !== undefined && (typeof economy !== "number" || !Number.isFinite(economy)))
+      throw new Error("The marker economy impact must be a number");
+    if (stability !== undefined && (typeof stability !== "number" || !Number.isFinite(stability)))
+      throw new Error("The marker stability impact must be a number");
     const cell = Pack.requireCell(x, y);
     const marker = { x: rn(x, 2), y: rn(y, 2), cell, type: requireName(type) } as Marker;
     if (details.chronicle) marker.chronicle = true;
     if (year !== undefined) marker.year = year;
+    if (economy !== undefined) marker.economy = rn(economy, 2);
+    if (stability !== undefined) marker.stability = rn(stability, 1);
     const configured = this.config.some(config => config.type === marker.type);
     if (!configured && !note) throw new Error(`Marker type ${marker.type} generates no legend; give the marker a note`);
     if (name !== undefined) marker.name = requireName(name);
@@ -314,6 +522,7 @@ class MarkersModule {
     const added = this.add(marker);
     if (marker.name) added.name = marker.name; // the config type names the marker as it adds it
     if (note) Notes.write(`marker:${added.i}`, note);
+    Pack.markChanged();
     return added.i;
   }
 
@@ -321,6 +530,7 @@ class MarkersModule {
   remove(markerId: number) {
     this.living(markerId);
     pack.markers = pack.markers.filter(m => m.i !== markerId);
+    Pack.markChanged();
   }
 
   private listParty({ cells }: PackedGraph) {

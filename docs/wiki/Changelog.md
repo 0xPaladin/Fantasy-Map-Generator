@@ -61,8 +61,18 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Living World: development is the only technology — it gates goods tiers, unit tiers, faction ascension (18) and the works catalog; diffusion eases peopled land toward the state's mean, and develop projects and Colleges raise it
 - Military: musters are gated by unit goods and by the state's development (a unit opens at its tier); short or backward states field levies; battle power scales with the state's battle upkeep
 - HUD inspector: the state card shows treasury and fiscal policy chips (click to pin), public works, prosperity/stability/development + upkeep; the burg card its prosperity, trade balance and assets; alt-clicking a cell opens its development, deposit and rural output
-- State Cities & Economy and Faction Outposts dialogs: upstream prosperity, stability, development and trade, no city fields
+- Living World: the State Cities & Economy dialog is gone; the HUD state card's Manage buttons open the stock Provinces, Burgs and Regiments editors filtered to that state
+- Faction Outposts dialog: upstream prosperity, stability, development and trade, no city fields
 - Economy: the Living World runs on the new economy — seasonal treasuries, improvements and buildings that raise real output, and sim-owned `simAdjustments` lines merged with the player's adjustments
+- Provinces editor: clicking a province's stability opens that province's own stability breakdown, with its burgs where the state overview lists provinces
+- Economy dialogs: the Revenue section has a collapsible Adjustments row with its sum and add/remove controls, editable like the budget dialog; a province's lines count toward its taxes collected
+- Provinces editor: the province details dialog and its row button are removed; provincial stability adjustments stay in the province stability breakdown
+- Burgs editor: the Hub filter is replaced by a Province filter
+- Characters editor: Name, Status, Age and Culture come first, and roles show the target's actual name instead of its kind and id
+- Characters: the editor has a selectable Alignment and one Virtues/Vices column with a row reroll; the sheet drops those fields, tables Roles and Relations, and puts Promote to hero beside Save for background characters
+- Characters: the sheet scrolls when its content, such as the promoted hero section, exceeds the screen
+- Characters: the hero section selects an archetype with a stat reroll, lays its stats out in four rows, and drops Push and the progression fields
+- Markers: visible markers adjust their province's economy and stability live (water markers attribute to the nearest shore or route-endpoint province), with per-marker overrides in the Marker Editor and _Of which markers_ rows in the Economy and Stability dialogs
 
 **[1.155.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.155.0) - 2026-10-23**:
 

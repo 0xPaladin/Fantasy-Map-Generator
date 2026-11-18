@@ -57,7 +57,6 @@ import { applyOption, ensureEl, findEl, getPointer } from "@/utils/node-utils";
 import { rn, si } from "@/utils/number-utils";
 import { rand } from "@/utils/probability-utils";
 import { capitalize, errorText, escapeHtml } from "@/utils/string-utils";
-import { openStateCitiesDialog } from "./state-cities-dialog";
 
 const dialogId = "statesEditor" as const;
 const LEGEND_NAME = "States"; // the legend box this editor toggles
@@ -264,7 +263,6 @@ const columns: EditorColumn<State>[] = [
     sortBy: s => Tags.format(s.tags),
     sortType: "alpha"
   },
-  { key: "edit", width: "1.1em" },
   { key: "note", width: "1.1em" },
   { key: "locate", width: "1.1em" },
   { key: "focus", width: "1.1em" },
@@ -435,11 +433,9 @@ function renderDialog(): void {
       void Controllers.EmblemsEditor.open("state", `stateCOA${stateId}`, pack.states[stateId]);
     else if (classList.contains("icon-star-empty")) stateCapitalZoomIn(stateId);
     else if (classList.contains("icon-dot-circled")) Controllers.BurgsOverview.open({ stateId });
-    else if (classList.contains("stateBurgs")) openStateCitiesDialog(stateId);
     else if (classList.contains("statePopulation")) changePopulation(stateId);
     else if ($element.closest(".stateEconomy")) Controllers.EconomyOverview.open("state", stateId);
     else if ($element.closest(".stateStability")) Controllers.StabilityOverview.open(stateId);
-    else if (classList.contains("icon-pencil") || $element.dataset.col === "edit") openStateCitiesDialog(stateId);
     else if (classList.contains("icon-book")) void Controllers.NotesEditor.open({ type: "state", id: stateId });
     else if (classList.contains("icon-pin")) toggleFog(stateId, classList);
     else if (classList.contains("icon-target"))
@@ -608,7 +604,6 @@ function renderStatesPage(view: TableView<State>): void {
           <input class="statePower placeholder" type="number" value="0" />
         </div>
         <div data-col="tags" class="placeholder"></div>
-        <div data-col="edit"></div>
         <div data-col="note"></div>
         <div data-col="locate"></div>
         <div data-col="focus"></div>
@@ -660,7 +655,7 @@ function renderStatesPage(view: TableView<State>): void {
       )}</select>
       <div data-col="burgs">
         <span data-tip="${t("Click to overview state burgs")}" style="padding-right: 1px" class="icon-dot-circled pointer"></span>
-        <div data-tip="${t("Click to view state cities & yields")}" class="stateBurgs pointer">${s.burgs}</div>
+        <div data-tip="${t("Number of burgs")}" class="stateBurgs">${s.burgs}</div>
       </div>
       <div data-col="cells">
         <span data-tip="${t("Number of cells")}" class="icon-check-empty"></span>
@@ -694,7 +689,6 @@ function renderStatesPage(view: TableView<State>): void {
       <div data-col="tags">
         <input data-tip="${sentences(t("State tags"), t("Comma-separated list of tags"))}" class="stateTags" placeholder="${t("none")}" value="${Tags.format(s.tags)}" />
       </div>
-      <span data-col="edit" data-tip="${t("State cities & yields")}" class="icon-pencil pointer"></span>
       ${noteIcon(t("Edit free text notes (legend)"))}
       <span data-col="locate" data-tip="${t("Locate on map")}" class="icon-target"></span>
       <span data-col="focus" data-tip="${t("Toggle state focus")}" class="icon-pin ${focused ? "" : " inactive"}"></span>
@@ -1721,6 +1715,5 @@ function updateLockStatus(stateId: number, classList: DOMTokenList): void {
 export const StatesEditor = {
   open,
   showChart: showStatesChart,
-  openStateCitiesDialog,
   refresh: refreshStatesEditor
 };

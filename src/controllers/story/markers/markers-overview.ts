@@ -1,12 +1,15 @@
 import { Controllers } from "@/controllers";
+import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import type { Marker } from "@/model/story/markers-generator";
 import { Markers } from "@/model/story/markers-generator";
 import { Tags } from "@/model/tags";
+import { getMoneySymbol } from "@/model/units";
 import { setMarkersFilter } from "@/renderers/draw-markers";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
 import { Dialog } from "@/ui/dialog/dialog";
+import { refreshEditors } from "@/ui/dialog/dialog-helpers";
 
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -25,6 +28,7 @@ import { clearMainTip } from "@/ui/tooltips";
 import { getLatitude, getLongitude } from "@/utils/common-utils";
 import { sentences, t } from "@/utils/i18n";
 import { ensureEl, findEl } from "@/utils/node-utils";
+import { rn } from "@/utils/number-utils";
 import { escapeHtml } from "@/utils/string-utils";
 
 const dialogId = "markersOverview" as const;
@@ -35,7 +39,10 @@ const CSV_COLUMNS = [
   "Name",
   "Note",
   "State",
+  "Province",
   "Culture",
+  "Economy",
+  "Stability",
   "X",
   "Y",
   "Latitude",
@@ -43,18 +50,52 @@ const CSV_COLUMNS = [
   "Tags"
 ];
 const position = { my: "right top", at: "right-10 top+10", of: "svg" };
-let filterState: { search: string; state: string; culture: string; type: string };
+let filterState: { search: string; state: string; province: string; culture: string; type: string };
+
+const provinceName = (marker: Marker): string => {
+  const id = Markers.getProvinceId(marker);
+  return id ? (pack.provinces?.[id]?.name ?? "") : "";
+};
+
+const formatImpact = (marker: Marker): string => {
+  const { economy, stability } = Markers.getImpact(marker);
+  if (!economy && !stability) return "—";
+  const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${rn(Math.abs(v), 2)}`;
+  const parts: string[] = [];
+  if (economy) parts.push(`${signed(economy)}${getMoneySymbol()}`);
+  if (stability) parts.push(`${signed(stability)}%`);
+  return parts.join(" ");
+};
 
 const columns: EditorColumn<Marker>[] = [
   {
     key: "name",
     label: t("Marker"),
-    width: "18em",
+    width: "15em",
     permanent: true,
     sortBy: marker => marker.name || "",
     sortType: "alpha"
   },
-  { key: "type", label: t("Type"), width: "10em", sortBy: marker => marker.type || "", sortType: "alpha" },
+  { key: "type", label: t("Type"), width: "9em", sortBy: marker => marker.type || "", sortType: "alpha" },
+  {
+    key: "province",
+    label: t("Province"),
+    width: "8em",
+    mobileHidden: true,
+    sortBy: provinceName,
+    sortType: "alpha"
+  },
+  {
+    key: "impact",
+    label: t("Impact"),
+    width: "6.5em",
+    mobileHidden: true,
+    tip: t("Provincial economy and stability adjustments"),
+    sortBy: marker => {
+      const { economy, stability } = Markers.getImpact(marker);
+      return economy + stability;
+    }
+  },
   {
     key: "tags",
     label: t("Tags"),
@@ -73,7 +114,13 @@ const markersTable = initEditorTable<Marker>({ dialogId, getData: getFilteredMar
 
 function open(): void {
   if (options.app.mode) return;
-  filterState = dialogState.get(dialogId, "filters", () => ({ search: "", state: "", culture: "", type: "" }));
+  filterState = dialogState.get(dialogId, "filters", () => ({
+    search: "",
+    state: "",
+    province: "",
+    culture: "",
+    type: ""
+  }));
   Dialog.closeAll(`#${dialogId}, .stable`);
   Layers.show("markers");
 
@@ -96,6 +143,7 @@ function renderDialog(): void {
       <div id="markersBody" class="table"></div>
       <div id="markersFilters" style="width: 100%; display:flex; gap:.2em; padding:0.5em 0; flex-direction:column; font-size:smaller">
         <select id="markersFilterState" data-tip="${t("Show only markers located in the selected state")}"></select>
+        <select id="markersFilterProvince" data-tip="${t("Show only markers impacting the selected province")}"></select>
         <select id="markersFilterCulture" data-tip="${t("Show only markers located in the selected culture")}"></select>
         <select id="markersFilterType" data-tip="${t("Show only markers of the selected type")}"></select>
         <label for="markersSearch" data-tip="${t("Filter by name, type, or tag")}">${t("Search")}: <input id="markersSearch" type="search" /></label>
@@ -148,6 +196,7 @@ function renderDialog(): void {
   ensureEl("markersImport").addEventListener("click", () => Csv.pick(uploadMarkersCsv));
   ensureEl("markersSearch").addEventListener("input", onFilterChange);
   ensureEl("markersFilterState").addEventListener("change", onFilterChange);
+  ensureEl("markersFilterProvince").addEventListener("change", onFilterChange);
   ensureEl("markersFilterCulture").addEventListener("change", onFilterChange);
   ensureEl("markersFilterType").addEventListener("change", onFilterChange);
 
@@ -180,6 +229,16 @@ function populateFilters(): void {
     t("All states"),
     states,
     filterState.state
+  );
+
+  const provinces = (pack.provinces ?? [])
+    .filter(province => province?.i && !province.removed)
+    .map(province => ({ value: String(province.i), label: province.fullName || province.name }));
+  filterState.province = fillSelect(
+    ensureEl<HTMLSelectElement>("markersFilterProvince"),
+    t("All provinces"),
+    provinces,
+    filterState.province
   );
 
   const cultures = pack.cultures
@@ -220,6 +279,7 @@ function regenerateMarkers(): void {
   Layers.draw("markers");
   populateFilters();
   markersTable.refresh();
+  refreshEditors();
 }
 
 function populateMarkerTypeMenu(): void {
@@ -269,6 +329,11 @@ function getFilteredMarkers(): Marker[] {
     markers = markers.filter(marker => pack.cells.state[marker.cell] === stateId);
   }
 
+  if (filterState.province !== "") {
+    const provinceId = +filterState.province;
+    markers = markers.filter(marker => Markers.getProvinceId(marker) === provinceId);
+  }
+
   if (filterState.culture !== "") {
     const cultureId = +filterState.culture;
     markers = markers.filter(marker => pack.cells.culture[marker.cell] === cultureId);
@@ -279,7 +344,11 @@ function getFilteredMarkers(): Marker[] {
   }
 
   const anyFilterActive =
-    Boolean(searchText) || filterState.state !== "" || filterState.culture !== "" || filterState.type !== "";
+    Boolean(searchText) ||
+    filterState.state !== "" ||
+    filterState.province !== "" ||
+    filterState.culture !== "" ||
+    filterState.type !== "";
   syncMapToFilter(markers, anyFilterActive);
 
   return sortDataByColumns(dialogId, markers, columns);
@@ -288,6 +357,7 @@ function getFilteredMarkers(): Marker[] {
 function onFilterChange(): void {
   filterState.search = ensureEl<HTMLInputElement>("markersSearch").value;
   filterState.state = ensureEl<HTMLSelectElement>("markersFilterState").value;
+  filterState.province = ensureEl<HTMLSelectElement>("markersFilterProvince").value;
   filterState.culture = ensureEl<HTMLSelectElement>("markersFilterCulture").value;
   filterState.type = ensureEl<HTMLSelectElement>("markersFilterType").value;
   dialogState.set(dialogId, "filters", filterState);
@@ -296,7 +366,9 @@ function onFilterChange(): void {
 
 function renderMarkersPage(view: TableView<Marker>): void {
   const lines = view.rows
-    .map(({ i, type, icon, iconFill, iconStroke, name, pinned, lock, tags }) => {
+    .map(marker => {
+      const { i, type, icon, iconFill, iconStroke, name, pinned, lock, tags } = marker;
+      const province = provinceName(marker);
       return /* html */ `
         <div class="states" data-id=${i} data-name="${escapeHtml(name || "")}" data-type="${type}">
           <div data-col="name" data-tip="${t("Marker name")}">${escapeHtml(name || "")}</div>
@@ -304,6 +376,8 @@ function renderMarkersPage(view: TableView<Marker>): void {
             <span data-tip="${t("Marker icon")}" style="display: inline-flex; width: 1.2em">${Icons.html(icon, { fill: iconFill, stroke: iconStroke })}</span>
             <span data-tip="${t("Marker type")}">${type}</span>
           </div>
+          <div data-col="province" data-tip="${t("Province")}">${escapeHtml(province) || "—"}</div>
+          <div data-col="impact" data-tip="${t("Provincial economy and stability adjustments")}">${formatImpact(marker)}</div>
           <div data-col="tags">
             <input
               data-tip="${t("Tags (comma-separated)")}"
@@ -431,9 +505,10 @@ function changeMarkerType(): void {
 }
 
 function removeMarker(i: number): void {
-  pack.markers = pack.markers.filter(marker => marker.i !== i);
+  Markers.remove(i);
   findEl(`marker${i}`)?.remove();
   markersTable.refresh();
+  refreshEditors();
 }
 
 function triggerRemoveAll(): void {
@@ -455,8 +530,10 @@ function removeAllMarkers(): void {
     findEl(`marker${i}`)?.remove();
     return false;
   });
+  Pack.markChanged();
 
   markersTable.refresh();
+  refreshEditors();
 }
 
 function exportMarkers(): void {
@@ -465,6 +542,7 @@ function exportMarkers(): void {
     const { i, type, icon, x, y, cell } = marker;
     const state = pack.states[pack.cells.state[cell]];
     const culture = pack.cultures[pack.cells.culture[cell]];
+    const { economy, stability } = Markers.getImpact(marker);
     return [
       i,
       type,
@@ -472,7 +550,10 @@ function exportMarkers(): void {
       marker.name,
       marker.note,
       state ? state.fullName || state.name : "",
+      provinceName(marker),
       culture?.name,
+      economy,
+      stability,
       x,
       y,
       getLatitude(y, coordinates, options.map.graph.height, 2),
@@ -486,14 +567,27 @@ function exportMarkers(): void {
 /** Update existing markers from a CSV in the export format; notes are uploaded in the Notes editor */
 async function uploadMarkersCsv(text: string): Promise<void> {
   const find = (id: number) => pack.markers.find(marker => marker.i === id);
+  const parseImpact = (value: string) => {
+    if (!value.trim()) return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) throw new Error(`Not a number: ${value}`);
+    return parsed;
+  };
   const updated = await Controllers.CsvUpload.update(
     text,
     CSV_COLUMNS,
     { find, text: ["Type", "Name", "Tags"] },
     (id, row) => {
       const marker = find(id)!;
+      const impact = Markers.getImpact(marker);
       row.apply("Name", name => Markers.rename(marker.i, name), marker.name);
       row.apply("Type", type => Markers.setType(marker.i, type), marker.type);
+      row.assign("Economy", value => Markers.setImpact(marker.i, { economy: parseImpact(value) }), impact.economy);
+      row.assign(
+        "Stability",
+        value => Markers.setImpact(marker.i, { stability: parseImpact(value) }),
+        impact.stability
+      );
       row.assign("Tags", tags => Tags.set(marker, tags), Tags.format(marker.tags));
     }
   );
@@ -501,6 +595,7 @@ async function uploadMarkersCsv(text: string): Promise<void> {
 
   Layers.draw("markers");
   markersTable.refresh();
+  refreshEditors();
 }
 
 export const MarkersOverview = { open, exportCsv: exportMarkers };

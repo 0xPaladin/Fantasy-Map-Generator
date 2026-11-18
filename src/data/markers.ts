@@ -1,5 +1,50 @@
 // Word lists and weights for generated marker names and legends
 
+export type MarkerImpact = { economy: number; stability: number };
+
+/** Default daily economy (gold/day) and provincial stability (%) impacts by marker type */
+export const MARKER_IMPACTS: Record<string, MarkerImpact> = {
+  volcanoes: { economy: 0, stability: 0 },
+  "hot-springs": { economy: 1.5, stability: 3 },
+  "water-sources": { economy: 1, stability: 3 },
+  "guild-halls": { economy: 3, stability: 3 },
+  mines: { economy: 3, stability: 0 },
+  bridges: { economy: 2, stability: 1 },
+  "merchant-houses": { economy: 4, stability: 2 },
+  inns: { economy: 1.5, stability: 2 },
+  lighthouses: { economy: 1.5, stability: 1 },
+  waterfalls: { economy: 0.5, stability: 1 },
+  battlefields: { economy: 0, stability: -2 },
+  dungeons: { economy: 1, stability: -3 },
+  "lake-monsters": { economy: -1.5, stability: -3 },
+  "sea-monsters": { economy: -2, stability: -2 },
+  "hill-monsters": { economy: -2, stability: -6 },
+  "sacred-mountains": { economy: 0.5, stability: 4 },
+  "sacred-forests": { economy: 0.5, stability: 4 },
+  "sacred-pineries": { economy: 0.5, stability: 4 },
+  "sacred-palm-groves": { economy: 0.5, stability: 4 },
+  brigands: { economy: -3, stability: -5 },
+  pirates: { economy: -3, stability: -3 },
+  statues: { economy: 0, stability: 2 },
+  ruins: { economy: 0.5, stability: -1 },
+  libraries: { economy: 1, stability: 4 },
+  circuses: { economy: 1, stability: 3 },
+  jousts: { economy: 1, stability: 4 },
+  fairs: { economy: 2, stability: 2 },
+  "customs-houses": { economy: 3, stability: 0 },
+  canoes: { economy: 0.5, stability: 0 },
+  migration: { economy: 0.5, stability: -1 },
+  dances: { economy: 0.5, stability: 3 },
+  mirage: { economy: -0.5, stability: -1 },
+  caves: { economy: 0, stability: 0 },
+  portals: { economy: 4, stability: 3 },
+  rifts: { economy: -3, stability: -8 },
+  "disturbed-burials": { economy: -1.5, stability: -6 },
+  necropolises: { economy: 0, stability: -3 },
+  encounters: { economy: 0, stability: 0 },
+  party: { economy: 1, stability: 3 }
+};
+
 export const MARKER_PINS = [
   "bubble",
   "pin",

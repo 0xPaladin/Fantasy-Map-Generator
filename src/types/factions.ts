@@ -55,6 +55,19 @@ export interface FactionOutpost {
   sim?: BurgSimState;
 }
 
+export interface FactionProject {
+  assetId: string;
+  nodeKey: FactionNodeKey;
+  turnsLeft: number;
+  totalCost?: number;
+  remainingCost?: number;
+}
+
+export interface FactionQueuedProject {
+  assetId: string;
+  nodeKey: FactionNodeKey;
+}
+
 export interface Faction {
   i: number;
   name: string;
@@ -62,8 +75,16 @@ export interface Faction {
   type: string;
   allegiance: FactionAllegiance;
   patronStateId?: number;
-  /** the work the faction has under way at one of its nodes (phase 6 of living-fmg-native.md) */
-  project?: { assetId: string; nodeKey: FactionNodeKey; turnsLeft: number };
+  /** User-configurable 0..100 allocation shares per expense bucket (defaults to category profile) */
+  budget?: FactionBudget;
+  /** User-configurable 0..100 revenue extraction rates (defaults to category profile) */
+  revenue?: FactionRevenueRates;
+  /** Active asset build funded from daily infrastructure revenue */
+  project?: FactionProject;
+  /** Pending asset builds queued after the active work */
+  projectQueue?: FactionQueuedProject[];
+  /** User-configured daily revenue/cost adjustments */
+  adjustments?: { name: string; value: number }[];
 
   // Identity & Visuals
   color: string;
@@ -126,17 +147,14 @@ export interface FactionAssetDef {
   description: string;
   yields: {
     gold?: number;
-    science?: number;
     influence?: number;
     militaryCap?: number;
     secrecy?: number;
+    development?: number;
   };
   burgImpact?: {
     gold?: number;
-    science?: number;
-    prod?: number;
-    order?: number;
-    unrest?: number;
+    stability?: number;
   };
 }
 
@@ -160,11 +178,25 @@ export interface FactionArchetypeDef {
 
 export type FactionExpenseBucket = "court" | "administration" | "infrastructure" | "military";
 
+export type FactionBudget = Record<FactionExpenseBucket, number>;
+
+export type FactionRevenueKey = "primary" | "secondary";
+
+export interface FactionRevenueRates {
+  primary: number;
+  secondary: number;
+  charterTithe?: number;
+}
+
 export interface FactionRevenueLine {
   key: string;
   label: string;
   /** Daily gold earned by this stream (before corruption and charter tithe) */
   daily: number;
+  /** Configurable lever backing this stream, if any */
+  rateKey?: FactionRevenueKey;
+  /** Active rate percentage (0..100) for this stream */
+  rate?: number;
 }
 
 export interface FactionExpenseLine {
@@ -172,35 +204,60 @@ export interface FactionExpenseLine {
   label: string;
   /** Percentage share of collected daily revenue (0..100) */
   share: number;
-  /** Daily gold spent in this bucket */
+  /** Configured target share percentage (0..100) */
+  targetShare: number;
+  /** Daily gold allocated to this bucket */
   daily: number;
+  /** Daily gold required to fully fund this bucket based on faction footprint */
+  requiredDaily: number;
+  /** Daily gold delivered after corruption (admin is not skimmed) */
+  effectiveDaily: number;
+  /** Share of requiredDaily actually met (0..1) */
+  provision: number;
 }
 
 export interface FactionEconomyBreakdown {
   /** Daily revenue lines across all active nodes, grouped by stream */
   revenueLines: FactionRevenueLine[];
-  /** Total daily revenue collected across active nodes (before expenses, corruption, and charter tithe) */
+  /** Total daily revenue collected across active nodes and adjustments */
   collectedDaily: number;
+  /** Sum of user daily revenue adjustments */
+  adjustmentsDaily: number;
+  /** Daily revenue allocated to queued asset construction */
+  projectDaily: number;
   /** Share of host burgs' product (%) */
   hostProductShare: number;
   /** Four state-style expense buckets */
   expenses: FactionExpenseLine[];
   /** Total percentage of collected revenue spent across the 4 buckets */
   spentShare: number;
+  /** Effective node scale driving required costs */
+  nodeScale: number;
+  /** Sum of required daily costs across all 4 buckets */
+  requiredTotalDaily: number;
   /** Corruption / skimming percentage (0..100) and daily gold lost */
   corruptionRate: number;
   corruptionDaily: number;
-  /** Charter tithe paid to patron state (daily) */
+  /** Charter tithe percentage (0..100) and daily gold paid to patron state */
+  charterTitheRate: number;
   charterTitheDaily: number;
+  /** Stability penalty from pushing extraction rates above category defaults (0..0.25) */
+  burdenPenalty: number;
   /** Net daily balance: collectedDaily - expenses - corruptionDaily - charterTitheDaily */
   dayBalance: number;
   /** Net balance as % of collectedDaily */
   dayBalanceShare: number;
+  /** Overall faction prosperity (0..1) */
+  prosperity: number;
+  /** Overall faction cohesion & stability (0..1) */
+  stability: number;
 }
 
 export interface FactionNodeYieldBreakdown {
   node: FactionHq | FactionOutpost;
   isHq: boolean;
+  /** daily upstream income net of charter tithe */
+  dailyIncome: number;
   /** upstream economy gold of the node's season, already net of the charter tithe */
   upstreamGold: number;
   /** what the node pays its patron state of its upstream gold */
@@ -211,6 +268,8 @@ export interface FactionYieldBreakdown {
   nodes: FactionNodeYieldBreakdown[];
   hq: FactionNodeYieldBreakdown | null;
   outposts: FactionNodeYieldBreakdown[];
+  /** total daily income (upstream nodes + adjustments, net of charter tithe) */
+  dailyIncome: number;
   /** upstream gold the empire's nodes earned this season, net of charters */
   upstreamGold: number;
   /** what the empire's charters pay its patron states this season, and which state they pay */
@@ -218,6 +277,10 @@ export interface FactionYieldBreakdown {
   charterPatronId: number;
   /** influence the court's spending lends its temples and its chancery */
   influence: number;
+  /** overall faction prosperity (0..1) */
+  prosperity: number;
+  /** overall faction stability (0..1) */
+  stability: number;
   /** daily state-style Revenue & Expenses breakdown */
   economy: FactionEconomyBreakdown;
 }

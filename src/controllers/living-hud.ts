@@ -130,6 +130,111 @@ const TEMPLATE = /* html */ `
       background: #ffffff;
     }
     #${HUD_ID} .livingHudStatus { display: none; }
+    #${INSPECTOR_ID} {
+      position: fixed;
+      top: 52px;
+      right: 12px;
+      z-index: 61;
+      width: min(340px, calc(100vw - 24px));
+      max-height: calc(100vh - 140px);
+      overflow-y: auto;
+      padding: 0.65em 0.75em;
+      border: 1px solid #5e4fa2;
+      border-radius: 4px;
+      background: var(--bg-light, #f7f7f7);
+      color: #1f2328;
+      font-family: var(--sans-serif);
+      font-size: 0.85em;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    }
+    #${INSPECTOR_ID} .livingInspectorClose {
+      float: right;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 1em;
+      line-height: 1;
+      padding: 0.1em 0.3em;
+      color: #555;
+    }
+    #${INSPECTOR_ID} .livingInspectorTitle {
+      display: block;
+      font-size: 1.08em;
+      font-weight: bold;
+      margin-bottom: 0.3em;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: #3d2f7a;
+      text-align: left;
+      cursor: pointer;
+    }
+    #${INSPECTOR_ID} .livingSection {
+      margin-top: 0.55em;
+      padding-top: 0.45em;
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    #${INSPECTOR_ID} .livingSectionTitle,
+    #${INSPECTOR_ID} .livingGodTitle {
+      font-weight: bold;
+      font-size: 0.92em;
+      margin-bottom: 0.25em;
+      color: #333;
+    }
+    #${INSPECTOR_ID} .livingGodTitle { margin-top: 0.6em; }
+    #${INSPECTOR_ID} .livingMuted,
+    #${INSPECTOR_ID} .livingPlaceholder { color: #666; font-size: 0.9em; }
+    #${INSPECTOR_ID} .livingTraits { color: #555; font-size: 0.88em; font-style: italic; }
+    #${INSPECTOR_ID} .livingPoolVitals { display: flex; flex-wrap: wrap; gap: 0.25em; margin-top: 0.2em; }
+    #${INSPECTOR_ID} .livingChipRows { display: flex; flex-direction: column; gap: 0.25em; margin-top: 0.2em; }
+    #${INSPECTOR_ID} .livingChipRow { display: flex; flex-wrap: nowrap; gap: 0.25em; min-width: 0; }
+    #${INSPECTOR_ID} .livingChipRow .livingCivChip { flex: 0 0 auto; white-space: nowrap; }
+    #${INSPECTOR_ID} .livingCivChip {
+      display: inline-block;
+      padding: 0.15em 0.4em;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 3px;
+      background: #fff;
+      font-size: 0.85em;
+      cursor: pointer;
+    }
+    #${INSPECTOR_ID} .livingButtons { display: flex; flex-wrap: wrap; gap: 0.25em; margin-top: 0.25em; }
+    #${INSPECTOR_ID} .livingButtons button { font-size: 0.85em; padding: 0.2em 0.45em; cursor: pointer; }
+    #${INSPECTOR_ID} .livingLinkBtn {
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: #3d5a99;
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: inherit;
+      text-align: left;
+    }
+    #${INSPECTOR_ID} .livingCapacityRow,
+    #${INSPECTOR_ID} .livingMeterRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4em;
+      margin-top: 0.2em;
+    }
+    #${INSPECTOR_ID} .livingBar {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.12);
+      overflow: hidden;
+    }
+    #${INSPECTOR_ID} .livingBar > i { display: block; height: 100%; background: #5e4fa2; }
+    #${INSPECTOR_ID} .livingBar.danger > i { background: #a33d3d; }
+    #${INSPECTOR_ID} .livingBadge {
+      display: inline-block;
+      padding: 0.05em 0.35em;
+      border-radius: 3px;
+      color: #fff;
+      font-size: 0.8em;
+    }
+    #${INSPECTOR_ID} ul { margin: 0.2em 0 0; padding-left: 1.1em; }
   </style>
   <div id="${HUD_ID}">
     <div class="livingHudTop">
@@ -193,6 +298,7 @@ function open(): void {
 }
 
 function close(): void {
+  detachMapSelection();
   findEl(HUD_ID)?.remove();
   removeLivingOverlay();
   const inspector = findEl(INSPECTOR_ID);
@@ -387,9 +493,21 @@ function focusNews(this: HTMLElement): void {
   if (point) zoomTo(point[0], point[1], 8, 1000);
 }
 
+function handleMapClick(event: MouseEvent): void {
+  if (!findEl(HUD_ID)) return;
+  const viewbox = document.getElementById("viewbox") as SVGElement | null;
+  if (viewbox) onMapClick(viewbox, event);
+}
+
 function attachMapSelection(): void {
-  const map = document.getElementById("viewbox");
-  map?.addEventListener("click", event => onMapClick(event.currentTarget as SVGElement, event));
+  const target = document.getElementById("map") ?? document.getElementById("viewbox");
+  target?.removeEventListener("click", handleMapClick);
+  target?.addEventListener("click", handleMapClick);
+}
+
+function detachMapSelection(): void {
+  document.getElementById("map")?.removeEventListener("click", handleMapClick);
+  document.getElementById("viewbox")?.removeEventListener("click", handleMapClick);
 }
 
 function onMapClick(svg: SVGElement, event: MouseEvent): void {
@@ -751,20 +869,14 @@ function renderStateCard(stateId: number): string {
     ${renderFiscal(stateId)}
     ${renderProjects(stateId)}
     ${renderUpstreamState(stateId)}
-    ${renderStateProvinces(stateId)}
     ${renderAgenda(sSim, living)}
-    ${renderSuppressionTargets(stateId, sSim)}
     ${renderStateNav(stateId)}
+    ${renderSuppressionTargets(stateId, sSim)}
     <div class="livingSection">
-      <div class="livingSectionTitle">Stability</div>
-      ${renderMeter("Stability", Math.round((Stability.get(stateId)?.stability ?? 0) * 100), false)}
-      ${renderMeter("Exhaustion", sSim.warExhaustion, false)}
-    </div>
-    <div class="livingSection">
-      <div class="livingSectionTitle">Claims &amp; Crises</div>
+      <div class="livingSectionTitle">Issues &amp; Crises</div>
       ${
         [
-          renderProvincesRebellions(stateId),
+          renderStateInstability(stateId),
           renderProvincesFactions(stateId),
           renderProvincesTroubles(stateId),
           renderClaims(sSim),
@@ -809,20 +921,24 @@ function renderRuler(ruler: HistoricalFigure | undefined, _age?: number): string
 const percent = (value: number | null | undefined): string => (value == null ? "—" : `${Math.round(value * 100)}%`);
 
 const FISCAL_LINES: readonly [FiscalLock, string, string][] = [
-  ["military", "⚔️", "Military"],
+  ["pollTax", "👥", "Poll tax"],
+  ["salesTax", "🧾", "Sales tax"],
+  ["corruption", "🤝", "Corruption"],
   ["court", "👑", "Court"],
   ["administration", "🖋️", "Administration"],
   ["infrastructure", "🏗️", "Infrastructure"],
-  ["corruption", "🤝", "Corruption"],
-  ["salesTax", "🧾", "Sales tax"],
-  ["pollTax", "👥", "Poll tax"]
+  ["military", "⚔️", "Military"]
 ];
+
+/** Two fixed rows: taxes and corruption above, the spending lines below */
+const FISCAL_ROWS = [FISCAL_LINES.slice(0, 3), FISCAL_LINES.slice(3)];
 
 /** Phase 3: the ruler's fiscal target against the real budget, with pin buttons. */
 function renderFiscal(stateId: number): string {
   const policy = Living.fiscalPolicy?.(stateId);
   if (!policy) return "";
-  const chips = FISCAL_LINES.map(([line, icon, label]) => {
+
+  const chip = ([line, icon, label]: readonly [FiscalLock, string, string]) => {
     const locked = policy.locks.includes(line);
     const current = policy.current[line];
     const target = policy.target[line];
@@ -830,11 +946,12 @@ function renderFiscal(stateId: number): string {
     const format = (value: number) => (isTax ? `${Math.round(value * 1000) / 10}%` : `${Math.round(value)}%`);
     const title = `${label}: ${Math.round(current)} → ${Math.round(target)} (drift ${policy.stride}/spring). Click to ${locked ? "unpin" : "pin"}.`;
     return `<button type="button" class="livingCivChip" data-god="fiscal-lock" data-state="${stateId}" data-line="${line}" title="${escapeHtml(title)}"${locked ? ' style="outline:1px solid #c4a000;"' : ""}>${icon} ${format(current)}→${format(target)}${locked ? " 🔒" : ""}</button>`;
-  }).join("");
+  };
+  const rows = FISCAL_ROWS.map(row => `<div class="livingChipRow">${row.map(chip).join("")}</div>`).join("");
 
   return `<div class="livingSection">
     <div class="livingSectionTitle">Fiscal policy <span class="livingMuted">· ruler's target, drifting ${policy.stride}/spring</span></div>
-    <div class="livingPoolVitals">${chips}</div>
+    <div class="livingChipRows">${rows}</div>
   </div>`;
 }
 
@@ -894,24 +1011,33 @@ function renderUpstreamState(stateId: number): string {
   if (prosperity == null && stability == null && development == null && upkeep === 1) return "";
   const era = development == null ? "" : eraOf(development);
 
-  const chips = [
-    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net balance: open the state budget">${getMoneySymbol("🪙")} ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`,
-    prosperity == null
-      ? ""
-      : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,
-    stability == null
-      ? ""
-      : `<button type="button" class="livingCivChip" data-open="stability" data-id="${stateId}" title="Open the state's and its provinces' stability">⚖️ ${percent(stability)} stability</button>`,
-    `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Open the state's budget, taxes and tariffs">💼 Budget</button>`,
+  const treasury = `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net balance: open the state budget">${getMoneySymbol("🪙")} ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`;
+  const developmentChip =
     development == null
       ? ""
-      : `<span class="livingCivChip" title="The people's mean development and era: it unlocks goods and unit tiers and raises output">🧪 ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`,
-    `<span class="livingCivChip" title="Share of the military spending its forces need; below it they fight worse">⚔️ ${percent(upkeep)} upkeep · ×${battle.toFixed(2)}</span>`
-  ];
+      : `<span class="livingCivChip" title="The people's mean development and era: it unlocks goods and unit tiers and raises output">🧪 ${Math.round(development)}${era ? ` · ${escapeHtml(era)}` : ""}</span>`;
+
+  const rows = [
+    [
+      treasury,
+      prosperity == null
+        ? ""
+        : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,
+      stability == null
+        ? ""
+        : `<button type="button" class="livingCivChip" data-open="stability" data-id="${stateId}" title="Open the state's and its provinces' stability">⚖️ ${percent(stability)} stability</button>`
+    ],
+    [
+      `<span class="livingCivChip" title="Share of the military spending its forces need; below it they fight worse">⚔️ ${percent(upkeep)} upkeep · ×${battle.toFixed(2)}</span>`,
+      developmentChip
+    ]
+  ]
+    .map(row => `<div class="livingChipRow">${row.filter(Boolean).join("")}</div>`)
+    .join("");
 
   return `<div class="livingSection">
     <div class="livingSectionTitle">Upstream economy</div>
-    <div class="livingPoolVitals">${chips.join("")}</div>
+    <div class="livingChipRows">${rows}</div>
   </div>`;
 }
 
@@ -1004,33 +1130,35 @@ function renderCellCard(cellId: number): string {
     </div>`;
 }
 
-function renderStateProvinces(stateId: number): string {
+const INSTABILITY_TOP = 55; // percent, the band where rebellions start
+
+/** Provinces with low enough stability to matter, with their rebellion age */
+function renderStateInstability(stateId: number): string {
   const living = Living.getState();
   const owned = (pack.provinces ?? []).filter(p => p?.i && !p.removed && p.state === stateId);
-  if (owned.length === 0) return "";
 
   const rows = owned
     .map(p => {
-      const pSim = living.provinces?.[p.i];
-      const stab = Math.round((Stability.getProvince(p.i)?.stability ?? 0) * 100);
-      const markers = [pSim?.rebellion ? "🔥" : "", pSim?.trouble ? "⚠️" : "", hostileFactionInProvince(p.i) ? "💀" : ""]
-        .filter(Boolean)
-        .join("");
-      const rebellionTip = pSim?.rebellion ? ` · Rebellion: ${pSim.rebellion.name}` : "";
+      const stability = (Stability.getProvince(p.i)?.stability ?? 0) * 100;
+      if (stability > INSTABILITY_TOP) return "";
+      const stab = Math.round(stability);
+      const rebellion = living.provinces?.[p.i]?.rebellion;
+      const fire = rebellion ? ` 🔥[${rebellion.seasonsActive}]` : "";
+      const rebellionTip = rebellion ? ` · Rebellion: ${rebellion.name}` : "";
       return `<div class="livingCapacityRow" title="${escapeHtml(p.name ?? "Province")}: stability ${stab}%${escapeHtml(rebellionTip)}">
-        <span>${escapeHtml(p.name ?? "Province")}${markers ? ` ${markers}` : ""}</span>
+        <span>⚠️ ${escapeHtml(p.name ?? "Province")}${fire}</span>
         <span class="livingMuted">${stab}%</span>
       </div>`;
     })
+    .filter(Boolean)
     .join("");
 
-  return `<div class="livingSection"><div class="livingSectionTitle">Provinces</div>${rows}</div>`;
+  return rows ? `<div class="livingSectionTitle">Instability</div>${rows}` : "";
 }
 
 function renderStateNav(stateId: number): string {
   return `<div class="livingSection"><div class="livingSectionTitle">Manage</div>
     <div class="livingButtons" style="margin-top: 0.35em;">
-      <button type="button" data-open="cities" data-id="${stateId}">Cities &amp; Economy</button>
       <button type="button" data-open="provinces" data-id="${stateId}">Provinces</button>
       <button type="button" data-open="burgs" data-id="${stateId}">Burgs</button>
       <button type="button" data-open="regiments" data-id="${stateId}">Regiments</button>
@@ -1095,15 +1223,6 @@ function renderSuppressionTargets(stateId: number, sSim: StatePolitySim): string
   return `<div class="livingSection">
     <div class="livingSectionTitle">Suppression</div>
     ${rows ? `<ul>${rows}</ul>` : `<span class="livingMuted">No eligible local factions</span>`}
-  </div>`;
-}
-
-function renderMeter(label: string, value: number, danger: boolean): string {
-  const width = Math.max(0, Math.min(100, Math.round(value)));
-  const tip = `${label}: ${width}%`;
-  return `<div class="livingMeterRow" title="${escapeHtml(tip)}" tabindex="0">
-    <span class="livingMeterLabel">${escapeHtml(label)}</span>
-    <div class="livingBar${danger ? " danger" : ""}"><i style="width:${width}%"></i></div>
   </div>`;
 }
 
@@ -1213,33 +1332,6 @@ function renderProvincesTroubles(stateId: number): string {
     })
     .join("");
   return `<div class="livingSectionTitle">Troubles</div><ul>${rows}</ul>`;
-}
-
-function renderProvincesRebellions(stateId: number): string {
-  const living = Living.getState();
-  const ownedProvinces = (pack.provinces ?? []).filter(p => p?.i && !p.removed && p.state === stateId);
-  const rebelling = ownedProvinces
-    .map(p => ({ province: p, rebellion: living.provinces?.[p.i]?.rebellion }))
-    .filter(
-      (
-        entry
-      ): entry is {
-        province: (typeof pack.provinces)[number];
-        rebellion: NonNullable<ProvinceSimState["rebellion"]>;
-      } => Boolean(entry.rebellion)
-    );
-
-  if (rebelling.length === 0) return "";
-
-  const rows = rebelling
-    .map(({ province, rebellion }) => {
-      const cell = province.center || (province.burg ? pack.burgs[province.burg]?.cell : 0);
-      const seasons = `${rebellion.seasonsActive} ${rebellion.seasonsActive === 1 ? "season" : "seasons"}`;
-      const text = `${province.name ?? "Province"}: ${rebellion.name} (${seasons})`;
-      return `<li><button type="button" class="livingLinkBtn" data-zoom-cell="${cell}" style="color:#a33d3d;" title="Zoom to ${escapeHtml(rebellion.name)}">🔥 ${escapeHtml(text)}</button></li>`;
-    })
-    .join("");
-  return `<div class="livingSectionTitle">Rebellions</div><ul>${rows}</ul>`;
 }
 
 function renderProvincesFactions(stateId: number): string {
@@ -1405,9 +1497,6 @@ function bindInspectorButtons(panel: HTMLElement): void {
     button.addEventListener("click", () => {
       const id = Number(button.dataset.id ?? 0);
       switch (button.dataset.open) {
-        case "cities":
-          void Controllers.StateCitiesDialog.open(id);
-          break;
         case "states":
         case "state": {
           const state = pack.states[id];

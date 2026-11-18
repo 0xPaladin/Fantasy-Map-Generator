@@ -56,7 +56,6 @@ import { applyOption, ensureEl, findEl, getPointer } from "@/utils/node-utils";
 import { rn, si } from "@/utils/number-utils";
 import { rand } from "@/utils/probability-utils";
 import { errorText } from "@/utils/string-utils";
-import { openProvinceDetailsDialog } from "./province-dialog";
 
 const dialogId = "provincesEditor" as const;
 const position = { my: "right top", at: "right-10 top+10", of: "svg" };
@@ -210,7 +209,6 @@ const columns: EditorColumn<Province>[] = [
     sortBy: province => Tags.format(province.tags),
     sortType: "alpha"
   },
-  { key: "dialog", width: "1.1em" },
   { key: "note", width: "1.1em" },
   { key: "independence", width: "1.1em" },
   { key: "locate", width: "1.1em" },
@@ -366,8 +364,6 @@ function renderDialog(): void {
     const stateId = pack.provinces[p].state;
 
     if (el.tagName === "FILL-BOX") changeFill(el as FillBoxElement);
-    else if (cl.contains("icon-castle") || cl.contains("icon-fort-awesome") || el.dataset.col === "dialog")
-      openProvinceDetailsDialog(p, refreshProvincesEditor);
     else if (cl.contains("name")) editProvinceName(p);
     else if (cl.contains("coaIcon"))
       void Controllers.EmblemsEditor.open("province", `provinceCOA${p}`, pack.provinces[p]);
@@ -376,7 +372,7 @@ function renderDialog(): void {
     else if (cl.contains("icon-dot-circled")) void Controllers.BurgsOverview.open({ stateId });
     else if (el.closest("[data-col='living']")) void Controllers.LivingHud.inspect("province", p);
     else if (cl.contains("culturePopulation")) changePopulation(p);
-    else if (cl.contains("provinceStability")) void Controllers.StabilityOverview.open(stateId);
+    else if (cl.contains("provinceStability")) void Controllers.StabilityOverview.openProvince(p);
     else if (cl.contains("provinceEconomy")) void Controllers.EconomyOverview.open("province", p);
     else if (cl.contains("icon-target"))
       highlightElement(select<SVGGElement, unknown>("#provs").select(`#province${p}`).node() as Element, 8);
@@ -563,7 +559,6 @@ function renderProvincesPage(view: TableView<Province>): void {
           spellcheck="false"
         />
       </div>
-      <span data-col="dialog" data-tip="${t("Province details")}" class="icon-fort-awesome icon-castle"></span>
       ${noteIcon(t("Edit free text notes (legend)"))}
       <span data-col="independence" data-tip="${t("Declare province independence (turn non-capital province with burgs into a new state)")}" class="icon-flag-empty ${separable ? "" : "placeholder"}"></span>
       <span data-col="locate" data-tip="${t("Locate on map")}" class="icon-target"></span>
@@ -1585,4 +1580,4 @@ async function uploadProvincesCsv(text: string): Promise<void> {
   refreshProvincesEditor();
 }
 
-export const ProvincesEditor = { open, showChart, openProvinceDialog: openProvinceDetailsDialog };
+export const ProvincesEditor = { open, showChart };

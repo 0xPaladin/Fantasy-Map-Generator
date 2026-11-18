@@ -4006,19 +4006,29 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       return { living, faction };
     }
 
-    it("commissions an asset from treasury and pays the host town a daily line", () => {
+    it("queues an asset without lump-sum treasury cost, draws from daily revenue, and writes host effects", () => {
       const { living, faction } = factionWorld();
+      Living.tick(1); // seed baseline presence line before adding Trade Depot
+      const baseLine =
+        pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium")?.value ?? 0;
+      expect(baseLine).toBeGreaterThan(0);
+
+      faction.project = undefined;
+      faction.hq.assets = [];
       expect(Living.commissionFactionAsset(faction.i, "trade_depot", "hq")).toBe(true);
-      expect(faction.treasury).toBe(450);
+      expect(faction.treasury).toBeLessThanOrEqual(500);
+      const treasuryBeforeBuild = faction.treasury;
       expect(faction.project).toMatchObject({ assetId: "trade_depot", nodeKey: "hq", turnsLeft: 1 });
+      expect(Living.commissionFactionAsset(faction.i, "counting_house", "hq")).toBe(true);
+      expect(faction.projectQueue).toEqual([{ assetId: "counting_house", nodeKey: "hq" }]);
 
       Living.tick(1);
-      expect(faction.project).toBeUndefined();
       expect(faction.hq.assets).toContain("trade_depot");
-      const line = pack.burgs[1].simAdjustments?.find(entry =>
-        entry.name.startsWith("Faction: Test Consortium Trade Depot")
-      );
-      expect(line?.value).toBe(1); // the depot's gold bite on its host
+      expect(faction.treasury).toBeLessThanOrEqual(treasuryBeforeBuild);
+      // Queued asset promoted automatically once active completes
+      expect(faction.project).toMatchObject({ assetId: "counting_house", nodeKey: "hq" });
+      const withDepot = pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium");
+      expect(withDepot?.value).toBeCloseTo(baseLine + 1, 2); // presence + depot's +1/day gold bite on host
       expect(living.projects ?? []).toBeDefined();
     });
 
@@ -4030,16 +4040,24 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(Living.commissionFactionAsset(faction.i, "counting_house", "hq")).toBe(true);
     });
 
-    it("drops a line when the work is gone", () => {
+    it("updates host line when work is dismantled and drops line when node is pillaged", () => {
       const { faction } = factionWorld();
       Living.commissionFactionAsset(faction.i, "trade_depot", "hq");
       Living.tick(1);
-      expect(pack.burgs[1].simAdjustments?.some(entry => entry.name.startsWith("Faction: "))).toBe(true);
+      const withDepot =
+        pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium")?.value ?? 0;
+      expect(withDepot).toBeGreaterThan(1);
 
       faction.hq.assets = [];
       if (faction.hq.sim) faction.hq.sim.civBuildings = [];
-      faction.treasury = 0; // nothing new to build
+      faction.treasury = 0;
       Living.tick(1);
+      const withoutDepot =
+        pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium")?.value ?? 0;
+      expect(withoutDepot).toBeLessThan(withDepot);
+
+      faction.hq.pillaged = true;
+      Living.syncFactionEffects();
       expect(pack.burgs[1].simAdjustments?.some(entry => entry.name.startsWith("Faction: "))).toBe(false);
     });
 
@@ -4192,6 +4210,54 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(pack.provinces[3]!.state).toBe(2);
       expect(pack.cells.state![4]).toBe(2);
       expect(living.provinces[3]?.rebellion).toBeNull();
+    });
+
+    it("secedes the entire province (all its cells and non-capital burgs) when no kin foreign neighbor exists", () => {
+      // Expand province 2 (Oakshire) with an extra rural cell 6 and second burg 4 (far from burg 2)
+      pack.cells.i.push(6);
+      pack.cells.state = new Uint16Array([0, 1, 1, 1, 1, 2, 1]);
+      pack.cells.province = new Uint16Array([0, 1, 1, 2, 3, 4, 2]);
+      pack.cells.pop = [...pack.cells.pop, 40] as never;
+      pack.cells.culture = [...pack.cells.culture, 1] as never;
+      pack.cells.religion = [...(pack.cells.religion ?? []), 1] as never;
+      pack.cells.c.push([3]);
+      pack.cells.c[3] = [2, 4, 6];
+      pack.cells.p.push([35, 35]);
+      pack.cells.r = [...pack.cells.r, 0] as never;
+      pack.cells.burg = new Uint16Array([0, 1, 0, 2, 0, 3, 4]);
+      pack.burgs.push({
+        i: 4,
+        name: "Oakridge",
+        cell: 6,
+        x: 35,
+        y: 35,
+        state: 1,
+        culture: 1,
+        population: 2,
+        capital: 0
+      } as never);
+
+      const living = Living.init();
+      Living.quellTrouble(2);
+      pack.provinces[2]!.stabilityAdjustments = [{ name: "Collapse", value: -45 }]; // 0.20 (< 0.25)
+      living.provinces[2]!.rebellion = { name: "Oakshire Rising", seasonsActive: 1 };
+      living.states[1]!.agenda = { kind: "build_work", label: "Distracted", progress: 0, required: 3 };
+      const statesBefore = pack.states.length;
+
+      Living.tick(1);
+
+      expect(pack.states.length).toBe(statesBefore + 1);
+      const newStateId = pack.states.length - 1;
+      expect(pack.states[newStateId]!.color).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(pack.states[newStateId]!.color).not.toBe(pack.states[1]!.color);
+      expect(pack.provinces[2]!.state).toBe(newStateId);
+      expect(pack.states[newStateId]!.provinces).toEqual([2]);
+      expect(pack.states[1]!.provinces).not.toContain(2);
+      expect(pack.cells.state![3]).toBe(newStateId);
+      expect(pack.cells.state![6]).toBe(newStateId);
+      expect(pack.burgs[2]!.state).toBe(newStateId);
+      expect(pack.burgs[4]!.state).toBe(newStateId);
+      expect(living.provinces[2]?.rebellion).toBeNull();
     });
 
     it("collapses an unchecked rebellion on its own after 2+ seasons when surrounded by calm provinces", () => {

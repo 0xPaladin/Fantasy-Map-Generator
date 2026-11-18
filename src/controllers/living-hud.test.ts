@@ -26,6 +26,7 @@ const { mocks, state } = vi.hoisted(() => {
       eligibleFactionSuppressionTargets: vi.fn((): unknown[] => []),
       startFactionSuppression: vi.fn(() => true),
       getHeroState: vi.fn((): unknown => undefined),
+      fiscalPolicy: vi.fn((): unknown => null),
       setHeroDoctrine: vi.fn(() => true),
       setHeroPush: vi.fn(() => true),
       chooseHeroPath: vi.fn(() => true),
@@ -373,6 +374,99 @@ describe("LivingHud", () => {
     state.living.states = {} as never;
   });
 
+  it("orders the state card agenda and manage, and lists only instability under issues", () => {
+    state.living.states = {
+      1: { stateId: 1, agenda: null, unravel: 0, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    const cells = pack.cells as unknown as Record<string, unknown>;
+    cells.development = Uint8Array.from([0, 45, 45, 0, 45, 45]);
+    cells.pop = new Array(6).fill(5) as never;
+    options.map.eras = [
+      { level: 0, name: "Paleolithic" },
+      { level: 40, name: "Renaissance" }
+    ] as never;
+    openHud();
+    LivingHud.inspect("state", 1);
+
+    const panel = document.getElementById("livingInspector")!;
+    const text = panel.textContent!;
+    const order = ["Upstream economy", "Agenda", "Manage", "Issues & Crises", "Instability"];
+    for (const [k, title] of order.entries()) {
+      expect(text.indexOf(title)).toBeGreaterThan(k === 0 ? -1 : text.indexOf(order[k - 1]!));
+    }
+
+    const titles = [...panel.querySelectorAll(".livingSectionTitle")].map(entry => entry.textContent);
+    expect(titles).not.toContain("Stability");
+    expect(titles).not.toContain("Provinces");
+    expect(titles).not.toContain("Rebellions");
+    state.living.states = {} as never;
+  });
+
+  it("lays fiscal and upstream chips out in fixed single rows", () => {
+    const current = {
+      military: 35,
+      court: 25,
+      administration: 25,
+      infrastructure: 25,
+      corruption: 35,
+      salesTax: 0.08,
+      pollTax: 0.071
+    };
+    mocks.living.fiscalPolicy.mockReturnValue({ current, target: current, locks: [], stride: 0.5 } as never);
+    state.living.states = {
+      1: { stateId: 1, agenda: null, unravel: 0, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    const cells = pack.cells as unknown as Record<string, unknown>;
+    cells.development = Uint8Array.from([0, 45, 45, 0, 45, 45]);
+    cells.pop = new Array(6).fill(5) as never;
+    options.map.eras = [
+      { level: 0, name: "Paleolithic" },
+      { level: 40, name: "Renaissance" }
+    ] as never;
+    openHud();
+    LivingHud.inspect("state", 1);
+
+    const panel = document.getElementById("livingInspector")!;
+    const lines = [...panel.querySelectorAll("[data-god='fiscal-lock']")].map(chip => chip.getAttribute("data-line"));
+    expect(lines).toEqual([
+      "pollTax",
+      "salesTax",
+      "corruption",
+      "court",
+      "administration",
+      "infrastructure",
+      "military"
+    ]);
+
+    const rows = [...panel.querySelectorAll(".livingChipRow")];
+    expect(rows[0]!.querySelectorAll(".livingCivChip").length).toBe(3);
+    expect(rows[1]!.querySelectorAll(".livingCivChip").length).toBe(4);
+    expect(panel.querySelectorAll('[data-open="budget"]').length).toBe(1);
+
+    mocks.living.fiscalPolicy.mockReturnValue(null);
+    state.living.states = {} as never;
+  });
+
+  it("keeps only the stock state-filtered editors under Manage", () => {
+    state.living.states = {
+      1: { stateId: 1, agenda: null, unravel: 0, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    openHud();
+    LivingHud.inspect("state", 1);
+
+    const panel = document.getElementById("livingInspector")!;
+    const manage = [...panel.querySelectorAll(".livingSection")].find(
+      section => section.querySelector(".livingSectionTitle")?.textContent === "Manage"
+    );
+    expect(manage).toBeTruthy();
+
+    const buttons = [...manage!.querySelectorAll("button")];
+    expect(buttons.map(button => button.textContent)).toEqual(["Provinces", "Burgs", "Regiments"]);
+    expect(buttons.map(button => button.dataset.open)).toEqual(["provinces", "burgs", "regiments"]);
+    expect(buttons.every(button => button.dataset.id === "1")).toBe(true);
+    state.living.states = {} as never;
+  });
+
   it("closes and reopens the HUD cleanly", () => {
     openHud();
     LivingHud.close();
@@ -437,9 +531,9 @@ describe("LivingHud", () => {
 
     LivingHud.inspect("state", 1);
     let panel = document.getElementById("livingInspector")!;
-    expect(panel.textContent).toContain("Rebellions");
-    expect(panel.textContent).toContain("Marchland Rising");
-    expect(panel.textContent).toContain("🔥");
+    expect(panel.textContent).toContain("Instability");
+    expect(panel.textContent).toContain("⚠️ Aeloran March 🔥[2]");
+    expect(panel.querySelector('[title*="Marchland Rising"]')).toBeTruthy();
 
     LivingHud.inspect("province", 1);
     panel = document.getElementById("livingInspector")!;
@@ -453,5 +547,20 @@ describe("LivingHud", () => {
     state.living.states = {} as never;
     state.living.provinces = {} as never;
     state.living.burgs = {} as never;
+  });
+
+  it("displays the state card when clicking on a state on the map", () => {
+    state.living.states = {
+      1: { stateId: 1, agenda: null, warExhaustion: 0, claims: [], grudges: [] }
+    } as never;
+    openHud();
+
+    const viewbox = document.getElementById("viewbox")!;
+    viewbox.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 }));
+
+    const panel = document.getElementById("livingInspector")!;
+    expect(panel.style.display).toBe("block");
+    expect(panel.textContent).toContain("Kingdom of Aeloria");
+    state.living.states = {} as never;
   });
 });
