@@ -80,15 +80,22 @@ God mode and the editor queue specific works via `Living.commissionFactionAsset(
 
 ---
 
-### The Living World Simulation
+### Living World Simulation, Upkeep, Prosperity & Stability
 
 Factions ride the same rails as states — no city loop, no citizens, worked cells, or yields. Each season (`Living.tick()`):
 
-1. **Revenue & Expenses (`Day Balance`)** — every HQ and outpost earns its category-specific daily revenue streams combined with any custom **Adjustments**. Each faction automatically allocates shares across four expense buckets (**Court and patronage**, **Administration**, **Infrastructure**, **Military**—at least covering regiment block upkeep) plus **Corruption** and **Charter tithe** (`15%` for `chartered`/`state_arm`).
-2. **Treasury** — `Day Balance × 90` (`SEASON_DAYS`) is banked into `faction.treasury`; a negative balance disbands the newest block.
-3. **Works** — the faction advances its active queued asset using its daily infrastructure revenue (`projectDaily × SEASON_DAYS`), promotes the next item from `projectQueue` on completion, or picks the next eligible work when idle.
-4. **Muster** — a faction under strength and funded musters one roster block per season up to its node + `+Force Cap` limit, gated on goods like a state's.
-5. **Influence** — temples and chanceries grow influence with the court's spending; charters pay their patron.
+1. **Revenue & Configurable Expenses (`Day Balance`)** — every HQ and outpost earns its category-specific daily revenue streams combined with any custom **Adjustments**. Users can adjust the `%` shares for all four expense buckets (**Court and patronage**, **Administration**, **Infrastructure**, **Military**—which still covers regiment block upkeep) or reset them to category defaults. Each bucket computes a **Required Daily Cost** from the faction's active footprint (`nodeScale`, outposts, completed assets, and regiments) and a **Provision (`0–100%`)** score:
+   * **Administration**: curbs base corruption by up to `50%`; remaining buckets lose `corruptionRate%` to skimming before fulfilling their need.
+   * **Court & Patronage**: supports internal cohesion and seasonal node influence drift.
+   * **Infrastructure**: maintains assets and drives daily construction funding (`projectDaily`).
+   * **Military**: maintains standing forces and scales faction combat strength (`0.5×–1.0×`).
+2. **Faction Prosperity & Stability (`0–100%`)** — derived from bucket provision scores, host burg prosperity, corruption, and daily solvency:
+   * **Prosperity** contributes to outpost expansion readiness (`≥ 40%`), asset build efficiency, and host economic footprint.
+   * **Stability** drives seasonal influence drift (`+1` when `≥ 70%`, `-2` when `< 40%`), and severe instability (`< 25%`) can collapse weak (`≤ 15%` influence) outposts.
+3. **Host Economy & Stability Presence (`simAdjustments`)** — every active HQ and outpost writes **one consolidated line per faction** into its host burg's `burg.simAdjustments` and its host province's `province.simStabilityAdjustments` (`Faction: <Name>`), combining its category/allegiance presence (scaled by node **Influence `0–100%`**, HQ weight, and **Faction Prosperity**) with local completed assets. For example, chartered commercial guilds enrich hosts (`+🪙/day`, `+stab`) while underworld syndicates drain them (`-🪙/day`, `-stab`), and hostile warbands destabilize borderlands.
+4. **Treasury** — `Day Balance × 90` (`SEASON_DAYS`) is banked into `faction.treasury`; a negative balance disbands the newest block.
+5. **Works** — the faction advances its active queued asset using its daily infrastructure revenue (`projectDaily × SEASON_DAYS`), promotes the next item from `projectQueue` on completion, or picks the next eligible work when idle.
+6. **Muster & Influence** — a faction under strength and funded musters one roster block per season up to its node + `+Force Cap` limit (gated on goods like a state's); chartered factions pay `15%` daily tithes to their patron.
 
 **Tactically** the factions use the same `ArmyBlock[]` regiments, keyed `f{id}-{regimentId}`, as states: they engage enemy state or rival faction armies, siege burgs, strike cities in range, and replenish in their own towns. A successful sovereign-ambition siege or an entrenched hostile faction ascends into a sovereign state; state-arm agencies defect when their patron's unravel passes 60, and rival outposts clash for turf influence.
 
@@ -120,9 +127,9 @@ Factions can evolve into recognized sovereign nations:
 
 ### User Interface and Tools
 
-* **Factions Overview** (_Tools_ → _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV. Columns show Faction, Category, Allegiance, Alignment, HQ, Outposts, daily **Income**, and Forces, with footer totals for **Avg daily income** and **Outposts**.
+* **Factions Overview** (_Tools_ → _Factions_): The primary table for viewing, sorting, filtering, editing, and exporting factions to CSV. Columns show Faction, Category, Allegiance, Alignment, HQ, Outposts, daily **Income**, **Prosperity**, **Stability**, and Forces, with footer totals for **Avg daily income** and **Outposts**.
 * **State Inspector suppression**: for a state, the _Suppression_ section lists every eligible hostile faction node (with influence and a wilderness tag for burg-less HQs) and a **Suppress faction** command; the agenda reads `"Suppressing {faction} in {burg or the wildlands}"`.
-* **Faction Editor & Manage Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The **Manage Outposts & Assets** dialog displays daily income badges and a state-style daily **Revenue | Expenses** ledger (category revenue streams, collapsible **Adjustments**, 4 expense buckets, **Day Balance**, **Corruption**, and **Charter tithe**) above the **HQ & Outposts** (Burg, editable **Influence**, daily **Income**), **Assets** (queued/active/completed works listed by projected seasons from daily revenue, with current-architecture benefits), and **Forces** tabs.
+* **Faction Editor & Manage Dialog**: Inspect or customize an organization's emblem, category, archetype, alignment, values, patron state, outposts, and military regiments. The **Manage Outposts & Assets** dialog displays daily income, prosperity, and stability badges and a state-style daily **Revenue | Expenses** ledger (category revenue streams, collapsible **Adjustments**, editable `%` shares with **Required** cost and `% met` indicators across the 4 buckets, reset to defaults, **Day Balance**, **Corruption**, and **Charter tithe**) above the **HQ & Outposts** (Burg, editable **Influence**, daily **Income**, **Host Impact**), **Assets** (queued/active/completed works listed by projected seasons from daily revenue, with current-architecture benefits), and **Forces** tabs.
 * **Burg Editor Outposts Inspector**: In the Burgs Editor, inspect resident faction HQs and outposts at that burg alongside local influence and secrecy.
 * **Map Layer (`#factions`, Hotkey: `Shift+F`)**: Displays faction HQ badges, outpost pins, and field regiments on the SVG map.
 * **Living HUD**: The god-mode inspector intervenes in the simulation — spark rebellions, smite rulers, resolve troubles, assault lairs, promote emergent states — and the **Suppression** section orders a state to campaign against a hostile faction.

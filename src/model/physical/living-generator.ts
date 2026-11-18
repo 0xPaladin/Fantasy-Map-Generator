@@ -68,6 +68,7 @@ import {
   canReadUpstreamEconomy,
   computeFactionEconomy,
   type FactionUpstreamIncome,
+  factionNodeHostPresence,
   factionUpstreamIncome,
   projectedAssetSeasons,
   SEASON_DAYS
@@ -2600,29 +2601,52 @@ class LivingModel {
     this.syncFactionLines(living);
   }
 
-  /** Rebuild faction asset daily lines on host burgs and stability lines on host provinces. */
+  /** Rebuild consolidated faction presence & asset lines on host burgs and provinces. */
   private syncFactionLines(living?: LivingWorldState): void {
     const prefix = "Faction: ";
-    const stabPrefix = "Faction Work: ";
+    const legacyStabPrefix = "Faction Work: ";
+
+    const byBurg = new Map<number, Map<number, { name: string; value: number }>>();
+    const byProvince = new Map<number, Map<number, { name: string; value: number }>>();
+
+    for (const faction of Factions.active()) {
+      const prosperity = this.getFactionYieldBreakdown(faction).prosperity;
+      for (const { node, isHq } of this.factionNodes(faction)) {
+        const impact = factionNodeHostPresence(faction, node, isHq, prosperity);
+        if (node.burgId && Math.abs(impact.goldDaily) >= 0.01) {
+          let m = byBurg.get(node.burgId);
+          if (!m) {
+            m = new Map();
+            byBurg.set(node.burgId, m);
+          }
+          const prev = m.get(faction.i)?.value ?? 0;
+          m.set(faction.i, {
+            name: `${prefix}${faction.name}`,
+            value: Math.round((prev + impact.goldDaily) * 100) / 100
+          });
+        }
+        const cell = node.burgId ? (pack.burgs?.[node.burgId]?.cell ?? node.cell) : node.cell;
+        const provId = pack.cells?.province?.[cell] ?? 0;
+        if (provId && Math.abs(impact.stabilityDelta) >= 0.05) {
+          let m = byProvince.get(provId);
+          if (!m) {
+            m = new Map();
+            byProvince.set(provId, m);
+          }
+          const prev = m.get(faction.i)?.value ?? 0;
+          m.set(faction.i, {
+            name: `${prefix}${faction.name}`,
+            value: Math.round((prev + impact.stabilityDelta) * 10) / 10
+          });
+        }
+      }
+    }
 
     for (const burg of pack.burgs) {
       if (!burg?.i || burg.removed) continue;
       const current = burg.simAdjustments ?? [];
       const kept = current.filter(line => !line.name.startsWith(prefix));
-      const lines: { name: string; value: number }[] = [];
-
-      for (const faction of Factions.active()) {
-        for (const { node } of this.factionNodes(faction)) {
-          if (!node.burgId || node.burgId !== burg.i) continue;
-          for (const assetId of node.assets ?? []) {
-            const def = getFactionAsset(assetId);
-            const value = def?.burgImpact?.gold ?? 0;
-            if (!def || !value) continue;
-            lines.push({ name: `${prefix}${faction.name} ${def.name}`, value });
-          }
-        }
-      }
-
+      const lines = [...(byBurg.get(burg.i)?.values() ?? [])].filter(line => Math.abs(line.value) >= 0.01);
       const next = [...kept, ...lines];
       if (JSON.stringify(next) === JSON.stringify(current)) continue;
       burg.simAdjustments = next;
@@ -2632,23 +2656,10 @@ class LivingModel {
     for (const province of pack.provinces ?? []) {
       if (!province?.i || province.removed) continue;
       const currentStab = province.simStabilityAdjustments ?? [];
-      const keptStab = currentStab.filter(line => !line.name.startsWith(stabPrefix));
-      const stabLines: { name: string; value: number }[] = [];
-
-      for (const faction of Factions.active()) {
-        for (const { node } of this.factionNodes(faction)) {
-          const cell = node.burgId ? (pack.burgs[node.burgId]?.cell ?? node.cell) : node.cell;
-          const nodeProv = pack.cells?.province?.[cell] ?? 0;
-          if (nodeProv !== province.i) continue;
-          for (const assetId of node.assets ?? []) {
-            const def = getFactionAsset(assetId);
-            const stability = def?.burgImpact?.stability ?? 0;
-            if (!def || !stability) continue;
-            stabLines.push({ name: `${stabPrefix}${faction.name} ${def.name}`, value: stability });
-          }
-        }
-      }
-
+      const keptStab = currentStab.filter(
+        line => !line.name.startsWith(prefix) && !line.name.startsWith(legacyStabPrefix)
+      );
+      const stabLines = [...(byProvince.get(province.i)?.values() ?? [])].filter(line => Math.abs(line.value) >= 0.05);
       const nextStab = [...keptStab, ...stabLines];
       if (JSON.stringify(nextStab) === JSON.stringify(currentStab)) continue;
       province.simStabilityAdjustments = nextStab;
@@ -2746,8 +2757,17 @@ class LivingModel {
       charterTithe: Math.round(totalCharterTithe * 100) / 100,
       charterPatronId,
       influence: Math.round(totalInfluence * 100) / 100,
+      prosperity: economy.prosperity,
+      stability: economy.stability,
       economy
     };
+  }
+
+  /** Combat multiplier from how fully the faction funded its required military expenses (0.5..1.0) */
+  private factionCombatMult(faction: Faction | undefined): number {
+    if (!faction?.i || faction.removed || !canReadUpstreamEconomy()) return 1;
+    const mil = this.getFactionYieldBreakdown(faction).economy.expenses.find(e => e.bucket === "military");
+    return mil ? 0.5 + 0.5 * minmax(mil.provision, 0, 1) : 1;
   }
 
   /** The faction's season on the upstream economy: Day Balance × SEASON_DAYS. */
@@ -2803,11 +2823,53 @@ class LivingModel {
         charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
       }
       this.applyFactionTreasury(faction, living);
+      this.applyFactionStabilityDrift(faction, breakdown, living);
       this.musterFactionBlock(faction, living);
       this.stepFactionProject(faction, living);
     }
     this.syncFactionLines(living);
     this.applyCharterTithes(living, charters);
+  }
+
+  /** Stability & court provision move node influence seasonally and can collapse hollow outposts. */
+  private applyFactionStabilityDrift(
+    faction: Faction,
+    breakdown: FactionYieldBreakdown,
+    living: LivingWorldState
+  ): void {
+    if (!canReadUpstreamEconomy()) return;
+    const courtProv = breakdown.economy.expenses.find(e => e.bucket === "court")?.provision ?? 1;
+    let delta = 0;
+    if (breakdown.stability >= 0.7 || courtProv >= 0.8) delta = 1;
+    else if (breakdown.stability < 0.4) delta = -2;
+    else if (courtProv < 0.5) delta = -1;
+
+    if (delta !== 0) {
+      if (faction.hq && !faction.hq.pillaged) {
+        faction.hq.influence = minmax((faction.hq.influence ?? 70) + delta, 0, 100);
+      }
+      for (const op of faction.outposts ?? []) {
+        if (op.pillaged) continue;
+        op.influence = minmax((op.influence ?? 35) + delta, 0, 100);
+      }
+    }
+
+    if (breakdown.stability < 0.25 && (faction.outposts ?? []).length > 0) {
+      const weakestIdx = faction.outposts
+        .map((op, i) => ({ op, i }))
+        .filter(e => !e.op.pillaged && e.op.influence <= 15)
+        .sort((a, b) => a.op.influence - b.op.influence)[0]?.i;
+      if (weakestIdx !== undefined) {
+        const [removed] = faction.outposts.splice(weakestIdx, 1);
+        const burgName = removed.burgId ? (pack.burgs?.[removed.burgId]?.name ?? "a burg") : "the frontier";
+        this.pushNews(living, {
+          kind: "faction",
+          text: `${faction.name}'s outpost in ${burgName} collapsed from internal instability.`,
+          cell: removed.cell,
+          ...(removed.burgId ? { burgId: removed.burgId } : {})
+        });
+      }
+    }
   }
 
   /** §5.1: charters pay their patron states, as a named line of the state's budget */
@@ -3788,6 +3850,7 @@ class LivingModel {
     const burgId = Number(pack.cells.burg?.[defenderRegiment.cell] ?? 0);
     const burg = burgId ? pack.burgs[burgId] : undefined;
     const attackerLordMult = this.stateCombatMult(attackerState.i, living);
+    const defenderLordMult = this.factionCombatMult(defenderFaction);
     const session = initBattleSession({
       config,
       unitTypes: toBattleTypes(types),
@@ -3813,7 +3876,8 @@ class LivingModel {
           Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0,
         defenderTerrain: terrainDefenseMultiplier(defenderRegiment.cell) > 1,
         labels: [],
-        ...(attackerLordMult !== 1 ? { attackerLordMult } : {})
+        ...(attackerLordMult !== 1 ? { attackerLordMult } : {}),
+        ...(defenderLordMult !== 1 ? { defenderLordMult } : {})
       }
     });
 
@@ -3961,7 +4025,12 @@ class LivingModel {
       cell: defenderRegiment.cell,
       regionId: pack.cells.province?.[defenderRegiment.cell] ?? 0,
       assault: false,
-      modifiers: this.factionBattleModifiers(attackerRegiment, defenderRegiment, defenderKind, defenderId)
+      modifiers: {
+        ...this.factionBattleModifiers(attackerRegiment, defenderRegiment, defenderKind, defenderId),
+        ...(this.factionCombatMult(attackerFaction) !== 1
+          ? { attackerLordMult: this.factionCombatMult(attackerFaction) }
+          : {})
+      }
     });
 
     const rng = this.rng("faction:army:battle", attackerRegiment.i * 1000 + defenderRegiment.i, living.tick);
@@ -4079,7 +4148,10 @@ class LivingModel {
     const attackerCrossedRiver =
       Number(pack.cells.r?.[attackerRegiment.cell] ?? 0) !== Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) &&
       Number(pack.cells.r?.[defenderRegiment.cell] ?? 0) > 0;
-    const defenderLordMult = defenderKind === "state" ? this.stateCombatMult(defenderId, living) : 1;
+    const defenderLordMult =
+      defenderKind === "state"
+        ? this.stateCombatMult(defenderId, living)
+        : this.factionCombatMult(pack.factions?.[defenderId]);
     return {
       walls,
       defenderEncamped: defenderArmy?.stance === "encamp" || defenderArmy?.stance === "fortify",
@@ -7918,6 +7990,7 @@ class LivingModel {
     burg: Burg;
     outpost?: import("@/types/factions").FactionOutpost;
   } | null {
+    if (canReadUpstreamEconomy() && this.getFactionYieldBreakdown(faction).prosperity < 0.4) return null;
     const treasury = Number(faction.treasury ?? 0);
     const existingUpgrade = (faction.outposts ?? []).find(o => !o.pillaged && o.tier < 3);
     if (existingUpgrade && treasury >= 80 && (faction.outposts?.length ?? 0) >= 2) {

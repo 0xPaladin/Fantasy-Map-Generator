@@ -70,6 +70,10 @@ describe("FactionsEditor", () => {
     expect(bodySection.innerHTML).toContain("Commercial");
     expect(dialog?.innerHTML).not.toContain('data-col="treasury"');
     expect(dialog?.innerHTML).toContain("Avg daily income");
+    expect(dialog?.innerHTML).toContain("Prosperity");
+    expect(dialog?.innerHTML).toContain("Stability");
+    expect(bodySection.querySelector('#factionsRows [data-col="prosperity"]')?.textContent).toContain("%");
+    expect(bodySection.querySelector('#factionsRows [data-col="stability"]')?.textContent).toContain("%");
   });
 
   it("filters factions by category and search", () => {
@@ -190,6 +194,14 @@ describe("FactionsEditor", () => {
     const outpostsHeader = dialog.querySelector("#outpostsTable .header")!;
     expect(outpostsHeader.textContent).not.toContain("Tier");
     expect(outpostsHeader.textContent).not.toContain("Lines");
+    expect(outpostsHeader.textContent).toContain("Host Impact");
+    expect(dialog.innerHTML).toContain("prosperity");
+    expect(dialog.innerHTML).toContain("stability");
+
+    const courtInput = dialog.querySelector<HTMLInputElement>('.factionBudgetInput[data-bucket="court"]')!;
+    courtInput.value = "35";
+    courtInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(faction.budget?.court).toBe(35);
 
     const hqInfInput = dialog.querySelector<HTMLInputElement>('.nodeInfluenceInput[data-node="hq"]')!;
     hqInfInput.value = "85";

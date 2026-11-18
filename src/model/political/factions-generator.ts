@@ -3,6 +3,7 @@ import { rollAlignment, rollValues, traitsRng } from "@/data/culture-traits";
 import { getLairArchetypeForMarker, isDangerMarker } from "@/data/danger-markers";
 import { EPIC_FACTION_IDS, FACTIONS_CATALOG, getFactionArchetype } from "@/data/factions-catalog";
 import { assignStateRoster } from "@/data/roster-content";
+import { defaultFactionBudget } from "@/model/physical/living-faction-economy";
 import {
   Military,
   type Regiment,
@@ -12,12 +13,14 @@ import {
 import type {
   Faction,
   FactionAllegiance,
+  FactionBudget,
   FactionCategory,
   FactionHq,
   FactionOutpost,
   FactionRelation
 } from "@/types/factions";
 import type { BurgSimState } from "@/types/living";
+import { minmax } from "@/utils/number-utils";
 import { createRng, type Rng } from "@/utils/rng";
 import { requireAdjustments } from "@/utils/validation-utils";
 
@@ -752,6 +755,7 @@ class FactionsModule {
       doctrine: params.doctrine,
       agenda: params.agenda ?? null,
       seasonsActive: params.seasonsActive || 0,
+      budget: params.budget,
       adjustments: params.adjustments,
       tags: params.tags,
       lock: params.lock,
@@ -777,6 +781,38 @@ class FactionsModule {
     const f = pack.factions?.[id];
     if (!f || f.removed) return;
     f.adjustments = requireAdjustments(adjustments);
+  }
+
+  /** Set 0..100 allocation shares per expense bucket (omitted buckets keep current or default profile share) */
+  setBudget(id: number, budget: Partial<FactionBudget>): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    const base = { ...defaultFactionBudget(f.category), ...(f.budget ?? {}) };
+    f.budget = {
+      court:
+        budget.court !== undefined && Number.isFinite(budget.court)
+          ? minmax(Math.round(budget.court), 0, 100)
+          : base.court,
+      administration:
+        budget.administration !== undefined && Number.isFinite(budget.administration)
+          ? minmax(Math.round(budget.administration), 0, 100)
+          : base.administration,
+      infrastructure:
+        budget.infrastructure !== undefined && Number.isFinite(budget.infrastructure)
+          ? minmax(Math.round(budget.infrastructure), 0, 100)
+          : base.infrastructure,
+      military:
+        budget.military !== undefined && Number.isFinite(budget.military)
+          ? minmax(Math.round(budget.military), 0, 100)
+          : base.military
+    };
+  }
+
+  /** Reset custom budget shares back to the faction category's default profile */
+  resetBudget(id: number): void {
+    const f = pack.factions?.[id];
+    if (!f || f.removed) return;
+    delete f.budget;
   }
 }
 

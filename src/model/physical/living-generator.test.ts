@@ -4008,20 +4008,27 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
 
     it("queues an asset without lump-sum treasury cost, draws from daily revenue, and writes host effects", () => {
       const { living, faction } = factionWorld();
+      Living.tick(1); // seed baseline presence line before adding Trade Depot
+      const baseLine =
+        pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium")?.value ?? 0;
+      expect(baseLine).toBeGreaterThan(0);
+
+      faction.project = undefined;
+      faction.hq.assets = [];
       expect(Living.commissionFactionAsset(faction.i, "trade_depot", "hq")).toBe(true);
-      expect(faction.treasury).toBe(500);
+      expect(faction.treasury).toBeLessThanOrEqual(500);
+      const treasuryBeforeBuild = faction.treasury;
       expect(faction.project).toMatchObject({ assetId: "trade_depot", nodeKey: "hq", turnsLeft: 1 });
       expect(Living.commissionFactionAsset(faction.i, "counting_house", "hq")).toBe(true);
       expect(faction.projectQueue).toEqual([{ assetId: "counting_house", nodeKey: "hq" }]);
 
       Living.tick(1);
       expect(faction.hq.assets).toContain("trade_depot");
+      expect(faction.treasury).toBeLessThanOrEqual(treasuryBeforeBuild);
       // Queued asset promoted automatically once active completes
       expect(faction.project).toMatchObject({ assetId: "counting_house", nodeKey: "hq" });
-      const line = pack.burgs[1].simAdjustments?.find(entry =>
-        entry.name.startsWith("Faction: Test Consortium Trade Depot")
-      );
-      expect(line?.value).toBe(1); // the depot's gold bite on its host
+      const withDepot = pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium");
+      expect(withDepot?.value).toBeCloseTo(baseLine + 1, 2); // presence + depot's +1/day gold bite on host
       expect(living.projects ?? []).toBeDefined();
     });
 
@@ -4033,16 +4040,24 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(Living.commissionFactionAsset(faction.i, "counting_house", "hq")).toBe(true);
     });
 
-    it("drops a line when the work is gone", () => {
+    it("updates host line when work is dismantled and drops line when node is pillaged", () => {
       const { faction } = factionWorld();
       Living.commissionFactionAsset(faction.i, "trade_depot", "hq");
       Living.tick(1);
-      expect(pack.burgs[1].simAdjustments?.some(entry => entry.name.startsWith("Faction: "))).toBe(true);
+      const withDepot =
+        pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium")?.value ?? 0;
+      expect(withDepot).toBeGreaterThan(1);
 
       faction.hq.assets = [];
       if (faction.hq.sim) faction.hq.sim.civBuildings = [];
-      faction.treasury = 0; // nothing new to build
+      faction.treasury = 0;
       Living.tick(1);
+      const withoutDepot =
+        pack.burgs[1].simAdjustments?.find(entry => entry.name === "Faction: Test Consortium")?.value ?? 0;
+      expect(withoutDepot).toBeLessThan(withDepot);
+
+      faction.hq.pillaged = true;
+      Living.syncFactionEffects();
       expect(pack.burgs[1].simAdjustments?.some(entry => entry.name.startsWith("Faction: "))).toBe(false);
     });
 

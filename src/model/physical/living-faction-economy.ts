@@ -10,6 +10,7 @@ import { figureBias } from "@/model/physical/figure-bias";
 import type { State } from "@/model/political/states-generator";
 import type {
   Faction,
+  FactionBudget,
   FactionCategory,
   FactionEconomyBreakdown,
   FactionExpenseBucket,
@@ -225,7 +226,7 @@ export function factionUpstreamIncome(faction: Faction, node: FactionHq | Factio
   };
 }
 
-const FACTION_EXPENSE_PROFILES: Record<FactionCategory, Record<FactionExpenseBucket, number>> = {
+export const FACTION_EXPENSE_PROFILES: Record<FactionCategory, FactionBudget> = {
   commercial: { court: 10, administration: 18, infrastructure: 22, military: 18 },
   underworld: { court: 8, administration: 24, infrastructure: 12, military: 22 },
   martial: { court: 6, administration: 12, infrastructure: 12, military: 42 },
@@ -233,6 +234,26 @@ const FACTION_EXPENSE_PROFILES: Record<FactionCategory, Record<FactionExpenseBuc
   political: { court: 22, administration: 26, infrastructure: 12, military: 16 },
   adventuring: { court: 8, administration: 16, infrastructure: 20, military: 28 }
 };
+
+export function defaultFactionBudget(category: FactionCategory): FactionBudget {
+  return { ...(FACTION_EXPENSE_PROFILES[category] ?? FACTION_EXPENSE_PROFILES.commercial) };
+}
+
+export function factionBudgetFor(faction: Faction): FactionBudget {
+  const fallback = defaultFactionBudget(faction.category);
+  const custom = faction.budget;
+  if (!custom) return fallback;
+  return {
+    court: Number.isFinite(custom.court) ? minmax(Math.round(custom.court), 0, 100) : fallback.court,
+    administration: Number.isFinite(custom.administration)
+      ? minmax(Math.round(custom.administration), 0, 100)
+      : fallback.administration,
+    infrastructure: Number.isFinite(custom.infrastructure)
+      ? minmax(Math.round(custom.infrastructure), 0, 100)
+      : fallback.infrastructure,
+    military: Number.isFinite(custom.military) ? minmax(Math.round(custom.military), 0, 100) : fallback.military
+  };
+}
 
 export const FACTION_EXPENSE_LABELS: Record<FactionExpenseBucket, string> = {
   court: "Court and patronage",
@@ -249,6 +270,116 @@ const FACTION_CORRUPTION_BASE: Record<FactionCategory, number> = {
   political: 12,
   adventuring: 8
 };
+
+/** Effective footprint weight driving daily upkeep needs across active HQ and outposts */
+export function factionNodeScale(faction: Faction): number {
+  let scale = 0;
+  if (faction.hq && !faction.hq.pillaged) {
+    const hqInf = minmax(faction.hq.influence ?? 70, 0, 100);
+    scale += 1.5 * (0.5 + hqInf / 100);
+  }
+  for (const op of faction.outposts ?? []) {
+    if (op.pillaged) continue;
+    const inf = minmax(op.influence ?? 0, 0, 100);
+    scale += 0.5 + inf / 100;
+  }
+  return rn(scale, 2);
+}
+
+export interface FactionNodePresenceImpact {
+  goldDaily: number;
+  stabilityDelta: number;
+  presenceGoldDaily: number;
+  presenceStabilityDelta: number;
+  assetGoldDaily: number;
+  assetStabilityDelta: number;
+}
+
+/** Combined local host impact (presence + local completed assets) for one active faction node */
+export function factionNodeHostPresence(
+  faction: Faction,
+  node: FactionHq | FactionOutpost,
+  isHq: boolean,
+  factionProsperity = 0.5
+): FactionNodePresenceImpact {
+  if (node.pillaged) {
+    return {
+      goldDaily: 0,
+      stabilityDelta: 0,
+      presenceGoldDaily: 0,
+      presenceStabilityDelta: 0,
+      assetGoldDaily: 0,
+      assetStabilityDelta: 0
+    };
+  }
+
+  const defaultInf = isHq ? 70 : 35;
+  const influence = minmax(node.influence ?? defaultInf, 0, 100);
+  const weight = (influence / 100) * (isHq ? 1.35 : 1.0) * (0.5 + 0.5 * minmax(factionProsperity, 0, 1));
+
+  const burg = node.burgId ? pack.burgs?.[node.burgId] : undefined;
+  const hasBurg = Boolean(burg?.i && !burg.removed);
+  const cell = hasBurg ? (burg!.cell ?? node.cell) : node.cell;
+  const hostStateId = hasBurg ? (burg!.state ?? 0) : (pack.cells?.state?.[cell] ?? 0);
+  const hasState = Boolean(hostStateId && pack.states?.[hostStateId] && !pack.states[hostStateId].removed);
+  const relation = hostStateId ? faction.stateRelations?.[hostStateId] : undefined;
+
+  let baseGold = 0;
+  let baseStab = 0;
+  if (hasState) {
+    switch (faction.category) {
+      case "commercial":
+        baseGold = 2.5;
+        baseStab =
+          faction.allegiance === "chartered" || faction.allegiance === "state_arm" ? 3 : influence >= 70 ? -2 : 0;
+        break;
+      case "underworld":
+        baseGold = -2.0;
+        baseStab = -7;
+        break;
+      case "adventuring":
+        baseGold = 1.0;
+        baseStab = 5;
+        break;
+      case "religious":
+        baseGold = -0.8;
+        baseStab = faction.allegiance === "chartered" || faction.allegiance === "state_arm" ? 6 : -8;
+        break;
+      case "political":
+        baseGold = -0.5;
+        baseStab = relation === "Friendly" || relation === "Ally" ? 4 : -7;
+        break;
+      case "martial":
+        baseGold = faction.allegiance === "hostile" ? -2.0 : 0;
+        baseStab = relation === "Friendly" || relation === "Ally" ? 4 : faction.allegiance === "hostile" ? -9 : -4;
+        break;
+    }
+  }
+
+  const presenceGoldDaily = hasBurg ? rn(baseGold * weight, 2) : 0;
+  const presenceStabilityDelta = hasState ? rn(baseStab * weight, 1) : 0;
+
+  let assetGoldDaily = 0;
+  let assetStabilityDelta = 0;
+  for (const aid of node.assets ?? []) {
+    const def = getFactionAsset(aid);
+    if (!def?.burgImpact) continue;
+    if (hasBurg && def.burgImpact.gold) assetGoldDaily += def.burgImpact.gold;
+    if (hasState && def.burgImpact.stability) assetStabilityDelta += def.burgImpact.stability;
+  }
+
+  assetGoldDaily = rn(assetGoldDaily, 2);
+  assetStabilityDelta = rn(assetStabilityDelta, 1);
+
+  return {
+    goldDaily: rn(presenceGoldDaily + assetGoldDaily, 2),
+    stabilityDelta: rn(presenceStabilityDelta + assetStabilityDelta, 1),
+    presenceGoldDaily,
+    presenceStabilityDelta,
+    assetGoldDaily,
+    assetStabilityDelta
+  };
+}
 
 /** Projected seasons to fund an asset cost from daily infrastructure revenue */
 export function projectedAssetSeasons(cost: number, projectDaily: number): number | null {
@@ -287,36 +418,129 @@ export function computeFactionEconomy(
   const revenueBase = Math.max(0, collectedDaily);
   const hostProductShare = totalHostProduct > 0 ? rn((collectedDaily / totalHostProduct) * 100, 1) : 0;
 
-  const profile = FACTION_EXPENSE_PROFILES[faction.category] ?? FACTION_EXPENSE_PROFILES.commercial;
+  const budget = factionBudgetFor(faction);
   const militaryBlockDaily = blockUpkeepSeasonal / SEASON_DAYS;
+  const nodeScale = factionNodeScale(faction);
 
-  let corruptionRate = FACTION_CORRUPTION_BASE[faction.category] ?? 10;
-  if (faction.alignment === "lawful") corruptionRate -= 3;
-  else if (faction.alignment === "chaotic" || faction.alignment === "evil") corruptionRate += 4;
-  corruptionRate = minmax(corruptionRate, 4, 30);
+  const activeNodes: (FactionHq | FactionOutpost)[] = [];
+  if (faction.hq && !faction.hq.pillaged) activeNodes.push(faction.hq);
+  let activeOutposts = 0;
+  for (const op of faction.outposts ?? []) {
+    if (!op.pillaged) {
+      activeNodes.push(op);
+      activeOutposts += 1;
+    }
+  }
+  let totalAssets = 0;
+  let assetCostSum = 0;
+  let hostProsperitySum = 0;
+  let hostBurgCount = 0;
+  const upstreamReadable = canReadUpstreamEconomy();
+  for (const node of activeNodes) {
+    for (const aid of node.assets ?? []) {
+      totalAssets += 1;
+      assetCostSum += getFactionAsset(aid)?.cost ?? 50;
+    }
+    if (upstreamReadable && node.burgId) {
+      try {
+        const burgProsperity = Prosperity.getBurg(node.burgId)?.prosperity;
+        if (burgProsperity !== undefined && burgProsperity !== null) {
+          hostProsperitySum += burgProsperity;
+          hostBurgCount += 1;
+        }
+      } catch {
+        // minimal maps without graph dimensions fall back to 0.5 host prosperity
+      }
+    }
+  }
+  const hostProsperity = hostBurgCount > 0 ? hostProsperitySum / hostBurgCount : 0.5;
 
+  const requiredMap: Record<FactionExpenseBucket, number> = {
+    administration: rn(0.45 * nodeScale + 0.25 * activeOutposts ** 1.2, 2),
+    court: rn(
+      (0.35 * nodeScale + 0.12 * totalAssets) *
+        (faction.category === "religious" || faction.category === "political" ? 1.2 : 1),
+      2
+    ),
+    infrastructure: rn(0.25 * nodeScale + assetCostSum * 0.003, 2),
+    military: rn(Math.max(0.2 * nodeScale, militaryBlockDaily), 2)
+  };
+
+  let baseCorruption = FACTION_CORRUPTION_BASE[faction.category] ?? 10;
+  if (faction.alignment === "lawful") baseCorruption -= 3;
+  else if (faction.alignment === "chaotic" || faction.alignment === "evil") baseCorruption += 4;
+  baseCorruption = minmax(baseCorruption, 4, 30);
+
+  const adminAllocatedDaily = (revenueBase * budget.administration) / 100;
+  const adminProvision =
+    requiredMap.administration > 0 ? minmax(adminAllocatedDaily / requiredMap.administration, 0, 1) : 1;
+  const corruptionRate = rn(minmax(baseCorruption * (1 - 0.5 * adminProvision), 2, 30), 1);
   const corruptionDaily = rn((revenueBase * corruptionRate) / 100, 2);
   const charterTitheDaily = rn(charterTitheSeasonal / SEASON_DAYS, 2);
 
   const buckets: FactionExpenseBucket[] = ["court", "administration", "infrastructure", "military"];
   const expenses: FactionExpenseLine[] = buckets.map(bucket => {
-    const baseDaily = (revenueBase * profile[bucket]) / 100;
+    const targetShare = budget[bucket];
+    const baseDaily = (revenueBase * targetShare) / 100;
     const daily = bucket === "military" ? Math.max(baseDaily, militaryBlockDaily) : baseDaily;
     const share = revenueBase > 0 ? Math.round((daily / revenueBase) * 100) : daily > 0 ? 100 : 0;
+    const requiredDaily = requiredMap[bucket];
+    const effectiveDaily = bucket === "administration" ? daily : daily * (1 - corruptionRate / 100);
+    const provision = requiredDaily > 0 ? minmax(effectiveDaily / requiredDaily, 0, 1) : 1;
     return {
       bucket,
       label: FACTION_EXPENSE_LABELS[bucket],
       share,
-      daily: rn(daily, 2)
+      targetShare,
+      daily: rn(daily, 2),
+      requiredDaily,
+      effectiveDaily: rn(effectiveDaily, 2),
+      provision: rn(provision, 3)
     };
   });
 
-  const projectDaily = rn(expenses.find(e => e.bucket === "infrastructure")?.daily ?? 0, 2);
+  const byBucket = Object.fromEntries(expenses.map(e => [e.bucket, e])) as Record<
+    FactionExpenseBucket,
+    FactionExpenseLine
+  >;
+  const infraLine = byBucket.infrastructure;
+  const projectDaily = rn(infraLine.effectiveDaily * (0.4 + 0.6 * infraLine.provision), 2);
   const spentDaily = expenses.reduce((sum, e) => sum + e.daily, 0);
   const spentShare = expenses.reduce((sum, e) => sum + e.share, 0);
+  const requiredTotalDaily = rn(
+    requiredMap.court + requiredMap.administration + requiredMap.infrastructure + requiredMap.military,
+    2
+  );
   const dayBalance = rn(collectedDaily - spentDaily - corruptionDaily - charterTitheDaily, 2);
   const dayBalanceShare =
     collectedDaily > 0 ? Math.round((dayBalance / collectedDaily) * 100) : dayBalance < 0 ? -100 : 0;
+
+  const prosperity = rn(
+    minmax(
+      0.2 +
+        0.35 * byBucket.infrastructure.provision +
+        0.25 * byBucket.administration.provision +
+        0.2 * hostProsperity -
+        0.2 * (corruptionRate / 30),
+      0,
+      1
+    ),
+    3
+  );
+  const solvency = dayBalance >= 0 ? 1 : -1;
+  const stability = rn(
+    minmax(
+      0.3 +
+        0.3 * byBucket.court.provision +
+        0.15 * byBucket.administration.provision +
+        0.15 * (2 * byBucket.military.provision - 1) +
+        0.1 * solvency -
+        0.2 * (corruptionRate / 30),
+      0,
+      1
+    ),
+    3
+  );
 
   return {
     revenueLines,
@@ -326,10 +550,14 @@ export function computeFactionEconomy(
     hostProductShare,
     expenses,
     spentShare,
+    nodeScale,
+    requiredTotalDaily,
     corruptionRate,
     corruptionDaily,
     charterTitheDaily,
     dayBalance,
-    dayBalanceShare
+    dayBalanceShare,
+    prosperity,
+    stability
   };
 }

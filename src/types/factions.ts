@@ -75,6 +75,8 @@ export interface Faction {
   type: string;
   allegiance: FactionAllegiance;
   patronStateId?: number;
+  /** User-configurable 0..100 allocation shares per expense bucket (defaults to category profile) */
+  budget?: FactionBudget;
   /** Active asset build funded from daily infrastructure revenue */
   project?: FactionProject;
   /** Pending asset builds queued after the active work */
@@ -174,6 +176,8 @@ export interface FactionArchetypeDef {
 
 export type FactionExpenseBucket = "court" | "administration" | "infrastructure" | "military";
 
+export type FactionBudget = Record<FactionExpenseBucket, number>;
+
 export interface FactionRevenueLine {
   key: string;
   label: string;
@@ -186,8 +190,16 @@ export interface FactionExpenseLine {
   label: string;
   /** Percentage share of collected daily revenue (0..100) */
   share: number;
-  /** Daily gold spent in this bucket */
+  /** Configured target share percentage (0..100) */
+  targetShare: number;
+  /** Daily gold allocated to this bucket */
   daily: number;
+  /** Daily gold required to fully fund this bucket based on faction footprint */
+  requiredDaily: number;
+  /** Daily gold delivered after corruption (admin is not skimmed) */
+  effectiveDaily: number;
+  /** Share of requiredDaily actually met (0..1) */
+  provision: number;
 }
 
 export interface FactionEconomyBreakdown {
@@ -205,6 +217,10 @@ export interface FactionEconomyBreakdown {
   expenses: FactionExpenseLine[];
   /** Total percentage of collected revenue spent across the 4 buckets */
   spentShare: number;
+  /** Effective node scale driving required costs */
+  nodeScale: number;
+  /** Sum of required daily costs across all 4 buckets */
+  requiredTotalDaily: number;
   /** Corruption / skimming percentage (0..100) and daily gold lost */
   corruptionRate: number;
   corruptionDaily: number;
@@ -214,6 +230,10 @@ export interface FactionEconomyBreakdown {
   dayBalance: number;
   /** Net balance as % of collectedDaily */
   dayBalanceShare: number;
+  /** Overall faction prosperity (0..1) */
+  prosperity: number;
+  /** Overall faction cohesion & stability (0..1) */
+  stability: number;
 }
 
 export interface FactionNodeYieldBreakdown {
@@ -240,6 +260,10 @@ export interface FactionYieldBreakdown {
   charterPatronId: number;
   /** influence the court's spending lends its temples and its chancery */
   influence: number;
+  /** overall faction prosperity (0..1) */
+  prosperity: number;
+  /** overall faction stability (0..1) */
+  stability: number;
   /** daily state-style Revenue & Expenses breakdown */
   economy: FactionEconomyBreakdown;
 }

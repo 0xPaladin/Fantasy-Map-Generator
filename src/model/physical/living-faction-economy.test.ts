@@ -8,6 +8,7 @@ import type { Faction, FactionOutpost } from "@/types/factions";
 import {
   canReadUpstreamEconomy,
   computeFactionEconomy,
+  factionNodeHostPresence,
   factionUpstreamIncome,
   projectedAssetSeasons,
   SEASON_DAYS
@@ -187,17 +188,28 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
     const economy = computeFactionEconomy(charter, [nodeInc], 0);
     expect(economy.collectedDaily).toBeCloseTo(8 * 0.2 + turnover * 0.05, 2);
     expect(economy.expenses.map(e => e.bucket)).toEqual(["court", "administration", "infrastructure", "military"]);
-    expect(economy.corruptionRate).toBe(7); // 10 base - 3 lawful
+    // Lawful commercial base corruption is 7%; partial admin provision curbs it below 7%
+    expect(economy.corruptionRate).toBeLessThan(7);
+    expect(economy.corruptionRate).toBeGreaterThan(3.5);
     expect(economy.charterTitheDaily).toBeCloseTo(economy.collectedDaily * 0.15, 1);
     const spent = economy.expenses.reduce((s, e) => s + e.daily, 0);
     expect(economy.dayBalance).toBeCloseTo(
       economy.collectedDaily - spent - economy.corruptionDaily - economy.charterTitheDaily,
       2
     );
+    for (const exp of economy.expenses) {
+      expect(exp.requiredDaily).toBeGreaterThan(0);
+      expect(exp.provision).toBeGreaterThanOrEqual(0);
+      expect(exp.provision).toBeLessThanOrEqual(1);
+    }
+    expect(economy.prosperity).toBeGreaterThan(0);
+    expect(economy.stability).toBeGreaterThan(0);
   });
 
-  it("folds faction adjustments into daily revenue and computes projected asset seasons", () => {
+  it("folds faction adjustments, custom budget shares, required upkeep, and host presence into economy", () => {
     const guild = faction({
+      allegiance: "chartered",
+      patronStateId: 1,
       adjustments: [
         { name: "Patron Grant", value: 3 },
         { name: "Dock Dues", value: -1 }
@@ -208,9 +220,37 @@ describe("Faction upstream income (economy alignment Phase 5 §5.1)", () => {
 
     expect(economy.adjustmentsDaily).toBe(2);
     expect(economy.collectedDaily).toBeCloseTo(2.1 + 2, 2);
-    expect(economy.projectDaily).toBeCloseTo((4.1 * 22) / 100, 2);
+    // Infra budget (22% of 4.1 = 0.902) after 5.4% curbed corruption fully meets 0.45 required -> projectDaily = 0.85
+    expect(economy.projectDaily).toBeCloseTo(0.85, 2);
     expect(projectedAssetSeasons(50, economy.projectDaily)).toBe(1);
     expect(projectedAssetSeasons(200, economy.projectDaily)).toBe(3);
     expect(projectedAssetSeasons(50, 0)).toBeNull();
+
+    // User-adjustable budget overrides category profile and shifts provision + prosperity/stability
+    const starvingAdmin = faction({
+      adjustments: [{ name: "Grant", value: 2 }],
+      budget: { court: 10, administration: 0, infrastructure: 10, military: 10 }
+    });
+    const customEcon = computeFactionEconomy(starvingAdmin, [nodeInc], 0);
+    expect(customEcon.expenses.find(e => e.bucket === "administration")?.provision).toBe(0);
+    expect(customEcon.corruptionRate).toBe(10); // zero admin -> uncurbed base corruption
+    expect(customEcon.prosperity).toBeLessThan(economy.prosperity);
+
+    // Host presence scales with influence & faction prosperity and sums with local assets
+    const lowInf = factionNodeHostPresence(guild, { ...guild.hq, influence: 20 }, true, economy.prosperity);
+    const highInf = factionNodeHostPresence(
+      guild,
+      { ...guild.hq, influence: 80, assets: ["trade_depot"] },
+      true,
+      economy.prosperity
+    );
+    expect(highInf.goldDaily).toBeGreaterThan(lowInf.goldDaily);
+    expect(highInf.assetGoldDaily).toBe(1);
+    expect(highInf.stabilityDelta).toBeGreaterThan(0);
+
+    const underworld = faction({ category: "underworld", allegiance: "clandestine" });
+    const uwImpact = factionNodeHostPresence(underworld, { ...underworld.hq, influence: 80 }, true, 0.6);
+    expect(uwImpact.goldDaily).toBeLessThan(0);
+    expect(uwImpact.stabilityDelta).toBeLessThan(0);
   });
 });

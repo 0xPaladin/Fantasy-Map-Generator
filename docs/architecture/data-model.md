@@ -253,28 +253,28 @@ States (countries) data is stored as an array of objects with strict element ord
 
 ## Factions
 
-Non-territorial organizations stored as an array of objects with strict element order. Element 0 is reserved and unused. If a faction is removed, the element is not getting removed, but instead a `removed` attribute is added. Factions run on the unified OpenCiv engine: every HQ and outpost carries a `BurgSimState` city-node. See the [Factions wiki](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Factions).
+Non-territorial organizations stored as an array of objects with strict element order. Element 0 is reserved and unused. If a faction is removed, the element is not removed; instead `removed: true` is set. Factions draw daily upstream revenue from host markets, burgs, provinces, and states (`living-faction-economy.ts`), with derived daily `prosperity`, `stability`, and per-bucket `provision` calculated on demand. See the [Factions wiki](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Factions).
 
 - `i`: `number` - faction id, always equal to the array index
 - `name`: `string` - faction name
 - `category`: `FactionCategory` - `commercial`, `adventuring`, `underworld`, `religious`, `political` or `martial`
-- `type`: `string` - archetype id (for example `merchant_consortium`, `thieves_guild`, `raider_clan`)
+- `type`: `string` - archetype id (`FACTIONS_CATALOG` / `EPIC_FACTION_IDS`: 10 major archetypes such as `merchant_consortium`, `shadow_syndicate`, `dread_host`)
 - `allegiance`: `FactionAllegiance` - `state_arm`, `chartered`, `autonomous`, `clandestine` or `hostile`
-- `patronStateId`: `number` - optional host/patron state id
+- `patronStateId?`: `number` - optional host/patron state id
 - `color`: `string` - faction color in hex
-- `coa`: `Emblem` - optional emblem; `icon`: `string` - marker icon
+- `coa?`: `Emblem` - optional emblem; `icon`: `string` - marker icon
 - `culture`, `religion?`: `number` - the faction's culture and, optionally, its faith
 - `alignment`, `values`: `Alignment`, `string[]` - the ethos it follows, rolled from its culture
 - `expansionism`: `number` - `0.2..2.0`, how hard it pushes outward; `expansionScope`: `FactionExpansionScope` - `local`, `province`, `state`, `culture`, `religion` or `global`
 - `sovereignAmbition`, `stateForm?`, `stateRosterId?` - whether it can ascend to a state, and the form and roster it takes then
 - `foundedYear`, `leaderId?`, `memberIds`, `candidateIds?` - founding year and its people, drawn from `pack.history.figures`
 - `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, pillaged?, influence?, secrecy, assets: string[], sim?: BurgSimState }` (`influence` 0–100, defaults to 70; `pillaged` marks a razed urban or wilderness stronghold)
-- `outposts`: `FactionOutpost[]` - `{ burgId, cell, tier: 1|2|3, influence, secrecy, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
-- `science`: `number` - current science per season (mirrors `yieldsPerTurn.science`)
-- `currentTechId` / `researchQueue` / `researchedTechs` / `researchedProgress` / `freeTechs?` - OpenCiv research state
-- `yieldsPerTurn?` / `happiness?` / `happinessBreakdown?` - empire rollup yields and happiness
-- `treasury`: `number` - faction gold balance
-- `influence`: `number` - empire influence
+- `outposts`: `FactionOutpost[]` - `{ burgId, cell, influence, secrecy, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
+- `budget?`: `FactionBudget` - user-configured `0..100` daily allocation shares for `{ court, administration, infrastructure, military }` (defaults to `FACTION_EXPENSE_PROFILES[category]`)
+- `adjustments?`: `{ name: string; value: number }[]` - user-configured daily revenue/cost adjustments
+- `project?` / `projectQueue?` - active asset build (`{ assetId, nodeKey, turnsLeft, totalCost?, remainingCost? }`) funded from daily infrastructure revenue, plus queued builds
+- `treasury`: `number` - faction gold balance (`Day Balance × 90` banked each season)
+- `influence`: `number` - empire influence (`0..100`)
 - `rosterId?`: `string` - the culture roster its blocks use
 - `military`: `Regiment[]` - `ArmyBlock[]` composition; living sim keys are `f{factionId}-{regimentId}` in `living.units`/`living.armies`
 - `threatLevel?` / `raidThreshold?` / `raidPending?` - dangerous-faction threat, raid clock and whether a raid is imminent
