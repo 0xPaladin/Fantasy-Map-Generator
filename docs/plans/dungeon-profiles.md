@@ -1,8 +1,8 @@
 # Plan — Lazy Alternate Dungeon Profiles in Marker Notes
 
-Updated: 2026-11-18. Status: **slice 1 shipped** (lazy marker content plumbing: the `generated`
-field, renderer registry, full/short notes API and notes-editor split). Slice 2, the dungeon
-generator, is next. Source procedure: *Freebooters on the Frontier 2e,
+Updated: 2026-11-18. Status: **slices 1–2 shipped** (lazy marker content plumbing; the
+genericized dungeon data and deterministic profile/area generator). Slice 3, marker integration,
+is next. Source procedure: *Freebooters on the Frontier 2e,
 Vol. III — Overland & Underworld* (`FotF2e - 03 Overland & Underworld.md`, dungeon procedure
 lines 1237–3083). The source is a **procedure reference only**: every table string in the
 implementation is rewritten in the generator’s own generic vocabulary. See
@@ -376,7 +376,7 @@ Each slice should leave the app working.
      short and non-materializing.
    - Update `notes-editor.ts`, save font scan and the data-model docs.
    - Tests: short note vs full note, split/merge, save does not materialize.
-2. **Dungeon data + generator**
+2. **Dungeon data + generator — shipped 2026-11-18**
    - Genericized `src/data/dungeons.ts`.
    - Big-picture generator, area draft, dangers, rumors.
    - Tests for determinism, counts, redirect limits, escaping and banned terms.
