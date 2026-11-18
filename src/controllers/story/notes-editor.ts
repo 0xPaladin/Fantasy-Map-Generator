@@ -222,7 +222,7 @@ function selectedRef(): EntityRef | undefined {
 
 function showNote(ref: EntityRef): void {
   ensureEl("notesName").textContent = MapEntities.getName(ref);
-  loadNote(Notes.get(ref) || "");
+  loadNote(Notes.getFull(ref) || "");
   lastSelection = null;
   updateNotesBox(ref);
   window.dispatchEvent(new Event("notes:context-changed"));
@@ -251,7 +251,7 @@ function toggleSourceMode(): void {
 
   const source = ensureEl<HTMLTextAreaElement>("notesSource");
   if (source.hidden) {
-    source.value = Notes.get(ref) || "";
+    source.value = Notes.getFull(ref) || "";
     setSourceMode(true);
   } else if (canEditAsRichText(source.value)) {
     setEditorHtml(quill, source.value);
@@ -281,13 +281,13 @@ function updateLegend(): void {
   if (!ref || !quill) return;
 
   const source = ensureEl<HTMLTextAreaElement>("notesSource");
-  Notes.set(ref, source.hidden ? getEditorHtml(quill) : source.value);
+  Notes.setFull(ref, source.hidden ? getEditorHtml(quill) : source.value);
   updateNotesBox(ref);
 }
 
 function updateNotesBox(ref: EntityRef): void {
   ensureEl("notesHeader").textContent = MapEntities.getName(ref); // plain text: an & in a name is not an entity
-  ensureEl("notesBody").innerHTML = Notes.get(ref) || "";
+  ensureEl("notesBody").innerHTML = Notes.getFull(ref) || "";
 }
 
 function changeElement(): void {
@@ -324,7 +324,7 @@ function removeSelectedNote(): void {
   const ref = selectedRef();
   if (!ref) return;
 
-  Notes.set(ref, "");
+  Notes.setFull(ref, "");
 
   const [first] = Notes.list();
   if (!first) {
@@ -341,7 +341,7 @@ function openAiGenerator(): void {
 
 /** Notes are exchanged as csv addressed by entity, so an uploaded note always has an owner */
 function downloadLegends(): void {
-  const rows = Notes.list().map(entry => {
+  const rows = Notes.listFull().map(entry => {
     const id = entry.ref.sub === undefined ? String(entry.ref.id) : `${entry.ref.id}-${entry.ref.sub}`;
     return [entry.ref.type, id, entry.note];
   });
@@ -365,7 +365,7 @@ function uploadLegends(text: string): void {
   let rejected = 0;
   for (const [type, id, ...note] of rows) {
     const ref = MapEntities.parseKey(`${type.trim()}:${id.trim()}`);
-    if (ref && Notes.set(ref, note.join(","))) applied++;
+    if (ref && Notes.setFull(ref, note.join(","))) applied++;
     else rejected++;
   }
 
@@ -408,7 +408,7 @@ function current(): Note | null {
   if (!findEl("notesEditor")) return null;
   const ref = selectedRef();
   if (!ref || !MapEntities.get(ref)) return null;
-  return { id: MapEntities.key(ref), name: MapEntities.getName(ref), legend: Notes.get(ref) || "" };
+  return { id: MapEntities.key(ref), name: MapEntities.getName(ref), legend: Notes.getFull(ref) || "" };
 }
 
 /** Show notes and names changed outside the editor, keeping the selected entity */

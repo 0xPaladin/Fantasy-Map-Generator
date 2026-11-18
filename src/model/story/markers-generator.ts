@@ -50,6 +50,7 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import type { MarkerGeneratedContent } from "@/model/story/marker-content";
 import { Notes } from "@/model/story/notes";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
 import type { Good } from "@/types/economy";
@@ -103,6 +104,8 @@ export interface Marker {
   pinned?: boolean;
   name: string;
   note?: string;
+  /** lazily generated content: only the seed is stored until the profile is first read */
+  generated?: MarkerGeneratedContent;
   /** placed by the chronicle: cleared and re-placed when history regenerates */
   chronicle?: boolean;
   /** the historical year the marker belongs to: the historical view hides it before then */
