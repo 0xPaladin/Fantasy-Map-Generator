@@ -50,6 +50,7 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import { CAVE_KIND, createCaveContent } from "@/model/story/cave-marker";
 import { createDungeonContent, DUNGEON_KIND, DUNGEON_VERSION, dungeonName } from "@/model/story/dungeon-marker";
 import {
   createGeneratedContent,
@@ -1861,10 +1862,13 @@ class MarkersModule {
     if (cells.biome[cell] === 11) {
       formation = `Glacial ${formation}`;
     }
+    const status = rw(CAVE_STATUSES);
     const name = `${toponym} ${formation}`;
-    const legend = `The ${name}. Locals claim that it is ${rw(CAVE_STATUSES)}.`;
+    const legend = `The ${name}. Locals claim that it is ${status}.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== CAVE_KIND)
+      marker.generated = { ...createCaveContent(), meta: { formation, status } };
   }
 
   private listPortals({ burgs }: PackedGraph) {

@@ -576,3 +576,48 @@ describe("MarkersModule ruins", () => {
     expect(ensureGenerated(marker)).toContain("Alternate ruin profile");
   });
 });
+
+describe("MarkersModule caves", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 60], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a random cave a lazy cave recipe and keeps the status note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "caves", cell: 1 } as Marker;
+
+    markers.addCave(marker, 1);
+
+    expect(marker.name).toContain("Aeloran");
+    expect(marker.generated).toMatchObject({ kind: "cave", version: 1, seed: "12345" });
+    const formation = marker.generated?.meta?.formation as string;
+    const status = marker.generated?.meta?.status as string;
+    expect(formation).toBeTruthy();
+    expect(status).toBeTruthy();
+    expect(marker.note).toContain(status);
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate cave profile");
+  });
+
+  it("keeps cave impact keywords in the short note", () => {
+    expect(Markers.getDefaultImpact({ type: "caves", name: "X", note: "a good spot to hid treasure" })).toEqual({
+      economy: 1,
+      stability: 0
+    });
+    expect(Markers.getDefaultImpact({ type: "caves", name: "X", note: "the home of strange monsters" })).toEqual({
+      economy: 0,
+      stability: -2
+    });
+  });
+});
