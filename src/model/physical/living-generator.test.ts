@@ -1267,7 +1267,21 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       Living.tick(1);
       expect(state.economy.stash).toBeCloseTo(target * 0.5 + (target - target * 0.5) * 0.25, 2);
+      expect(state.economy.simStabilityAdjustments).toContainEqual({ name: "Patrimony", value: 1 });
       expect(living.season).toBeGreaterThan(0);
+    });
+
+    it("sells part of a state's stash into the treasury at a loss", () => {
+      Living.init();
+      const state = pack.states[1];
+      state.economy.stash = 1000;
+      const treasury = state.economy.treasury ?? 0;
+
+      const proceeds = Living.sellStateTreasure(1);
+
+      expect(proceeds).toBe(125);
+      expect(state.economy.stash).toBe(750);
+      expect(state.economy.treasury).toBeCloseTo(treasury + 125, 2);
     });
 
     it("re-runs the upstream economy once the dirty flag is raised", () => {
@@ -3578,6 +3592,26 @@ describe("Epic faction agendas (simplification Phase 3)", () => {
 describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & Ascension)", () => {
   beforeEach(() => {
     buildStubPack();
+  });
+
+  it("sells part of a faction's stash into its treasury at a loss", () => {
+    const living = Living.init();
+    pack.factions = [{ i: 0 } as Faction];
+    const faction = Factions.add({
+      name: "Gilded Compass",
+      category: "commercial",
+      type: "merchant_consortium",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] },
+      treasury: 100
+    });
+    faction.stash = 1000;
+
+    const proceeds = Living.sellFactionTreasure(faction.i);
+
+    expect(proceeds).toBe(125);
+    expect(faction.stash).toBe(750);
+    expect(faction.treasury).toBe(225);
+    expect(living.recentNews.some(item => item.text.includes("sold part of its hoard"))).toBe(true);
   });
 
   it("banks upstream income less its forces' upkeep", () => {

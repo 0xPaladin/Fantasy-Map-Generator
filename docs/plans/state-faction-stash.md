@@ -1,6 +1,6 @@
 # Plan — State and Faction Stash (Patrimony)
 
-**Status:** Slices 1–3 delivered. Slice 4 (prestige effects) pending.
+**Status:** Slices 1–4 delivered.
 **Goal:** Give states and factions a **stash** — a separate stock of accumulated patrimony: crown jewels, regalia, museums, commissioned art, relics and vaults of bullion. It is not a spending balance. It reflects how much wealth a culture or leader would keep rather than circulate, and it grows from the positive daily balance over a horizon set by that nature.
 
 ---
@@ -140,12 +140,14 @@ Examples:
 - Small stability/influence bonus at high splendor; small corruption temptation.
 - Optional explicit “sell treasures” action at a loss, never an automatic treasury refill.
 
+**Delivery notes:** `StashSummary.splendor` is the stash divided by a year's daily surplus. A state gets a sim-owned `Patrimony` stability line of +1/+2/+3 points at half a year, a year and two years of splendor; a faction gains +1 influence a season at a year. `Corruption.effectiveBudget` adds up to 3 points of temptation. The state Economy dialog and faction Manage dialog both offer a confirmed **sell treasures** button: a quarter of the stash is sold for half its value, and the proceeds go to the treasury. No automatic liquidation.
+
 ---
 
 ## 7. Tests
 
-- `living-stash.test.ts`: surplus, base months, multipliers, clamps, target, seed, growth, decay, anarchy/neutral, missing traits, labels, summaries, composition, museum shift, seizure and hoard labels.
-- `living-generator.test.ts`: a state seeds and then grows its stash across ticks; a faction seeds its stash after a seasonal economy step; city sack, faction-node pillage, ascension transfer and remnant inheritance.
+- `living-stash.test.ts`: surplus, base months, multipliers, clamps, target, seed, growth, decay, anarchy/neutral, missing traits, labels, summaries, composition, museum shift, seizure, hoard labels, splendor, prestige effects and selling.
+- `living-generator.test.ts`: a state seeds and then grows its stash across ticks; a faction seeds its stash after a seasonal economy step; city sack, faction-node pillage, ascension transfer, remnant inheritance, the Patrimony stability line and explicit sales.
 - `states-editor.test.ts` / `factions-editor.test.ts`: the Stash column and Manage readout render, including a set value.
 - `living-hud.test.ts`: the state card survives packs without an economy object (old mocks and saves).
 
@@ -165,6 +167,6 @@ Examples:
 
 - Keep the soft stock, or later add a hard ledger that diverts treasury?
 - Should old maps always seed at 50%, or start at 0 and grow?
-- Should prestige and corruption effects ship in slice 4, or wait until the numbers have been played with?
+- Are the current splendor thresholds (+1/+2/+3 stability, +1 influence, up to +3 corruption) tuned right in play?
 - Composition: derive it on demand, or store it once events can alter individual shares?
 - Should war, rebellion or bankruptcy force a partial liquidation, or remain purely narrative?

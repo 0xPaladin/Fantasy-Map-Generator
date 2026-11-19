@@ -91,14 +91,20 @@ import {
   advanceStash,
   dominantStashPart,
   factionStashMix,
+  factionStashSplendor,
   factionStashTarget,
   STASH_LOOT_SHARE,
   STASH_NEWS_TIERS,
+  STASH_SALE_SHARE,
   seizeStash,
+  sellStash,
   stashMonthsHeld,
   stashPartLabel,
+  stashPrestigeInfluence,
+  stashStabilityBonus,
   stateDailySurplus,
   stateStashMix,
+  stateStashSplendor,
   stateStashTarget
 } from "@/model/physical/living-stash";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
@@ -1606,6 +1612,7 @@ class LivingModel {
       if (!state?.i || state.removed) continue;
       if (state.form === "Anarchy") {
         state.economy.stash = 0;
+        this.syncStateStashPrestige(state);
         continue;
       }
 
@@ -1621,12 +1628,22 @@ class LivingModel {
       const dailySurplus = stateDailySurplus(state);
       const next = advanceStash(previous, stateStashTarget(state, ruler, values));
       state.economy.stash = next;
+      this.syncStateStashPrestige(state);
       this.pushStashNews(state.name, previous, next, dailySurplus, living, {
         kind: "develop",
         cell: state.center,
         stateId: state.i
       });
     }
+  }
+
+  /** A visible hoard steadies the realm a little, in a sim-owned stability line. */
+  private syncStateStashPrestige(state: State): void {
+    const bonus = stashStabilityBonus(stateStashSplendor(state));
+    const current = state.economy.simStabilityAdjustments ?? [];
+    const kept = current.filter(line => line.name !== "Patrimony");
+    const next = bonus > 0 ? [...kept, { name: "Patrimony", value: bonus }] : kept;
+    if (JSON.stringify(next) !== JSON.stringify(current)) state.economy.simStabilityAdjustments = next;
   }
 
   /** A great hoard crossing a year or more of surplus is worth a dispatch. */
@@ -2944,6 +2961,8 @@ class LivingModel {
       }
       this.applyFactionTreasury(faction, living);
       this.applyFactionStash(faction, breakdown, living);
+      const prestige = stashPrestigeInfluence(factionStashSplendor(faction, breakdown.economy.dayBalance));
+      faction.influence = minmax((faction.influence ?? 0) + prestige, 0, 100);
       this.applyFactionStabilityDrift(faction, breakdown, living);
       this.musterFactionBlock(faction, living);
       this.stepFactionProject(faction, living);
@@ -3066,6 +3085,48 @@ class LivingModel {
       stateId
     });
     return recovered;
+  }
+
+  /** Sell part of a state's stash at a loss, moving the proceeds into the treasury. */
+  sellStateTreasure(stateId: number, share = STASH_SALE_SHARE): number {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed || !state.economy) return 0;
+    const sale = sellStash(state.economy.stash, share);
+    if (sale.sold <= 0) return 0;
+
+    state.economy.stash = sale.remaining;
+    state.economy.treasury = Math.round(((state.economy.treasury ?? 0) + sale.proceeds) * 100) / 100;
+    this.pushNews(living, {
+      kind: "develop",
+      text: `${state.name} sold part of its collection for ${Math.round(sale.proceeds)} ${getMoneyUnit(
+        sale.proceeds !== 1
+      )}.`,
+      cell: state.center,
+      stateId
+    });
+    return sale.proceeds;
+  }
+
+  /** Sell part of a faction's stash at a loss, moving the proceeds into its treasury. */
+  sellFactionTreasure(factionId: number, share = STASH_SALE_SHARE): number {
+    const living = this.getState();
+    const faction = pack.factions?.[factionId];
+    if (!faction?.i || faction.removed) return 0;
+    const sale = sellStash(faction.stash, share);
+    if (sale.sold <= 0) return 0;
+
+    faction.stash = sale.remaining;
+    faction.treasury = Math.round(((faction.treasury ?? 0) + sale.proceeds) * 100) / 100;
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${faction.name} sold part of its hoard for ${Math.round(sale.proceeds)} ${getMoneyUnit(
+        sale.proceeds !== 1
+      )}.`,
+      cell: faction.hq.cell,
+      ...(faction.hq.burgId !== undefined ? { burgId: faction.hq.burgId } : {})
+    });
+    return sale.proceeds;
   }
 
   /** §5.2 Sabotage a deposit: its cell's output drops and its province loses order. */

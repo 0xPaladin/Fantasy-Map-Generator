@@ -6,6 +6,7 @@ import { Corruption } from "@/model/economy/corruption";
 import { Goods } from "@/model/economy/goods-generator";
 import { PROSPERITY_LEVELS } from "@/model/economy/prosperity";
 import { StateOrders } from "@/model/economy/state-orders";
+import { Living as LivingWorld } from "@/model/physical/living-generator";
 import { stateStashSummary } from "@/model/physical/living-stash";
 import { Provinces } from "@/model/political/provinces-generator";
 import { Stability } from "@/model/political/stability";
@@ -118,7 +119,17 @@ function onClick(kind: Kind, id: number, target: HTMLElement): void {
   else if (goodsTable) StateEconomyTables.openGoods(id, goodsTable.dataset.kind as GoodsKind);
   else if (target.closest(".partnersTable")) StateEconomyTables.openPartners(id);
   else if (target.closest(".prosperityTable")) StateEconomyTables.openProsperity(id);
-  else if (target.closest(".taxes")) void Controllers.StateBudgetEditor.open(id, () => refresh(kind, id));
+  else if (target.closest(".stashSellBtn")) {
+    Dialog.confirm({
+      title: t("Sell treasures"),
+      message: t("Sell a quarter of the stash for half its value? The proceeds go to the treasury."),
+      confirm: t("Sell"),
+      onConfirm: () => {
+        LivingWorld.sellStateTreasure(id);
+        refresh(kind, id);
+      }
+    });
+  } else if (target.closest(".taxes")) void Controllers.StateBudgetEditor.open(id, () => refresh(kind, id));
 }
 
 function refresh(kind: Kind, id: number): void {
@@ -246,6 +257,7 @@ function renderStateCards(
             nature: t(stash.nature),
             months: rn(stash.targetMonths, 1)
           }),
+          t("Splendor: {{splendor}} years of surplus", { splendor: rn(stash.splendor, 1) }),
           EconomyTerms.stashComposition(stash.mix)
         )
       : sentences(EconomyTerms.stash(), t("This map has not run the Living World yet"))
@@ -253,7 +265,11 @@ function renderStateCards(
   const stashCard = stash
     ? card(
         t("Stash"),
-        stash.hasStash ? formatPrice(stash.value) : "-",
+        stash.hasStash
+          ? `${formatPrice(stash.value)} <button type="button" class="btn icon-bank stashSellBtn" data-tip="${t(
+              "Sell a quarter of the stash for half its value"
+            )}"></button>`
+          : "-",
         stash.hasStash
           ? [
               stash.months > 0 ? EconomyTerms.stashMonths(stash.months) : t("Empty"),

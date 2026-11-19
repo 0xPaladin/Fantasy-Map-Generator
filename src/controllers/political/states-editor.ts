@@ -548,6 +548,8 @@ function renderStatesPage(view: TableView<State>): void {
         ? `${t("Nature: {{nature}}, about {{months}} months of surplus", {
             nature: t(stash.nature),
             months: rn(stash.targetMonths, 1)
+          })} ${t("Splendor: {{splendor}} years of surplus", {
+            splendor: rn(stash.splendor, 1)
           })} ${EconomyTerms.stashComposition(stash.mix)}`
         : t("No stash yet"),
       EconomyTerms.open()

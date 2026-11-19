@@ -7,6 +7,7 @@ import {
   factionBaseHoardMonths,
   factionStashLabel,
   factionStashMix,
+  factionStashSplendor,
   factionStashSummary,
   factionStashTarget,
   INITIAL_STASH_SHARE,
@@ -16,18 +17,25 @@ import {
   STASH_GROWTH,
   STASH_LOOT_SHARE,
   STASH_MONTH_DAYS,
+  STASH_SALE_SHARE,
   seizeStash,
+  sellStash,
   stashComposition,
+  stashCorruptionTemptation,
   stashMonths,
   stashMonthsHeld,
   stashMultiplier,
   stashPartLabel,
+  stashPrestigeInfluence,
+  stashSplendor,
+  stashStabilityBonus,
   stashTarget,
   stateBaseHoardMonths,
   stateDailySurplus,
   stateHasMuseum,
   stateStashLabel,
   stateStashMix,
+  stateStashSplendor,
   stateStashSummary,
   stateStashTarget
 } from "./living-stash";
@@ -167,6 +175,28 @@ describe("living stash", () => {
     expect(stateHasMuseum(0)).toBe(false);
   });
 
+  it("derives splendor and its small prestige effects", () => {
+    expect(stashSplendor(18000, 18000)).toBe(1);
+    expect(stashSplendor(9000, 18000)).toBe(0.5);
+    expect(stashSplendor(undefined, 18000)).toBe(0);
+    expect(stateStashSplendor(state({ economy: { ...state().economy, stash: 18000 } }))).toBe(1);
+    expect(factionStashSplendor({ stash: 18000 }, 50)).toBe(1);
+
+    expect(stashPrestigeInfluence(0.9)).toBe(0);
+    expect(stashPrestigeInfluence(1)).toBe(1);
+    expect(stashStabilityBonus(0.4)).toBe(0);
+    expect(stashStabilityBonus(0.5)).toBe(1);
+    expect(stashStabilityBonus(1)).toBe(2);
+    expect(stashStabilityBonus(2)).toBe(3);
+    expect(stashCorruptionTemptation(0.5)).toBe(1.5);
+    expect(stashCorruptionTemptation(2)).toBe(3);
+  });
+
+  it("sells a quarter of the stash at half its value", () => {
+    expect(sellStash(1000, STASH_SALE_SHARE)).toEqual({ sold: 250, proceeds: 125, remaining: 750 });
+    expect(sellStash(undefined)).toEqual({ sold: 0, proceeds: 0, remaining: 0 });
+  });
+
   it("summarizes a stock in months of its current surplus", () => {
     const kingdom = state();
     kingdom.economy.stash = 27000;
@@ -176,7 +206,8 @@ describe("living stash", () => {
       hasStash: true,
       months: 18,
       targetMonths: 18,
-      nature: "Royal collection"
+      nature: "Royal collection",
+      splendor: 1.5
     });
     expect(summary.composition).toEqual({ bullion: 8100, art: 8100, regalia: 9450, relics: 1350 });
 
@@ -187,7 +218,8 @@ describe("living stash", () => {
       hasStash: true,
       months: 18,
       targetMonths: 18,
-      nature: "Commercial reserves"
+      nature: "Commercial reserves",
+      splendor: 1.5
     });
     expect(companySummary.composition).toEqual({ bullion: 2592, art: 864, regalia: 648, relics: 216 });
 

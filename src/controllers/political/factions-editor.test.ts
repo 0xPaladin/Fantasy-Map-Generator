@@ -166,6 +166,7 @@ describe("FactionsEditor", () => {
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
       treasury: 100
     });
+    faction.stash = 1000;
 
     faction.outposts.push({
       burgId: 2,
@@ -201,6 +202,7 @@ describe("FactionsEditor", () => {
     expect(dialog.innerHTML).toContain("Court and patronage");
     expect(dialog.innerHTML).toContain("Day Balance");
     expect(dialog.innerHTML).toContain("Stash");
+    expect(dialog.querySelector(".factionSellStashBtn")).not.toBeNull();
     expect(dialog.innerHTML).toContain("Corruption");
     expect(dialog.innerHTML).not.toContain("Citizens");
     expect(dialog.innerHTML).not.toContain("yields");

@@ -77,6 +77,10 @@ export const STASH_LOOT_SHARE = { loot: 0.1, sack: 0.2, raze: 0.3 } as const;
 /** Months-of-surplus crossings worth a hoard dispatch */
 export const STASH_NEWS_TIERS = [24, 36] as const;
 
+/** A quarter of the stash is sold at half its appraised value */
+export const STASH_SALE_SHARE = 0.25;
+export const STASH_SALE_RATE = 0.5;
+
 const AVARICE_VICES = ["greedy", "stingy", "selfish", "boastful", "domineering", "paranoid"];
 const STEWARD_VIRTUES = ["thrifty", "temperate", "prudent", "methodical", "disciplined", "meticulous"];
 const OPEN_HAND_VIRTUES = ["generous", "charitable", "selfless", "compassionate", "kind"];
@@ -197,6 +201,52 @@ export function stashMonthsHeld(stash: number | undefined, dailySurplus: number)
   return daily > 0 ? Math.round((value / (daily * STASH_MONTH_DAYS)) * 10) / 10 : 0;
 }
 
+/** Years of annual surplus the stash is worth: the splendor readout and effect input */
+export function stashSplendor(stash: number | undefined, annualSurplus: number): number {
+  const annual = Number.isFinite(annualSurplus) ? Math.max(0, annualSurplus) : 0;
+  if (!annual) return 0;
+  return Math.round((Math.max(0, Number(stash ?? 0)) / annual) * 100) / 100;
+}
+
+export function stateStashSplendor(state: { economy?: State["economy"] }): number {
+  return stashSplendor(state.economy?.stash, stateDailySurplus(state) * 360);
+}
+
+export function factionStashSplendor(faction: { stash?: number }, dailySurplus: number): number {
+  return stashSplendor(faction.stash, Math.max(0, dailySurplus) * 360);
+}
+
+/** Influence a faction gains each season from a hoard worth at least a year of surplus */
+export function stashPrestigeInfluence(splendor: number): number {
+  return splendor >= 1 ? 1 : 0;
+}
+
+/** Stability points a state gains from a hoard: half a year, a year, two years */
+export function stashStabilityBonus(splendor: number): number {
+  if (splendor >= 2) return 3;
+  if (splendor >= 1) return 2;
+  return splendor >= 0.5 ? 1 : 0;
+}
+
+/** Corruption points a visible hoard tempts officials with, up to three */
+export function stashCorruptionTemptation(splendor: number): number {
+  return Math.round(Math.min(1, Math.max(0, splendor)) * 3 * 10) / 10;
+}
+
+export interface StashSale {
+  sold: number;
+  proceeds: number;
+  remaining: number;
+}
+
+/** Sell a share of the stash at a loss: the treasury gets `rate` of the appraised value */
+export function sellStash(stash: number | undefined, share = STASH_SALE_SHARE, rate = STASH_SALE_RATE): StashSale {
+  const value = Math.max(0, Number(stash ?? 0));
+  const sold = Math.round(value * minmax(share, 0, 1) * 100) / 100;
+  const proceeds = Math.round(sold * minmax(rate, 0, 1) * 100) / 100;
+  return { sold, proceeds, remaining: Math.round((value - sold) * 100) / 100 };
+}
+
 /**
  * One season of accumulation. A missing stash seeds at half its target; a target
  * below the current stock only draws it down slowly.
@@ -274,6 +324,8 @@ export interface StashSummary {
   /** The nature-driven target in months */
   targetMonths: number;
   nature: string;
+  /** Years of annual surplus the stock is worth */
+  splendor: number;
   mix: StashMix;
   composition: StashComposition;
 }
@@ -292,6 +344,7 @@ function summarize(
     months: stashMonthsHeld(value, dailySurplus),
     targetMonths,
     nature,
+    splendor: stashSplendor(value, Math.max(0, dailySurplus) * 360),
     mix,
     composition: stashComposition(value, mix)
   };

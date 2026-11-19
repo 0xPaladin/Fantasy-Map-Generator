@@ -191,15 +191,23 @@ function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown)
       ? `${t("Nature: {{nature}}, about {{months}} months of surplus", {
           nature: t(stash.nature),
           months: rn(stash.targetMonths, 1)
+        })} ${t("Splendor: {{splendor}} years of surplus", {
+          splendor: rn(stash.splendor, 1)
         })} ${EconomyTerms.stashComposition(stash.mix)}`
       : ""
   }`;
+  const stashButton =
+    stash.hasStash && stash.value > 0
+      ? `<button type="button" class="btn icon-bank factionSellStashBtn" data-tip="${t(
+          "Sell a quarter of the stash for half its value"
+        )}"></button>`
+      : "";
 
   return /* html */ `
     ${expensesHtml}
     <div class="total">${expRow(t("Day Balance"), econ.dayBalanceShare, "<span></span>", econ.dayBalance, t("Net daily balance (×90 per season)"), tone(econ.dayBalance))}</div>
     ${corruptionRow}
-    <div class="muted" data-tip="${escapeHtml(stashTip)}" style="margin-top: 2px;">${escapeHtml(stashText)}</div>
+    <div class="muted" data-tip="${escapeHtml(stashTip)}" style="margin-top: 2px;">${escapeHtml(stashText)} ${stashButton}</div>
     ${titheRow}
     <div class="muted" style="margin-top: 2px;">${t("Required upkeep: {{req}}/day · Allocated: {{share}}%", { req: formatPrice(econ.requiredTotalDaily), share: econ.spentShare })}</div>
     <div class="muted">${t("Personnel: {{staff}} staff · {{guards}} guards", econ.personnel)}</div>
@@ -629,6 +637,8 @@ function renderFactionsPage(view: TableView<Faction>): void {
             ? `${t("{{nature}}: about {{months}} months of surplus", {
                 nature: t(stash.nature),
                 months: rn(stash.targetMonths, 1)
+              })} ${t("Splendor: {{splendor}} years of surplus", {
+                splendor: rn(stash.splendor, 1)
               })} ${EconomyTerms.stashComposition(stash.mix)}`
             : t("No stash yet")
         )}">${stash.hasStash ? formatPrice(stash.value) : "-"}</span>
@@ -1437,6 +1447,21 @@ export function openOutpostsDialog(factionId: number, activeTab: "outposts" | "a
       Living.syncFactionEffects();
       refreshLedgerAndAssets(`.factionRevenueInput[data-rate-key="${key}"]`);
     }
+  });
+
+  ensureEl(dialogDomId)?.addEventListener("click", event => {
+    const target = (event.target as HTMLElement)?.closest<HTMLElement>(".factionSellStashBtn");
+    if (!target) return;
+    Dialog.confirm({
+      title: t("Sell treasures"),
+      message: t("Sell a quarter of the stash for half its value? The proceeds go to the treasury."),
+      confirm: t("Sell"),
+      event,
+      onConfirm: () => {
+        Living.sellFactionTreasure(factionId);
+        refreshLedgerAndAssets();
+      }
+    });
   });
 
   findEl("resetFactionRevenueBtn")?.addEventListener("click", () => {
