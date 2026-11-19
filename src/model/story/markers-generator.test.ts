@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BURIAL_KINDS } from "@/data/burials";
-import { HILL_MONSTER_SPECIES } from "@/data/markers";
+import { BRIGAND_ANIMALS, HILL_MONSTER_SPECIES } from "@/data/markers";
 import { Goods } from "@/model/economy/goods-generator";
 import { Names } from "@/model/society/names-generator";
 import { ensureGenerated } from "./marker-content";
@@ -787,5 +787,54 @@ describe("MarkersModule monsters", () => {
     expect(marker.note).toContain(species);
     expect(marker.generated?.html).toBeUndefined();
     expect(ensureGenerated(marker)).toContain("Alternate monster profile");
+  });
+});
+
+describe("MarkersModule bandits", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 5], h: [0, 40], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 5, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a brigand gang a lazy bandit recipe and keeps the note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "brigands", cell: 1 } as Marker;
+
+    markers.addBrigands(marker, 1);
+
+    const gang = marker.generated?.meta?.gang as string;
+    expect(BRIGAND_ANIMALS).toContain(gang);
+    expect(marker.name).toBe(`Aeloran ${gang}`);
+    expect(marker.generated).toMatchObject({ kind: "bandit", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.locality).toBeTruthy();
+    expect(marker.generated?.meta?.maritime).toBe(false);
+    expect(marker.note).toContain("A gang of");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate bandit profile");
+  });
+
+  it("gives pirates a maritime bandit recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "pirates", cell: 1 } as Marker;
+
+    markers.addPirates(marker, 1);
+
+    expect(marker.name).toBe("Pirates");
+    expect(marker.generated).toMatchObject({ kind: "bandit", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.maritime).toBe(true);
+    expect(marker.generated?.meta?.locality).toBe("coastal");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate bandit profile");
   });
 });

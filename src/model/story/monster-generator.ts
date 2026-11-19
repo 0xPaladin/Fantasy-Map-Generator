@@ -3,12 +3,6 @@ import {
   CREATURE_QUANTITIES,
   CREATURE_SIZES,
   type CreatureSize,
-  CURIO_ADJECTIVES,
-  CURIO_DRAWBACKS,
-  CURIO_ITEMS,
-  CURIO_NAME_TEMPLATES,
-  CURIO_POWERS,
-  CURIO_PROPERTIES,
   LOOT_CONTEXTS,
   MONSTER_LAIRS,
   MONSTER_NATURES,
@@ -20,7 +14,14 @@ import type { Alignment } from "@/data/culture-traits";
 import type { DungeonTypeId } from "@/data/dungeons";
 import { HILL_MONSTER_HABITS, HILL_MONSTER_SPECIES } from "@/data/markers";
 import { TREASURE_CATEGORIES, type TreasureShares } from "@/data/treasure";
-import { clamp, pick, rollCreatureCore, rollCreatureInhabitants } from "@/model/story/creature-generator";
+import {
+  type Curio,
+  clamp,
+  pick,
+  rollCreatureCore,
+  rollCreatureInhabitants,
+  rollCurio
+} from "@/model/story/creature-generator";
 import type { MonsterContext } from "@/model/story/creature-profile";
 import { type DungeonProfile, generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
 import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
@@ -28,11 +29,7 @@ import { normalizeTreasureShares } from "@/model/story/treasure";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
 
-export interface Curio {
-  name: string;
-  power: string;
-  drawback: string;
-}
+export type { Curio } from "@/model/story/creature-generator";
 
 export interface MonsterProfile {
   name: string;
@@ -64,15 +61,6 @@ export interface MonsterProfile {
 
 const fill = (text: string, values: Record<string, string>): string =>
   text.replace(/\[(culture|name|species|biome|habit)\]/gi, (_match, key: string) => values[key.toLowerCase()] ?? "");
-
-function rollCurio(rng: Rng, cultureName: string): Curio {
-  const name = pick(rng, CURIO_NAME_TEMPLATES)
-    .replace("[PROPERTY]", pick(rng, CURIO_PROPERTIES))
-    .replace("[ADJECTIVE]", pick(rng, CURIO_ADJECTIVES))
-    .replace("[ITEM]", pick(rng, CURIO_ITEMS))
-    .replace("[NAME]", cultureName || "the Maker");
-  return { name, power: pick(rng, CURIO_POWERS), drawback: pick(rng, CURIO_DRAWBACKS) };
-}
 
 function rollHoard(rng: Rng, hoarder: boolean, hasCurio: boolean): string[] {
   const forms = LOOT_CONTEXTS.find(row => row.context === "lair")!.forms;

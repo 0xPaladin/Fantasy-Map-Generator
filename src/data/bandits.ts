@@ -104,3 +104,43 @@ export const BANDIT_INHABITANTS: Partial<Record<InhabitantGroupId, number>> = {
   humanoids: 2,
   beasts: 1
 };
+
+export const BANDIT_WEAPONS: readonly string[] = [
+  "swords",
+  "spears",
+  "bows",
+  "axes",
+  "daggers",
+  "crossbows",
+  "clubs",
+  "boarding pikes"
+];
+
+export const BANDIT_WANTS: readonly string[] = [
+  "to take the next rich prize",
+  "to keep the crew fed",
+  "to evade the law",
+  "to build a feared name",
+  "to avenge a fallen mate",
+  "to buy a pardon"
+];
+
+export const BANDIT_MOVES: readonly string[] = [
+  "demand a toll",
+  "set an ambush on the road",
+  "board and seize",
+  "burn what they cannot take",
+  "scatter when outmatched",
+  "parley for a bigger score",
+  "take hostages",
+  "vanish into the hills"
+];
+
+export const BANDIT_RUMORS: readonly string[] = [
+  "The people of [culture] pay [name] to leave their carts alone.",
+  "They say [name] is led by [leader].",
+  "[name] strikes the [locality] roads and is gone before the watch arrives.",
+  "A [culture] merchant swears [name] takes only half, and calls it mercy.",
+  "The [biome] hides [name]'s base, and no one has found it.",
+  "Someone in the village is feeding [name] word of the caravans."
+];

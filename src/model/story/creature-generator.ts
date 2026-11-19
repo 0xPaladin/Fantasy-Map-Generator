@@ -10,7 +10,13 @@ import {
   CREATURE_WANTS,
   type CreatureNature,
   type CreatureQuantity,
-  type CreatureSize
+  type CreatureSize,
+  CURIO_ADJECTIVES,
+  CURIO_DRAWBACKS,
+  CURIO_ITEMS,
+  CURIO_NAME_TEMPLATES,
+  CURIO_POWERS,
+  CURIO_PROPERTIES
 } from "@/data/creatures";
 import type { Alignment } from "@/data/culture-traits";
 import {
@@ -141,4 +147,20 @@ export function rollCreatureInhabitants(
     groups: groups.map(group => ({ ...group, label: inhabitantLabel(group, cultureName) })),
     relationship: groups.length === 2 ? pick(rng, INHABITANT_RELATIONS) : undefined
   };
+}
+
+export interface Curio {
+  name: string;
+  power: string;
+  drawback: string;
+}
+
+/** Roll a single named curio prompt: a power and a drawback, not a full magic item */
+export function rollCurio(rng: Rng, cultureName: string): Curio {
+  const name = pick(rng, CURIO_NAME_TEMPLATES)
+    .replace("[PROPERTY]", pick(rng, CURIO_PROPERTIES))
+    .replace("[ADJECTIVE]", pick(rng, CURIO_ADJECTIVES))
+    .replace("[ITEM]", pick(rng, CURIO_ITEMS))
+    .replace("[NAME]", cultureName || "the Maker");
+  return { name, power: pick(rng, CURIO_POWERS), drawback: pick(rng, CURIO_DRAWBACKS) };
 }

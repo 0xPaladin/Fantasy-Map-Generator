@@ -51,6 +51,7 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import { BANDIT_KIND, createBanditContent } from "@/model/story/bandit-marker";
 import { BEAST_KIND, createBeastContent } from "@/model/story/beast-marker";
 import { BURIAL_KIND, createBurialContent } from "@/model/story/burial-marker";
 import { CAVE_KIND, createCaveContent } from "@/model/story/cave-marker";
@@ -1577,10 +1578,13 @@ class MarkersModule {
       return "angry";
     })(height, biome);
 
-    const name = `${Names.getCulture(culture)} ${ra(BRIGAND_ANIMALS)}`;
+    const animal = ra(BRIGAND_ANIMALS);
+    const name = `${Names.getCulture(culture)} ${animal}`;
     const legend = `A gang of ${locality} ${rw(BRIGAND_TYPES)}.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BANDIT_KIND)
+      marker.generated = { ...createBanditContent(), meta: { gang: animal, locality, maritime: false } };
   }
 
   // Pirates spawn on sea routes
@@ -1605,6 +1609,8 @@ class MarkersModule {
     const legend = "Pirate ships have been spotted in these waters.";
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BANDIT_KIND)
+      marker.generated = { ...createBanditContent(), meta: { maritime: true, locality: "coastal" } };
   }
 
   private listStatues({ cells }: PackedGraph) {

@@ -1,8 +1,8 @@
 # Plan — Beast, Monster and Bandit Profiles
 
-Updated: 2026-11-19. Status: **steps 1–3 shipped** (creature/bandit data tables, shared context/core
-types and headings; beast profiles; monster profiles, lazy kinds and lake/sea/hill placement).
-Steps 4–6 remain. Companions:
+Updated: 2026-11-19. Status: **steps 1–4 shipped** (creature/bandit data tables, shared context/core
+types and headings; beast profiles; monster profiles; bandit profiles, lazy kinds and
+lake/sea/hill/road/sea-route placement). Steps 5–6 remain. Companions:
 [dungeon-profiles.md](dungeon-profiles.md), [ruin-profiles.md](ruin-profiles.md) and
 [cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md). This plan extends the
 same lazy generated-content model to the living threat markers:
@@ -286,7 +286,7 @@ the three generated kinds and renderers should remain distinct.
    - Monster generator, renderer, lazy kind, random placement meta for hill monsters.
    - Hoard, optional curio and capped lair draft.
    - Tests: species/nature agreement, hoard mix, curio prompt, note size, optional lair.
-4. **Bandit profiles**
+4. **Bandit profiles — shipped 2026-11-19**
    - Bandit generator, renderer, lazy kind, random placement meta for brigands/pirates.
    - Leader/gang/base, carried/stashed loot, optional base draft.
    - Tests: locality/maritime agreement, wealth/loot mix, leader, note size, optional base.

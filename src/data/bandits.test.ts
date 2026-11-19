@@ -4,7 +4,11 @@ import {
   BANDIT_INHABITANTS,
   BANDIT_LEADERS,
   BANDIT_LOCALITIES,
+  BANDIT_MOVES,
+  BANDIT_RUMORS,
   BANDIT_TREASURE,
+  BANDIT_WANTS,
+  BANDIT_WEAPONS,
   CONTRABAND,
   GANG_COMPOSITIONS,
   GANG_SIZES,
@@ -40,7 +44,11 @@ describe("bandit tables", () => {
       BANDIT_BASES,
       RAID_PREY,
       RAID_TACTICS,
-      CONTRABAND
+      CONTRABAND,
+      BANDIT_WEAPONS,
+      BANDIT_WANTS,
+      BANDIT_MOVES,
+      BANDIT_RUMORS
     ]) {
       expect(table.length).toBeGreaterThan(0);
     }
@@ -67,7 +75,11 @@ describe("bandit tables", () => {
       BANDIT_BASES,
       RAID_PREY,
       RAID_TACTICS,
-      CONTRABAND
+      CONTRABAND,
+      BANDIT_WEAPONS,
+      BANDIT_WANTS,
+      BANDIT_MOVES,
+      BANDIT_RUMORS
     }).join("\n");
     expect(text).not.toMatch(/booty|seclusium|gonzo|freebooters|underlands|\bbd\b/i);
   });
