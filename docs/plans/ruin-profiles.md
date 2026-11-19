@@ -1,9 +1,9 @@
 # Plan — Ruin Profiles and Multi-Site Ruins
 
-Updated: 2026-11-18. Status: **phases 1–4 shipped** (shared site plumbing; the single-site
+Updated: 2026-11-19. Status: **phases 1–5 shipped** (shared site plumbing; the single-site
 ruin data, deterministic generator, renderer and lazy `ruin` kind; tiered multi-site ruins and
-capped sub-dungeons; random placement, history fall markers and cleared danger markers). Phase 5,
-docs and migration, is next. Builds on the shipped dungeon profile infrastructure: lazy marker
+capped sub-dungeons; random placement, history fall markers and cleared danger markers; wiki,
+data-model and migration docs). Builds on the shipped dungeon profile infrastructure: lazy marker
 content, the full/short notes split, reroll and exports, the five 1–10 ratings, inhabitant groups
 and the four-category treasure mix. The dungeon plan is
 [dungeon-profiles.md](dungeon-profiles.md).
@@ -296,7 +296,7 @@ Generate two or three rumors in the local voice, plus one or two secrets:
 | Source | Integration |
 |---|---|
 | Random `addRuins` | Set `generated` kind `ruin` and seed; the generator rolls the tier from weights. Keep the short note |
-| History `placeFallRemains` | Extend `Markers.place`/`MarkerDetails` to accept generated metadata. Pass original polity, fallen year, cause, culture and tier from the seat burg |
+| History `placeFallRemains` | Extend `Markers.place`/`MarkerDetails` to accept generated metadata. Pass original polity, fallen year, cause and tier from the seat burg; the marker's cell supplies culture and biome |
 | Cleared danger marker | Set generated metadata with `clearedBy`, `clearedFrom` and `looted`; keep the resolution note |
 | Old maps | Ruin markers without `generated` backfill through the reroll button |
 | Locked markers | Keep the generated profile through marker regeneration |
@@ -375,11 +375,11 @@ Before the ruin generator:
    - History `placeSeatMarker`/`placeBurgMarker` pass tier and meta.
    - Cleared danger markers get cleared/looted meta.
    - Tests: all three sources get `generated`; history tier is right; locked/chronicle lifecycle.
-5. **Docs and migration**
-   - New `docs/wiki/Ruin-generation.md`, linked from Markers and History.
-   - Update `docs/wiki/Living-World.md` for cleared-threat ruins.
-   - Update `docs/architecture/data-model.md` for `generated.meta`.
-   - Backfill old-map ruins through reroll.
+5. **Docs and migration — shipped 2026-11-19**
+   - Added `docs/wiki/Ruin-generation.md`, linked from Markers, History, Living World and Home.
+   - Updated `docs/wiki/Living-World.md` for cleared-threat ruins.
+   - Updated `docs/architecture/data-model.md` for `generated.meta`.
+   - Old-map ruins backfill through the marker editor's reroll button.
 
 ## Tests
 
@@ -413,11 +413,12 @@ Before the ruin generator:
 
 ## Docs
 
-- New `docs/wiki/Ruin-generation.md`: tiers, parent sites, sub-dungeons, ratings, inhabitants,
+- `docs/wiki/Ruin-generation.md` covers tiers, parent sites, sub-dungeons, ratings, inhabitants,
   treasure, history and cleared-threat behaviour.
-- Link it from `docs/wiki/Markers.md`, `docs/wiki/History.md` and `docs/wiki/Living-World.md`.
-- Update `docs/architecture/data-model.md` for `generated.meta`.
-- Update `docs/plans/dungeon-profiles.md` to point at this plan as the next generated kind.
+- Linked from `docs/wiki/Markers.md`, `docs/wiki/History.md`, `docs/wiki/Living-World.md` and
+  `docs/wiki/Home.md`.
+- `docs/architecture/data-model.md` documents `generated.meta` and the ruin metadata keys.
+- `docs/plans/dungeon-profiles.md` points at this plan as the next generated kind.
 
 ## Risks and open questions
 

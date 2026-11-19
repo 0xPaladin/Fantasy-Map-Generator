@@ -177,4 +177,4 @@ Marker CSV and GeoJSON exports include the full profile, including the Watabou n
 
 The procedure is adapted from the dungeon chapter of *Freebooters on the Frontier 2e, Vol. III — Overland & Underworld*. The dice ranges and table structure follow that procedure; the table wording, terminology and presentation here are the generator's own. The implementation lives in `src/data/dungeons.ts`, `src/model/story/dungeon-generator.ts`, `src/model/story/dungeon-marker.ts` and the lazy marker content registry in `src/model/story/marker-content.ts`. The design notes are in `docs/plans/dungeon-profiles.md`.
 
-See also: [Markers](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Markers).
+See also: [Markers](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Markers) · [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation).

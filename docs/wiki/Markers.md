@@ -35,6 +35,8 @@ There are special markers for dungeons, which link to Watabou's one-page dungeon
 
 Opening a newly generated dungeon marker's note also builds an alternate text profile: its name, size, quick ratings, treasure mix, inhabitant groups, themes, origin, area draft, dangers and rumors. The profile is generated on first open and cached on the marker, so a map only grows for dungeons whose notes were actually read. It is a prompt sheet, not a stat block, and stays editable in the HTML source view. Use the reroll button in the marker editor to rebuild a generated profile; on older maps it can also add a profile and, for dungeons, a name. Marker CSV and GeoJSON exports include the full profile without caching it. See [Dungeon generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Dungeon-generation) for the full procedure.
 
+Ruins use the same lazy mechanism with their own profile: tier, original identity, fall, present state, sites, surface zones, ratings, inhabitants, treasure mix, secrets and rumors. An outpost or village is a single site; a town, city or fallen capital is a multi-site complex, and a few of its sites can hold inline sub-dungeons. Random ruins, history's fall markers and cleared Living World threats all get a profile. Use the same reroll button to build one for an older ruin; its short note and name stay as they are. See [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation) for the full procedure.
+
 
 You can create an image preview using the <> button and text similar to this:
 
@@ -74,7 +76,7 @@ Criteria and types of randomly added markers are defined in the generator and ca
 * Pirates: Found on the open sea along major shipping routes, representing maritime outlaws. They favor routes between busy markets.
 * Portals: These mystical gateways appear in the oldest towns.
 * Rifts: Occur in sparsely populated biomes that are still somewhat habitable, representing splits in the earth.
-* Ruins: Found in mid-elevation cultural areas, these represent remnants of past civilizations.
+* Ruins: Found in mid-elevation cultural areas, these represent remnants of past civilizations. Each ruin carries a generated profile; see [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation).
 * Sacred Forests: These appear in cultural regions with temperate forests, believed to be places of natural reverence.
 * Sacred Mountains: Found in high mountain regions, close to cultural areas, these are considered spiritually important.
 * Sacred Palm Groves: Found in desert regions with cultural significance and some population, connected by roads.
