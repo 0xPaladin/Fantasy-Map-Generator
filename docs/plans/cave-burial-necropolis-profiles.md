@@ -3,7 +3,8 @@
 Updated: 2026-11-19. Status: **all planned steps shipped** (cave/burial data tables, shared context
 types and headings; cave profiles; disturbed-burial profiles; tiered necropolis profiles; history
 fall metadata and lifecycle verification; wiki, data-model and migration docs). Companions:
-[dungeon-profiles.md](dungeon-profiles.md) and [ruin-profiles.md](ruin-profiles.md). This plan
+[dungeon-profiles.md](dungeon-profiles.md), [ruin-profiles.md](ruin-profiles.md) and
+[beast-monster-bandit-profiles.md](beast-monster-bandit-profiles.md). This plan
 extends the same lazy generated-content model to the three remaining underground/burial marker
 kinds:
 

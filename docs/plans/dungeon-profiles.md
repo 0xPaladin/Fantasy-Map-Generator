@@ -12,7 +12,8 @@ implementation is rewritten in the generator’s own generic vocabulary. See
 
 Companion: [ruin-profiles.md](ruin-profiles.md) extends the same lazy-content model to tiered,
 multi-site ruins; [cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md) plans
-the natural and burial site kinds.
+the natural and burial site kinds; [beast-monster-bandit-profiles.md](beast-monster-bandit-profiles.md)
+plans the living threat markers.
 
 ## Problem
 

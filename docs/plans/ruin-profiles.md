@@ -7,7 +7,8 @@ data-model and migration docs). Builds on the shipped dungeon profile infrastruc
 content, the full/short notes split, reroll and exports, the five 1–10 ratings, inhabitant groups
 and the four-category treasure mix. The dungeon plan is
 [dungeon-profiles.md](dungeon-profiles.md); the cave, disturbed-burial and necropolis plan is
-[cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md).
+[cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md); the beast, monster and
+bandit plan is [beast-monster-bandit-profiles.md](beast-monster-bandit-profiles.md).
 
 ## Problem
 
