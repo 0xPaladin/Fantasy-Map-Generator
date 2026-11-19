@@ -1,9 +1,9 @@
 # Plan — Lazy Alternate Dungeon Profiles in Marker Notes
 
-Updated: 2026-11-18. Status: **slices 1–5 shipped** (lazy marker content plumbing; the
-genericized dungeon data and deterministic profile/area generator; marker integration and the
-dungeon renderer; reroll, old-map backfill and exports; profile ratings and inhabitant groups).
-The feature is complete; remaining work is verification and future generated kinds. Source
+Updated: 2026-11-18. Status: **slices 1–5 shipped; treasure composition planned** (lazy marker
+content plumbing; the genericized dungeon data and deterministic profile/area generator; marker
+integration and the dungeon renderer; reroll, old-map backfill and exports; profile ratings and
+inhabitant groups). The treasure mix follows the four-category stash model next. Source
 procedure: *Freebooters on the Frontier 2e,
 Vol. III — Overland & Underworld* (`FotF2e - 03 Overland & Underworld.md`, dungeon procedure
 lines 1237–3083). The source is a **procedure reference only**: every table string in the
@@ -245,6 +245,88 @@ culture name (`Aeloran humans`). Two groups also get a relation such as hostile,
 master and servants, predator and prey, competing for the same resource, or unaware of each
 other.
 
+### 6. Treasure composition
+
+The `Treasure` rating stays a **1–10 total value**: how much there is and how valuable it is. The
+new composition says **what form that value takes**. It uses the same four categories as the
+state/faction stash in `docs/plans/state-faction-stash.md` slice 3:
+
+| Category | Meaning | Examples | Practical effect |
+|---|---|---|---|
+| **Bullion** | vaults, ingots and coin; easy to loot, low prestige | coin, silver ingots, plate, raw metal | sells anywhere; bulky but liquid |
+| **Regalia** | crown jewels and ceremonial objects; legitimacy | crown, sceptre, seal, ceremonial sword, throne | needs a ruler or faction buyer; political consequences |
+| **Art** | commissioned works, museums and collections; culture and prestige | paintings, tapestries, illuminated books, sculpture | bulky or fragile; value depends on the culture |
+| **Relics** | sacred or historical objects; faith and influence | saint's relic, founder's blade, sacred vessel, dynastic standard | needs a temple, scholar or faction; may be dangerous or magical |
+
+Base weights by dungeon type:
+
+| Type | Bullion | Regalia | Art | Relics |
+|---|---:|---:|---:|---:|
+| Lair, den or hideout | 3 | 1 | 1 | 1 |
+| Caves or caverns | 2 | 0 | 0 | 1 |
+| Mine | 6 | 0 | 0 | 1 |
+| Prison | 2 | 1 | 0 | 1 |
+| Stronghold or fortress | 3 | 3 | 2 | 1 |
+| Crypt or tomb | 1 | 3 | 1 | 4 |
+| Temple or sanctuary | 1 | 2 | 3 | 5 |
+| Laboratory or remote retreat | 1 | 0 | 3 | 3 |
+| Place of unknown origin | 1 | 1 | 1 | 1 |
+
+Then apply each matching modifier **once per profile**:
+
+| Source | Modifier |
+|---|---|
+| Builder: otherworldly or extraplanar | Relics +2, Art +1 |
+| Builder: wizard or lunatic | Art +1, Relics +1 |
+| Builder: sorcerer-king or queen | Regalia +2 |
+| Builder: arcane cabal | Art +1, Relics +1 |
+| Builder: religious order or cult | Relics +2, Art +1 |
+| Builder: monarch or warlord | Regalia +2, Bullion +1 |
+| Builder: merchant magnate | Bullion +2, Art +1 |
+| Lair occupant: legendary or beastly monster | Bullion +2 |
+| Lair occupant: lich, vampire or mummy | Relics +2, Regalia +1 |
+| Lair occupant: wizard or witch | Art +1, Relics +1 |
+| Lair occupant: cult or coven | Relics +2 |
+| Lair occupant: mercenaries or bandits | Bullion +2 |
+| Lair occupant: rebels | Regalia +1, Bullion +1 |
+| Lair occupant: fugitive | Bullion +1 |
+| Theme: greed or avarice | Bullion +2 |
+| Theme: pride or hubris | Regalia +1, Art +1 |
+| Theme: devotion or sacrifice | Relics +2 |
+| Theme: forbidden or cryptic knowledge | Art +1, Relics +1 |
+| Theme: beauty or wonder | Art +2 |
+| Theme: inheritance or legacy | Regalia +1, Relics +1 |
+| Theme: war | Regalia +1, Bullion +1 |
+| Theme: death or darkness | Relics +1 |
+| Special area: treasure vault, mother lode or strongroom | Bullion +2 |
+| Special area: burial vault, reliquary, shrine or hall of offerings | Relics +2 |
+| Special area: hall of ancestors, trophy hall or audience chamber | Regalia +1 |
+| Special area: library, archive, greenhouse or auditorium | Art +2 |
+| Special area: laboratory or vault of secrets | Art +1, Relics +1 |
+| Special area: portal or planar gateway | Relics +1 |
+
+Anything above zero is normalized to a whole-number percentage. Use largest-remainder rounding
+so the four shares always sum to exactly 100; omit zero-share categories from the rendered line.
+If every weight is zero, use equal shares.
+
+Rendered under the ratings:
+
+```text
+Treasure 7/10 — Bullion 45% · Regalia 25% · Art 10% · Relics 20%
+```
+
+The existing `treasure cache (1d6+1)` discoveries stay the total value. When a cache is found,
+roll its category from the mix; a large hoard can split across two or three categories. This
+keeps the dice notation and adds guidance for what the chest actually contains.
+
+Examples:
+
+- a mine with a merchant-magnate builder skews heavily **Bullion**
+- a temple with a religious-order builder and a devotion theme skews **Relics**
+- a monarch's crypt skews **Regalia** and **Relics**
+- a wizard's laboratory skews **Art** and **Relics**
+- a bandit lair skews **Bullion**
+
 ## Data and module layout
 
 ### `src/data/dungeons.ts`
@@ -310,6 +392,23 @@ export interface DungeonArea {
   exits: { to: number | "open"; direction: string; form: string }[];
 }
 
+export interface DungeonRatings {
+  danger: number;
+  treasure: number;
+  scale: number;
+  mystery: number;
+  weirdness: number;
+}
+
+export interface DungeonInhabitants {
+  rating: number;
+  groups: { id: string; label: string }[];
+  relationship?: string;
+}
+
+export type TreasureCategory = "bullion" | "regalia" | "art" | "relics";
+export type TreasureShares = Record<TreasureCategory, number>;
+
 export interface DungeonProfile {
   name: string;
   size: DungeonSize;
@@ -319,6 +418,9 @@ export interface DungeonProfile {
   safety: string;
   type: DungeonTypeId;
   overview: { label: string; value: string }[];
+  ratings: DungeonRatings;
+  inhabitants: DungeonInhabitants;
+  treasure: { shares: TreasureShares };
   areas: DungeonArea[];
   rumors: string[];
 }
@@ -431,6 +533,12 @@ Each slice should leave the app working.
    - The dedicated user guide is `docs/wiki/Dungeon-generation.md`.
    - Update `docs/architecture/data-model.md` with the `generated` field.
    - Open a dungeon on an old map, verify the profile appears and the save grows only after that.
+7. **Treasure composition — planned**
+   - Add the four-category weights and modifiers to `src/data/dungeons.ts`.
+   - Normalize to whole shares that sum to 100 and add `DungeonProfile.treasure.shares`.
+   - Render the mix with the Treasure rating; roll individual cache categories from the mix.
+   - Tests: share sums, type and modifier bias, zero categories, render output.
+   - Update `docs/wiki/Dungeon-generation.md` when the mix ships.
 
 ## Tests
 
@@ -447,6 +555,7 @@ Each slice should leave the app working.
   - area graph closes, exits resolve, recursive redirects stop
   - ratings stay within 1–10; inhabitant rating within 1–6
   - one or two inhabitant groups; a relation only when there are two
+  - treasure shares sum to 100; type/modifier bias is visible; zero shares are omitted
   - 100 seeds produce no `undefined`, `NaN` or empty headings
   - rendered profile passes `isSafeHtml` and escapes `<script>` in culture names
   - generated table strings contain none of the banned source terms
@@ -476,6 +585,8 @@ Each slice should leave the app working.
   whole text as the short note and drops the generated recipe. The next reroll restores a clean
   section.
 - **HTML mode**: the Watabou iframe keeps the note in source mode. That is existing behavior.
+- **Treasure mix**: shares describe the split of value, not item counts or prices. Regalia, art and
+  relics may need the right buyer; do not turn the shares into automatic coin values.
 - **Megadungeon** (1d20 = 20): first slice treats it as a huge dungeon. Nested wings multiply
   note size, so they are a follow-up.
 - **Astral view**: the fantasy profile stays under the anomaly legend. A separate derelict
