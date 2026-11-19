@@ -61,6 +61,7 @@ import {
   regenerateGenerated,
   requireGeneratedRecipe
 } from "@/model/story/marker-content";
+import { createNecropolisContent, NECROPOLIS_KIND } from "@/model/story/necropolis-marker";
 import { Notes } from "@/model/story/notes";
 import { createRuinContent, RUIN_KIND } from "@/model/story/ruin-marker";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
@@ -1934,6 +1935,8 @@ class MarkersModule {
 
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== NECROPOLIS_KIND)
+      marker.generated = { ...createNecropolisContent(), meta: { burialType: type } };
   }
 
   private listEncounters({ cells }: PackedGraph) {

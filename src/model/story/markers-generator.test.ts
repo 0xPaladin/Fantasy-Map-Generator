@@ -653,3 +653,35 @@ describe("MarkersModule disturbed burials", () => {
     expect(ensureGenerated(marker)).toContain("Alternate burial profile");
   });
 });
+
+describe("MarkersModule necropolises", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 25], pop: [0, 1] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a random necropolis a lazy necropolis recipe and keeps the legend", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "necropolises", cell: 1 } as Marker;
+
+    markers.addNecropolis(marker, 1);
+
+    const burialType = marker.generated?.meta?.burialType as string;
+    expect(marker.name).toBe(`Aeloran ${burialType}`);
+    expect(marker.note).toBeTruthy();
+    expect(marker.generated).toMatchObject({ kind: "necropolis", version: 1, seed: "12345" });
+    expect(burialType).toBeTruthy();
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate necropolis profile");
+  });
+});

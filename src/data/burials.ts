@@ -319,6 +319,14 @@ export const NECROPOLIS_CAUSES: readonly string[] = [
   "unknown"
 ];
 
+export const NECROPOLIS_AGES: readonly string[] = [
+  "older than living memory",
+  "three centuries old",
+  "from the last age",
+  "from before the current calendar",
+  "from a forgotten age"
+];
+
 export const NECROPOLIS_SURFACE_STATES: readonly string[] = [
   "overgrown",
   "collapsed",

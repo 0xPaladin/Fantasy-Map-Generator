@@ -20,6 +20,7 @@ import {
   BURIAL_WHO,
   BURIAL_ZONE_CONDITIONS,
   BURIAL_ZONE_TYPES,
+  NECROPOLIS_AGES,
   NECROPOLIS_CAUSE_TREASURE_MODIFIERS,
   NECROPOLIS_CAUSE_WEIRDNESS,
   NECROPOLIS_CAUSES,
@@ -140,6 +141,7 @@ describe("necropolis tables", () => {
     expect(NECROPOLIS_SITE_TYPES.some(type => Boolean(type.dungeonType))).toBe(true);
 
     expect(NECROPOLIS_CAUSES.length).toBeGreaterThan(0);
+    expect(NECROPOLIS_AGES.length).toBeGreaterThan(0);
     expect(NECROPOLIS_SURFACE_STATES.length).toBeGreaterThan(0);
     expect(NECROPOLIS_ZONE_TYPES.length).toBeGreaterThan(0);
     expect(NECROPOLIS_ZONE_CONDITIONS.length).toBeGreaterThan(0);
@@ -177,6 +179,7 @@ describe("necropolis tables", () => {
       NECROPOLIS_TIERS,
       NECROPOLIS_SITE_TYPES,
       NECROPOLIS_CAUSES,
+      NECROPOLIS_AGES,
       NECROPOLIS_SURFACE_STATES,
       NECROPOLIS_ZONE_TYPES,
       NECROPOLIS_ZONE_CONDITIONS,
