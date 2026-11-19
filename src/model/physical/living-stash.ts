@@ -30,6 +30,23 @@ const FACTION_BASE_MONTHS: Record<FactionCategory, number> = {
   adventuring: 6
 };
 
+const STATE_STASH_LABELS: Record<string, string> = {
+  Monarchy: "Royal collection",
+  Theocracy: "Temple treasure",
+  Republic: "Civic collection",
+  Union: "Common treasury",
+  Anarchy: "No patrimony"
+};
+
+const FACTION_STASH_LABELS: Record<FactionCategory, string> = {
+  commercial: "Commercial reserves",
+  underworld: "Hidden vaults",
+  religious: "Temple treasure",
+  political: "Crown regalia",
+  martial: "War chest",
+  adventuring: "Relics and curios"
+};
+
 const AVARICE_VICES = ["greedy", "stingy", "selfish", "boastful", "domineering", "paranoid"];
 const STEWARD_VIRTUES = ["thrifty", "temperate", "prudent", "methodical", "disciplined", "meticulous"];
 const OPEN_HAND_VIRTUES = ["generous", "charitable", "selfless", "compassionate", "kind"];
@@ -103,8 +120,9 @@ export function advanceStash(current: number | undefined, target: number): numbe
 }
 
 /** A state's day balance before any later treasury edits */
-export function stateDailySurplus(state: Pick<State, "economy">): number {
+export function stateDailySurplus(state: { economy?: State["economy"] }): number {
   const economy = state.economy;
+  if (!economy) return 0;
   const spent = EXPENSES.reduce((total, expense) => total + Number(economy.spent?.[expense] ?? 0), 0);
   const balance = Number(economy.collected ?? 0) - Number(economy.pocketed ?? 0) - spent;
   return Math.round(Math.max(0, balance) * 100) / 100;
@@ -126,4 +144,53 @@ export function factionStashTarget(
 ): number {
   const months = stashMonths(factionBaseHoardMonths(faction.category), figure, faction.values ?? []);
   return stashTarget(dailySurplus, months);
+}
+
+export function stateStashLabel(form: string | undefined): string {
+  return STATE_STASH_LABELS[form ?? ""] ?? "Patrimony";
+}
+
+export function factionStashLabel(category: FactionCategory): string {
+  return FACTION_STASH_LABELS[category] ?? "Patrimony";
+}
+
+/** Everything a readout needs: the stock, its months of surplus, and the nature that sets it */
+export interface StashSummary {
+  value: number;
+  hasStash: boolean;
+  /** How many months of its current daily surplus the stock is worth */
+  months: number;
+  /** The nature-driven target in months */
+  targetMonths: number;
+  nature: string;
+}
+
+function summarize(
+  stash: number | undefined,
+  dailySurplus: number,
+  targetMonths: number,
+  nature: string
+): StashSummary {
+  const value = Math.max(0, Number(stash ?? 0));
+  const daily = Number.isFinite(dailySurplus) ? Math.max(0, dailySurplus) : 0;
+  const months = daily > 0 ? Math.round((value / (daily * STASH_MONTH_DAYS)) * 10) / 10 : 0;
+  return { value, hasStash: stash !== undefined, months, targetMonths, nature };
+}
+
+export function stateStashSummary(
+  state: Pick<State, "form"> & { economy?: State["economy"] },
+  figure?: StashFigure,
+  values: StashValues = []
+): StashSummary {
+  const targetMonths = stashMonths(stateBaseHoardMonths(state.form), figure, values);
+  return summarize(state.economy?.stash, stateDailySurplus(state), targetMonths, stateStashLabel(state.form));
+}
+
+export function factionStashSummary(
+  faction: Pick<Faction, "category" | "values" | "stash">,
+  dailySurplus: number,
+  figure?: StashFigure
+): StashSummary {
+  const targetMonths = stashMonths(factionBaseHoardMonths(faction.category), figure, faction.values ?? []);
+  return summarize(faction.stash, dailySurplus, targetMonths, factionStashLabel(faction.category));
 }

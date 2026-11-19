@@ -20,12 +20,13 @@ import { Pack } from "@/model/graph/pack-generator";
 import { canReadUpstreamEconomy } from "@/model/physical/living-faction-economy";
 import { figureLevel, Living } from "@/model/physical/living-generator";
 import { ensureHeroSheet } from "@/model/physical/living-heroes";
+import { stateStashSummary } from "@/model/physical/living-stash";
 import { Factions } from "@/model/political/factions-generator";
 import { Military } from "@/model/political/military-generator";
 import { Stability } from "@/model/political/stability";
 import { Development } from "@/model/society/development-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
-import { getMoneySymbol } from "@/model/units";
+import { formatPrice, getMoneySymbol } from "@/model/units";
 import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
 import type { HistoricalFigure } from "@/types/history";
@@ -1008,7 +1009,23 @@ function renderUpstreamState(stateId: number): string {
     pack.cells.h && pack.cells.development ? Development.getAverages(pack.cells.state)[stateId] : undefined;
   const upkeep = Military.getUpkeep(stateId);
   const battle = Military.getLivingBattleUpkeep(stateId);
-  if (prosperity == null && stability == null && development == null && upkeep === 1) return "";
+  const state = pack.states[stateId];
+  const rulerId = pack.history?.living?.states?.[stateId]?.rulerId;
+  const ruler =
+    rulerId === undefined
+      ? undefined
+      : pack.history?.figures?.find(figure => figure.i === rulerId && !figure.removed && figure.death === undefined);
+  const stash = state ? stateStashSummary(state, ruler, pack.cultures?.[state.culture ?? 0]?.values ?? []) : null;
+  const stashChip =
+    stash?.hasStash && stash.value > 0
+      ? `<span class="livingCivChip" title="${escapeHtml(
+          t("Stash: {{nature}}, about {{months}} months of surplus. Not spending money", {
+            nature: t(stash.nature),
+            months: stash.months.toFixed(1)
+          })
+        )}">${formatPrice(stash.value)} stash${stash.months > 0 ? ` · ${Math.round(stash.months)} mo` : ""}</span>`
+      : "";
+  if (prosperity == null && stability == null && development == null && upkeep === 1 && !stashChip) return "";
   const era = development == null ? "" : eraOf(development);
 
   const treasury = `<button type="button" class="livingCivChip" data-open="budget" data-id="${stateId}" title="Treasury and the season's net balance: open the state budget">${getMoneySymbol("🪙")} ${Math.round(Number(pack.states[stateId]?.economy?.treasury ?? 0))} treasury</button>`;
@@ -1020,6 +1037,7 @@ function renderUpstreamState(stateId: number): string {
   const rows = [
     [
       treasury,
+      stashChip,
       prosperity == null
         ? ""
         : `<button type="button" class="livingCivChip" data-open="economy" data-id="${stateId}" title="Open the state's agriculture, crafts and trade">🏙️ ${percent(prosperity)} prosperity</button>`,

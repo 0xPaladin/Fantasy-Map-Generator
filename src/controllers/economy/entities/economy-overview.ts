@@ -6,6 +6,7 @@ import { Corruption } from "@/model/economy/corruption";
 import { Goods } from "@/model/economy/goods-generator";
 import { PROSPERITY_LEVELS } from "@/model/economy/prosperity";
 import { StateOrders } from "@/model/economy/state-orders";
+import { stateStashSummary } from "@/model/physical/living-stash";
 import { Provinces } from "@/model/political/provinces-generator";
 import { Stability } from "@/model/political/stability";
 import { States } from "@/model/political/states-generator";
@@ -203,6 +204,17 @@ function renderState(stateId: number): string {
   ].join("");
 }
 
+function stateRuler(stateId: number) {
+  const rulerId = pack.history?.living?.states?.[stateId]?.rulerId;
+  return rulerId === undefined
+    ? undefined
+    : pack.history?.figures?.find(figure => figure.i === rulerId && !figure.removed && figure.death === undefined);
+}
+
+function cultureValues(stateId: number): readonly string[] {
+  return pack.cultures?.[pack.states[stateId]?.culture ?? 0]?.values ?? [];
+}
+
 function renderStateCards(
   stateId: number,
   accounts: StateAccounts,
@@ -225,6 +237,25 @@ function renderStateCards(
         sentences(EconomyTerms.stateTreasury(), t("Tax burden: the taxes' share of the product"))
       )
     : card(t("Day Balance"), "—", [t("Neutrals collect no taxes")], EconomyTerms.stateTreasury());
+  const stash = stateId ? stateStashSummary(pack.states[stateId], stateRuler(stateId), cultureValues(stateId)) : null;
+  const stashCard = stash
+    ? card(
+        t("Stash"),
+        stash.hasStash ? formatPrice(stash.value) : "-",
+        stash.hasStash
+          ? [stash.months > 0 ? EconomyTerms.stashMonths(stash.months) : t("Empty"), t(stash.nature)]
+          : [t("No stash yet"), t("Seeded on the first Living World tick")],
+        sentences(
+          EconomyTerms.stash(),
+          stash.hasStash
+            ? t("Nature: {{nature}}, about {{months}} months of surplus", {
+                nature: t(stash.nature),
+                months: rn(stash.targetMonths, 1)
+              })
+            : t("This map has not run the Living World yet")
+        )
+      )
+    : "";
   const populationRank = stateRank(stateId, id => {
     const other = accountsOf(id);
     return other ? people(other).total : 0;
@@ -238,6 +269,7 @@ function renderStateCards(
     ${card(t("Inequality"), String(rn(gini(accounts.burgWealth), 2)), [stateRank(stateId, id => gini(accountsOf(id)?.burgWealth ?? []), true), `${t("World")}: ${rn(gini(world.burgWealth), 2)}`], t("Inequality: Gini of burg wealth, 0 is equal"))}
     ${card(t("Trade balance"), `<span class="${tone(balance)}">${formatPrice(balance)}</span>`, [`${t("Exports")}: ${formatPrice(exports)}`, `${t("Imports")}: ${formatPrice(imports)}`], t("Trade balance: exports less imports, at market prices"))}
     ${treasuryCard}
+    ${stashCard}
     ${card(t("Prosperity"), prosperityPercent(accounts.prosperity), [stateRank(stateId, id => accountsOf(id)?.prosperity ?? 0), `${t("World")}: ${prosperityText(world.prosperity)}`], EconomyTerms.prosperity())}
     ${card(t("Product"), formatPrice(accounts.product), [stateRank(stateId, id => accountsOf(id)?.product ?? 0), t("{{share}}% of the world", { share })], EconomyTerms.stateProduct())}
     ${card(t("Wealth"), formatPrice(accounts.wealth), [stateRank(stateId, id => accountsOf(id)?.wealth ?? 0), `${t("World")}: ${formatPrice(world.wealth)}`], EconomyTerms.wealth())}

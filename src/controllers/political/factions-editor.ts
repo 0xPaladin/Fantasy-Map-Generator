@@ -9,6 +9,7 @@ import {
   seedNodeFactionPersonnel
 } from "@/model/physical/living-faction-economy";
 import { Living } from "@/model/physical/living-generator";
+import { factionStashSummary } from "@/model/physical/living-stash";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import type { Regiment } from "@/model/political/military-generator";
 import { formatPrice, getMoneySymbol } from "@/model/units";
@@ -115,6 +116,18 @@ function provisionColor(provision: number): string {
   return ECONOMY_COLORS.negative;
 }
 
+function factionLeader(faction: Faction) {
+  return faction.leaderId === undefined
+    ? undefined
+    : pack.history?.figures?.find(
+        figure => figure.i === faction.leaderId && !figure.removed && figure.death === undefined
+      );
+}
+
+function factionStash(faction: Faction, breakdown: FactionYieldBreakdown) {
+  return factionStashSummary(faction, breakdown.economy.dayBalance, factionLeader(faction));
+}
+
 function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown): string {
   const econ = breakdown.economy;
   const expRow = (name: string, share: number, bar: string, value: number, tipText: string, rowTone: string) =>
@@ -164,10 +177,29 @@ function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown)
     ? `<div class="muted" style="margin-top: 2px;">🏗️ ${escapeHtml(activeDef?.name ?? faction.project.assetId)}: ${formatPrice(econ.projectDaily)}/day · ${faction.project.turnsLeft} ${faction.project.turnsLeft === 1 ? t("season left") : t("seasons left")}</div>`
     : "";
 
+  const stash = factionStash(faction, breakdown);
+  const stashMonths = stash.hasStash && stash.months > 0 ? EconomyTerms.stashMonths(stash.months) : t("empty");
+  const stashText = stash.hasStash
+    ? t("Stash: {{value}} · {{months}} · {{nature}}", {
+        value: formatPrice(stash.value),
+        months: stashMonths,
+        nature: t(stash.nature)
+      })
+    : t("Stash: no patrimony yet; the first Living World tick seeds it");
+  const stashTip = `${EconomyTerms.stash()} ${
+    stash.hasStash
+      ? t("Nature: {{nature}}, about {{months}} months of surplus", {
+          nature: t(stash.nature),
+          months: rn(stash.targetMonths, 1)
+        })
+      : ""
+  }`;
+
   return /* html */ `
     ${expensesHtml}
     <div class="total">${expRow(t("Day Balance"), econ.dayBalanceShare, "<span></span>", econ.dayBalance, t("Net daily balance (×90 per season)"), tone(econ.dayBalance))}</div>
     ${corruptionRow}
+    <div class="muted" data-tip="${escapeHtml(stashTip)}" style="margin-top: 2px;">${escapeHtml(stashText)}</div>
     ${titheRow}
     <div class="muted" style="margin-top: 2px;">${t("Required upkeep: {{req}}/day · Allocated: {{share}}%", { req: formatPrice(econ.requiredTotalDaily), share: econ.spentShare })}</div>
     <div class="muted">${t("Personnel: {{staff}} staff · {{guards}} guards", econ.personnel)}</div>
@@ -294,6 +326,16 @@ const columns: EditorColumn<Faction>[] = [
     label: t("Income"),
     width: "5.5em",
     sortBy: f => Living.getFactionYieldBreakdown(f).dailyIncome,
+    sortType: "number"
+  },
+  {
+    key: "stash",
+    label: t("Stash"),
+    width: "5.5em",
+    hidden: true,
+    mobileHidden: true,
+    tip: EconomyTerms.stash(),
+    sortBy: f => f.stash || 0,
     sortType: "number"
   },
   {
@@ -565,6 +607,7 @@ function renderFactionsPage(view: TableView<Faction>): void {
         .join("");
 
       const breakdown = Living.getFactionYieldBreakdown(f);
+      const stash = factionStash(f, breakdown);
       const stabTone = breakdown.stability >= 0.7 ? "positive" : breakdown.stability < 0.4 ? "negative" : "";
       const note = f.note?.replace(/\s+/g, " ").trim();
       const noteExcerpt = note ? ` — ${note.slice(0, 60)}${note.length > 60 ? "…" : ""}` : "";
@@ -581,6 +624,14 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <span data-col="hq" class="pointer" data-action="locate" data-tip="${t("Click to zoom to HQ")}${escapeHtml(noteExcerpt)}" style="text-decoration: underline;">${escapeHtml(hqName)}</span>
         <span data-col="outposts" class="badge pointer" data-action="outposts" data-tip="${t("Click to manage outposts and assets")}">${f.outposts?.length || 0}</span>
         <span data-col="income" style="text-align: center;">${formatDailyIncome(breakdown.dailyIncome)}</span>
+        <span data-col="stash" style="text-align: center;" data-tip="${escapeHtml(
+          stash.hasStash
+            ? t("{{nature}}: about {{months}} months of surplus", {
+                nature: t(stash.nature),
+                months: rn(stash.targetMonths, 1)
+              })
+            : t("No stash yet")
+        )}">${stash.hasStash ? formatPrice(stash.value) : "-"}</span>
         <span data-col="prosperity" style="text-align: center;">${renderProsperityPercent(breakdown.prosperity)}</span>
         <span data-col="stability" class="${stabTone}" style="text-align: center;">${rn(breakdown.stability * 100)}%</span>
         <span data-col="military" style="text-align: center;">${f.military?.length || 0}</span>

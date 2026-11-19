@@ -26,7 +26,7 @@ A **state** card shows:
 - **Ruler** — name, culture, alignment, virtues and vices.
 - **Fiscal policy** — the ruler's target for each budget line, corruption and the sales/head tax, with the current value (`45→62`). Each line can be pinned (🔒) so the ruler cannot drift it; God mode does this by clicking a chip.
 - **Public works** — the work under construction and each finished work with its daily line (e.g. `Aqueduct +3/day`).
-- **Upstream economy** — treasury (stock Day Balance; opens the State Budget), prosperity (opens the Economy dialog), stability (opens the Stability overview), the people's mean development with its era, and the forces' upkeep with its battle multiplier.
+- **Upstream economy** - treasury (stock Day Balance; opens the State Budget), stash (accumulated patrimony, with its months of surplus), prosperity (opens the Economy dialog), stability (opens the Stability overview), the people's mean development with its era, and the forces' upkeep with its battle multiplier.
 - **Agenda** and **suppression targets**.
 - **Manage** — opens the stock Provinces, Burgs and Regiments editors filtered to this state.
 - **Issues & Crises** — **Instability** (provinces at or below 55% stability, each marked `⚠️`, with `🔥[seasons]` beside a rebelling province), dangerous factions, troubles (with daily drain), casus belli claims and grudges.
@@ -36,7 +36,7 @@ A **province** or **burg** card shows stock stability (`Stability N%`), active r
 
 A **cell** card shows biome, owner state/province/burg, development with its era, prosperity, deposit, the Builder improvement (or pillage), and what its people produce a day by good.
 
-The native editors show the same data: the **Stability Overview** (for a state, and for each province from the Provinces Editor) exposes user-owned `stabilityAdjustments` alongside sim-owned `simStabilityAdjustments` (`Of which the Living World`); clicking a province's stability in the **Provinces Editor** opens that province's own breakdown, listing its burgs where the state overview lists its provinces; the **Burgs Editor** adds a Living World summary (construction, buildings, outposts); the **Factions Editor** shows Treasury, Trade and Forces; and the **Provinces Editor** displays stability and trouble flavor/drain status.
+The native editors show the same data: the **Stability Overview** (for a state, and for each province from the Provinces Editor) exposes user-owned `stabilityAdjustments` alongside sim-owned `simStabilityAdjustments` (`Of which the Living World`); clicking a province's stability in the **Provinces Editor** opens that province's own breakdown, listing its burgs where the state overview lists its provinces; the **Burgs Editor** adds a Living World summary (construction, buildings, outposts); the **Factions Editor** shows Treasury, Stash, Trade and Forces; and the **Provinces Editor** displays stability and trouble flavor/drain status.
 
 ### What the simulation does
 

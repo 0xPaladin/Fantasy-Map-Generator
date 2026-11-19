@@ -4,6 +4,8 @@ import type { Faction } from "@/types/factions";
 import {
   advanceStash,
   factionBaseHoardMonths,
+  factionStashLabel,
+  factionStashSummary,
   factionStashTarget,
   INITIAL_STASH_SHARE,
   MAX_STASH_MONTHS,
@@ -16,6 +18,8 @@ import {
   stashTarget,
   stateBaseHoardMonths,
   stateDailySurplus,
+  stateStashLabel,
+  stateStashSummary,
   stateStashTarget
 } from "./living-stash";
 
@@ -103,5 +107,38 @@ describe("living stash", () => {
   it("combines a faction's category, surplus and values", () => {
     expect(factionStashTarget(faction(), 8)).toBe(8 * STASH_MONTH_DAYS * 18);
     expect(factionStashTarget(faction({ values: ["greed"] }), 8)).toBe(8 * STASH_MONTH_DAYS * 20);
+  });
+
+  it("labels the nature that shapes a stash", () => {
+    expect(stateStashLabel("Monarchy")).toBe("Royal collection");
+    expect(stateStashLabel("Theocracy")).toBe("Temple treasure");
+    expect(stateStashLabel("Anarchy")).toBe("No patrimony");
+    expect(stateStashLabel(undefined)).toBe("Patrimony");
+    expect(factionStashLabel("commercial")).toBe("Commercial reserves");
+    expect(factionStashLabel("underworld")).toBe("Hidden vaults");
+    expect(factionStashLabel("martial")).toBe("War chest");
+  });
+
+  it("summarizes a stock in months of its current surplus", () => {
+    const kingdom = state();
+    kingdom.economy.stash = 27000;
+    expect(stateStashSummary(kingdom)).toEqual({
+      value: 27000,
+      hasStash: true,
+      months: 18,
+      targetMonths: 18,
+      nature: "Royal collection"
+    });
+
+    const company = faction({ stash: 4320 });
+    expect(factionStashSummary(company, 8)).toEqual({
+      value: 4320,
+      hasStash: true,
+      months: 18,
+      targetMonths: 18,
+      nature: "Commercial reserves"
+    });
+
+    expect(stateStashSummary(state()).hasStash).toBe(false);
   });
 });

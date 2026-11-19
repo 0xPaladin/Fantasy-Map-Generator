@@ -53,7 +53,7 @@ describe("FactionsEditor", () => {
   });
 
   it("opens the Factions Editor dialog and renders rows for active factions", () => {
-    Factions.add({
+    const faction = Factions.add({
       name: "Golden Merchants",
       category: "commercial",
       type: "merchant_consortium",
@@ -61,6 +61,7 @@ describe("FactionsEditor", () => {
       treasury: 200,
       influence: 50
     });
+    faction.stash = 5000;
 
     FactionsEditor.open();
 
@@ -76,6 +77,7 @@ describe("FactionsEditor", () => {
     expect(dialog?.innerHTML).toContain("Stability");
     expect(bodySection.querySelector('#factionsRows [data-col="prosperity"]')?.textContent).toContain("%");
     expect(bodySection.querySelector('#factionsRows [data-col="stability"]')?.textContent).toContain("%");
+    expect(bodySection.querySelector('#factionsRows [data-col="stash"]')?.textContent).toContain("5");
   });
 
   it("filters factions by category and search", () => {
@@ -198,6 +200,7 @@ describe("FactionsEditor", () => {
     expect(dialog.innerHTML).toContain("Expenses");
     expect(dialog.innerHTML).toContain("Court and patronage");
     expect(dialog.innerHTML).toContain("Day Balance");
+    expect(dialog.innerHTML).toContain("Stash");
     expect(dialog.innerHTML).toContain("Corruption");
     expect(dialog.innerHTML).not.toContain("Citizens");
     expect(dialog.innerHTML).not.toContain("yields");

@@ -65,6 +65,15 @@ export const EconomyTerms = {
     isAstral()
       ? t("Reserve: the day's levies less the state's expenses")
       : t("Balance: the day's taxes less the state's expenses"),
+  stash: () =>
+    isAstral()
+      ? t(
+          "Stash: accumulated credit, relics and civic collections, not a spending reserve. The Living World grows it from positive day balances; hard times draw it down slowly"
+        )
+      : t(
+          "Stash: accumulated crown jewels, art, relics and bullion, not spending money. The Living World grows it from positive day balances; hard times draw it down slowly"
+        ),
+  stashMonths: (months: number) => t("≈ {{months}} months of surplus", { months }),
   adjustments: () => t("Adjustments: the state's revenue or costs a day besides taxes, set by you"),
   budget: () => t("Expenses: the shares of its taxes the state spends"),
   expenseTip: (expense: Expense) =>

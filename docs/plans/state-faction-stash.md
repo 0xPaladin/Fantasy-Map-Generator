@@ -1,6 +1,6 @@
 # Plan — State and Faction Stash (Patrimony)
 
-**Status:** Slice 1 delivered. Slice 2 (UI), Slice 3 (composition and events) and Slice 4 (prestige effects) pending.
+**Status:** Slices 1 and 2 delivered. Slice 3 (composition and events) and Slice 4 (prestige effects) pending.
 **Goal:** Give states and factions a **stash** — a separate stock of accumulated patrimony: crown jewels, regalia, museums, commissioned art, relics and vaults of bullion. It is not a spending balance. It reflects how much wealth a culture or leader would keep rather than circulate, and it grows from the positive daily balance over a horizon set by that nature.
 
 ---
@@ -27,7 +27,7 @@ The treasury is the operating balance. A stash must be a second stock so it does
 5. **Traits and culture bend the horizon.** Ruler/leader virtues and vices and the culture’s/faction’s values multiply the base months. Missing traits, dead rulers and old maps with no trait layer are neutral.
 6. **Anarchy keeps no stash.** Neutral lands and removed polities are skipped.
 7. **Lazy migration.** `stash` is optional. The first seasonal tick seeds it at `50%` of the current target; after that it grows by `25%` of the gap or decays by `5%`.
-8. **No UI in slice 1.** The number is stored and simulated first. Slice 2 adds the readouts and tooltips.
+8. **Readouts in slice 2.** The number is stored and simulated first; slice 2 adds the cards, badges, overview columns, HUD chip and tooltips.
 
 ---
 
@@ -123,6 +123,8 @@ Examples:
 - Optional Stash columns in the States and Factions overviews; HUD state card.
 - Tooltip explains that it is patrimony, not spending money.
 
+**Delivery notes:** `living-stash.ts` now exposes `stateStashSummary`, `factionStashSummary`, `stateStashLabel` and `factionStashLabel`. The state Economy dialog gets a Stash card after Day Balance; the faction Manage dialog gets a ledger line with months and nature; the States and Factions overviews get hidden-by-default Stash columns; the HUD state card gets a stash chip. The labels are Royal collection, Temple treasure, Civic collection, Common treasury, Commercial reserves, Hidden vaults, Crown regalia, War chest and Relics and curios. Nothing is spendable yet.
+
 ### Slice 3 — Composition and events
 
 - Derive `bullion / art / regalia / relics` from nature; use it for flavour and loot.
@@ -140,8 +142,10 @@ Examples:
 
 ## 7. Tests
 
-- `living-stash.test.ts`: surplus, base months, multipliers, clamps, target, seed, growth, decay, anarchy/neutral, missing traits.
+- `living-stash.test.ts`: surplus, base months, multipliers, clamps, target, seed, growth, decay, anarchy/neutral, missing traits, labels and summaries.
 - `living-generator.test.ts`: a state seeds and then grows its stash across ticks; a faction seeds its stash after a seasonal economy step.
+- `states-editor.test.ts` / `factions-editor.test.ts`: the Stash column and Manage readout render, including a set value.
+- `living-hud.test.ts`: the state card survives packs without an economy object (old mocks and saves).
 
 ---
 

@@ -7,13 +7,14 @@ import { getRosterOptions } from "@/data/roster-store";
 import { Accounts } from "@/model/economy/accounts";
 import { Corruption } from "@/model/economy/corruption";
 import { Pack } from "@/model/graph/pack-generator";
+import { stateStashSummary } from "@/model/physical/living-stash";
 import { Burgs } from "@/model/political/burgs-generator";
 import { Stability } from "@/model/political/stability";
 import { STATE_FORMS, type State, States } from "@/model/political/states-generator";
 import { Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
 import { Tags } from "@/model/tags";
-import { getArea, getAreaUnit, getMoneySymbol } from "@/model/units";
+import { formatPrice, getArea, getAreaUnit, getMoneySymbol } from "@/model/units";
 import { redrawEmblem, removeEmblem } from "@/renderers/draw-emblems";
 import { EmblemRenderer } from "@/renderers/emblems/renderer";
 import { Layers } from "@/renderers/layers";
@@ -169,6 +170,15 @@ const columns: EditorColumn<State>[] = [
     mobileHidden: true,
     tip: sentences(EconomyTerms.stateTreasury(), EconomyTerms.openValue()),
     sortBy: s => s.economy.treasury || 0
+  },
+  {
+    key: "stash",
+    label: t("Stash"),
+    width: "6em",
+    hidden: true,
+    mobileHidden: true,
+    tip: sentences(EconomyTerms.stash(), EconomyTerms.openValue()),
+    sortBy: s => s.economy.stash || 0
   },
   {
     key: "burden",
@@ -526,6 +536,22 @@ function renderStatesPage(view: TableView<State>): void {
       t("Corruption: {{rate}}%", { rate: rn(Corruption.ofState(s, s.economy.collected)) }),
       EconomyTerms.open()
     );
+    const rulerId = pack.history?.living?.states?.[s.i]?.rulerId;
+    const ruler =
+      rulerId === undefined
+        ? undefined
+        : pack.history?.figures?.find(figure => figure.i === rulerId && !figure.removed && figure.death === undefined);
+    const stash = stateStashSummary(s, ruler, pack.cultures?.[s.culture ?? 0]?.values ?? []);
+    const stashTip = sentences(
+      EconomyTerms.stash(),
+      stash.hasStash
+        ? t("Nature: {{nature}}, about {{months}} months of surplus", {
+            nature: t(stash.nature),
+            months: rn(stash.targetMonths, 1)
+          })
+        : t("No stash yet"),
+      EconomyTerms.open()
+    );
     const accounts = s.i ? Accounts.ofState(s.i) : null;
     const stability = Stability.get(s.i);
     const burden = taxBurden(s);
@@ -543,6 +569,7 @@ function renderStatesPage(view: TableView<State>): void {
         data-population=${population}
         data-burgs=${s.burgs}
         data-treasury="0"
+        data-stash="0"
         data-prosperity="${neutrals?.prosperity ?? ""}"
         data-product="${neutrals?.product ?? ""}"
         data-wealth="${neutrals?.wealth ?? ""}"
@@ -585,6 +612,7 @@ function renderStatesPage(view: TableView<State>): void {
           <div data-tip="${populationTip}" class="statePopulation pointer">${si(population)}</div>
         </div>
         <div data-tip="${t("Neutrals collect no taxes")}" class="stateTreasury placeholder" data-col="treasury"></div>
+        <div data-tip="${t("Neutrals keep no patrimony")}" class="stateStash placeholder" data-col="stash"></div>
         <div data-tip="${t("Neutrals collect no taxes")}" class="placeholder" data-col="burden"></div>
         <div data-tip="${t("Neutrals collect no taxes")}" class="placeholder" data-col="corruption"></div>
         ${EXPENSES.map(expense => `<div data-tip="${t("Neutrals collect no taxes")}" class="placeholder" data-col="${expense}"></div>`).join("")}
@@ -629,6 +657,7 @@ function renderStatesPage(view: TableView<State>): void {
       data-population=${population}
       data-burgs=${s.burgs}
       data-treasury="${s.economy.treasury}"
+      data-stash="${s.economy.stash ?? 0}"
       data-prosperity="${accounts?.prosperity ?? ""}"
       data-product="${accounts?.product ?? ""}"
       data-wealth="${accounts?.wealth ?? ""}"
@@ -672,6 +701,7 @@ function renderStatesPage(view: TableView<State>): void {
         <div data-tip="${populationTip}" class="statePopulation pointer">${si(population)}</div>
       </div>
       <div data-tip="${treasuryTip}" class="stateTreasury stateEconomy pointer" data-col="treasury">${getMoneySymbol()} ${si(s.economy.treasury)}</div>
+      <div data-tip="${escapeHtml(stashTip)}" class="stateEconomy stateStash pointer" data-col="stash">${stash.hasStash ? formatPrice(stash.value) : "—"}</div>
       <div data-tip="${sentences(t("Tax burden: the taxes' share of the product"), EconomyTerms.open())}" class="stateEconomy pointer" data-col="burden">${burden === null ? "—" : `${rn(burden, 1)}%`}</div>
       <div data-tip="${sentences(EconomyTerms.corruption(), t("Before administration: {{rate}}%", { rate: rn(Corruption.getStateTendency(s)) }), EconomyTerms.open())}" class="stateEconomy pointer" data-col="corruption">${rn(Corruption.ofState(s, s.economy.collected))}%</div>
       ${EXPENSES.map(expense => `<div data-tip="${sentences(EconomyTerms.expenseTip(expense), EconomyTerms.open())}" class="stateEconomy pointer" data-col="${expense}">${expenses[expense]}%</div>`).join("")}
@@ -1130,13 +1160,17 @@ function togglePercentageMode(): void {
       (sum, s) => sum + (s.i && !s.removed ? Math.abs(s.economy.treasury || 0) : 0),
       0
     );
+    const totalStash = pack.states.reduce(
+      (sum, s) => sum + (s.i && !s.removed ? Math.abs(s.economy.stash || 0) : 0),
+      0
+    );
     const world = Accounts.getWorld();
     const totalCells = pack.states.reduce((sum, s) => sum + (s.i && !s.removed ? s.cells || 0 : 0), 0);
 
     ensureEl("statesBodySection")
       .querySelectorAll<HTMLElement>(":scope > .states")
       .forEach(el => {
-        const { burgs, area, population, treasury, cells } = el.dataset;
+        const { burgs, area, population, treasury, stash, cells } = el.dataset;
         el.querySelector<HTMLElement>(".stateBurgs")!.textContent = `${rn((+burgs! / totalBurgs) * 100)}%`;
         el.querySelector<HTMLElement>(".stateCells")!.textContent = `${rn((+cells! / totalCells) * 100)}%`;
         el.querySelector<HTMLElement>(".stateArea")!.textContent = `${rn((+area! / totalArea) * 100)}%`;
@@ -1144,6 +1178,7 @@ function togglePercentageMode(): void {
           `${rn((+population! / totalPopulation) * 100)}%`;
         el.querySelector<HTMLElement>(".stateTreasury")!.textContent =
           `${rn((+treasury! / (totalTreasury || 1)) * 100, 2)}%`;
+        el.querySelector<HTMLElement>(".stateStash")!.textContent = `${rn((+stash! / (totalStash || 1)) * 100, 2)}%`;
         // product is a share of the world's; wealth and prosperity are against the world's average
         const { prosperity, product, wealth } = el.dataset;
         const share = (value: string | undefined, total: number | null | undefined) =>
