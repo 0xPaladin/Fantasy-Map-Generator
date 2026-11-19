@@ -21,6 +21,7 @@ The short note stays small. Hovering a dungeon shows only the Watabou preview; t
 | Size | Small, medium, large or huge; the number of areas and themes follows from it |
 | Alignment and safety | The dungeon's moral character and a safety tag. Safety shifts the creature danger roll |
 | Ratings | Five 1–10 summaries: Danger, Treasure, Scale, Mystery and Weirdness |
+| Treasure mix | Four shares of the hoard: Bullion, Regalia, Art and Relics |
 | Themes | One to five motifs, depending on size: greed, transformation, forbidden knowledge or cosmic alignment. Themes are prompts for connecting rooms and occupants |
 | Overview | Dungeon type, accessibility, builder, situation, condition and cause of ruin |
 | Type details | The special overview for the dungeon type: occupant and defenses, cave type, mined resource, prisoners, crypt occupant, temple dedication, laboratory focus and so on |
@@ -34,6 +35,7 @@ A profile reads as a short gazetteer entry followed by a numbered draft:
 
 * **The House of Aeloran** — medium, 14 areas, two themes: elemental magic (stars or cosmos), forbidden knowledge
 * **Ratings:** Danger 5/10 · Treasure 5/10 · Scale 5/10 · Mystery 5/10 · Weirdness 3/10
+* **Treasure mix:** Bullion 6% · Regalia 24% · Art 35% · Relics 35%
 * **Inhabitants:** 4/6 (d6 ≤ 4 each turn) · Aeloran humanoids + Outsiders (predator and prey)
 * **Overview:** neutral, unsafe, temple or sanctuary; clear and obvious; built by a sorcerer-king or queen; belowground; a decayed skeleton of a structure; being overrun by monsters
 * **Area 3:** antechamber or vestry — an echo. **Find:** evidence of a creature. **Exits:** unexplored (left, locked door)
@@ -70,7 +72,7 @@ Areas are generated as a connected graph, not a grid:
 
 An area can roll a special area such as a burial vault, underground lake, sealed cellblock or summoning circle. It can also redirect into another dungeon type's tables. Redirects stop after two levels, so the draft always terminates.
 
-Contents decide how many discoveries and dangers an area holds. Discoveries are either **features** (a pit, a slope, a ledge, a carved wall) or **finds** (supplies, a key, a body, a treasure cache). Dangers are leaders, creatures or hazards. Safety shifts the creature roll: safer dungeons lean toward ordinary animals and people, while perilous ones leave more room for monsters. Treasure is left as dice notation, such as `treasure cache (1d6+1)`, rather than converted into a made-up value.
+Contents decide how many discoveries and dangers an area holds. Discoveries are either **features** (a pit, a slope, a ledge, a carved wall) or **finds** (supplies, a key, a body, a treasure cache). Dangers are leaders, creatures or hazards. Safety shifts the creature roll: safer dungeons lean toward ordinary animals and people, while perilous ones leave more room for monsters. Treasure is left as dice notation, such as `treasure cache (1d6+1)`, rather than converted into a made-up value; each cache is also tagged with its mix category.
 
 ### Ratings
 
@@ -85,6 +87,25 @@ Five **1–10 ratings** summarize the finished draft. They are derived from what
 | **Weirdness** | Supernatural, alien or impossible content | magic, element and strange results, strange areas, type and alignment |
 
 A rating of **1** is a bumbling-commoner problem in that category; **10** is world-shattering. The ratings are the quickest way to answer “is this a cellar, a regional problem or a campaign centrepiece?”
+
+### Treasure mix
+
+The **Treasure** rating is the total value; the **treasure mix** says what form it takes. The four categories are the same ones used by the state and faction stash:
+
+| Category | Meaning | Examples |
+| --- | --- | --- |
+| **Bullion** | vaults, ingots and coin; easy to loot, low prestige | coin, silver ingots, plate, raw metal |
+| **Regalia** | crown jewels and ceremonial objects; legitimacy | crown, sceptre, seal, ceremonial sword, throne |
+| **Art** | commissioned works, museums and collections; culture and prestige | paintings, tapestries, illuminated books, sculpture |
+| **Relics** | sacred or historical objects; faith and influence | saint's relic, founder's blade, sacred vessel, dynastic standard |
+
+The shares always add up to 100%. They start from the dungeon type and then shift for the builder, lair occupant, themes and special areas. Mines and bandit lairs lean bullion; temples and crypts lean relics; strongholds lean regalia and art; laboratories lean art and relics.
+
+```text
+Treasure mix — Bullion 6% · Regalia 24% · Art 35% · Relics 35%
+```
+
+A generated `treasure cache` is tagged with one of the categories from the mix, so a chest is not just “treasure”; it is bullion, regalia, art or relics. The dice notation remains the total value. Regalia, art and relics may need the right buyer, and they can carry political or religious consequences that coin does not.
 
 ### Inhabitants
 
@@ -146,6 +167,7 @@ Marker CSV and GeoJSON exports include the full profile, including the Watabou n
 
 * The profile is system-agnostic. Creatures, hazards and treasure are prompts; hit points, damage and exact treasure values are not generated.
 * The ratings are summaries derived from the table results, not a challenge-rating formula. They describe the draft, not a guaranteed difficulty for a particular party.
+* The treasure mix describes the split of value, not item counts or prices. Regalia, art and relics may need the right buyer; the shares are not automatic coin values.
 * Inhabitant groups are top-level categories, not specific factions. Two human groups are still “humans” at this level.
 * A roll of a megadungeon is treated as a huge dungeon in this version. Nested megadungeon wings are a possible later extension.
 * The profile follows the map context at the moment it is generated. If the culture or biome changes before the first read, the profile uses the changed map; the eager marker name stays.

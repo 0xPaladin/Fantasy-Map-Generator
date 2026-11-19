@@ -89,6 +89,7 @@ describe("dungeon generated content", () => {
     expect(html).toContain(`<h3>${marker.name}</h3>`);
     expect(html).toContain("Alternate dungeon profile");
     expect(html).toContain("<strong>Danger</strong>");
+    expect(html).toContain("<strong>Treasure mix</strong>");
     expect(html).toContain("<strong>Inhabitants</strong>");
     expect(marker.generated?.html).toBe(html);
   });

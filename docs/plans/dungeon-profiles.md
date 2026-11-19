@@ -1,10 +1,10 @@
 # Plan — Lazy Alternate Dungeon Profiles in Marker Notes
 
-Updated: 2026-11-18. Status: **slices 1–5 shipped; treasure composition planned** (lazy marker
-content plumbing; the genericized dungeon data and deterministic profile/area generator; marker
+Updated: 2026-11-18. Status: **all planned slices shipped** (lazy marker content
+plumbing; the genericized dungeon data and deterministic profile/area generator; marker
 integration and the dungeon renderer; reroll, old-map backfill and exports; profile ratings and
-inhabitant groups). The treasure mix follows the four-category stash model next. Source
-procedure: *Freebooters on the Frontier 2e,
+inhabitant groups; the four-category treasure mix). Source procedure: *Freebooters on the
+Frontier 2e,
 Vol. III — Overland & Underworld* (`FotF2e - 03 Overland & Underworld.md`, dungeon procedure
 lines 1237–3083). The source is a **procedure reference only**: every table string in the
 implementation is rewritten in the generator’s own generic vocabulary. See
@@ -312,12 +312,13 @@ If every weight is zero, use equal shares.
 Rendered under the ratings:
 
 ```text
-Treasure 7/10 — Bullion 45% · Regalia 25% · Art 10% · Relics 20%
+Treasure mix — Bullion 45% · Regalia 25% · Art 10% · Relics 20%
 ```
 
-The existing `treasure cache (1d6+1)` discoveries stay the total value. When a cache is found,
-roll its category from the mix; a large hoard can split across two or three categories. This
-keeps the dice notation and adds guidance for what the chest actually contains.
+The existing `treasure cache (1d6+1)` discoveries stay the total value. Each generated cache is
+tagged with its category, chosen from the mix; a large hoard can be described as a split across
+two or three categories. This keeps the dice notation and adds guidance for what the chest
+actually contains.
 
 Examples:
 
@@ -361,6 +362,9 @@ export interface DungeonTypeTables {
 ```
 
 Plus name, size, alignment/safety, theme, overview, danger, creature and detail tables.
+
+The treasure mix adds `TREASURE_CATEGORIES`, `DUNGEON_TREASURE_WEIGHTS` and the builder, lair,
+theme and special-area modifier arrays. Shares are normalized in the generator, not in the data.
 
 Use `1dN`-sized readonly arrays wherever possible. Weighted tables get explicit
 `{ value, weight }` rows.
@@ -533,12 +537,12 @@ Each slice should leave the app working.
    - The dedicated user guide is `docs/wiki/Dungeon-generation.md`.
    - Update `docs/architecture/data-model.md` with the `generated` field.
    - Open a dungeon on an old map, verify the profile appears and the save grows only after that.
-7. **Treasure composition — planned**
+7. **Treasure composition — shipped 2026-11-18**
    - Add the four-category weights and modifiers to `src/data/dungeons.ts`.
    - Normalize to whole shares that sum to 100 and add `DungeonProfile.treasure.shares`.
-   - Render the mix with the Treasure rating; roll individual cache categories from the mix.
+   - Render the mix beneath the ratings; tag each cache from the mix.
    - Tests: share sums, type and modifier bias, zero categories, render output.
-   - Update `docs/wiki/Dungeon-generation.md` when the mix ships.
+   - Updated `docs/wiki/Dungeon-generation.md` with the mix.
 
 ## Tests
 

@@ -1900,3 +1900,69 @@ export const DUNGEON_INHABITANT_RELATIONS = [
   "competing for the same resource",
   "unaware of each other"
 ] as const;
+
+export const TREASURE_CATEGORIES = ["bullion", "regalia", "art", "relics"] as const;
+export type TreasureCategory = (typeof TREASURE_CATEGORIES)[number];
+export type TreasureShares = Record<TreasureCategory, number>;
+export type TreasureWeights = TreasureShares;
+
+export interface TreasureModifier {
+  pattern: RegExp;
+  weights: Partial<TreasureWeights>;
+}
+
+/** Base share weights by dungeon type; normalized to 100 by the generator */
+export const DUNGEON_TREASURE_WEIGHTS: Record<DungeonTypeId, TreasureWeights> = {
+  lair: { bullion: 3, regalia: 1, art: 1, relics: 1 },
+  caves: { bullion: 2, regalia: 0, art: 0, relics: 1 },
+  mine: { bullion: 6, regalia: 0, art: 0, relics: 1 },
+  prison: { bullion: 2, regalia: 1, art: 0, relics: 1 },
+  stronghold: { bullion: 3, regalia: 3, art: 2, relics: 1 },
+  crypt: { bullion: 1, regalia: 3, art: 1, relics: 4 },
+  temple: { bullion: 1, regalia: 2, art: 3, relics: 5 },
+  laboratory: { bullion: 1, regalia: 0, art: 3, relics: 3 },
+  unknown: { bullion: 1, regalia: 1, art: 1, relics: 1 }
+};
+
+export const DUNGEON_TREASURE_BUILDER_MODIFIERS: readonly TreasureModifier[] = [
+  { pattern: /otherworldly|extraplanar/i, weights: { relics: 2, art: 1 } },
+  { pattern: /wizard|mad scholar/i, weights: { art: 1, relics: 1 } },
+  { pattern: /sorcerer-king/i, weights: { regalia: 2 } },
+  { pattern: /arcane circle/i, weights: { art: 1, relics: 1 } },
+  { pattern: /religious order|cult/i, weights: { relics: 2, art: 1 } },
+  { pattern: /monarch|warlord/i, weights: { regalia: 2, bullion: 1 } },
+  { pattern: /merchant magnate/i, weights: { bullion: 2, art: 1 } }
+];
+
+export const DUNGEON_TREASURE_LAIR_MODIFIERS: readonly TreasureModifier[] = [
+  { pattern: /legendary monster|monstrous beast/i, weights: { bullion: 2 } },
+  { pattern: /lich|vampire|mummy/i, weights: { relics: 2, regalia: 1 } },
+  { pattern: /wizard|witch|sorcerer/i, weights: { art: 1, relics: 1 } },
+  { pattern: /cult|coven|secret society/i, weights: { relics: 2 } },
+  { pattern: /mercenary|bandit|smuggler/i, weights: { bullion: 2 } },
+  { pattern: /rebel|partisan/i, weights: { regalia: 1, bullion: 1 } },
+  { pattern: /fugitive/i, weights: { bullion: 1 } }
+];
+
+export const DUNGEON_TREASURE_THEME_MODIFIERS: readonly TreasureModifier[] = [
+  { pattern: /greed|avarice/i, weights: { bullion: 2 } },
+  { pattern: /pride|hubris/i, weights: { regalia: 1, art: 1 } },
+  { pattern: /devotion|sacrifice/i, weights: { relics: 2 } },
+  { pattern: /forbidden knowledge|cryptic knowledge/i, weights: { art: 1, relics: 1 } },
+  { pattern: /beauty|wonder/i, weights: { art: 2 } },
+  { pattern: /inheritance|legacy/i, weights: { regalia: 1, relics: 1 } },
+  { pattern: /war|wrath/i, weights: { regalia: 1, bullion: 1 } },
+  { pattern: /death|darkness/i, weights: { relics: 1 } }
+];
+
+export const DUNGEON_TREASURE_AREA_MODIFIERS: readonly TreasureModifier[] = [
+  { pattern: /treasure vault|mother lode|strongroom/i, weights: { bullion: 2 } },
+  { pattern: /burial vault|reliquary|shrine|hall of offerings/i, weights: { relics: 2 } },
+  { pattern: /hall of ancestors|trophy hall|audience chamber|audience room/i, weights: { regalia: 1 } },
+  { pattern: /library|archive|greenhouse|auditorium|scriptorium|gallery/i, weights: { art: 2 } },
+  {
+    pattern: /laboratory|vault of secrets|sanctum|summoning circle|vivification|preservation/i,
+    weights: { art: 1, relics: 1 }
+  },
+  { pattern: /portal|planar|gateway/i, weights: { relics: 1 } }
+];

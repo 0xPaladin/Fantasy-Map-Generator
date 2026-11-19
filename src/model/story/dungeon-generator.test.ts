@@ -91,13 +91,29 @@ describe("dungeon generator", () => {
     expect(sizes).toEqual(new Set([1, 2]));
   });
 
-  it("renders the ratings and inhabitant encounter line", () => {
+  it("normalizes treasure shares to 100 and tags every cache", () => {
+    for (let seed = 0; seed < 60; seed++) {
+      const profile = generateDungeonProfile({ ...context, seed: String(seed) });
+      const shares = Object.values(profile.treasure.shares);
+      expect(shares.every(share => Number.isInteger(share) && share >= 0)).toBe(true);
+      expect(shares.reduce((sum, share) => sum + share, 0)).toBe(100);
+
+      for (const area of profile.areas) {
+        for (const discovery of area.discoveries) {
+          if (/treasure cache/i.test(discovery)) expect(discovery).toMatch(/\[(Bullion|Regalia|Art|Relics)\]/);
+        }
+      }
+    }
+  });
+
+  it("renders the ratings, treasure mix and inhabitant encounter line", () => {
     const html = renderDungeonProfile(generateDungeonProfile(context));
     expect(html).toContain("<strong>Danger</strong>");
     expect(html).toContain("<strong>Treasure</strong>");
     expect(html).toContain("<strong>Scale</strong>");
     expect(html).toContain("<strong>Mystery</strong>");
     expect(html).toContain("<strong>Weirdness</strong>");
+    expect(html).toContain("<strong>Treasure mix</strong>");
     expect(html).toContain("<strong>Inhabitants</strong>");
     expect(html).toContain("each turn");
     expect(html).toContain("d6 ≤");

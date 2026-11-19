@@ -31,6 +31,11 @@ import {
   DUNGEON_SIZES,
   DUNGEON_THEME_CATEGORIES,
   DUNGEON_THEMES,
+  DUNGEON_TREASURE_AREA_MODIFIERS,
+  DUNGEON_TREASURE_BUILDER_MODIFIERS,
+  DUNGEON_TREASURE_LAIR_MODIFIERS,
+  DUNGEON_TREASURE_THEME_MODIFIERS,
+  DUNGEON_TREASURE_WEIGHTS,
   DUNGEON_TYPE_TABLES,
   DUNGEON_TYPES,
   type DungeonSize,
@@ -38,7 +43,12 @@ import {
   type InhabitantGroup,
   type InhabitantGroupId,
   type Safety,
-  type SpecialAreaEntry
+  type SpecialAreaEntry,
+  TREASURE_CATEGORIES,
+  type TreasureCategory,
+  type TreasureModifier,
+  type TreasureShares,
+  type TreasureWeights
 } from "@/data/dungeons";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
@@ -98,6 +108,7 @@ export interface DungeonProfile {
   overview: { label: string; value: string }[];
   ratings: DungeonRatings;
   inhabitants: DungeonInhabitants;
+  treasure: { shares: TreasureShares };
   areas: DungeonArea[];
   rumors: string[];
 }
@@ -373,6 +384,77 @@ function inhabitantLabel(group: InhabitantGroup, cultureName: string): string {
   return group.label;
 }
 
+function applyTreasureModifiers(
+  weights: TreasureWeights,
+  modifiers: readonly TreasureModifier[],
+  values: readonly string[]
+): void {
+  for (const { pattern, weights: changes } of modifiers) {
+    if (!values.some(value => pattern.test(value))) continue;
+    for (const [category, amount] of Object.entries(changes) as [TreasureCategory, number][]) {
+      weights[category] = Math.max(0, weights[category] + amount);
+    }
+  }
+}
+
+function normalizeTreasureShares(weights: TreasureWeights): TreasureShares {
+  const total = TREASURE_CATEGORIES.reduce((sum, category) => sum + Math.max(0, weights[category]), 0);
+  if (!total) return { bullion: 25, regalia: 25, art: 25, relics: 25 };
+
+  const exact = TREASURE_CATEGORIES.map((category, order) => {
+    const value = (Math.max(0, weights[category]) / total) * 100;
+    return { category, order, floor: Math.floor(value), fraction: value - Math.floor(value) };
+  });
+  const shares = {} as TreasureShares;
+  let assigned = 0;
+  for (const { category, floor } of exact) {
+    shares[category] = floor;
+    assigned += floor;
+  }
+
+  const order = [...exact].sort((a, b) => b.fraction - a.fraction || a.order - b.order);
+  for (let index = 0; index < 100 - assigned; index++) shares[order[index].category]++;
+  return shares;
+}
+
+function treasureComposition(
+  type: DungeonTypeId,
+  builder: string,
+  overview: { label: string; value: string }[],
+  themes: string[],
+  areas: DungeonArea[]
+): TreasureShares {
+  const weights = { ...DUNGEON_TREASURE_WEIGHTS[type] };
+  const occupant = overview.find(({ label }) => label === "Main occupant")?.value ?? "";
+  applyTreasureModifiers(weights, DUNGEON_TREASURE_BUILDER_MODIFIERS, [builder]);
+  applyTreasureModifiers(weights, DUNGEON_TREASURE_LAIR_MODIFIERS, [occupant]);
+  applyTreasureModifiers(weights, DUNGEON_TREASURE_THEME_MODIFIERS, themes);
+  applyTreasureModifiers(
+    weights,
+    DUNGEON_TREASURE_AREA_MODIFIERS,
+    areas.map(area => area.type)
+  );
+  return normalizeTreasureShares(weights);
+}
+
+function pickTreasureCategory(rng: Rng, shares: TreasureShares): TreasureCategory {
+  return pickWeighted(
+    rng,
+    TREASURE_CATEGORIES.filter(category => shares[category] > 0).map(category => ({
+      value: category,
+      weight: shares[category]
+    }))
+  );
+}
+
+function annotateTreasureCaches(rng: Rng, areas: DungeonArea[], shares: TreasureShares): void {
+  for (const area of areas) {
+    area.discoveries = area.discoveries.map(discovery =>
+      /treasure cache/i.test(discovery) ? `${discovery} [${capitalize(pickTreasureCategory(rng, shares))}]` : discovery
+    );
+  }
+}
+
 function rollInhabitants(
   rng: Rng,
   type: DungeonTypeId,
@@ -519,6 +601,8 @@ export function generateDungeonProfile(context: DungeonContext, salt = ""): Dung
   // A lair borrows the area layout of another kind, as the source's lair tables do.
   const areaSource = type === "lair" ? randomAreaType(rng, "lair") : type;
   const areas = buildAreas(rng, areaSource, areaCount, tokens, outcome.modifier);
+  const treasure = { shares: treasureComposition(type, builder, overview, themes, areas) };
+  annotateTreasureCaches(rng, areas, treasure.shares);
   const inhabitants = rollInhabitants(rng, type, size.size, areaCount, areas, context.cultureName);
   const ratings = rollRatings(
     size.size,
@@ -544,6 +628,7 @@ export function generateDungeonProfile(context: DungeonContext, salt = ""): Dung
     overview,
     ratings,
     inhabitants,
+    treasure,
     areas,
     rumors
   };
@@ -579,6 +664,9 @@ export function renderDungeonProfile(profile: DungeonProfile): string {
     `<strong>Mystery</strong> ${profile.ratings.mystery}/10`,
     `<strong>Weirdness</strong> ${profile.ratings.weirdness}/10`
   ].join(" · ");
+  const treasureMix = TREASURE_CATEGORIES.filter(category => profile.treasure.shares[category] > 0)
+    .map(category => `${capitalize(category)} ${profile.treasure.shares[category]}%`)
+    .join(" · ");
   const inhabitants = `<strong>Inhabitants</strong> ${profile.inhabitants.rating}/6 (d6 ≤ ${
     profile.inhabitants.rating
   } each turn) · ${profile.inhabitants.groups.map(group => e(group.label)).join(" + ")}${
@@ -592,6 +680,7 @@ export function renderDungeonProfile(profile: DungeonProfile): string {
       DUNGEON_TYPE_TABLES[profile.type].label
     )}</p>`,
     `<p>${ratings}</p>`,
+    `<p><strong>Treasure mix</strong> — ${treasureMix}</p>`,
     `<p>${inhabitants}</p>`,
     `<h4>Overview</h4><ul>${overview}</ul>`,
     `<h4>Themes</h4><ul>${themes}</ul>`,

@@ -26,6 +26,43 @@ describe("dungeon table sizes", () => {
     expect(D.DUNGEON_HUMANOIDS).toHaveLength(10);
     expect(D.DUNGEON_INHABITANT_GROUPS).toHaveLength(10);
     expect(D.DUNGEON_INHABITANT_RELATIONS).toHaveLength(6);
+    expect(D.TREASURE_CATEGORIES).toHaveLength(4);
+  });
+
+  it("has treasure weights for every dungeon type and non-global modifier patterns", () => {
+    for (const [type, weights] of Object.entries(D.DUNGEON_TREASURE_WEIGHTS)) {
+      expect(Object.keys(weights).sort(), type).toEqual([...D.TREASURE_CATEGORIES].sort());
+      expect(
+        Object.values(weights).every(weight => weight >= 0),
+        type
+      ).toBe(true);
+      expect(
+        Object.values(weights).some(weight => weight > 0),
+        type
+      ).toBe(true);
+    }
+
+    const modifiers = [
+      ...D.DUNGEON_TREASURE_BUILDER_MODIFIERS,
+      ...D.DUNGEON_TREASURE_LAIR_MODIFIERS,
+      ...D.DUNGEON_TREASURE_THEME_MODIFIERS,
+      ...D.DUNGEON_TREASURE_AREA_MODIFIERS
+    ];
+    expect(modifiers.length).toBeGreaterThan(0);
+    for (const modifier of modifiers) expect(modifier.pattern.global).toBe(false);
+  });
+
+  it("biases the treasure mix by type and modifier", () => {
+    expect(D.DUNGEON_TREASURE_WEIGHTS.mine.bullion).toBeGreaterThan(D.DUNGEON_TREASURE_WEIGHTS.mine.relics);
+    expect(D.DUNGEON_TREASURE_WEIGHTS.temple.relics).toBeGreaterThan(D.DUNGEON_TREASURE_WEIGHTS.temple.bullion);
+    expect(D.DUNGEON_TREASURE_WEIGHTS.stronghold.regalia).toBeGreaterThan(0);
+
+    const greed = D.DUNGEON_TREASURE_THEME_MODIFIERS.find(modifier => modifier.pattern.test("greed and avarice"));
+    expect(greed?.weights.bullion).toBe(2);
+    const religious = D.DUNGEON_TREASURE_BUILDER_MODIFIERS.find(modifier =>
+      modifier.pattern.test("a religious order or cult")
+    );
+    expect(religious?.weights.relics).toBe(2);
   });
 
   it("has weighted inhabitant groups for every dungeon type", () => {
