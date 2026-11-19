@@ -10,6 +10,9 @@ lines 1237–3083). The source is a **procedure reference only**: every table st
 implementation is rewritten in the generator’s own generic vocabulary. See
 [Licensing and generic vocabulary](#licensing-and-generic-vocabulary).
 
+Companion: [ruin-profiles.md](ruin-profiles.md) extends the same lazy-content model to tiered,
+multi-site ruins.
+
 ## Problem
 
 Dungeon markers are the thinnest stories on the map. Every one is named “Dungeon” and its note
