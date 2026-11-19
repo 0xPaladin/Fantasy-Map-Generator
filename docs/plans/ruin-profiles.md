@@ -1,10 +1,10 @@
 # Plan — Ruin Profiles and Multi-Site Ruins
 
-Updated: 2026-11-18. Status: **phase 1 shipped** (shared site plumbing: generated metadata,
-shared treasure/inhabitant types, generic reroll, placement support and the ruin heading).
-Phase 2, the single-site ruin profile, is next. Builds on the shipped dungeon profile
-infrastructure: lazy marker content, the full/short notes split, reroll and exports, the five
-1–10 ratings, inhabitant groups and the four-category treasure mix. The dungeon plan is
+Updated: 2026-11-18. Status: **phases 1–2 shipped** (shared site plumbing; the single-site
+ruin data, deterministic generator, renderer and lazy `ruin` kind). Phase 3, tiered multi-site
+ruins and sub-dungeons, is next. Builds on the shipped dungeon profile infrastructure: lazy
+marker content, the full/short notes split, reroll and exports, the five 1–10 ratings,
+inhabitant groups and the four-category treasure mix. The dungeon plan is
 [dungeon-profiles.md](dungeon-profiles.md).
 
 ## Problem
@@ -353,10 +353,13 @@ Before the ruin generator:
    - Extend `Markers.place`/`MarkerDetails` for generated content.
    - Add `ruin` heading.
    - Tests: existing dungeon tests still pass; generic reroll works for a fake kind.
-2. **Single-site ruin profile**
+2. **Single-site ruin profile — shipped 2026-11-18**
    - `src/data/ruins.ts` with tier/origin/fall/present/zone/remains/secrets/rumors tables.
    - `src/model/story/ruin-generator.ts` for outpost/village/town with one site or no dungeon.
    - Ratings, inhabitants, treasure mix and renderer.
+   - `src/model/story/ruin-marker.ts` registers the lazy `ruin` kind.
+   - Existing ruin markers can backfill through the generic reroll; automatic placement and
+     history tier wiring remain phase 4.
    - Tests: determinism, tier/site counts, empty inhabitants, treasure sum, escaping.
 3. **Tiered multi-site ruins and sub-dungeons**
    - City/capital site counts.

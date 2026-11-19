@@ -85,3 +85,12 @@ it("hides the generated reroll for other marker types", () => {
   MarkersEditor.open(7);
   expect(document.getElementById("markerProfileReroll")).toBeNull();
 });
+
+it("offers the generated reroll for ruins", () => {
+  document.body.innerHTML = '<div id="dialogs"></div><svg><svg id="marker8"></svg></svg>';
+  options.app.mode = null;
+  vi.stubGlobal("pack", { markers: [{ i: 8, type: "ruins", name: "Old Ruins", cell: 0, x: 0, y: 0 }] });
+
+  MarkersEditor.open(8);
+  expect(document.getElementById("markerProfileReroll")).not.toBeNull();
+});

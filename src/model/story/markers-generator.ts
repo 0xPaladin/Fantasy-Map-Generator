@@ -59,6 +59,7 @@ import {
   requireGeneratedRecipe
 } from "@/model/story/marker-content";
 import { Notes } from "@/model/story/notes";
+import "@/model/story/ruin-marker";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
 import type { Good } from "@/types/economy";
 import type { PackedGraph } from "@/types/packed-graph";
