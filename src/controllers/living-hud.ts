@@ -12,7 +12,6 @@ import { SOVEREIGN_DEVELOPMENT } from "@/data/living-eras";
 import { PROJECT_BY_ID, projectName } from "@/data/living-projects";
 import { getTroubleDef } from "@/data/living-troubles";
 import { currentContent } from "@/data/roster-store";
-import { SCHEME_GOAL_BY_ID, SCHEME_VERB_LABELS } from "@/data/scheme-goals";
 import { Accounts } from "@/model/economy/accounts";
 import { DEAL_KINDS, Deals } from "@/model/economy/deals";
 import { Output } from "@/model/economy/output";
@@ -30,7 +29,7 @@ import { Schemes } from "@/model/story/schemes-generator";
 import { getMoneySymbol } from "@/model/units";
 import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
-import type { HistoricalFigure, HistRef } from "@/types/history";
+import type { HistoricalFigure } from "@/types/history";
 import type {
   FiscalLock,
   HeroDoctrine,
@@ -41,9 +40,10 @@ import type {
   StatePolitySim
 } from "@/types/living";
 import { SEASON_NAMES } from "@/types/living";
-import type { Scheme, SchemeStepStatus } from "@/types/schemes";
+import type { Scheme } from "@/types/schemes";
 import { dialogState } from "@/ui/dialog/state";
 import { zoomTo } from "@/ui/map/zoom";
+import { renderSchemeCard } from "@/ui/schemes-card";
 import { escapeHtml, findEl, getPointer } from "@/utils";
 import { t } from "@/utils/i18n";
 
@@ -922,42 +922,6 @@ function renderStateCard(stateId: number): string {
     </div>`;
 }
 
-const SCHEME_STATUS_ICONS: Record<SchemeStepStatus, string> = {
-  done: "✓",
-  active: "▶",
-  pending: "·",
-  failed: "✗"
-};
-
-function schemeTargetLabel(ref: HistRef): string {
-  switch (ref.kind) {
-    case "figure":
-      return pack.history?.figures?.find(figure => figure.i === ref.id)?.name ?? `Figure ${ref.id}`;
-    case "state":
-      return pack.states?.[ref.id]?.name ?? `State ${ref.id}`;
-    case "religion":
-      return pack.religions?.[ref.id]?.name ?? `Religion ${ref.id}`;
-    case "faction":
-      return pack.factions?.find(faction => faction.i === ref.id)?.name ?? `Faction ${ref.id}`;
-    case "burg":
-      return pack.burgs?.[ref.id]?.name ?? `Burg ${ref.id}`;
-    case "realm":
-      return pack.history?.realms?.find(realm => realm.i === ref.id)?.name ?? `Realm ${ref.id}`;
-    case "culture":
-      return pack.cultures?.[ref.id]?.name ?? `Culture ${ref.id}`;
-    case "polity":
-      return pack.history?.polities?.find(polity => polity.id === ref.id)?.name ?? `Polity ${ref.id}`;
-    default:
-      return `${ref.kind} ${ref.id}`;
-  }
-}
-
-function schemeMastermindLabel(ref: HistRef): string {
-  const prefix =
-    ref.kind === "state" ? "State" : ref.kind === "religion" ? "Faith" : ref.kind === "faction" ? "Faction" : ref.kind;
-  return `${prefix}: ${schemeTargetLabel(ref)}`;
-}
-
 function renderSchemesCard(): string {
   const schemes = [...Schemes.ensureSchemes()].sort((a, b) => {
     const rank = (scheme: Scheme) => (scheme.status === "active" ? 0 : scheme.status === "collapsed" ? 1 : 2);
@@ -970,56 +934,7 @@ function renderSchemesCard(): string {
   const active = schemes.filter(scheme => scheme.status === "active").length;
   return `<div class="livingInspectorTitle">Villain Schemes</div>
     <div class="livingMuted">${active} active · ${schemes.length - active} closed · god view</div>
-    ${schemes.map(renderSchemeEntry).join("")}`;
-}
-
-function renderSchemeEntry(scheme: Scheme): string {
-  const villain = pack.history?.figures?.find(figure => figure.i === scheme.villainFigure);
-  const goal = SCHEME_GOAL_BY_ID[scheme.goal];
-  const template = goal?.templates.find(entry => entry.id === scheme.template)?.label ?? scheme.template;
-  const active = scheme.steps.find(step => step.status === "active");
-  const done = scheme.steps.filter(step => step.status === "done").length;
-  const status =
-    scheme.status === "active"
-      ? `${done}/${scheme.steps.length} steps`
-      : scheme.status === "complete"
-        ? "complete"
-        : "collapsed";
-  const exposed = scheme.exposed ? '<span class="livingBadge" style="background:#a33d3d">exposed</span>' : "";
-  const steps = scheme.steps
-    .map((step, index) => {
-      const label = SCHEME_VERB_LABELS[step.verb] ?? step.verb;
-      const targets = step.targets.map(schemeTargetLabel).filter(Boolean).join(", ");
-      const progress =
-        step.progress !== undefined ? ` · ${step.progress} season${step.progress === 1 ? "" : "s"} left` : "";
-      const attempts = step.attempts ? ` · ${step.attempts} push${step.attempts === 1 ? "" : "es"}` : "";
-      return `<li${step.status === "active" ? ' style="font-weight:bold;"' : step.status === "done" ? ' style="opacity:0.7;"' : ""}>${SCHEME_STATUS_ICONS[step.status]} ${index + 1}. ${escapeHtml(label)}${targets ? ` — ${escapeHtml(targets)}` : ""}${progress}${attempts}</li>`;
-    })
-    .join("");
-
-  const disabled = scheme.status === "active" ? "" : " disabled";
-  const exposeDisabled = scheme.status === "active" && !scheme.exposed ? "" : " disabled";
-  const secrecy = Math.max(0, Math.min(100, Math.round(scheme.secrecy)));
-  return `<div class="livingSection">
-    <div class="livingSectionTitle">
-      <button type="button" class="livingLinkBtn" data-open="figure" data-id="${scheme.villainFigure}" title="Open the villain's character sheet">${escapeHtml(villain?.name ?? "Unknown hand")}</button>
-      ${exposed}
-    </div>
-    <div>${escapeHtml(goal?.label ?? scheme.goal)} <span class="livingMuted">· ${escapeHtml(template)}</span></div>
-    <div class="livingMuted">${escapeHtml(schemeMastermindLabel(scheme.mastermind))} · ${status}${active ? ` · now: ${escapeHtml(SCHEME_VERB_LABELS[active.verb] ?? active.verb)}` : ""}</div>
-    <div class="livingMeterRow" title="Secrecy ${secrecy}%${scheme.exposed ? " (exposed)" : ""}">
-      <span>Secrecy</span>
-      <div class="livingBar${scheme.exposed ? " danger" : ""}"><i style="width:${secrecy}%"></i></div>
-      <span>${scheme.exposed ? "exposed" : `${secrecy}%`}</span>
-    </div>
-    <ul>${steps}</ul>
-    <div class="livingButtons">
-      <button type="button" data-god="scheme-force" data-scheme="${scheme.i}"${disabled}>Force step</button>
-      <button type="button" data-god="scheme-expose" data-scheme="${scheme.i}"${exposeDisabled}>Expose</button>
-      <button type="button" data-god="scheme-abort" data-scheme="${scheme.i}"${disabled}>Abort</button>
-      <button type="button" data-god="scheme-reroll" data-scheme="${scheme.i}"${disabled}>Re-roll</button>
-    </div>
-  </div>`;
+    ${schemes.map(renderSchemeCard).join("")}`;
 }
 
 function renderRuler(ruler: HistoricalFigure | undefined, _age?: number): string {

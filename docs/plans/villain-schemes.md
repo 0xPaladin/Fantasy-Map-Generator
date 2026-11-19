@@ -1,6 +1,6 @@
 # Plan — Villain Masterminds: A Roster of Villains and Their World-Altering Schemes
 
-**Status:** In progress — Phases 1–4 delivered
+**Status:** Delivered
 **Goal:** On map generation, a **mastermind process** elects 3–5 villains from the people and powers already on the map (state rulers, cult hierarchs, living gods, factions, lair masters), materializes them as figures in `pack.history.figures`, and compiles for each a **scheme**: one of seven generic goals instantiated with 8–12 steps whose targets — relics, victims, provinces, ruins — are all drawn from the map. Schemes advance on the Living World tick by hybrid push (villains spend treasury to work the active step through existing systems) and world-match (a step completes when the world reaches its predicate), opposed by adventurers, suppression, heroes and each other. Completing a scheme alters the world through machinery that already exists: new religions, successions, conquests, emergent states, blights.
 
 ---
@@ -194,3 +194,11 @@ Stored on `pack.history.schemes` (and `pack.history.relics`) beside `figures`; `
 - **Living API**: `forceSchemeStep`, `exposeScheme`, `abortScheme`, `rerollScheme`; `Schemes.reroll` and `clearSchemePushLine` support the tools, and the push expense line is cleared before a re-roll.
 - **Tests**: HUD cases for the schemes view, the villain link and all four actions; unit cases for reroll and for force/expose/abort. Full suite **3807/3807**; scenarios **50/50**; `tsc --noEmit` clean.
 - **Wiki**: the Living World page now names the 🗡 schemes view and its actions.
+
+### Phase 5 — docs, the Villains wiki and the Characters column (delivered)
+
+- **Villains wiki**: [`docs/wiki/Villains.md`](../wiki/Villains.md) covers the election pools and scoring, all seven goals and end states, the step grammar with `progress` and `attempts`, relic seeding, the seasonal push with its one-season daily expense line, exposure/retargeting/succession, the god view and the Characters column. Linked from `Home.md`, `Characters.md`, `Living-World.md` and `Changelog.md`.
+- **Characters editor**: a sortable **Villain** column shows `Yes`/`No`. **Yes** opens the new `SchemesOverview` stable dialog (`src/controllers/schemes-overview.ts`), which renders the scheme card and supports Force/Expose/Abort/Re-roll, plus a link back to the character sheet (`CharactersEditor.openDetails`).
+- **Shared card**: the scheme markup moved to `src/ui/schemes-card.ts`, used by both the Living World god view and the Characters dialog.
+- **Locales**: `Villain`, `Yes` and `Open this villain's scheme` added to the English catalog.
+- **Tests**: Characters editor marks villains and opens the scheme sheet; `SchemesOverview` renders the card and runs its actions. Full suite **3809/3809**; scenarios **50/50**; `tsc --noEmit` clean; Biome clean. Assistant context regenerated.

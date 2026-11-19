@@ -1,8 +1,11 @@
 // Characters editor: the table and the sheet dialog. See docs/plans/characters.md.
+
+import { Controllers } from "@/controllers";
 import { ACTION_DEFS, ACTIONS, DICE, heroStartingPackage } from "@/data/character-actions";
 import { ALIGNMENTS, type Alignment, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { HERO_ARCHETYPE_IDS, HERO_ARCHETYPES } from "@/data/hero-archetypes";
 import { Characters } from "@/model/society/characters";
+import { Schemes } from "@/model/story/schemes-generator";
 import { Layers } from "@/renderers/layers";
 import { Csv } from "@/services/io/csv";
 import type { CharacterStatus, HeroCondition, HeroSheet } from "@/types/character";
@@ -10,6 +13,7 @@ import type { ActionId, Die } from "@/types/character-actions";
 import type { FactionRelation } from "@/types/factions";
 import type { Character, HistoricalFigure, HistoricalRole, HistRefKind } from "@/types/history";
 import type { HeroArchetypeId } from "@/types/living";
+import type { Scheme } from "@/types/schemes";
 import { Dialog } from "@/ui/dialog/dialog";
 import { bindColumnSorting, sortDataByColumns } from "@/ui/dialog/sorting";
 import { dialogState } from "@/ui/dialog/state";
@@ -80,6 +84,7 @@ const columns: EditorColumn<HistoricalFigure>[] = [
   { key: "role", label: t("Role"), width: "16em", sortBy: roleSummary, sortType: "alpha" },
   { key: "faction", label: t("Faction"), width: "11em", sortBy: factionSummary, sortType: "alpha" },
   { key: "hero", label: t("Hero"), width: "4em", sortBy: c => (c.hero ? 1 : 0), sortType: "number" },
+  { key: "villain", label: t("Villain"), width: "5em", sortBy: c => (villainScheme(c) ? 1 : 0), sortType: "number" },
   { key: "details", width: "1.2em" },
   { key: "remove", width: "1.2em", permanent: true }
 ];
@@ -96,6 +101,12 @@ function currentYear(): number {
 
 function cultureName(character: HistoricalFigure): string {
   return pack.cultures?.[character.culture]?.name ?? `Culture ${character.culture}`;
+}
+
+/** The character's living scheme, preferring an active one. */
+function villainScheme(character: HistoricalFigure): Scheme | undefined {
+  const schemes = Schemes.ensureSchemes().filter(scheme => scheme.villainFigure === character.i);
+  return schemes.find(scheme => scheme.status === "active") ?? schemes[0];
 }
 
 function statusOf(character: HistoricalFigure): string {
@@ -315,6 +326,10 @@ function renderRow(character: HistoricalFigure): string {
   const hero = character.hero
     ? `<span class="badge" data-tip="${escapeHtml(heroSummary(character))}">${t("Hero")}</span>`
     : "—";
+  const scheme = villainScheme(character);
+  const villain = scheme
+    ? `<button type="button" data-action="scheme" data-scheme="${scheme.i}" data-tip="${t("Open this villain's scheme")}" style="border:none;background:none;padding:0;color:#3d5a99;text-decoration:underline;cursor:pointer;font-size:inherit;">${t("Yes")}</button>`
+    : `<span style="color:#888;">${t("No")}</span>`;
   const traits = traitSummary(character) || "—";
   const locate = character.cell !== undefined ? "icon-dot-circled" : "";
   const removedClass = character.removed ? " removed" : "";
@@ -342,6 +357,7 @@ function renderRow(character: HistoricalFigure): string {
       <span data-col="role">${escapeHtml(role)}</span>
       <span data-col="faction">${escapeHtml(faction)}</span>
       <span data-col="hero" style="text-align: center;">${hero}</span>
+      <span data-col="villain" style="text-align: center;">${villain}</span>
       <div data-col="details" class="pointer icon-pencil" data-action="details" data-tip="${t("Open character sheet")}"></div>
       <div data-col="remove" class="pointer ${removeIcon}" data-action="${removeAction}" data-tip="${removeTip}"></div>
     </div>`;
@@ -372,6 +388,9 @@ function handleTableClick(event: MouseEvent): void {
   } else if (target.dataset.action === "restore") {
     Characters.restore(character.i);
     refreshCharacters();
+  } else if (target.dataset.action === "scheme") {
+    const schemeId = Number(target.dataset.scheme ?? 0);
+    if (schemeId) void Controllers.SchemesOverview.open({ schemeId });
   }
 }
 

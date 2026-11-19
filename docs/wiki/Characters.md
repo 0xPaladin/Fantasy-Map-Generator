@@ -14,6 +14,8 @@ A background character carries identity and story, but no stat block:
 * last known cell, captor, tags and notes;
 * a relationship matrix toward factions, states and other characters.
 
+The Characters table adds a **Villain** column: **Yes** marks an elected mastermind, and clicking it opens their scheme sheet. See [Villains](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Villains).
+
 A background character can be promoted to a hero at any time.
 
 ### The hero sheet
