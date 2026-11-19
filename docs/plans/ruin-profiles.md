@@ -6,7 +6,8 @@ capped sub-dungeons; random placement, history fall markers and cleared danger m
 data-model and migration docs). Builds on the shipped dungeon profile infrastructure: lazy marker
 content, the full/short notes split, reroll and exports, the five 1–10 ratings, inhabitant groups
 and the four-category treasure mix. The dungeon plan is
-[dungeon-profiles.md](dungeon-profiles.md).
+[dungeon-profiles.md](dungeon-profiles.md); the cave, disturbed-burial and necropolis plan is
+[cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md).
 
 ## Problem
 

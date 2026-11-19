@@ -11,7 +11,8 @@ implementation is rewritten in the generator’s own generic vocabulary. See
 [Licensing and generic vocabulary](#licensing-and-generic-vocabulary).
 
 Companion: [ruin-profiles.md](ruin-profiles.md) extends the same lazy-content model to tiered,
-multi-site ruins.
+multi-site ruins; [cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md) plans
+the natural and burial site kinds.
 
 ## Problem
 
