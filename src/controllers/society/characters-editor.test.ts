@@ -6,6 +6,9 @@ vi.mock("@/renderers/layers", () => ({
 }));
 vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
 
+const { schemesOpen } = vi.hoisted(() => ({ schemesOpen: vi.fn() }));
+vi.mock("@/controllers", () => ({ Controllers: { SchemesOverview: { open: schemesOpen } } }));
+
 import {
   CHARACTER_CSV_COLUMNS,
   CharactersEditor,
@@ -72,6 +75,34 @@ describe("CharactersEditor", () => {
     expect(body.innerHTML).toContain("Hero");
     expect(document.querySelector("#charactersFooterCount")?.textContent).toBe("2");
     expect(document.querySelector("#charactersFooterHeroes")?.textContent).toBe("1");
+  });
+
+  it("marks villains and opens their scheme", () => {
+    const villain = Characters.add({ name: "Nerath", culture: 1, birth: 900, manual: true });
+    Characters.add({ name: "Bran", culture: 1, birth: 950, manual: true });
+    pack.history!.schemes = [
+      {
+        i: 3,
+        goal: "divine_ascension",
+        mastermind: { kind: "religion", id: 1 },
+        villainFigure: villain.i,
+        template: "holy_crusade",
+        secrecy: 40,
+        steps: [],
+        status: "active",
+        startedYear: 990
+      }
+    ] as never;
+
+    CharactersEditor.open();
+
+    const header = document.querySelector('#charactersEditorHeader [data-col="villain"]');
+    expect(header?.textContent).toContain("Villain");
+
+    const row = document.querySelector(`#characterRow-${villain.i}`)!;
+    expect(row.querySelector('[data-col="villain"]')?.textContent).toContain("Yes");
+    (row.querySelector('[data-action="scheme"]') as HTMLButtonElement).click();
+    expect(schemesOpen).toHaveBeenCalledWith({ schemeId: 3 });
   });
 
   it("orders the columns and names each role's target", () => {

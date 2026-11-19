@@ -32,6 +32,7 @@ import { Population } from "@/model/society/population-generator";
 import { Religions } from "@/model/society/religions-generator";
 import { Journeys } from "@/model/story/journeys/journeys-generator";
 import { Markers } from "@/model/story/markers-generator";
+import { Schemes } from "@/model/story/schemes-generator";
 import type { GridGraph } from "@/types/grid-graph";
 import { Coordinates } from "./physical/coordinates";
 
@@ -80,6 +81,7 @@ const generationPipelineSteps = [
   { id: "addedLabels", run: () => AddedLabels.initiate() },
   { id: "journeys", run: () => Journeys.generate() },
   { id: "history", run: () => Chronicle.generate() },
+  { id: "schemes", run: () => Schemes.generate() },
   { id: "legends", run: () => Legends.initiate() }
 ] as const satisfies PipelineStep<string, GenerationContext>[];
 
@@ -129,7 +131,8 @@ const erasePipelineSteps = [
   { id: "markers", run: () => Markers.generate() },
   { id: "factions", run: () => Factions.generate() },
   { id: "zones", run: () => Zones.generate() },
-  { id: "history", run: () => Chronicle.generate() }
+  { id: "history", run: () => Chronicle.generate() },
+  { id: "schemes", run: () => Schemes.generate() }
 ] as const satisfies PipelineStep<GenerationPipelineStepId, EraseContext>[];
 
 type EraseContext = { erosion: boolean };

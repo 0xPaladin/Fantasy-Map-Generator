@@ -522,4 +522,16 @@ describe("Faction personnel requirements and node host adjustments (faction-pers
     expect(wildImpact.goldDaily).toBe(0); // no host burg to adjust
     expect(wildImpact.stabilityDelta).toBe(0); // no host state to adjust
   });
+
+  it("counts sim-owned daily lines in adjustments and the day balance", () => {
+    const base = computeFactionEconomy(faction(), [], 0);
+    const charged = computeFactionEconomy(
+      faction({ simAdjustments: [{ name: "Scheme 1: Divine Ascension", value: -3 }] }),
+      [],
+      0
+    );
+    expect(charged.adjustmentsDaily).toBeCloseTo(base.adjustmentsDaily - 3, 2);
+    expect(charged.collectedDaily).toBeCloseTo(base.collectedDaily - 3, 2);
+    expect(charged.dayBalance).toBeCloseTo(base.dayBalance - 3, 2);
+  });
 });
