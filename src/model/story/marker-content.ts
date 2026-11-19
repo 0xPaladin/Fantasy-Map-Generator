@@ -32,7 +32,10 @@ const HEADINGS: Record<string, string> = {
   ruin: "Ruin profile",
   cave: "Cave profile",
   burial: "Burial profile",
-  necropolis: "Necropolis profile"
+  necropolis: "Necropolis profile",
+  beast: "Beast profile",
+  monster: "Monster profile",
+  bandit: "Bandit profile"
 };
 
 /** Register one generated content kind and the marker types that create it */

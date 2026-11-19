@@ -1,6 +1,7 @@
 # Plan — Beast, Monster and Bandit Profiles
 
-Updated: 2026-11-19. Status: **planned**. Companions:
+Updated: 2026-11-19. Status: **step 1 shipped** (creature/bandit data tables, shared context/core
+types and headings). Steps 2–6 remain. Companions:
 [dungeon-profiles.md](dungeon-profiles.md), [ruin-profiles.md](ruin-profiles.md) and
 [cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md). This plan extends the
 same lazy generated-content model to the living threat markers:
@@ -272,9 +273,9 @@ the three generated kinds and renderers should remain distinct.
 
 ## Build order
 
-1. **Data and shared creature plumbing**
+1. **Data and shared creature plumbing — shipped 2026-11-19**
    - Creature and bandit tables, loot-die/wealth/loot-context tables, curio prompts.
-   - Add headings and shared context/core types; each kind registers when its generator lands.
+   - Added headings and shared context/core types; each kind registers when its generator lands.
    - Tests: table completeness, weights, no banned source terms, heading entries.
 2. **Beast profiles**
    - Beast generator, renderer, lazy kind, random placement meta for lake/sea monsters.
