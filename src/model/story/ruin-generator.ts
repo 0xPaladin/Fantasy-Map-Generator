@@ -1,5 +1,6 @@
-// Deterministic single-site ruin profiles over data/ruins.ts
+// Deterministic ruin profiles over data/ruins.ts
 import type { Alignment } from "@/data/culture-traits";
+import type { DungeonTypeId } from "@/data/dungeons";
 import {
   INHABITANT_GROUPS,
   INHABITANT_RELATIONS,
@@ -23,6 +24,7 @@ import {
   RUIN_REMAINS,
   RUIN_RUMORS,
   RUIN_SECRETS,
+  RUIN_SITE_TYPES,
   RUIN_SURFACE_STATES,
   RUIN_TIER_EMPTY_CHANCE,
   RUIN_TIER_INHABITANT_BASE,
@@ -30,9 +32,11 @@ import {
   RUIN_ZONE_CONDITIONS,
   type RuinOrigin,
   type RuinSiteKind,
+  type RuinSiteType,
   type RuinTier
 } from "@/data/ruins";
 import { TREASURE_CATEGORIES, type TreasureShares } from "@/data/treasure";
+import { type DungeonProfile, generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
 import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
 import { applyTreasureModifiers, normalizeTreasureShares, pickTreasureCategory } from "@/model/story/treasure";
 import { createRng, type Rng } from "@/utils/rng";
@@ -61,6 +65,9 @@ export interface RuinSite {
   name: string;
   kind: RuinSiteKind;
   dungeon: boolean;
+  dungeonSeed?: string;
+  dungeonType?: DungeonTypeId;
+  dungeonProfile?: DungeonProfile;
   summary: string;
 }
 
@@ -159,6 +166,77 @@ function rollTreasure(origin: RuinOrigin, cause: string, looted?: boolean): Trea
   return normalizeTreasureShares(weights);
 }
 
+function siteName(rng: Rng, type: RuinSiteType): string {
+  const adjective = pick(rng, RUIN_NAME_PARTS.adjectives);
+  return type.kind === "other" ? `The ${adjective} Site` : `The ${adjective} ${type.label}`;
+}
+
+function rollSites(
+  rng: Rng,
+  tier: (typeof RUIN_TIERS)[number],
+  origin: RuinOrigin,
+  context: RuinContext,
+  originalName: string,
+  salt: string
+): RuinSite[] {
+  const siteCount = rng.int(tier.sites[0], tier.sites[1]);
+  const dungeonTarget = Math.min(siteCount, rng.int(tier.dungeonSites[0], tier.dungeonSites[1]));
+  const main = RUIN_SITE_TYPES.find(type => type.kind === origin.siteKind) ?? RUIN_SITE_TYPES[0];
+  const chosen = [main];
+  const pool = RUIN_SITE_TYPES.filter(type => type.kind !== main.kind);
+
+  while (chosen.length < siteCount && pool.length) {
+    const dungeonChosen = chosen.filter(type => Boolean(type.dungeonType)).length;
+    const candidates = dungeonChosen < dungeonTarget ? pool.filter(type => Boolean(type.dungeonType)) : pool;
+    const source = candidates.length ? candidates : pool;
+    const type = source[rng.int(0, source.length - 1)];
+    pool.splice(pool.indexOf(type), 1);
+    chosen.push(type);
+  }
+
+  let dungeonsLeft = dungeonTarget;
+  return chosen.map((type, index) => {
+    const dungeon = Boolean(type.dungeonType) && dungeonsLeft > 0;
+    if (dungeon) dungeonsLeft--;
+
+    const name = index === 0 ? originalName : siteName(rng, type);
+    const dungeonSeed = dungeon
+      ? `${context.seed}:ruin-site:${context.cell}:${salt ? `${salt}:` : ""}${index + 1}`
+      : undefined;
+    const dungeonProfile =
+      dungeon && type.dungeonType
+        ? generateDungeonProfile(
+            {
+              seed: context.seed,
+              cell: context.cell,
+              cultureName: context.cultureName,
+              alignment: context.alignment,
+              biomeName: context.biomeName,
+              height: context.height,
+              name
+            },
+            dungeonSeed,
+            {
+              type: type.dungeonType,
+              size: tier.scale >= 8 ? "medium" : "small",
+              name
+            }
+          )
+        : undefined;
+
+    return {
+      id: `${type.kind}-${index + 1}`,
+      name,
+      kind: type.kind,
+      dungeon,
+      dungeonSeed,
+      dungeonType: dungeon ? type.dungeonType : undefined,
+      dungeonProfile,
+      summary: `A ruined ${type.label.toLowerCase()} within the complex.`
+    };
+  });
+}
+
 function inhabitantLabel(group: InhabitantGroup, cultureName: string): string {
   const culture = cultureName && cultureName !== "the local folk" ? cultureName : "";
   if (group.id === "humans") return culture ? `${culture} humans` : group.label;
@@ -238,12 +316,14 @@ function rollRatings(
   inhabitants: SiteInhabitants,
   treasure: TreasureShares,
   secrets: string[],
+  dungeonSites: number,
   looted?: boolean
 ): SiteRatings {
   const dangerZones = zones.filter(zone => zone.danger).length;
   const danger = clamp(
     2 +
       Math.min(3, dangerZones) +
+      Math.min(2, dungeonSites) +
       (inhabitants.rating >= 4 ? 1 : 0) +
       (/vestiges|skeletal|partial ruin|collapsed|buried/i.test(condition) ? 1 : 0) +
       (/occupied|bandit|haunt/i.test(surfaceState) ? 1 : 0),
@@ -266,6 +346,7 @@ function rollRatings(
       (hidden ? 2 : 0) +
       (old ? 1 : 0) +
       Math.min(2, secrets.length) +
+      (dungeonSites ? 1 : 0) +
       (origin.id === "unknown" || origin.id === "temple" || origin.id === "academy" ? 1 : 0),
     1,
     10
@@ -317,6 +398,8 @@ export function generateRuinProfile(context: RuinContext, salt = ""): RuinProfil
     new Set(Array.from({ length: rng.int(2, 3) }, () => fill(pick(rng, RUIN_REMAINS), tokens)))
   );
   const rumors = Array.from(new Set(Array.from({ length: rng.int(2, 3) }, () => fill(pick(rng, RUIN_RUMORS), tokens))));
+  const sites = rollSites(rng, tier, origin, context, originalName, salt);
+  const dungeonSites = sites.filter(site => site.dungeon).length;
   const ratings = rollRatings(
     tier,
     origin,
@@ -329,6 +412,7 @@ export function generateRuinProfile(context: RuinContext, salt = ""): RuinProfil
     inhabitants,
     treasure.shares,
     secrets,
+    dungeonSites,
     context.looted
   );
 
@@ -349,15 +433,7 @@ export function generateRuinProfile(context: RuinContext, salt = ""): RuinProfil
     ratings,
     inhabitants,
     treasure,
-    sites: [
-      {
-        id: "main",
-        name: originalName,
-        kind: origin.siteKind,
-        dungeon: false,
-        summary: `${capitalize(origin.label)} at the heart of the site.`
-      }
-    ],
+    sites,
     zones,
     remains,
     secrets,
@@ -396,8 +472,12 @@ export function renderRuinProfile(profile: RuinProfile): string {
     )
     .join("");
   const remains = profile.remains.map(item => `<li>${e(item)}</li>`).join("");
-  const secrets = profile.secrets.map(item => `<li>${e(item)}</li>`).join("");
-  const rumors = profile.rumors.map(item => `<li>${e(item)}</li>`).join("");
+  const secretList = profile.secrets.map(item => `<li>${e(item)}</li>`).join("");
+  const rumorList = profile.rumors.map(item => `<li>${e(item)}</li>`).join("");
+  const dungeons = profile.sites
+    .filter(site => site.dungeonProfile)
+    .map(site => `<h4>${e(site.name)}</h4>${renderDungeonProfile(site.dungeonProfile!)}`)
+    .join("");
   const fall = [
     profile.fallYear !== undefined ? `<p><strong>Year:</strong> ${profile.fallYear}</p>` : "",
     profile.clearedBy ? `<p><strong>Cleared by:</strong> ${e(profile.clearedBy)}</p>` : ""
@@ -406,18 +486,21 @@ export function renderRuinProfile(profile: RuinProfile): string {
 
   return [
     `<h3>${e(profile.name)}</h3>`,
-    `<p><em>${capitalize(profile.tier)} ruin · Scale ${profile.ratings.scale}/10 · ${profile.sites.length} site</em></p>`,
+    `<p><em>${capitalize(profile.tier)} ruin · Scale ${profile.ratings.scale}/10 · ${profile.sites.length} site${
+      profile.sites.length === 1 ? "" : "s"
+    }</em></p>`,
     `<p>${ratings}</p>`,
     `<p><strong>Treasure mix</strong> — ${treasureMix}</p>`,
     `<p><strong>Inhabitants</strong> ${profile.inhabitants.rating}/6 (d6 ≤ ${profile.inhabitants.rating} each turn) · ${inhabitants}</p>`,
     `<h4>What it was</h4><p><strong>Original name:</strong> ${e(profile.originalName)}</p>${polity}<p><strong>Purpose:</strong> ${e(profile.originalPurpose)}</p><p><strong>Culture:</strong> ${e(profile.culture)}</p><p><strong>Age:</strong> ${e(profile.age)}</p>`,
     `<h4>Fall</h4><p><strong>Cause:</strong> ${e(profile.cause)}</p>${fall}`,
     `<h4>Present state</h4><p><strong>Condition:</strong> ${e(profile.condition)}</p><p><strong>Accessibility:</strong> ${e(profile.accessibility)}</p><p><strong>Surface:</strong> ${e(profile.surfaceState)}</p>`,
-    `<h4>Site</h4><ul>${sites}</ul>`,
+    `<h4>${profile.sites.length === 1 ? "Site" : "Sites"}</h4><ul>${sites}</ul>`,
     `<h4>Zones</h4><ol>${zones}</ol>`,
+    dungeons,
     `<h4>What remains</h4><ul>${remains}</ul>`,
-    `<h4>Secrets</h4><ul>${secrets}</ul>`,
-    `<h4>Rumors</h4><ul>${rumors}</ul>`,
+    `<h4>Secrets</h4><ul>${secretList}</ul>`,
+    `<h4>Rumors</h4><ul>${rumorList}</ul>`,
     "<p><em>Alternate ruin profile.</em></p>"
   ].join("");
 }

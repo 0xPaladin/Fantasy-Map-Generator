@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RUIN_TIERS } from "@/data/ruins";
 import { TREASURE_CATEGORIES } from "@/data/treasure";
 import { generateRuinName, generateRuinProfile, renderRuinProfile } from "./ruin-generator";
 
@@ -63,11 +64,34 @@ describe("ruin generator", () => {
     }
   });
 
-  it("builds a single site and 4–8 zones", () => {
+  it("builds tiered sites and caps sub-dungeons", () => {
+    for (const tier of RUIN_TIERS) {
+      for (let seed = 0; seed < 25; seed++) {
+        const profile = generateRuinProfile({ ...context, seed: String(seed), tier: tier.tier });
+        expect(profile.sites.length).toBeGreaterThanOrEqual(tier.sites[0]);
+        expect(profile.sites.length).toBeLessThanOrEqual(tier.sites[1]);
+
+        const dungeons = profile.sites.filter(site => site.dungeon);
+        expect(dungeons.length).toBeGreaterThanOrEqual(tier.dungeonSites[0]);
+        expect(dungeons.length).toBeLessThanOrEqual(tier.dungeonSites[1]);
+
+        for (const site of profile.sites) {
+          if (site.dungeon) {
+            expect(site.dungeonProfile).toBeDefined();
+            expect(site.dungeonType).toBeDefined();
+            expect(["small", "medium"]).toContain(site.dungeonProfile!.size);
+            expect(site.dungeonProfile!.areaCount).toBeLessThanOrEqual(15);
+          } else {
+            expect(site.dungeonProfile).toBeUndefined();
+          }
+        }
+      }
+    }
+  });
+
+  it("builds 4–8 zones and tags caches", () => {
     for (let seed = 0; seed < 40; seed++) {
       const profile = generateRuinProfile({ ...context, seed: String(seed) });
-      expect(profile.sites).toHaveLength(1);
-      expect(profile.sites[0].dungeon).toBe(false);
       expect(profile.zones.length).toBeGreaterThanOrEqual(4);
       expect(profile.zones.length).toBeLessThanOrEqual(8);
       for (const zone of profile.zones) {
@@ -77,6 +101,18 @@ describe("ruin generator", () => {
           expect(zone.discovery).toMatch(/\[(Bullion|Regalia|Art|Relics)\]/);
       }
     }
+  });
+
+  it("renders a capital's dungeon sites inline without runaway notes", () => {
+    const profile = generateRuinProfile({ ...context, tier: "capital" });
+    expect(profile.sites.filter(site => site.dungeon).length).toBeGreaterThanOrEqual(2);
+    expect(Object.values(profile.treasure.shares).reduce((sum, share) => sum + share, 0)).toBe(100);
+    for (const site of profile.sites.filter(site => site.dungeonProfile)) {
+      expect(Object.values(site.dungeonProfile!.treasure.shares).reduce((sum, share) => sum + share, 0)).toBe(100);
+    }
+    const html = renderRuinProfile(profile);
+    expect((html.match(/<h3>/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(html.length).toBeLessThan(150_000);
   });
 
   it("can produce empty ruins", () => {

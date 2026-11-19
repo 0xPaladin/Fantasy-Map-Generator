@@ -67,6 +67,13 @@ export interface DungeonContext {
   name?: string;
 }
 
+export interface DungeonOverrides {
+  type?: DungeonTypeId;
+  size?: DungeonSize;
+  areaCount?: number;
+  name?: string;
+}
+
 export interface DungeonExit {
   to: number | "open";
   direction: Direction;
@@ -504,15 +511,21 @@ export function generateDungeonName(context: DungeonContext): string {
   return rollName(createRng(`${context.seed}:dungeon:${context.cell}`), context);
 }
 
-export function generateDungeonProfile(context: DungeonContext, salt = ""): DungeonProfile {
+export function generateDungeonProfile(
+  context: DungeonContext,
+  salt = "",
+  overrides: DungeonOverrides = {}
+): DungeonProfile {
   const rng = createRng(`${context.seed}:dungeon:${context.cell}${salt ? `:${salt}` : ""}`);
   const generatedName = rollName(rng, context);
-  const name = context.name?.trim() || generatedName;
-  const size = pick(rng, DUNGEON_SIZES);
-  const areaCount = rollDice(rng, size.areas);
+  const name = overrides.name?.trim() || context.name?.trim() || generatedName;
+  const size = overrides.size
+    ? (DUNGEON_SIZES.find(row => row.size === overrides.size) ?? pick(rng, DUNGEON_SIZES))
+    : pick(rng, DUNGEON_SIZES);
+  const areaCount = overrides.areaCount ?? rollDice(rng, size.areas);
 
   const outcome = pick(rng, DUNGEON_ALIGNMENT[context.alignment] ?? DUNGEON_ALIGNMENT.neutral);
-  const type = pick(rng, DUNGEON_TYPES);
+  const type = overrides.type ?? pick(rng, DUNGEON_TYPES);
   const accessibility = pick(rng, DUNGEON_ACCESSIBILITY);
   const builder = pick(rng, DUNGEON_BUILDERS);
   const situation = pick(rng, DUNGEON_SITUATIONS);

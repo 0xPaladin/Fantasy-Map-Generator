@@ -1,4 +1,5 @@
-// Generic ruin tables for single-site marker profiles
+// Generic ruin tables for marker profiles
+import type { DungeonTypeId } from "@/data/dungeons";
 import type { InhabitantGroupId } from "@/data/inhabitants";
 import type { TreasureModifier, TreasureWeights } from "@/data/treasure";
 
@@ -6,6 +7,7 @@ export type RuinTier = "outpost" | "village" | "town" | "city" | "capital";
 
 export type RuinSiteKind =
   | "palace"
+  | "keep"
   | "temple"
   | "crypt"
   | "undercroft"
@@ -38,12 +40,18 @@ export interface RuinOrigin {
   inhabitants: Partial<Record<InhabitantGroupId, number>>;
 }
 
-export const RUIN_TIERS: readonly { tier: RuinTier; weight: number; scale: number; sites: number }[] = [
-  { tier: "outpost", weight: 40, scale: 2, sites: 1 },
-  { tier: "village", weight: 30, scale: 4, sites: 1 },
-  { tier: "town", weight: 20, scale: 6, sites: 1 },
-  { tier: "city", weight: 8, scale: 8, sites: 1 },
-  { tier: "capital", weight: 2, scale: 10, sites: 1 }
+export const RUIN_TIERS: readonly {
+  tier: RuinTier;
+  weight: number;
+  scale: number;
+  sites: readonly [number, number];
+  dungeonSites: readonly [number, number];
+}[] = [
+  { tier: "outpost", weight: 40, scale: 2, sites: [1, 1], dungeonSites: [0, 0] },
+  { tier: "village", weight: 30, scale: 4, sites: [1, 2], dungeonSites: [0, 1] },
+  { tier: "town", weight: 20, scale: 6, sites: [2, 3], dungeonSites: [1, 1] },
+  { tier: "city", weight: 8, scale: 8, sites: [3, 5], dungeonSites: [1, 3] },
+  { tier: "capital", weight: 2, scale: 10, sites: [4, 6], dungeonSites: [2, 4] }
 ];
 
 export const RUIN_ORIGINS: readonly RuinOrigin[] = [
@@ -58,7 +66,7 @@ export const RUIN_ORIGINS: readonly RuinOrigin[] = [
   {
     id: "fortress",
     label: "a frontier fortress",
-    siteKind: "walls",
+    siteKind: "keep",
     zones: ["gate", "wall", "courtyard", "barracks", "armory", "tower", "well", "undercroft"],
     treasure: { bullion: 2, regalia: 3, art: 1, relics: 2 },
     inhabitants: { humans: 2, humanoids: 3, constructs: 2, undead: 2, beasts: 1, outsiders: 1 }
@@ -145,6 +153,66 @@ export const RUIN_ORIGINS: readonly RuinOrigin[] = [
       plants: 1,
       vermin: 1
     }
+  }
+];
+
+export interface RuinSiteType {
+  kind: RuinSiteKind;
+  label: string;
+  dungeonType?: DungeonTypeId;
+  zones: readonly string[];
+}
+
+export const RUIN_SITE_TYPES: readonly RuinSiteType[] = [
+  {
+    kind: "palace",
+    label: "Palace",
+    dungeonType: "stronghold",
+    zones: ["gate", "courtyard", "throne room", "apartments", "treasury", "garden", "undercroft"]
+  },
+  {
+    kind: "keep",
+    label: "Keep",
+    dungeonType: "stronghold",
+    zones: ["gate", "wall", "courtyard", "barracks", "armory", "tower", "undercroft"]
+  },
+  {
+    kind: "temple",
+    label: "Temple",
+    dungeonType: "temple",
+    zones: ["gate", "nave", "cloister", "shrine", "altar", "crypt", "bell tower"]
+  },
+  {
+    kind: "crypt",
+    label: "Crypt",
+    dungeonType: "crypt",
+    zones: ["threshold", "corridor", "burial chamber", "false vault", "reliquary", "catacomb"]
+  },
+  {
+    kind: "undercroft",
+    label: "Undercroft",
+    dungeonType: "caves",
+    zones: ["stair", "cellar", "tunnel", "cistern", "sealed door", "flooded gallery"]
+  },
+  {
+    kind: "academy",
+    label: "Academy",
+    dungeonType: "laboratory",
+    zones: ["gate", "courtyard", "lecture hall", "library", "workshop", "vault", "observatory"]
+  },
+  { kind: "market", label: "Market", zones: ["square", "stalls", "well", "hall", "street"] },
+  { kind: "walls", label: "Walls and gatehouse", zones: ["gate", "wall", "tower", "courtyard"] },
+  { kind: "harbor", label: "Harbor", zones: ["dock", "warehouse", "lighthouse", "jetty", "custom house"] },
+  {
+    kind: "residential",
+    label: "Residential district",
+    zones: ["street", "well", "house shell", "workshop", "shrine", "garden"]
+  },
+  {
+    kind: "other",
+    label: "Unknown site",
+    dungeonType: "unknown",
+    zones: ["threshold", "hall", "chamber", "stair", "well", "sealed door"]
   }
 ];
 

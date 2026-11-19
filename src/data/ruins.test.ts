@@ -17,6 +17,7 @@ import {
   RUIN_REMAINS,
   RUIN_RUMORS,
   RUIN_SECRETS,
+  RUIN_SITE_TYPES,
   RUIN_SURFACE_STATES,
   RUIN_TIERS,
   RUIN_ZONE_CONDITIONS
@@ -35,6 +36,16 @@ describe("ruin tables", () => {
     expect(RUIN_TIERS).toHaveLength(5);
     expect(RUIN_TIERS.reduce((sum, tier) => sum + tier.weight, 0)).toBe(100);
     expect(RUIN_TIERS.every(tier => tier.scale >= 1 && tier.scale <= 10)).toBe(true);
+    for (const tier of RUIN_TIERS) {
+      expect(tier.sites[0]).toBeLessThanOrEqual(tier.sites[1]);
+      expect(tier.dungeonSites[0]).toBeLessThanOrEqual(tier.dungeonSites[1]);
+      expect(tier.dungeonSites[1]).toBeLessThanOrEqual(tier.sites[1]);
+    }
+
+    expect(RUIN_SITE_TYPES.length).toBeGreaterThan(0);
+    expect(new Set(RUIN_SITE_TYPES.map(type => type.kind)).size).toBe(RUIN_SITE_TYPES.length);
+    expect(RUIN_SITE_TYPES.every(type => type.label.trim() && type.zones.length > 0)).toBe(true);
+    expect(RUIN_SITE_TYPES.some(type => Boolean(type.dungeonType))).toBe(true);
 
     expect(RUIN_CAUSES.length).toBeGreaterThan(0);
     expect(RUIN_CONDITIONS.length).toBeGreaterThan(0);

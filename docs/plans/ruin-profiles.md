@@ -1,11 +1,11 @@
 # Plan — Ruin Profiles and Multi-Site Ruins
 
-Updated: 2026-11-18. Status: **phases 1–2 shipped** (shared site plumbing; the single-site
-ruin data, deterministic generator, renderer and lazy `ruin` kind). Phase 3, tiered multi-site
-ruins and sub-dungeons, is next. Builds on the shipped dungeon profile infrastructure: lazy
-marker content, the full/short notes split, reroll and exports, the five 1–10 ratings,
-inhabitant groups and the four-category treasure mix. The dungeon plan is
-[dungeon-profiles.md](dungeon-profiles.md).
+Updated: 2026-11-18. Status: **phases 1–3 shipped** (shared site plumbing; the single-site
+ruin data, deterministic generator, renderer and lazy `ruin` kind; tiered multi-site ruins and
+capped sub-dungeons). Phase 4, placement and history integration, is next. Builds on the shipped
+dungeon profile infrastructure: lazy marker content, the full/short notes split, reroll and
+exports, the five 1–10 ratings, inhabitant groups and the four-category treasure mix. The dungeon
+plan is [dungeon-profiles.md](dungeon-profiles.md).
 
 ## Problem
 
@@ -91,6 +91,8 @@ export interface RuinSite {
   dungeonSeed?: string;
   /** the dungeon type the site uses */
   dungeonType?: DungeonTypeId;
+  /** the rendered sub-dungeon profile, generated with the parent */
+  dungeonProfile?: DungeonProfile;
   /** short description for non-dungeon sites */
   summary: string;
 }
@@ -361,10 +363,11 @@ Before the ruin generator:
    - Existing ruin markers can backfill through the generic reroll; automatic placement and
      history tier wiring remain phase 4.
    - Tests: determinism, tier/site counts, empty inhabitants, treasure sum, escaping.
-3. **Tiered multi-site ruins and sub-dungeons**
+3. **Tiered multi-site ruins and sub-dungeons — shipped 2026-11-18**
    - City/capital site counts.
    - Dungeon overrides on `generateDungeonProfile` (type, size cap, name, seed).
    - Parent profile renders sub-dungeon profiles inline.
+   - Site type table and tier site/dungeon ranges.
    - Tests: site counts, dungeon caps, no double treasure, note size sanity.
 4. **Placement and history**
    - Random `addRuins` generated recipe with tier weights.
