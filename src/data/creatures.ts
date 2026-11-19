@@ -562,3 +562,43 @@ export const BEAST_RUMORS: readonly string[] = [
   "A hunter swears [name] is not one beast but many.",
   "The [biome] around [habitat] goes quiet when [name] rises."
 ];
+
+export const MONSTER_LAIRS: readonly string[] = [
+  "a cave in the crags",
+  "a barrow under the hill",
+  "a ruined keep",
+  "a hollow hill",
+  "a blighted grove",
+  "a wrecked tower",
+  "a bone-strewn den",
+  "a flooded cellar"
+];
+
+export const MONSTER_SIGNS: readonly string[] = [
+  "livestock taken in the night",
+  "missing travelers",
+  "a tribute of grain left at the border",
+  "scorched earth",
+  "gnawed bones",
+  "a fear of the high passes",
+  "lights in the ruin",
+  "a silence over the hills"
+];
+
+export const MONSTER_TERRITORY: readonly string[] = [
+  "holds the high passes and takes a toll",
+  "hunts the valley farms by night",
+  "keeps the region at bay",
+  "demands tribute from the nearest village",
+  "ranges the crags for prey",
+  "guards a hoard it will not share"
+];
+
+export const MONSTER_RUMORS: readonly string[] = [
+  "The people of [culture] speak of [name] in hushed tones.",
+  "They say [name] [habit], and the locals believe it.",
+  "Hunters avoid the [biome] where [name] lairs.",
+  "A [culture] elder claims [name] cannot be killed by ordinary steel.",
+  "Someone has left offerings at the edge of [name]'s territory.",
+  "The road past [name] is watched, and no one agrees by what."
+];

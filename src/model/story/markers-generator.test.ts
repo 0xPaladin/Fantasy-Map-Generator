@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BURIAL_KINDS } from "@/data/burials";
+import { HILL_MONSTER_SPECIES } from "@/data/markers";
 import { Goods } from "@/model/economy/goods-generator";
 import { Names } from "@/model/society/names-generator";
 import { ensureGenerated } from "./marker-content";
@@ -753,5 +754,38 @@ describe("MarkersModule beasts", () => {
     expect(typeof marker.generated?.meta?.length).toBe("number");
     expect(marker.generated?.html).toBeUndefined();
     expect(ensureGenerated(marker)).toContain("Alternate beast profile");
+  });
+});
+
+describe("MarkersModule monsters", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 60], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a hill monster a lazy monster recipe and keeps the rumor", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "hill-monsters", cell: 1 } as Marker;
+
+    markers.addHillMonster(marker, 1);
+
+    const species = marker.generated?.meta?.species as string;
+    expect(HILL_MONSTER_SPECIES).toContain(species);
+    expect(marker.name).toBe(`Aeloran ${species}`);
+    expect(marker.generated).toMatchObject({ kind: "monster", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.habit).toBeTruthy();
+    expect(marker.note).toContain(species);
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate monster profile");
   });
 });

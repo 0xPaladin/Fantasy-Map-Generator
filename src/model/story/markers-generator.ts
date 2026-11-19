@@ -62,6 +62,7 @@ import {
   regenerateGenerated,
   requireGeneratedRecipe
 } from "@/model/story/marker-content";
+import { createMonsterContent, MONSTER_KIND } from "@/model/story/monster-marker";
 import { createNecropolisContent, NECROPOLIS_KIND } from "@/model/story/necropolis-marker";
 import { Notes } from "@/model/story/notes";
 import { createRuinContent, RUIN_KIND } from "@/model/story/ruin-marker";
@@ -1461,11 +1462,12 @@ class MarkersModule {
     const monster = ra(HILL_MONSTER_SPECIES);
     const toponym = Names.getCulture(cells.culture[cell]);
     const name = `${toponym} ${monster}`;
-    const legend = `${ra(RUMOR_SOURCES)} speak of a ${ra(HILL_MONSTER_ADJECTIVES)} ${monster} who inhabits ${toponym} hills and ${ra(
-      HILL_MONSTER_HABITS
-    )}.`;
+    const habit = ra(HILL_MONSTER_HABITS);
+    const legend = `${ra(RUMOR_SOURCES)} speak of a ${ra(HILL_MONSTER_ADJECTIVES)} ${monster} who inhabits ${toponym} hills and ${habit}.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== MONSTER_KIND)
+      marker.generated = { ...createMonsterContent(), meta: { species: monster, habit } };
   }
 
   // Sacred mountains spawn on lonely mountains

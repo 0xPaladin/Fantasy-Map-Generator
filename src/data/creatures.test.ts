@@ -31,7 +31,11 @@ import {
   GEM_TYPES,
   JEWELRY_FORMS,
   LOOT_CONTEXTS,
+  MONSTER_LAIRS,
   MONSTER_NATURES,
+  MONSTER_RUMORS,
+  MONSTER_SIGNS,
+  MONSTER_TERRITORY,
   RARITY_CATEGORIES,
   TRINKET_FORMS
 } from "./creatures";
@@ -130,7 +134,11 @@ describe("creature tables", () => {
       BEAST_FORMS,
       BEAST_LAIRS,
       BEAST_SIGNS,
-      BEAST_RUMORS
+      BEAST_RUMORS,
+      MONSTER_LAIRS,
+      MONSTER_SIGNS,
+      MONSTER_TERRITORY,
+      MONSTER_RUMORS
     ]) {
       expect(table.length).toBeGreaterThan(0);
     }
@@ -170,7 +178,11 @@ describe("creature tables", () => {
       BEAST_FORMS,
       BEAST_LAIRS,
       BEAST_SIGNS,
-      BEAST_RUMORS
+      BEAST_RUMORS,
+      MONSTER_LAIRS,
+      MONSTER_SIGNS,
+      MONSTER_TERRITORY,
+      MONSTER_RUMORS
     }).join("\n");
     expect(text).not.toMatch(/booty|seclusium|gonzo|freebooters|underlands|\bbd\b/i);
   });
