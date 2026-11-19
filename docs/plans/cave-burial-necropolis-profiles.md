@@ -1,8 +1,8 @@
 # Plan — Cave, Disturbed Burial and Necropolis Profiles
 
-Updated: 2026-11-19. Status: **steps 1–4 shipped** (cave/burial data tables, shared context types and
-headings; cave profiles; disturbed-burial profiles; tiered necropolis profiles, lazy kinds and
-random placement). Steps 5–6 remain. Companions:
+Updated: 2026-11-19. Status: **steps 1–5 shipped** (cave/burial data tables, shared context types and
+headings; cave profiles; disturbed-burial profiles; tiered necropolis profiles; history fall
+metadata and lifecycle verification). Step 6 remains. Companions:
 [dungeon-profiles.md](dungeon-profiles.md) and [ruin-profiles.md](ruin-profiles.md). This plan
 extends the same lazy generated-content model to the three remaining underground/burial marker
 kinds:
@@ -310,9 +310,9 @@ the three generated kinds and renderers should remain distinct.
 4. **Necropolis profiles — shipped 2026-11-19**
    - Tiered necropolis generator, burial site table, capped sub-dungeons, renderer, lazy kind.
    - Tests: tier/site counts, dungeon caps, treasure sums, note size, history-ready context.
-5. **History and lifecycle**
+5. **History and lifecycle — shipped 2026-11-19**
    - History seat/province necropolis and disturbed-burial meta.
-   - Verify cleared threats still become ruins with `clearedFrom`.
+   - Verified cleared threats still become ruins with `clearedFrom`.
    - Tests: history tiers, chronicle replacement, locked markers, old-map reroll.
 6. **Docs and migration**
    - Wiki coverage for caves, disturbed burials and necropolises; link from Markers, History and

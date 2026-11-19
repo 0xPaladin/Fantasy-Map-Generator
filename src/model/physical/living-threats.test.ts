@@ -202,6 +202,38 @@ describe("living-threats", () => {
     expect(marker.generated?.meta?.clearedBy).toBeUndefined();
   });
 
+  it("turns a cleared necropolis into a village ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = { i: 3, type: "necropolises", cell: 1, name: "Old Necropolis" } as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Old Necropolis",
+      tier: "village",
+      clearedFrom: "necropolises",
+      clearedBy: "Aeloria",
+      looted: true,
+      cause: "abandonment"
+    });
+  });
+
+  it("turns a cleared cave into an outpost ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = { i: 4, type: "caves", cell: 1, name: "Aeloran Cave" } as Marker;
+
+    convertThreatToRuin(marker);
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Aeloran Cave",
+      tier: "outpost",
+      clearedFrom: "caves",
+      looted: true
+    });
+  });
+
   it("ascends an ambitious faction into a sovereign state", () => {
     const faction = Factions.add({
       name: "Free Brotherhood",

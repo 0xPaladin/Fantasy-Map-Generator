@@ -29,7 +29,10 @@ import { Emblems } from "@/model/political/emblems-generator";
 import { States } from "@/model/political/states-generator";
 import { Characters } from "@/model/society/characters";
 import { Names } from "@/model/society/names-generator";
+import { createBurialContent } from "@/model/story/burial-marker";
+import type { MarkerGeneratedRecipe } from "@/model/story/marker-content";
 import { Markers } from "@/model/story/markers-generator";
+import { createNecropolisContent } from "@/model/story/necropolis-marker";
 import { Notes } from "@/model/story/notes";
 import { createRuinContent } from "@/model/story/ruin-marker";
 import {
@@ -825,8 +828,9 @@ class ChronicleModel {
   private placeSeatMarker(cell: number, subject: FallSubject): void {
     const [x, y] = pack.cells.p[cell];
     const type = P(0.25) ? "necropolises" : "ruins";
-    const name = type === "ruins" ? `Ruins of ${subject.name}` : `${subject.name} ${rw(NECROPOLIS_TYPES)}`;
-    const generated =
+    const necropolisType = type === "necropolises" ? rw(NECROPOLIS_TYPES) : undefined;
+    const name = type === "ruins" ? `Ruins of ${subject.name}` : `${subject.name} ${necropolisType}`;
+    const generated: MarkerGeneratedRecipe | undefined =
       type === "ruins"
         ? {
             ...createRuinContent(),
@@ -838,7 +842,19 @@ class ChronicleModel {
               tier: "capital"
             }
           }
-        : undefined;
+        : type === "necropolises"
+          ? {
+              ...createNecropolisContent(),
+              meta: {
+                burialType: necropolisType!,
+                tier: "city-of-the-dead",
+                originalName: subject.name,
+                originalPolity: subject.name,
+                fallYear: subject.fallen,
+                cause: "war"
+              }
+            }
+          : undefined;
     Markers.place(x, y, type, {
       name,
       note: ra(FALLEN_CAPITAL_TEMPLATES)(subject.name, subject.fallen),
@@ -855,13 +871,14 @@ class ChronicleModel {
     const type = rw(
       fantasy ? { ruins: 55, necropolises: 30, "disturbed-burials": 15 } : { ruins: 65, necropolises: 35 }
     );
+    const necropolisType = type === "necropolises" ? rw(NECROPOLIS_TYPES) : undefined;
     const name =
       type === "ruins"
         ? `Ruins of ${burg.name}`
         : type === "necropolises"
-          ? `${burg.name} ${rw(NECROPOLIS_TYPES)}`
+          ? `${burg.name} ${necropolisType}`
           : `Disturbed Burial of ${burg.name}`;
-    const generated =
+    const generated: MarkerGeneratedRecipe | undefined =
       type === "ruins"
         ? {
             ...createRuinContent(),
@@ -873,7 +890,30 @@ class ChronicleModel {
               tier: (burg.population ?? 0) >= 20 ? "town" : "village"
             }
           }
-        : undefined;
+        : type === "necropolises"
+          ? {
+              ...createNecropolisContent(),
+              meta: {
+                burialType: necropolisType!,
+                tier: (burg.population ?? 0) >= 20 ? "necropolis" : "cemetery",
+                originalName: burg.name!,
+                originalPolity: subject.name,
+                fallYear: subject.fallen,
+                cause: "war"
+              }
+            }
+          : type === "disturbed-burials"
+            ? {
+                ...createBurialContent(),
+                meta: {
+                  burialKind: "graveyard",
+                  originalName: burg.name!,
+                  originalPolity: subject.name,
+                  fallYear: subject.fallen,
+                  cause: "war"
+                }
+              }
+            : undefined;
     Markers.place(x, y, type, {
       name,
       note: ra(FALLEN_BURG_TEMPLATES)(burg.name!, subject.name, subject.fallen),

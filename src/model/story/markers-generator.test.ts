@@ -331,6 +331,27 @@ describe("MarkersModule chronicle-owned types", () => {
     markers.regenerate();
     expect(pack.markers.map((marker: Marker) => marker.type)).toEqual(["ruins", "battlefields"]);
   });
+
+  it("keeps a locked marker's generated profile through regeneration", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    options.map.lore.history = history({ mode: "epochs", echoes: false }) as any;
+    world();
+    const locked = {
+      i: 99,
+      type: "ruins",
+      cell: 1,
+      name: "Locked Ruin",
+      lock: true,
+      generated: { kind: "ruin", version: 1, seed: "12345", meta: { tier: "village" } }
+    } as unknown as Marker;
+    pack.markers = [locked];
+    markers.setConfig(twoTypes);
+    markers.regenerate();
+
+    expect(pack.markers).toContain(locked);
+    expect(locked.generated).toEqual({ kind: "ruin", version: 1, seed: "12345", meta: { tier: "village" } });
+  });
 });
 
 describe("MarkersModule provincial impacts and attribution", () => {
