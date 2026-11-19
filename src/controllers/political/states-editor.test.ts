@@ -81,7 +81,7 @@ describe("StatesEditor", () => {
           burgs: 1,
           rural: 10,
           urban: 5,
-          economy: { ...noFinance(), treasury: 100 },
+          economy: { ...noFinance(), treasury: 100, stash: 5000 },
           type: "Generic",
           expansionism: 1,
           tags: ["coastal", "naval"]
@@ -117,6 +117,7 @@ describe("StatesEditor", () => {
     const header = document.getElementById("statesEditorHeader");
     const tagsCol = header?.querySelector('[data-col="tags"]');
     expect(tagsCol).not.toBeNull();
+    expect(header?.querySelector('[data-col="stash"]')).not.toBeNull();
 
     const rows = document.querySelectorAll("#statesBodySection .states");
     expect(rows).toHaveLength(3); // Neutrals + 2 states
@@ -125,6 +126,10 @@ describe("StatesEditor", () => {
     const tagsInput = valoriaRow?.querySelector(".stateTags") as HTMLInputElement;
     expect(tagsInput).not.toBeNull();
     expect(tagsInput.value).toBe("coastal, naval");
+
+    const stashCell = valoriaRow?.querySelector(".stateStash");
+    expect(stashCell).not.toBeNull();
+    expect(stashCell?.textContent).toContain("5");
   });
 
   it("opens in a dialog window and tears it down on close", async () => {

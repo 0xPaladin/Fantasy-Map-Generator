@@ -77,7 +77,7 @@ the pipeline, since it depends only on name bases and the seeded random source.
 | Naming polish            | `riversSpecify`, `featureNames`                 | river and feature (island, ocean, lake) names                                   |
 | Economy                  | `markets`, `production`, `taxes`                | `pack.markets`, `cells.market`, `pack.deals`, burg/state treasuries             |
 | Overlays                 | `military`, `markers`, `zones`, `addedLabels`   | regiments, markers, zones, labels                                               |
-| Finalise                 | `journeys`, `legends`                           | journeys, empty legend boxes                                                    |
+| Finalise                 | `journeys`, `schemes`, `legends`                | journeys, villain schemes & relics, empty legend boxes                          |
 
 Two constraints are easy to break when replicating a slice of this:
 
@@ -130,7 +130,7 @@ flowchart TD
     dev["development<br/><i>writes: cells.development</i>"]
     econ["markets + production + taxes<br/><i>writes: pack.markets, deals, cells.market</i>"]
     mil["military + markers + zones + addedLabels"]
-    journeys["journeys + legends"]
+    journeys["journeys + schemes + legends"]
 
     gg --> hm --> mg --> lakes --> coord --> temp --> prec --> repack --> ruler --> rivers --> biomes --> fg --> ice --> goods --> rank --> cult --> burgs --> realmHubs --> states --> routes --> dev --> relig --> spec --> prov --> names --> econ --> mil --> journeys
 
@@ -163,7 +163,7 @@ flowchart TD
 
 Exiting the heightmap editor in **erase** mode clears `pack.cultures/burgs/states/provinces/religions`
 and runs `ErasePipeline.run({erosion})`. It is a second generate over the freshly edited
-`grid.cells.h`: the same steps, in the same order, from `markupGrid` to `zones`.
+`grid.cells.h`: the same steps, in the same order, from `markupGrid` to `schemes`.
 
 It is a separate list, not a slice of `GenerationPipeline` — the ids are typed as `PipelineStepId`, so
 a step id that does not exist in the canonical list is a compile error, but the two lists are kept in

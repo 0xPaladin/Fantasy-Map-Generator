@@ -42,6 +42,10 @@ const { mocks, state } = vi.hoisted(() => {
       assaultFaction: vi.fn(() => true),
       sendAdventurersToFaction: vi.fn(() => true),
       ascendFactionToState: vi.fn(() => 2),
+      forceSchemeStep: vi.fn(() => true),
+      exposeScheme: vi.fn(() => true),
+      abortScheme: vi.fn(() => true),
+      rerollScheme: vi.fn(() => true),
       turnAge: vi.fn(() => ({ era: "Second Age", year: 1150, realms: 1, successorStates: 0 }))
     }
   };
@@ -225,6 +229,52 @@ describe("LivingHud", () => {
     state.living.states = {} as never;
   });
 
+  it("shows villain schemes and runs the scheme god actions", () => {
+    pack.history!.figures = [
+      { i: 0, name: "Nerath", culture: 1, birth: 900, roles: [], virtues: [], vices: [] }
+    ] as never;
+    pack.history!.schemes = [
+      {
+        i: 1,
+        goal: "divine_ascension",
+        mastermind: { kind: "religion", id: 1 },
+        keystone: "religion:1",
+        villainFigure: 0,
+        template: "holy_crusade",
+        secrecy: 34,
+        steps: [
+          { verb: "research_lore", targets: [{ kind: "burg", id: 1 }], status: "active", progress: 2, attempts: 1 },
+          { verb: "perform_ritual", targets: [], status: "pending" }
+        ],
+        status: "active",
+        startedYear: 990
+      }
+    ] as never;
+
+    openHud();
+    (document.getElementById("livingHudSchemes") as HTMLButtonElement).click();
+
+    const panel = document.getElementById("livingInspector")!;
+    expect(panel.textContent).toContain("Villain Schemes");
+    expect(panel.textContent).toContain("Divine Ascension");
+    expect(panel.textContent).toContain("Nerath");
+    expect(panel.textContent).toContain("Research lore");
+    expect(panel.textContent).toContain("2 seasons left");
+    expect(panel.querySelector('[data-open="figure"]')).toBeTruthy();
+
+    (panel.querySelector('[data-god="scheme-force"]') as HTMLButtonElement).click();
+    expect(mocks.living.forceSchemeStep).toHaveBeenCalledWith(1);
+
+    (panel.querySelector('[data-god="scheme-expose"]') as HTMLButtonElement).click();
+    expect(mocks.living.exposeScheme).toHaveBeenCalledWith(1);
+
+    (panel.querySelector('[data-god="scheme-abort"]') as HTMLButtonElement).click();
+    expect(mocks.living.abortScheme).toHaveBeenCalledWith(1);
+
+    (panel.querySelector('[data-god="scheme-reroll"]') as HTMLButtonElement).click();
+    expect(mocks.living.rerollScheme).toHaveBeenCalledWith(1);
+  });
+
   it("renders dangerous factions and troubles as province rows with zoom links", () => {
     state.living.states = {
       1: { stateId: 1, agenda: null, unravel: 4, warExhaustion: 2, claims: [], grudges: [] }
@@ -363,6 +413,10 @@ describe("LivingHud", () => {
       { level: 0, name: "Paleolithic" },
       { level: 40, name: "Renaissance" }
     ] as never;
+    (pack.states[1] as unknown as { economy: { treasury: number; stash: number } }).economy = {
+      treasury: 10,
+      stash: 5000
+    };
 
     openHud();
     LivingHud.inspect("state", 1);
@@ -370,6 +424,7 @@ describe("LivingHud", () => {
     const panel = document.getElementById("livingInspector")!;
     expect(panel.textContent).toContain("Upstream economy");
     expect(panel.textContent).toContain("Renaissance");
+    expect(panel.textContent).toContain("stash");
     expect(panel.querySelector('[data-open="budget"]')).toBeTruthy();
     state.living.states = {} as never;
   });

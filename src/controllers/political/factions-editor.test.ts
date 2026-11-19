@@ -5,11 +5,13 @@ vi.mock("@/renderers/layers", () => ({ Layers: { show: vi.fn(), draw: vi.fn(), h
 vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
 vi.mock("@/controllers", () => ({
   Controllers: {
+    BurgEditor: { open: vi.fn() },
     ColorPicker: { open: vi.fn(), close: vi.fn() },
     IconPicker: { open: vi.fn() }
   }
 }));
 
+import { Controllers } from "@/controllers";
 import { Living } from "@/model/physical/living-generator";
 import { Factions, syncFactionState } from "@/model/political/factions-generator";
 import type { Faction } from "@/types/factions";
@@ -51,7 +53,7 @@ describe("FactionsEditor", () => {
   });
 
   it("opens the Factions Editor dialog and renders rows for active factions", () => {
-    Factions.add({
+    const faction = Factions.add({
       name: "Golden Merchants",
       category: "commercial",
       type: "merchant_consortium",
@@ -59,6 +61,7 @@ describe("FactionsEditor", () => {
       treasury: 200,
       influence: 50
     });
+    faction.stash = 5000;
 
     FactionsEditor.open();
 
@@ -74,6 +77,7 @@ describe("FactionsEditor", () => {
     expect(dialog?.innerHTML).toContain("Stability");
     expect(bodySection.querySelector('#factionsRows [data-col="prosperity"]')?.textContent).toContain("%");
     expect(bodySection.querySelector('#factionsRows [data-col="stability"]')?.textContent).toContain("%");
+    expect(bodySection.querySelector('#factionsRows [data-col="stash"]')?.textContent).toContain("5");
   });
 
   it("filters factions by category and search", () => {
@@ -130,6 +134,15 @@ describe("FactionsEditor", () => {
     expect(dialog?.innerHTML).toContain("Wayfarers");
     expect(dialog?.innerHTML).toContain("HQ & Outposts");
 
+    // Staff and guards have a column each, with the host adjustments after the host impact
+    const header = dialog!.querySelector("#outpostsTable .header")!;
+    const headers = [...header.children].map(cell => cell.textContent?.trim());
+    expect(headers).toEqual(["Burg", "Influence", "Income", "Staff", "Guards", "Host Impact", "Host Adj.", ""]);
+
+    // Clicking the burg name opens its Burg Editor
+    dialog!.querySelector<HTMLElement>("#outpostsTable .openBurgBtn[data-burg='1']")!.click();
+    expect(Controllers.BurgEditor.open).toHaveBeenCalledWith(1);
+
     // Add outpost in burg 2
     const burgSelect = document.querySelector<HTMLSelectElement>("#newOutpostBurgSelect")!;
     burgSelect.value = "2";
@@ -153,6 +166,7 @@ describe("FactionsEditor", () => {
       hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: ["trade_depot"] },
       treasury: 100
     });
+    faction.stash = 1000;
 
     faction.outposts.push({
       burgId: 2,
@@ -187,6 +201,8 @@ describe("FactionsEditor", () => {
     expect(dialog.innerHTML).toContain("Expenses");
     expect(dialog.innerHTML).toContain("Court and patronage");
     expect(dialog.innerHTML).toContain("Day Balance");
+    expect(dialog.innerHTML).toContain("Stash");
+    expect(dialog.querySelector(".factionSellStashBtn")).not.toBeNull();
     expect(dialog.innerHTML).toContain("Corruption");
     expect(dialog.innerHTML).not.toContain("Citizens");
     expect(dialog.innerHTML).not.toContain("yields");

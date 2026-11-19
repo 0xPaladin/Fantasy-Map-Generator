@@ -87,6 +87,34 @@ import {
   TAX_DRIFT
 } from "@/model/physical/living-fiscal";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
+import {
+  abortScheme as abortVillainScheme,
+  clearSchemePushLine,
+  exposeScheme as exposeVillainScheme,
+  forceSchemeStep as forceVillainStep,
+  type SchemeRuntime,
+  tickSchemes
+} from "@/model/physical/living-schemes";
+import {
+  advanceStash,
+  dominantStashPart,
+  factionStashMix,
+  factionStashSplendor,
+  factionStashTarget,
+  STASH_LOOT_SHARE,
+  STASH_NEWS_TIERS,
+  STASH_SALE_SHARE,
+  seizeStash,
+  sellStash,
+  stashMonthsHeld,
+  stashPartLabel,
+  stashPrestigeInfluence,
+  stashStabilityBonus,
+  stateDailySurplus,
+  stateStashMix,
+  stateStashSplendor,
+  stateStashTarget
+} from "@/model/physical/living-stash";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
@@ -100,6 +128,7 @@ import { Stability } from "@/model/political/stability";
 import { noFinance, type State, States } from "@/model/political/states-generator";
 import { type AstralTechRegime, classifyAstralRegime, Development } from "@/model/society/development-generator";
 import { Names } from "@/model/society/names-generator";
+import { Schemes } from "@/model/story/schemes-generator";
 import { getMoneyUnit } from "@/model/units";
 import type { ArmyBlock, ArmyUnit } from "@/types/battle";
 import type { Good } from "@/types/economy";
@@ -992,12 +1021,60 @@ class LivingModel {
       }
 
       const { fiscalChangedStates, readyProjectStates, readyConstructionStates } = this.stepBackgroundSync(living);
+      this.stepSchemes(living);
       this.stepNotableEvents(living, 2, fiscalChangedStates, readyProjectStates, readyConstructionStates);
       this.syncTroubleLines(living);
       this.stepEschaton(living);
     }
 
     return living;
+  }
+
+  /** Villain schemes: world-match, pushes, exposure and succession, once a season. */
+  private stepSchemes(living: LivingWorldState): void {
+    tickSchemes(living, this.schemeRuntime());
+  }
+
+  private schemeRuntime(): SchemeRuntime {
+    return {
+      isAtWar: (stateId, otherId) => this.isAtWar(stateId, otherId),
+      declareWar: (stateId, otherId) => this.declareWar(stateId, otherId),
+      killFigure: figureId => this.killFigure(figureId),
+      pushNews: (state, item) => this.pushNews(state, item),
+      pushHistory: (type, actors, cell, text) => this.pushHistory(type, actors, cell, text),
+      rng: (tag, id) => this.rng(tag, id),
+      factionDayBalance: faction => this.getFactionYieldBreakdown(faction).economy.dayBalance,
+      absorbState: (stateId, conquerorId) => this.absorbState(stateId, conquerorId),
+      usurpThrone: (stateId, villainFigure) => this.usurpThrone(stateId, villainFigure),
+      breachDoom: (cell, schemeId) => this.breachDoom(cell, schemeId),
+      ascendFaction: factionId => this.ascendFactionToState(factionId)
+    };
+  }
+
+  /** God mode: complete the active scheme step without payment or a roll. */
+  forceSchemeStep(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    return scheme ? forceVillainStep(this.getState(), scheme, this.schemeRuntime()) : false;
+  }
+
+  /** God mode: make a scheme public. */
+  exposeScheme(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    return scheme ? exposeVillainScheme(this.getState(), scheme, this.schemeRuntime()) : false;
+  }
+
+  /** God mode: abandon a scheme. */
+  abortScheme(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    return scheme ? abortVillainScheme(this.getState(), scheme, this.schemeRuntime()) : false;
+  }
+
+  /** God mode: recompile a scheme around the same mastermind. */
+  rerollScheme(schemeId: number): boolean {
+    const scheme = Schemes.ensureSchemes().find(entry => entry.i === schemeId);
+    if (!scheme) return false;
+    clearSchemePushLine(scheme);
+    return Schemes.reroll(scheme);
   }
 
   private tickNewsCount(living: LivingWorldState): number {
@@ -1030,6 +1107,7 @@ class LivingModel {
     this.syncTroubleLines(living);
     this.syncFactionSubversionLines();
     this.stepEconomy(living);
+    this.stepStateStash(living);
     this.stepDiplomacyTimers(living);
     this.stepTactical(living);
     this.stepMobileBurgs(living);
@@ -1148,6 +1226,7 @@ class LivingModel {
         if (!sSim) continue;
         const ruler = history.figures?.find(fig => fig.i === sSim.rulerId);
         if (!ruler || ruler.death !== undefined) continue;
+        if (ruler.tags?.includes("immortal")) continue;
         const lifespan = createRng(`${living.seed}:living:lifespan:${ruler.i}`).int(55, 95);
         if (year - ruler.birth >= lifespan) {
           candidates.push({
@@ -1584,6 +1663,70 @@ class LivingModel {
     }
   }
 
+  /** A season's surplus becomes a lasting patrimony, separate from the treasury. */
+  private stepStateStash(living: LivingWorldState): void {
+    if (!canReadUpstreamEconomy()) return;
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      if (state.form === "Anarchy") {
+        state.economy.stash = 0;
+        this.syncStateStashPrestige(state);
+        continue;
+      }
+
+      const rulerId = living.states[state.i]?.rulerId;
+      const ruler =
+        rulerId === undefined
+          ? undefined
+          : pack.history?.figures?.find(
+              figure => figure.i === rulerId && !figure.removed && figure.death === undefined
+            );
+      const values = pack.cultures?.[state.culture ?? 0]?.values ?? [];
+      const previous = state.economy.stash;
+      const dailySurplus = stateDailySurplus(state);
+      const next = advanceStash(previous, stateStashTarget(state, ruler, values));
+      state.economy.stash = next;
+      this.syncStateStashPrestige(state);
+      this.pushStashNews(state.name, previous, next, dailySurplus, living, {
+        kind: "develop",
+        cell: state.center,
+        stateId: state.i
+      });
+    }
+  }
+
+  /** A visible hoard steadies the realm a little, in a sim-owned stability line. */
+  private syncStateStashPrestige(state: State): void {
+    const bonus = stashStabilityBonus(stateStashSplendor(state));
+    const current = state.economy.simStabilityAdjustments ?? [];
+    const kept = current.filter(line => line.name !== "Patrimony");
+    const next = bonus > 0 ? [...kept, { name: "Patrimony", value: bonus }] : kept;
+    if (JSON.stringify(next) !== JSON.stringify(current)) state.economy.simStabilityAdjustments = next;
+  }
+
+  /** A great hoard crossing a year or more of surplus is worth a dispatch. */
+  private pushStashNews(
+    name: string,
+    previous: number | undefined,
+    next: number,
+    dailySurplus: number,
+    living: LivingWorldState,
+    where: { kind: LivingNewsKind; cell?: number; stateId?: number; burgId?: number }
+  ): void {
+    const before = stashMonthsHeld(previous, dailySurplus);
+    const after = stashMonthsHeld(next, dailySurplus);
+    const tier = STASH_NEWS_TIERS.find(crossing => before < crossing && after >= crossing);
+    if (tier === undefined) return;
+
+    this.pushNews(living, {
+      ...where,
+      text:
+        tier >= 36
+          ? `${name} has amassed a hoard worth years of its surplus.`
+          : `${name} now keeps a year's surplus in treasure.`
+    });
+  }
+
   syncProvinces(living: LivingWorldState): void {
     for (const province of pack.provinces ?? []) {
       if (!province?.i || province.removed || !province.state || pack.states[province.state]?.removed) {
@@ -1704,6 +1847,77 @@ class LivingModel {
       state.center,
       text
     );
+  }
+
+  /** A scheme's agent kills a figure; a reigning ruler or faction leader passes the seat on. */
+  killFigure(figureId: number): boolean {
+    const history = Chronicle.sync();
+    const figure = history.figures?.find(entry => entry.i === figureId);
+    if (!figure || figure.removed || figure.death !== undefined) return false;
+
+    const year = options.map?.lore?.calendar?.year ?? 1000;
+    const living = this.getState();
+
+    const stateRole = figure.roles.find(
+      role => role.type === "ruler" && role.to === undefined && role.target.kind === "state"
+    );
+    if (stateRole) {
+      const state = pack.states[stateRole.target.id];
+      const sSim = living.states[stateRole.target.id];
+      if (state?.i && !state.removed && sSim?.rulerId === figure.i) {
+        this.succeedRuler(state, sSim, figure, living, year);
+        return true;
+      }
+    }
+
+    const factionRole = figure.roles.find(
+      role => role.type === "ruler" && role.to === undefined && role.target.kind === "faction"
+    );
+    figure.death = year;
+    for (const role of figure.roles) {
+      if (role.to === undefined) role.to = year;
+    }
+
+    let text = `${figure.name} was assassinated.`;
+    if (factionRole) {
+      const faction = pack.factions?.find(entry => entry.i === factionRole.target.id);
+      if (faction?.i && !faction.removed) {
+        const successor = this.spawnFactionLeader(faction, living, year);
+        if (successor) {
+          faction.leaderId = successor.i;
+          text += ` ${successor.name} takes its lead.`;
+        }
+      }
+    }
+
+    this.pushNews(living, { kind: "succession", text, cell: figure.cell });
+    this.pushHistory("deed", [{ kind: "figure", id: figure.i }], figure.cell, text);
+    return true;
+  }
+
+  /** A new face for a leaderless faction after an assassination. */
+  private spawnFactionLeader(faction: Faction, living: LivingWorldState, year: number): HistoricalFigure | undefined {
+    const history = Chronicle.sync();
+    history.figures ??= [];
+    const cultureId = faction.culture ?? 0;
+    if (!pack.cultures?.[cultureId]) return undefined;
+
+    const index = history.figures.length;
+    const rng = traitsRng(living.seed, "figure", index + faction.i * 1000);
+    const alignment = rollAlignment(rng, pack.cultures[cultureId]?.alignment);
+    const { virtues, vices } = rollFigureTraits(rng, alignment);
+    const figure: HistoricalFigure = {
+      i: index,
+      name: Names.getCulture(cultureId),
+      culture: cultureId,
+      birth: year - rng.int(20, 45),
+      roles: [{ type: "ruler", target: { kind: "faction", id: faction.i }, from: year }],
+      alignment,
+      virtues,
+      vices
+    };
+    history.figures.push(figure);
+    return figure;
   }
 
   private successionCrisis(sSim: StatePolitySim, successor: HistoricalFigure | undefined): boolean {
@@ -2076,6 +2290,8 @@ class LivingModel {
       });
     }
 
+    this.seizeFactionStash(state, faction, isHq ? 0.25 : 0.1, living, targetCell, burg?.i, location);
+
     if (isHq) this.relocateOrDissolveFaction(state, faction, living);
 
     // Drop any partial suppression work the agenda still names.
@@ -2095,6 +2311,33 @@ class LivingModel {
         }
       }
     }
+  }
+
+  /** A razed faction node gives up part of the organization's hoard. */
+  private seizeFactionStash(
+    state: State,
+    faction: Faction,
+    share: number,
+    living: LivingWorldState,
+    cell: number,
+    burgId: number | undefined,
+    where: string
+  ): void {
+    if (!state?.i || state.removed || !state.economy || !faction?.i || faction.removed) return;
+    const loot = seizeStash(faction.stash, share);
+    if (loot.seized <= 0) return;
+    faction.stash = loot.remaining;
+    if (loot.kept <= 0) return;
+
+    state.economy.stash = Math.round(((state.economy.stash ?? 0) + loot.kept) * 100) / 100;
+    const part = stashPartLabel(dominantStashPart(factionStashMix(faction.category)));
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${state.name} seized ${Math.round(loot.kept)} ${getMoneyUnit(loot.kept !== 1)} of ${faction.name}'s ${part} in ${where}.`,
+      cell,
+      stateId: state.i,
+      ...(burgId !== undefined ? { burgId } : {})
+    });
   }
 
   /** After an urban HQ falls: relocate to the strongest outpost, or dissolve the faction. */
@@ -2785,6 +3028,26 @@ class LivingModel {
     if (faction.treasury < 0) this.settleFactionDebt(faction, living);
   }
 
+  /** A faction's season adds to its patrimony from the same day balance. */
+  private applyFactionStash(faction: Faction, breakdown: FactionYieldBreakdown, living: LivingWorldState): void {
+    if (!canReadUpstreamEconomy()) return;
+    const leader =
+      faction.leaderId === undefined
+        ? undefined
+        : pack.history?.figures?.find(
+            figure => figure.i === faction.leaderId && !figure.removed && figure.death === undefined
+          );
+    const previous = faction.stash;
+    const dailySurplus = Math.max(0, breakdown.economy.dayBalance);
+    const next = advanceStash(previous, factionStashTarget(faction, dailySurplus, leader));
+    faction.stash = next;
+    this.pushStashNews(faction.name, previous, next, dailySurplus, living, {
+      kind: "faction",
+      cell: faction.hq.cell,
+      ...(faction.hq.burgId !== undefined ? { burgId: faction.hq.burgId } : {})
+    });
+  }
+
   /** Bankruptcy: disband the newest block, not the whole regiment. */
   private settleFactionDebt(faction: Faction, living: LivingWorldState): void {
     faction.treasury = 0;
@@ -2826,6 +3089,9 @@ class LivingModel {
         charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
       }
       this.applyFactionTreasury(faction, living);
+      this.applyFactionStash(faction, breakdown, living);
+      const prestige = stashPrestigeInfluence(factionStashSplendor(faction, breakdown.economy.dayBalance));
+      faction.influence = minmax((faction.influence ?? 0) + prestige, 0, 100);
       this.applyFactionStabilityDrift(faction, breakdown, living);
       this.musterFactionBlock(faction, living);
       this.stepFactionProject(faction, living);
@@ -2948,6 +3214,48 @@ class LivingModel {
       stateId
     });
     return recovered;
+  }
+
+  /** Sell part of a state's stash at a loss, moving the proceeds into the treasury. */
+  sellStateTreasure(stateId: number, share = STASH_SALE_SHARE): number {
+    const living = this.getState();
+    const state = pack.states[stateId];
+    if (!state?.i || state.removed || !state.economy) return 0;
+    const sale = sellStash(state.economy.stash, share);
+    if (sale.sold <= 0) return 0;
+
+    state.economy.stash = sale.remaining;
+    state.economy.treasury = Math.round(((state.economy.treasury ?? 0) + sale.proceeds) * 100) / 100;
+    this.pushNews(living, {
+      kind: "develop",
+      text: `${state.name} sold part of its collection for ${Math.round(sale.proceeds)} ${getMoneyUnit(
+        sale.proceeds !== 1
+      )}.`,
+      cell: state.center,
+      stateId
+    });
+    return sale.proceeds;
+  }
+
+  /** Sell part of a faction's stash at a loss, moving the proceeds into its treasury. */
+  sellFactionTreasure(factionId: number, share = STASH_SALE_SHARE): number {
+    const living = this.getState();
+    const faction = pack.factions?.[factionId];
+    if (!faction?.i || faction.removed) return 0;
+    const sale = sellStash(faction.stash, share);
+    if (sale.sold <= 0) return 0;
+
+    faction.stash = sale.remaining;
+    faction.treasury = Math.round(((faction.treasury ?? 0) + sale.proceeds) * 100) / 100;
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${faction.name} sold part of its hoard for ${Math.round(sale.proceeds)} ${getMoneyUnit(
+        sale.proceeds !== 1
+      )}.`,
+      cell: faction.hq.cell,
+      ...(faction.hq.burgId !== undefined ? { burgId: faction.hq.burgId } : {})
+    });
+    return sale.proceeds;
   }
 
   /** §5.2 Sabotage a deposit: its cell's output drops and its province loses order. */
@@ -4823,10 +5131,56 @@ class LivingModel {
     if (target !== undefined) this.moveRegimentTo(regiment, target, state.i, key, occupancy);
   }
 
+  /** Carry off part of a beaten state's stash; half is kept and half is lost in the taking. */
+  private seizeStateStash(
+    victimId: number,
+    winnerId: number,
+    share: number,
+    verb: string,
+    burg: Burg,
+    living: LivingWorldState
+  ): void {
+    const victim = pack.states[victimId];
+    const winner = pack.states[winnerId];
+    if (
+      !victim?.i ||
+      victim.removed ||
+      !victim.economy ||
+      !winner?.i ||
+      winner.removed ||
+      !winner.economy ||
+      victimId === winnerId
+    ) {
+      return;
+    }
+
+    const loot = seizeStash(victim.economy.stash, share);
+    if (loot.seized <= 0) return;
+    victim.economy.stash = loot.remaining;
+    if (loot.kept <= 0) return;
+
+    winner.economy.stash = Math.round(((winner.economy.stash ?? 0) + loot.kept) * 100) / 100;
+    const part = stashPartLabel(dominantStashPart(stateStashMix(victim.form)));
+    this.pushNews(living, {
+      kind: "conquest",
+      text: `${winner.name} ${verb} ${burg.name ?? "a settlement"} and seized ${Math.round(loot.kept)} ${getMoneyUnit(
+        loot.kept !== 1
+      )} of ${victim.name}'s ${part}.`,
+      cell: burg.cell,
+      stateId: winner.i,
+      burgId: burg.i
+    });
+  }
+
   /** §5.3 city capture: half the people, reset HP, raze or plunder works per policy. */
   private captureCity(state: State, burg: Burg, living: LivingWorldState, policy: string = "occupy"): void {
     const previousStateId = burg.state ?? 0;
     const wasCapital = Boolean(burg.capital);
+    const stashShare = STASH_LOOT_SHARE[policy as keyof typeof STASH_LOOT_SHARE] ?? 0;
+    if (stashShare > 0) {
+      const verb = policy === "raze" ? "razed" : policy === "sack" ? "sacked" : "looted";
+      this.seizeStateStash(previousStateId, state.i, stashShare, verb, burg, living);
+    }
     this.annexBurg(state.i, burg, true);
     this.logConquest(state, burg, true);
 
@@ -5475,6 +5829,158 @@ class LivingModel {
   /** Ascend an ambitious faction into a sovereign state. */
   ascendFactionToState(factionId: number, targetBurgId?: number): number | null {
     return LivingThreats.ascendFactionToState(factionId, targetBurgId);
+  }
+
+  /** A scheme's empire annexes a state: cells, burgs and provinces pass to the conqueror. */
+  absorbState(stateId: number, conquerorId: number): boolean {
+    const target = pack.states?.[stateId];
+    const conqueror = pack.states?.[conquerorId];
+    if (!target?.i || target.removed || !conqueror?.i || conqueror.removed || stateId === conquerorId) return false;
+
+    const stateCells = pack.cells?.state;
+    if (!stateCells) return false;
+    const cells: number[] = [];
+    for (let cell = 0; cell < stateCells.length; cell++) {
+      if (stateCells[cell] === stateId) cells.push(cell);
+    }
+    if (!cells.length) return false;
+
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    const ruler = sSim?.rulerId !== undefined ? this.findFigure(sSim.rulerId) : undefined;
+    const year = options.map?.lore?.calendar?.year ?? 1000;
+
+    this.transferCells(conquerorId, cells);
+    for (const burg of pack.burgs ?? []) {
+      if (burg?.i && !burg.removed && burg.state === stateId) burg.state = conquerorId;
+    }
+    for (const province of pack.provinces ?? []) {
+      if (province?.i && !province.removed && province.state === stateId) province.state = conquerorId;
+    }
+
+    target.removed = true;
+    if (sSim) delete living.states[stateId];
+    if (ruler && ruler.death === undefined) {
+      for (const role of ruler.roles) {
+        if (
+          role.type === "ruler" &&
+          role.to === undefined &&
+          role.target.kind === "state" &&
+          role.target.id === stateId
+        ) {
+          role.to = year;
+        }
+      }
+    }
+
+    try {
+      this.spawnRemnantFaction(target, conquerorId);
+    } catch {
+      // stripped packs have no faction registry to seed
+    }
+    const text = `${conqueror.name} absorbs ${target.name}.`;
+    this.pushNews(living, { kind: "conquest", text, cell: target.center, stateId: conquerorId });
+    this.pushHistory(
+      "conquest",
+      [
+        { kind: "state", id: stateId },
+        { kind: "state", id: conquerorId }
+      ],
+      target.center,
+      text
+    );
+    living.economyDirty = true;
+    return true;
+  }
+
+  /** A scheme puts its villain on a state's throne. */
+  usurpThrone(stateId: number, villainFigure: number): boolean {
+    const state = pack.states?.[stateId];
+    const living = this.getState();
+    const sSim = living.states[stateId];
+    const villain = this.findFigure(villainFigure);
+    if (!state?.i || state.removed || !sSim || !villain || villain.death !== undefined) return false;
+
+    const year = options.map?.lore?.calendar?.year ?? 1000;
+    const current = sSim.rulerId !== undefined ? this.findFigure(sSim.rulerId) : undefined;
+    if (current && current.i !== villain.i && current.death === undefined) {
+      for (const role of current.roles) {
+        if (
+          role.type === "ruler" &&
+          role.to === undefined &&
+          role.target.kind === "state" &&
+          role.target.id === stateId
+        ) {
+          role.to = year;
+        }
+      }
+    }
+
+    sSim.rulerId = villain.i;
+    const open = villain.roles.some(
+      role =>
+        role.type === "ruler" && role.to === undefined && role.target.kind === "state" && role.target.id === stateId
+    );
+    if (!open) villain.roles.push({ type: "ruler", target: { kind: "state", id: stateId }, from: year });
+
+    if (state.economy) {
+      const kept = (state.economy.simStabilityAdjustments ?? []).filter(line => line.name !== "Usurpation");
+      state.economy.simStabilityAdjustments = [...kept, { name: "Usurpation", value: -10 }];
+    }
+
+    const text = `${villain.name} seizes the crown of ${state.name}.`;
+    this.pushNews(living, { kind: "succession", text, cell: state.center, stateId });
+    this.pushHistory(
+      "coronation",
+      [
+        { kind: "figure", id: villain.i },
+        { kind: "state", id: stateId }
+      ],
+      state.center,
+      text
+    );
+    return true;
+  }
+
+  /** A scheme breaks a seal: drain troubles in the surrounding provinces and a step toward the finale. */
+  breachDoom(cell: number, _schemeId: number): void {
+    const living = this.getState();
+    const provinces = new Set<number>();
+    const seen = new Set<number>([cell]);
+    let queue = [cell];
+    for (let hop = 0; hop < 3 && queue.length; hop++) {
+      const next: number[] = [];
+      for (const current of queue) {
+        const provinceId = pack.cells?.province?.[current] ?? 0;
+        if (provinceId) provinces.add(provinceId);
+        for (const neighbor of pack.cells?.c?.[current] ?? []) {
+          if (seen.has(neighbor)) continue;
+          seen.add(neighbor);
+          next.push(neighbor);
+        }
+      }
+      queue = next;
+    }
+
+    const seeded: string[] = [];
+    for (const provinceId of Array.from(provinces).slice(0, 3)) {
+      const pSim = living.provinces?.[provinceId];
+      const province = pack.provinces?.[provinceId];
+      if (!province || !pSim || pSim.trouble) continue;
+      const trouble =
+        this.spawnTrouble(provinceId, "leyline_blight", "drain") ??
+        this.spawnTrouble(provinceId, "ancient_curse", "drain");
+      if (trouble) seeded.push(province.name ?? `province ${provinceId}`);
+    }
+
+    this.exaltEschaton(living, 8);
+    living.economyDirty = true;
+    const text =
+      seeded.length > 0
+        ? `Something ancient breaks loose; a blight spreads through ${seeded.join(", ")}.`
+        : "Something ancient breaks loose at the seal.";
+    this.pushNews(living, { kind: "trouble", text, cell });
+    this.pushHistory("deed", [], cell, text);
   }
 
   /** Spawn a remnant rebel faction when a state is annexed. */
@@ -6303,7 +6809,7 @@ class LivingModel {
     return pack.states[stateId]?.diplomacy?.[otherId] === "Enemy";
   }
 
-  private declareWar(stateId: number, otherId: number): void {
+  declareWar(stateId: number, otherId: number): void {
     const subject = pack.states[stateId];
     const object = pack.states[otherId];
     if (!subject?.i || subject.removed || !object?.i || object.removed) return;

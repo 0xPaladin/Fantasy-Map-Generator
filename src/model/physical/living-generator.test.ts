@@ -6,10 +6,12 @@ import { currentContent } from "@/data/roster-store";
 import { Deals } from "@/model/economy/deals";
 import { Markets } from "@/model/economy/markets-generator";
 import { nextRosterUnitInCategory, requiredDevelopmentFor } from "@/model/physical/living-armies";
+import { factionStashTarget, stateStashTarget } from "@/model/physical/living-stash";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { Military, syncRegimentTotals } from "@/model/political/military-generator";
 import { noFinance } from "@/model/political/states-generator";
+import { Characters } from "@/model/society/characters";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { Good } from "@/types/economy";
 import type { Faction } from "@/types/factions";
@@ -1246,6 +1248,43 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(burg.treasury).toBe(12);
     });
 
+    it("seeds and grows a state's stash from its day balance", () => {
+      const state = pack.states[1];
+      state.form = "Monarchy";
+      state.culture = 1;
+      pack.cultures[1]!.values = [];
+      pack.markets = [];
+      pack.deals = [[1, 1, 1, 0, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+      state.economy.collected = 100;
+      state.economy.pocketed = 10;
+      state.economy.spent = { court: 20, administration: 10, infrastructure: 10, military: 10 };
+      delete state.economy.stash;
+
+      const target = stateStashTarget(state, undefined, []);
+      const living = Living.init();
+      Living.tick(1);
+
+      expect(state.economy.stash).toBeCloseTo(target * 0.5, 2);
+
+      Living.tick(1);
+      expect(state.economy.stash).toBeCloseTo(target * 0.5 + (target - target * 0.5) * 0.25, 2);
+      expect(state.economy.simStabilityAdjustments).toContainEqual({ name: "Patrimony", value: 1 });
+      expect(living.season).toBeGreaterThan(0);
+    });
+
+    it("sells part of a state's stash into the treasury at a loss", () => {
+      Living.init();
+      const state = pack.states[1];
+      state.economy.stash = 1000;
+      const treasury = state.economy.treasury ?? 0;
+
+      const proceeds = Living.sellStateTreasure(1);
+
+      expect(proceeds).toBe(125);
+      expect(state.economy.stash).toBe(750);
+      expect(state.economy.treasury).toBeCloseTo(treasury + 125, 2);
+    });
+
     it("re-runs the upstream economy once the dirty flag is raised", () => {
       const living = Living.init();
       pack.markets = [];
@@ -1748,6 +1787,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       pack.burgs[2].capital = 0;
       pack.states[1].military = [makeRegiment(0, 7)];
       const living = Living.init();
+      const ruler = pack.history.figures?.find(figure => figure.i === living.states[1].rulerId);
+      if (ruler) ruler.alignment = "evil"; // sack: carry off part of the defender's stash
+      pack.states[2].economy.stash = 1000;
       Living.forceWar(1, 2);
 
       expect(Living.conquerBurg(1, 2)).toBe(true);
@@ -1756,6 +1798,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(pack.burgs[2].state).toBe(1);
       expect(b2.hp).toBe(100);
       expect(b2.conqueredBy).toBe(1);
+      expect(pack.states[2].economy.stash).toBeLessThan(1000);
+      expect(pack.states[1].economy.stash ?? 0).toBeGreaterThan(0);
     });
 
     it("builds the siege garrison from the roster and scales it with walls", () => {
@@ -2321,9 +2365,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
           outposts: [{ burgId: 1, cell: 5, tier: 2, influence: 10, secrecy: 0, assets: [], establishedYear: 1000 }]
         });
+        faction.stash = 1000;
+        const stateStashBefore = pack.states[1].economy.stash ?? 0;
 
         expect(Living.assaultFactionNode(1, faction.i, "outpost:1")).toBe(true);
         expect(faction.outposts[0].pillaged).toBe(true);
+        expect(faction.stash).toBeLessThan(1000);
+        expect(pack.states[1].economy.stash ?? 0).toBeGreaterThan(stateStashBefore);
         expect(Living.getState().recentNews.some(item => item.text.includes("razed"))).toBe(true);
       });
 
@@ -3547,6 +3595,26 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     buildStubPack();
   });
 
+  it("sells part of a faction's stash into its treasury at a loss", () => {
+    const living = Living.init();
+    pack.factions = [{ i: 0 } as Faction];
+    const faction = Factions.add({
+      name: "Gilded Compass",
+      category: "commercial",
+      type: "merchant_consortium",
+      hq: { cell: 1, burgId: 1, fortified: false, secrecy: 0, assets: [] },
+      treasury: 100
+    });
+    faction.stash = 1000;
+
+    const proceeds = Living.sellFactionTreasure(faction.i);
+
+    expect(proceeds).toBe(125);
+    expect(faction.stash).toBe(750);
+    expect(faction.treasury).toBe(225);
+    expect(living.recentNews.some(item => item.text.includes("sold part of its hoard"))).toBe(true);
+  });
+
   it("banks upstream income less its forces' upkeep", () => {
     buildStubPack();
     const living = Living.init();
@@ -3621,6 +3689,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
 
     expect(breakdown.upstreamGold).toBeGreaterThan(0);
     expect(faction.treasury).toBeCloseTo(initTreasury + expectedNet, 2);
+    expect(faction.stash).toBeCloseTo(factionStashTarget(faction, breakdown.economy.dayBalance) * 0.5, 2);
   });
 
   it("handles autonomous agendas: expands outposts and Clashes in contested burgs", () => {
@@ -3744,6 +3813,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     pack.cells.development[4] = SOVEREIGN_DEVELOPMENT;
 
     // Direct ascension test: ascendFactionToState
+    raiderFaction.stash = 500;
     const stateCountBefore = pack.states.length;
     const ascStateId = Living.ascendFactionToState(raiderFaction.i, 2);
     expect(ascStateId).not.toBeNull();
@@ -3752,6 +3822,8 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     const createdState = pack.states[ascStateId!];
     expect(createdState.name).toBe("Ironfang Warband");
     expect(createdState.formName).toBe("Warband Realm");
+    expect(createdState.economy.stash).toBe(500);
+    expect(raiderFaction.stash).toBe(0);
     expect(raiderFaction.allegiance).toBe("state_arm");
     expect(raiderFaction.patronStateId).toBe(ascStateId);
   });
@@ -3759,6 +3831,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
   it("spawns remnant faction on state collapse with inherited identity and hostilities", () => {
     Living.init();
     const fallenState = pack.states[1];
+    fallenState.economy.stash = 1000;
 
     const remnant = Living.spawnRemnantFaction(fallenState, 2);
     expect(remnant).not.toBeNull();
@@ -3768,6 +3841,8 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(remnant!.allegiance).toBe("hostile");
     expect(remnant!.sovereignAmbition).toBe(true);
     expect(remnant!.stateRelations[2]).toBe("Enemy");
+    expect(remnant!.stash).toBe(350);
+    expect(fallenState.economy.stash).toBe(0);
   });
 
   describe("Fiscal policy (living-fmg-native Phase 3)", () => {
@@ -4388,5 +4463,42 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(living.provinces[2]?.trouble?.severity).toBe("flavor");
       expect(thisTickNews.some(n => n.kind === "trouble")).toBe(false);
     });
+  });
+
+  it("absorbs a conquered state into the victor", () => {
+    const living = Living.init();
+
+    expect(Living.absorbState(2, 1)).toBe(true);
+
+    expect(pack.states[2].removed).toBe(true);
+    expect(living.states[2]).toBeUndefined();
+    expect(pack.cells.state[3]).toBe(1);
+    expect(pack.burgs[2].state).toBe(1);
+    expect(pack.provinces[2].state).toBe(1);
+    expect(living.recentNews.some(item => item.text.includes("absorbs"))).toBe(true);
+  });
+
+  it("puts a villain on a state's throne", () => {
+    const living = Living.init();
+    const villain = Characters.add({ name: "Usurper", culture: 2, birth: 940 });
+
+    expect(Living.usurpThrone(2, villain.i)).toBe(true);
+
+    expect(living.states[2].rulerId).toBe(villain.i);
+    expect(
+      villain.roles.some(role => role.type === "ruler" && role.target.kind === "state" && role.target.id === 2)
+    ).toBe(true);
+    expect(pack.states[2].economy.simStabilityAdjustments).toContainEqual({ name: "Usurpation", value: -10 });
+    expect(living.recentNews[0].text).toContain("seizes the crown");
+  });
+
+  it("breaches a seal into blight troubles", () => {
+    const living = Living.init();
+
+    Living.breachDoom(1, 1);
+
+    expect(living.provinces[1].trouble?.id).toBe("leyline_blight");
+    expect(living.eschaton).toBeGreaterThan(0);
+    expect(living.economyDirty).toBe(true);
   });
 });
