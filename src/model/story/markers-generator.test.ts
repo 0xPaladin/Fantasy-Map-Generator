@@ -353,6 +353,27 @@ describe("MarkersModule chronicle-owned types", () => {
     expect(pack.markers).toContain(locked);
     expect(locked.generated).toEqual({ kind: "ruin", version: 1, seed: "12345", meta: { tier: "village" } });
   });
+
+  it("keeps a locked creature marker's generated profile through regeneration", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    options.map.lore.history = history({ mode: "epochs", echoes: false }) as any;
+    world();
+    const locked = {
+      i: 98,
+      type: "hill-monsters",
+      cell: 1,
+      name: "Locked Ogre",
+      lock: true,
+      generated: { kind: "monster", version: 1, seed: "12345", meta: { species: "Ogre" } }
+    } as unknown as Marker;
+    pack.markers = [locked];
+    markers.setConfig(twoTypes);
+    markers.regenerate();
+
+    expect(pack.markers).toContain(locked);
+    expect(locked.generated).toEqual({ kind: "monster", version: 1, seed: "12345", meta: { species: "Ogre" } });
+  });
 });
 
 describe("MarkersModule provincial impacts and attribution", () => {

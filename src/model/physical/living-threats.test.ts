@@ -234,6 +234,84 @@ describe("living-threats", () => {
     });
   });
 
+  it("turns a cleared monster into an outpost ruin, replacing its monster profile", () => {
+    options.map.seed = "threats-seed";
+    const marker = {
+      i: 5,
+      type: "hill-monsters",
+      cell: 1,
+      name: "Aeloran Ogre",
+      generated: { kind: "monster", version: 1, seed: "threats-seed", meta: { species: "Ogre" } }
+    } as unknown as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.kind).toBe("ruin");
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Aeloran Ogre",
+      tier: "outpost",
+      clearedFrom: "hill-monsters",
+      clearedBy: "Aeloria",
+      looted: true
+    });
+  });
+
+  it("turns a cleared beast into an outpost ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = {
+      i: 6,
+      type: "lake-monsters",
+      cell: 1,
+      name: "Loch Ael Monster",
+      generated: { kind: "beast", version: 1, seed: "threats-seed", meta: { habitat: "a freshwater lake" } }
+    } as unknown as Marker;
+
+    convertThreatToRuin(marker);
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.kind).toBe("ruin");
+    expect(marker.generated?.meta).toMatchObject({ clearedFrom: "lake-monsters", tier: "outpost", looted: true });
+  });
+
+  it("turns a cleared pirate crew into an outpost ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = {
+      i: 7,
+      type: "pirates",
+      cell: 1,
+      name: "Pirates",
+      generated: { kind: "bandit", version: 1, seed: "threats-seed", meta: { maritime: true } }
+    } as unknown as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.kind).toBe("ruin");
+    expect(marker.generated?.meta).toMatchObject({
+      clearedFrom: "pirates",
+      clearedBy: "Aeloria",
+      tier: "outpost",
+      looted: true
+    });
+  });
+
+  it("anchors a faction to a monster danger marker", () => {
+    pack.markers = [{ i: 0, type: "hill-monsters", cell: 1, name: "Aeloran Ogre" }] as unknown as typeof pack.markers;
+
+    syncDangerMarkers(mockLiving);
+
+    expect(Factions.active().some(f => f.hq.markerId === 0)).toBe(true);
+  });
+
+  it("anchors a faction to a pirate danger marker", () => {
+    pack.markers = [{ i: 0, type: "pirates", cell: 1, name: "Pirates" }] as unknown as typeof pack.markers;
+
+    syncDangerMarkers(mockLiving);
+
+    expect(Factions.active().some(f => f.hq.markerId === 0)).toBe(true);
+  });
+
   it("ascends an ambitious faction into a sovereign state", () => {
     const faction = Factions.add({
       name: "Free Brotherhood",

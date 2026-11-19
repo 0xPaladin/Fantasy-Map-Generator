@@ -150,4 +150,47 @@ describe("MarkersOverview", () => {
     expect(rows[0][4]).toContain("Dungeon profile");
     expect((marker.generated as { html?: string }).html).toBeUndefined();
   });
+
+  it("exports a creature profile without caching it on the marker", () => {
+    const marker = {
+      i: 9,
+      type: "hill-monsters",
+      icon: "👹",
+      name: "Aeloran Ogre",
+      note: "A rumor of an ogre",
+      cell: 10,
+      x: 100,
+      y: 200,
+      generated: { kind: "monster", version: 1, seed: "12345", meta: { species: "Ogre" } }
+    };
+    Object.assign(pack, { markers: [marker] });
+    Object.assign(pack.cells, {
+      biome: Array(31).fill(1),
+      h: Array(31).fill(60),
+      pop: Array(31).fill(5),
+      province: Array(31).fill(0),
+      religion: Array(31).fill(0)
+    });
+    Object.assign(pack, {
+      cultures: [
+        { i: 0, name: "Wildlands" },
+        { i: 1, name: "Aeloran", alignment: "neutral" }
+      ],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      states: [{ i: 0, name: "Neutrals" }],
+      provinces: [{ i: 0, name: "" }],
+      religions: [{ i: 0, name: "" }]
+    });
+    options.map.seed = "12345";
+    vi.mocked(Csv.download).mockClear();
+
+    MarkersOverview.exportCsv();
+
+    const rows = vi.mocked(Csv.download).mock.calls.at(-1)?.[2] as string[][];
+    expect(rows[0][4]).toContain("Monster profile");
+    expect((marker.generated as { html?: string }).html).toBeUndefined();
+  });
 });

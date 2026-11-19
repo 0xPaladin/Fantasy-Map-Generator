@@ -1,8 +1,8 @@
 # Plan — Beast, Monster and Bandit Profiles
 
-Updated: 2026-11-19. Status: **steps 1–4 shipped** (creature/bandit data tables, shared context/core
-types and headings; beast profiles; monster profiles; bandit profiles, lazy kinds and
-lake/sea/hill/road/sea-route placement). Steps 5–6 remain. Companions:
+Updated: 2026-11-19. Status: **steps 1–5 shipped** (creature/bandit data tables, shared context/core
+types and headings; beast profiles; monster profiles; bandit profiles; lifecycle and integration
+verification). Step 6 remains. Companions:
 [dungeon-profiles.md](dungeon-profiles.md), [ruin-profiles.md](ruin-profiles.md) and
 [cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md). This plan extends the
 same lazy generated-content model to the living threat markers:
@@ -290,9 +290,9 @@ the three generated kinds and renderers should remain distinct.
    - Bandit generator, renderer, lazy kind, random placement meta for brigands/pirates.
    - Leader/gang/base, carried/stashed loot, optional base draft.
    - Tests: locality/maritime agreement, wealth/loot mix, leader, note size, optional base.
-5. **Lifecycle and integration**
-   - Verify cleared threats still become ruins with `clearedFrom`.
-   - Verify living-threat mappings, astral readings, locked markers and old-map reroll.
+5. **Lifecycle and integration — shipped 2026-11-19**
+   - Verified cleared threats still become ruins with `clearedFrom`.
+   - Verified living-threat mappings, astral readings, locked markers and old-map reroll.
    - Tests: cleared conversion, locked markers, old-map backfill, exports render without caching.
 6. **Docs and migration**
    - Wiki coverage for beasts, monsters and bandits; link from Markers and Living World.
