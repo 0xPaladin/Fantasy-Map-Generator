@@ -28,6 +28,8 @@ import type { Province } from "@/model/political/provinces-generator";
 import { Stability } from "@/model/political/stability";
 import { noFinance, type State } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import type { Marker } from "@/model/story/markers-generator";
+import { createRuinContent } from "@/model/story/ruin-marker";
 import type { ArmyUnit } from "@/types/battle";
 import type { Faction } from "@/types/factions";
 import type { HistoricalFigure, HistoryEventType, HistRef } from "@/types/history";
@@ -72,6 +74,23 @@ export interface ThreatHost {
 }
 
 let hostRef: ThreatHost | null = null;
+
+/** Turn a cleared threat marker into a ruin with history and a cleared/looted profile recipe */
+export function convertThreatToRuin(marker: Marker, clearedBy?: string): void {
+  const clearedFrom = marker.type;
+  const generated = {
+    ...createRuinContent(),
+    meta: {
+      originalName: marker.name,
+      tier: /dungeon|necropolis|rift/i.test(clearedFrom) ? "village" : "outpost",
+      cause: "abandonment",
+      looted: true,
+      clearedFrom,
+      ...(clearedBy ? { clearedBy } : {})
+    }
+  };
+  convertDangerMarkerToRuins(marker, clearedBy, generated);
+}
 
 export function setThreatHost(host: ThreatHost): void {
   hostRef = host;
@@ -678,7 +697,7 @@ export function assaultFaction(stateId: number, provinceId: number): boolean {
   const destroyFaction = () => {
     if (faction.hq.markerId !== undefined) {
       const marker = pack.markers?.[faction.hq.markerId];
-      if (marker && isDangerMarker(marker)) convertDangerMarkerToRuins(marker, state.name);
+      if (marker && isDangerMarker(marker)) convertThreatToRuin(marker, state.name);
     }
     Factions.remove(faction.i);
   };
@@ -795,7 +814,7 @@ export function sendAdventurersToFaction(stateId: number, provinceId: number): b
   if (total >= dc) {
     if (faction.hq.markerId !== undefined) {
       const marker = pack.markers?.[faction.hq.markerId];
-      if (marker && isDangerMarker(marker)) convertDangerMarkerToRuins(marker, state.name);
+      if (marker && isDangerMarker(marker)) convertThreatToRuin(marker, state.name);
     }
     const factionName = faction.name;
     Factions.remove(faction.i);
@@ -866,7 +885,7 @@ export function smiteFaction(provinceId: number): boolean {
 
   if (faction.hq.markerId !== undefined) {
     const marker = pack.markers?.[faction.hq.markerId];
-    if (marker && isDangerMarker(marker)) convertDangerMarkerToRuins(marker);
+    if (marker && isDangerMarker(marker)) convertThreatToRuin(marker);
   }
   Factions.remove(faction.i);
   pushNews(living, {
@@ -1239,7 +1258,7 @@ function spawnEmergentState(opts: {
 
   if (markerId !== undefined) {
     const marker = pack.markers?.[markerId];
-    if (marker && isDangerMarker(marker)) convertDangerMarkerToRuins(marker);
+    if (marker && isDangerMarker(marker)) convertThreatToRuin(marker);
   }
 
   pSim.trouble = null;

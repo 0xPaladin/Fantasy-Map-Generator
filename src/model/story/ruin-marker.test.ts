@@ -69,7 +69,8 @@ describe("ruin marker context", () => {
         fallYear: 512,
         cause: "a curse",
         looted: true,
-        clearedBy: "King Alden"
+        clearedBy: "King Alden",
+        clearedFrom: "dungeons"
       }
     };
 
@@ -86,7 +87,8 @@ describe("ruin marker context", () => {
       fallYear: 512,
       cause: "a curse",
       looted: true,
-      clearedBy: "King Alden"
+      clearedBy: "King Alden",
+      clearedFrom: "dungeons"
     });
   });
 

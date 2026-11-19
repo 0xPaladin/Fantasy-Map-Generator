@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
+import type { Marker } from "@/model/story/markers-generator";
 import {
   convertDangerMarkerToRuins,
   DANGER_MARKER_TYPES,
@@ -95,7 +96,7 @@ describe("danger-markers", () => {
       name: "Red Hand Outlaws",
       note: "Infamous bandits who terrorized the north roads.",
       threatId: "lair:12"
-    };
+    } as Marker;
 
     convertDangerMarkerToRuins(marker, "King Alden");
 
@@ -103,6 +104,31 @@ describe("danger-markers", () => {
     expect(marker.icon).toBe("🏛️");
     expect(marker.name).toBe("Ruins of Red Hand Outlaws");
     expect(marker.threatId).toBeUndefined();
+    expect(marker.note).toContain("Site cleared and dismantled by King Alden");
+  });
+
+  it("attaches a cleared ruin recipe when one is supplied", () => {
+    const marker = {
+      i: 13,
+      cell: 0,
+      type: "dungeons",
+      icon: "♠️",
+      x: 100,
+      y: 100,
+      name: "Old Crypt",
+      note: "A dangerous crypt.",
+      threatId: "lair:13"
+    } as Marker;
+    const generated = {
+      kind: "ruin",
+      version: 1,
+      seed: "12345",
+      meta: { originalName: "Old Crypt", clearedFrom: "dungeons", looted: true }
+    };
+
+    convertDangerMarkerToRuins(marker, "King Alden", generated);
+
+    expect(marker.generated).toEqual(generated);
     expect(marker.note).toContain("Site cleared and dismantled by King Alden");
   });
 });

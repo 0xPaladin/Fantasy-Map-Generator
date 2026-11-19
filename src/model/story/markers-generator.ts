@@ -59,7 +59,7 @@ import {
   requireGeneratedRecipe
 } from "@/model/story/marker-content";
 import { Notes } from "@/model/story/notes";
-import "@/model/story/ruin-marker";
+import { createRuinContent, RUIN_KIND } from "@/model/story/ruin-marker";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
 import type { Good } from "@/types/economy";
 import type { PackedGraph } from "@/types/packed-graph";
@@ -1628,6 +1628,7 @@ class MarkersModule {
     const legend = `Ruins of an ancient ${ruinType.toLowerCase()}. Untold riches may lie within.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== RUIN_KIND) marker.generated = createRuinContent();
   }
 
   private listLibraries({ cells }: PackedGraph) {

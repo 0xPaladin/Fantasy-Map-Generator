@@ -31,6 +31,7 @@ import { Characters } from "@/model/society/characters";
 import { Names } from "@/model/society/names-generator";
 import { Markers } from "@/model/story/markers-generator";
 import { Notes } from "@/model/story/notes";
+import { createRuinContent } from "@/model/story/ruin-marker";
 import {
   type EpochPolity,
   type Era,
@@ -825,11 +826,25 @@ class ChronicleModel {
     const [x, y] = pack.cells.p[cell];
     const type = P(0.25) ? "necropolises" : "ruins";
     const name = type === "ruins" ? `Ruins of ${subject.name}` : `${subject.name} ${rw(NECROPOLIS_TYPES)}`;
+    const generated =
+      type === "ruins"
+        ? {
+            ...createRuinContent(),
+            meta: {
+              originalName: subject.name,
+              originalPolity: subject.name,
+              fallYear: subject.fallen,
+              cause: "war",
+              tier: "capital"
+            }
+          }
+        : undefined;
     Markers.place(x, y, type, {
       name,
       note: ra(FALLEN_CAPITAL_TEMPLATES)(subject.name, subject.fallen),
       chronicle: true,
-      year: subject.fallen
+      year: subject.fallen,
+      ...(generated ? { generated } : {})
     });
   }
 
@@ -846,11 +861,25 @@ class ChronicleModel {
         : type === "necropolises"
           ? `${burg.name} ${rw(NECROPOLIS_TYPES)}`
           : `Disturbed Burial of ${burg.name}`;
+    const generated =
+      type === "ruins"
+        ? {
+            ...createRuinContent(),
+            meta: {
+              originalName: burg.name!,
+              originalPolity: subject.name,
+              fallYear: subject.fallen,
+              cause: "war",
+              tier: (burg.population ?? 0) >= 20 ? "town" : "village"
+            }
+          }
+        : undefined;
     Markers.place(x, y, type, {
       name,
       note: ra(FALLEN_BURG_TEMPLATES)(burg.name!, subject.name, subject.fallen),
       chronicle: true,
-      year: subject.fallen
+      year: subject.fallen,
+      ...(generated ? { generated } : {})
     });
   }
 

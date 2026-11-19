@@ -1,11 +1,12 @@
 # Plan — Ruin Profiles and Multi-Site Ruins
 
-Updated: 2026-11-18. Status: **phases 1–3 shipped** (shared site plumbing; the single-site
+Updated: 2026-11-18. Status: **phases 1–4 shipped** (shared site plumbing; the single-site
 ruin data, deterministic generator, renderer and lazy `ruin` kind; tiered multi-site ruins and
-capped sub-dungeons). Phase 4, placement and history integration, is next. Builds on the shipped
-dungeon profile infrastructure: lazy marker content, the full/short notes split, reroll and
-exports, the five 1–10 ratings, inhabitant groups and the four-category treasure mix. The dungeon
-plan is [dungeon-profiles.md](dungeon-profiles.md).
+capped sub-dungeons; random placement, history fall markers and cleared danger markers). Phase 5,
+docs and migration, is next. Builds on the shipped dungeon profile infrastructure: lazy marker
+content, the full/short notes split, reroll and exports, the five 1–10 ratings, inhabitant groups
+and the four-category treasure mix. The dungeon plan is
+[dungeon-profiles.md](dungeon-profiles.md).
 
 ## Problem
 
@@ -294,9 +295,9 @@ Generate two or three rumors in the local voice, plus one or two secrets:
 
 | Source | Integration |
 |---|---|
-| Random `addRuins` | Set `generated` kind `ruin`, tier, seed and short note. Weight random tiers toward small sites |
+| Random `addRuins` | Set `generated` kind `ruin` and seed; the generator rolls the tier from weights. Keep the short note |
 | History `placeFallRemains` | Extend `Markers.place`/`MarkerDetails` to accept generated metadata. Pass original polity, fallen year, cause, culture and tier from the seat burg |
-| Cleared danger marker | Set generated metadata with `cleared`, `clearedBy`, `clearedFrom` and `looted`; keep the resolution note |
+| Cleared danger marker | Set generated metadata with `clearedBy`, `clearedFrom` and `looted`; keep the resolution note |
 | Old maps | Ruin markers without `generated` backfill through the reroll button |
 | Locked markers | Keep the generated profile through marker regeneration |
 | History regeneration | Chronicle ruins are cleared and replaced; their generated content goes with them |
@@ -369,7 +370,7 @@ Before the ruin generator:
    - Parent profile renders sub-dungeon profiles inline.
    - Site type table and tier site/dungeon ranges.
    - Tests: site counts, dungeon caps, no double treasure, note size sanity.
-4. **Placement and history**
+4. **Placement and history — shipped 2026-11-18**
    - Random `addRuins` generated recipe with tier weights.
    - History `placeSeatMarker`/`placeBurgMarker` pass tier and meta.
    - Cleared danger markers get cleared/looted meta.

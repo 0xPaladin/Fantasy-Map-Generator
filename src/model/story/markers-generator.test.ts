@@ -556,3 +556,23 @@ describe("MarkersModule dungeons", () => {
     expect(() => markers.regenerateDungeonProfile(2)).toThrow("not a dungeon");
   });
 });
+
+describe("MarkersModule ruins", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = { markers: [] } as any;
+  });
+
+  it("gives a random ruin a lazy ruin recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "ruins", cell: 1 } as Marker;
+
+    markers.addRuins(marker, 1);
+
+    expect(marker.name).toContain("Ruined");
+    expect(marker.generated).toMatchObject({ kind: "ruin", version: 1, seed: "12345" });
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate ruin profile");
+  });
+});

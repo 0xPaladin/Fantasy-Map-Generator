@@ -3,10 +3,12 @@ import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import type { State } from "@/model/political/states-generator";
+import type { Marker } from "@/model/story/markers-generator";
 import type { Faction } from "@/types/factions";
 import type { LivingWorldState } from "@/types/living";
 import {
   ascendFactionToState,
+  convertThreatToRuin,
   migrateLegacyThreats,
   quellTrouble,
   setThreatHost,
@@ -160,6 +162,44 @@ describe("living-threats", () => {
 
     expect(smiteFaction(1)).toBe(true);
     expect(Factions.active().some(f => f.i === faction!.i)).toBe(false);
+  });
+
+  it("turns a cleared threat into a looted ruin with cleared metadata", () => {
+    options.map.seed = "threats-seed";
+    const marker = pack.markers[0] as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.name).toBe("Ruins of Bandit Hideout");
+    expect(marker.generated).toEqual({
+      kind: "ruin",
+      version: 1,
+      seed: "threats-seed",
+      meta: {
+        originalName: "Bandit Hideout",
+        tier: "outpost",
+        cause: "abandonment",
+        looted: true,
+        clearedFrom: "brigands",
+        clearedBy: "Aeloria"
+      }
+    });
+  });
+
+  it("gives a cleared dungeon a village tier and no clearedBy when unknown", () => {
+    options.map.seed = "threats-seed";
+    const marker = { i: 2, type: "dungeons", cell: 1, name: "Old Crypt" } as Marker;
+
+    convertThreatToRuin(marker);
+
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Old Crypt",
+      tier: "village",
+      clearedFrom: "dungeons",
+      looted: true
+    });
+    expect(marker.generated?.meta?.clearedBy).toBeUndefined();
   });
 
   it("ascends an ambitious faction into a sovereign state", () => {

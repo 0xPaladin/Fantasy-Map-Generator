@@ -2,7 +2,11 @@
 import type { Alignment } from "@/data/culture-traits";
 import { RUIN_TIERS, type RuinTier } from "@/data/ruins";
 import { Names } from "@/model/society/names-generator";
-import { type MarkerGeneratedContent, registerGeneratedKind } from "@/model/story/marker-content";
+import {
+  type MarkerGeneratedContent,
+  type MarkerGeneratedRecipe,
+  registerGeneratedKind
+} from "@/model/story/marker-content";
 import type { Marker } from "@/model/story/markers-generator";
 import { generateRuinProfile, type RuinContext, renderRuinProfile } from "@/model/story/ruin-generator";
 
@@ -40,7 +44,7 @@ export function ruinContext(marker: Marker, seed: string): RuinContext {
 }
 
 /** The tiny record stored on a ruin marker; the profile is built on first read */
-export function createRuinContent(): MarkerGeneratedContent {
+export function createRuinContent(): MarkerGeneratedRecipe {
   return { kind: RUIN_KIND, version: RUIN_VERSION, seed: options.map.seed };
 }
 

@@ -981,6 +981,34 @@ describe("Chronicle.generate fall markers", () => {
       expect(pack.markers.some(marker => marker.name.includes(living))).toBe(false);
   });
 
+  it("gives the fallen capital a capital-tier history recipe", () => {
+    Chronicle.generate();
+    const seat = pack.markers.find(marker => marker.name === "Ruins of Old Empire")!;
+    expect(seat.generated).toMatchObject({
+      kind: "ruin",
+      version: 1,
+      seed: options.map.seed,
+      meta: {
+        originalName: "Old Empire",
+        originalPolity: "Old Empire",
+        fallYear: 500,
+        cause: "war",
+        tier: "capital"
+      }
+    });
+  });
+
+  it("gives a fallen province ruin a town or village tier", () => {
+    Chronicle.generate();
+    const burgRuin = pack.markers.find(marker => marker.name === "Ruins of Dale")!;
+    expect(burgRuin.generated?.meta).toMatchObject({
+      originalName: "Dale",
+      originalPolity: "Old Empire",
+      fallYear: 500,
+      tier: "village"
+    });
+  });
+
   it("marks the greater burgs with it, naming the burg", () => {
     Chronicle.generate();
     const ruins = pack.markers.filter(marker => marker.type !== "battlefields");
