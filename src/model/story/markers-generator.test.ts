@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BURIAL_KINDS } from "@/data/burials";
+import { BRIGAND_ANIMALS, HILL_MONSTER_SPECIES } from "@/data/markers";
 import { Goods } from "@/model/economy/goods-generator";
 import { Names } from "@/model/society/names-generator";
+import { ensureGenerated } from "./marker-content";
 import type { Marker } from "./markers-generator";
 import { Markers } from "./markers-generator";
 
@@ -329,6 +332,48 @@ describe("MarkersModule chronicle-owned types", () => {
     markers.regenerate();
     expect(pack.markers.map((marker: Marker) => marker.type)).toEqual(["ruins", "battlefields"]);
   });
+
+  it("keeps a locked marker's generated profile through regeneration", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    options.map.lore.history = history({ mode: "epochs", echoes: false }) as any;
+    world();
+    const locked = {
+      i: 99,
+      type: "ruins",
+      cell: 1,
+      name: "Locked Ruin",
+      lock: true,
+      generated: { kind: "ruin", version: 1, seed: "12345", meta: { tier: "village" } }
+    } as unknown as Marker;
+    pack.markers = [locked];
+    markers.setConfig(twoTypes);
+    markers.regenerate();
+
+    expect(pack.markers).toContain(locked);
+    expect(locked.generated).toEqual({ kind: "ruin", version: 1, seed: "12345", meta: { tier: "village" } });
+  });
+
+  it("keeps a locked creature marker's generated profile through regeneration", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    options.map.lore.history = history({ mode: "epochs", echoes: false }) as any;
+    world();
+    const locked = {
+      i: 98,
+      type: "hill-monsters",
+      cell: 1,
+      name: "Locked Ogre",
+      lock: true,
+      generated: { kind: "monster", version: 1, seed: "12345", meta: { species: "Ogre" } }
+    } as unknown as Marker;
+    pack.markers = [locked];
+    markers.setConfig(twoTypes);
+    markers.regenerate();
+
+    expect(pack.markers).toContain(locked);
+    expect(locked.generated).toEqual({ kind: "monster", version: 1, seed: "12345", meta: { species: "Ogre" } });
+  });
 });
 
 describe("MarkersModule provincial impacts and attribution", () => {
@@ -434,5 +479,383 @@ describe("MarkersModule provincial impacts and attribution", () => {
     // Hiding a marker removes its provincial impact; moving shifts it
     Markers.setHidden(1, true);
     expect(Markers.getProvinceAdjustments(1).economy).toEqual([{ name: "House A", value: 4 }]);
+  });
+});
+
+describe("MarkersModule dungeons", () => {
+  const CELL = 1;
+
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      markers: [],
+      cells: {
+        i: [0, 1],
+        culture: Uint8Array.from([1, 1]),
+        biome: Uint8Array.from([1, 1]),
+        h: Uint8Array.from([42, 42]),
+        state: Uint8Array.from([1, 1]),
+        province: Uint8Array.from([1, 1]),
+        religion: Uint8Array.from([1, 1])
+      },
+      cultures: [
+        { i: 0, name: "Wildlands" },
+        { i: 1, name: "Aeloran", alignment: "neutral" }
+      ],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      states: [
+        { i: 0, name: "Neutrals" },
+        { i: 1, name: "Ardenia" }
+      ],
+      provinces: [
+        { i: 0, name: "" },
+        { i: 1, name: "Green March" }
+      ],
+      religions: [
+        { i: 0, name: "" },
+        { i: 1, name: "The Dawn" }
+      ]
+    } as any;
+  });
+
+  it("keeps the Watabou preview and stores only the lazy dungeon recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+
+    markers.addDungeon(marker, CELL);
+
+    expect(marker.name).not.toBe("Dungeon");
+    expect(marker.note).toContain("https://watabou.github.io/one-page-dungeon/?seed=123451");
+    expect(marker.note).toContain('rel="noopener"');
+    expect(marker.note).not.toContain("Dungeon profile");
+    expect(marker.generated).toMatchObject({ kind: "dungeon", version: 1, seed: "12345" });
+    expect(marker.generated?.html).toBeUndefined();
+  });
+
+  it("materializes the profile on first read without changing the stored note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+    markers.addDungeon(marker, CELL);
+    const note = marker.note;
+
+    const html = ensureGenerated(marker);
+
+    expect(html).toContain(marker.name);
+    expect(html).toContain("Alternate dungeon profile");
+    expect(marker.generated?.html).toBe(html);
+    expect(marker.note).toBe(note);
+  });
+
+  it("rerolls the profile and keeps the Watabou note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+    markers.addDungeon(marker, CELL);
+    pack.markers = [marker];
+    const note = marker.note;
+    const first = ensureGenerated(marker);
+
+    markers.regenerateDungeonProfile(0, "reroll");
+
+    expect(marker.note).toBe(note);
+    expect(marker.generated).toMatchObject({ kind: "dungeon", version: 1, seed: "12345" });
+    expect(marker.generated?.html).not.toBe(first);
+  });
+
+  it("rerolls through the generic generated-content entry point", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+    markers.addDungeon(marker, CELL);
+    pack.markers = [marker];
+
+    markers.regenerateGeneratedContent(0, "generic");
+
+    expect(marker.generated?.html).toContain("Alternate dungeon profile");
+  });
+
+  it("backfills an older dungeon marker and its generic name", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 1, type: "dungeons", name: "Dungeon", note: "Watabou legend", cell: CELL } as Marker;
+    pack.markers = [marker];
+
+    markers.regenerateDungeonProfile(1, "backfill");
+
+    expect(marker.name).not.toBe("Dungeon");
+    expect(marker.note).toBe("Watabou legend");
+    expect(marker.generated?.html).toContain("Alternate dungeon profile");
+  });
+
+  it("refuses to reroll a marker that is not a dungeon", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    pack.markers = [{ i: 2, type: "inns", name: "Inn", cell: CELL } as Marker];
+
+    expect(() => markers.regenerateDungeonProfile(2)).toThrow("not a dungeon");
+  });
+});
+
+describe("MarkersModule ruins", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = { markers: [] } as any;
+  });
+
+  it("gives a random ruin a lazy ruin recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "ruins", cell: 1 } as Marker;
+
+    markers.addRuins(marker, 1);
+
+    expect(marker.name).toContain("Ruined");
+    expect(marker.generated).toMatchObject({ kind: "ruin", version: 1, seed: "12345" });
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate ruin profile");
+  });
+});
+
+describe("MarkersModule caves", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 60], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a random cave a lazy cave recipe and keeps the status note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "caves", cell: 1 } as Marker;
+
+    markers.addCave(marker, 1);
+
+    expect(marker.name).toContain("Aeloran");
+    expect(marker.generated).toMatchObject({ kind: "cave", version: 1, seed: "12345" });
+    const formation = marker.generated?.meta?.formation as string;
+    const status = marker.generated?.meta?.status as string;
+    expect(formation).toBeTruthy();
+    expect(status).toBeTruthy();
+    expect(marker.note).toContain(status);
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate cave profile");
+  });
+
+  it("keeps cave impact keywords in the short note", () => {
+    expect(Markers.getDefaultImpact({ type: "caves", name: "X", note: "a good spot to hid treasure" })).toEqual({
+      economy: 1,
+      stability: 0
+    });
+    expect(Markers.getDefaultImpact({ type: "caves", name: "X", note: "the home of strange monsters" })).toEqual({
+      economy: 0,
+      stability: -2
+    });
+  });
+});
+
+describe("MarkersModule disturbed burials", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 30], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+  });
+
+  it("gives a random disturbed burial a lazy burial recipe and keeps the short note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "disturbed-burials", cell: 1 } as Marker;
+
+    markers.addDisturbedBurial(marker, 1);
+
+    expect(marker.name).toBe("Disturbed Burial");
+    expect(marker.note).toContain("the dead to rise");
+    expect(marker.generated).toMatchObject({ kind: "burial", version: 1, seed: "12345" });
+    const burialKind = marker.generated?.meta?.burialKind as string;
+    expect(BURIAL_KINDS.some(row => row.kind === burialKind)).toBe(true);
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate burial profile");
+  });
+});
+
+describe("MarkersModule necropolises", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 25], pop: [0, 1] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a random necropolis a lazy necropolis recipe and keeps the legend", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "necropolises", cell: 1 } as Marker;
+
+    markers.addNecropolis(marker, 1);
+
+    const burialType = marker.generated?.meta?.burialType as string;
+    expect(marker.name).toBe(`Aeloran ${burialType}`);
+    expect(marker.note).toBeTruthy();
+    expect(marker.generated).toMatchObject({ kind: "necropolis", version: 1, seed: "12345" });
+    expect(burialType).toBeTruthy();
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate necropolis profile");
+  });
+});
+
+describe("MarkersModule beasts", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    options.map.units = { height: { unit: "m" } } as any;
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 10], pop: [0, 5], f: [0, 1] },
+      features: [{}, { type: "lake", name: "Loch Ael" }],
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran", getCultureShort: () => "Aeloran" });
+  });
+
+  it("gives a lake monster a lazy beast recipe and keeps the rumor", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "lake-monsters", cell: 1 } as Marker;
+
+    markers.addLakeMonster(marker, 1);
+
+    expect(marker.name).toBe("Loch Ael Monster");
+    expect(marker.generated).toMatchObject({ kind: "beast", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.habitat).toBe("a freshwater lake");
+    expect(typeof marker.generated?.meta?.length).toBe("number");
+    expect(marker.note).toContain("afraid to fish");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate beast profile");
+  });
+
+  it("gives a sea monster a lazy beast recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "sea-monsters", cell: 1 } as Marker;
+
+    markers.addSeaMonster(marker, 1);
+
+    expect(marker.name).toBe("Aeloran Monster");
+    expect(marker.generated).toMatchObject({ kind: "beast", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.habitat).toBe("the open sea");
+    expect(typeof marker.generated?.meta?.length).toBe("number");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate beast profile");
+  });
+});
+
+describe("MarkersModule monsters", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 60], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a hill monster a lazy monster recipe and keeps the rumor", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "hill-monsters", cell: 1 } as Marker;
+
+    markers.addHillMonster(marker, 1);
+
+    const species = marker.generated?.meta?.species as string;
+    expect(HILL_MONSTER_SPECIES).toContain(species);
+    expect(marker.name).toBe(`Aeloran ${species}`);
+    expect(marker.generated).toMatchObject({ kind: "monster", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.habit).toBeTruthy();
+    expect(marker.note).toContain(species);
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate monster profile");
+  });
+});
+
+describe("MarkersModule bandits", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 5], h: [0, 40], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 5, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran" });
+  });
+
+  it("gives a brigand gang a lazy bandit recipe and keeps the note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "brigands", cell: 1 } as Marker;
+
+    markers.addBrigands(marker, 1);
+
+    const gang = marker.generated?.meta?.gang as string;
+    expect(BRIGAND_ANIMALS).toContain(gang);
+    expect(marker.name).toBe(`Aeloran ${gang}`);
+    expect(marker.generated).toMatchObject({ kind: "bandit", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.locality).toBeTruthy();
+    expect(marker.generated?.meta?.maritime).toBe(false);
+    expect(marker.note).toContain("A gang of");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate bandit profile");
+  });
+
+  it("gives pirates a maritime bandit recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "pirates", cell: 1 } as Marker;
+
+    markers.addPirates(marker, 1);
+
+    expect(marker.name).toBe("Pirates");
+    expect(marker.generated).toMatchObject({ kind: "bandit", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.maritime).toBe(true);
+    expect(marker.generated?.meta?.locality).toBe("coastal");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate bandit profile");
   });
 });

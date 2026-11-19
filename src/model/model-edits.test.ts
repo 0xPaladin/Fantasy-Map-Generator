@@ -499,6 +499,28 @@ describe("Zones, Markers, Routes, labels and regiments", () => {
       name: "Old Shrine",
       note: "<p>Pilgrims leave bells here.</p>"
     });
+    const generatedId = Markers.place(10, 20, "shrine", {
+      name: "Old Shrine",
+      note: "<p>Pilgrims leave bells here.</p>",
+      generated: {
+        kind: "ruin",
+        version: 1,
+        seed: "seed",
+        meta: { tier: "village", fallYear: 512, looted: true }
+      }
+    });
+    expect(pack.markers.find(marker => marker.i === generatedId)?.generated).toEqual({
+      kind: "ruin",
+      version: 1,
+      seed: "seed",
+      meta: { tier: "village", fallYear: 512, looted: true }
+    });
+    expect(() =>
+      Markers.place(10, 20, "shrine", {
+        note: "<p>Bad</p>",
+        generated: { kind: "ruin", version: 1, seed: "seed", meta: { nested: {} as never } }
+      })
+    ).toThrow("meta nested");
     expect(() => Markers.place(10, 20, "shrine", { note: "<img src=x onerror=alert(1)>" })).toThrow("notes subset");
     expect(() => Markers.place(10, 20, "shrine", { title: "X" } as never)).toThrow("Unknown marker detail title");
     Markers.remove(0);

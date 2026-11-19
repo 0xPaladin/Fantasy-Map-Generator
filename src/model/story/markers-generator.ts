@@ -1,4 +1,5 @@
 import { mean } from "d3";
+import { BURIAL_KINDS, type BurialKind } from "@/data/burials";
 import {
   BRIDGE_ADJECTIVES,
   BRIGAND_ANIMALS,
@@ -50,7 +51,22 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import { BANDIT_KIND, createBanditContent } from "@/model/story/bandit-marker";
+import { BEAST_KIND, createBeastContent } from "@/model/story/beast-marker";
+import { BURIAL_KIND, createBurialContent } from "@/model/story/burial-marker";
+import { CAVE_KIND, createCaveContent } from "@/model/story/cave-marker";
+import { createDungeonContent, DUNGEON_KIND, DUNGEON_VERSION, dungeonName } from "@/model/story/dungeon-marker";
+import {
+  createGeneratedContent,
+  type MarkerGeneratedContent,
+  type MarkerGeneratedRecipe,
+  regenerateGenerated,
+  requireGeneratedRecipe
+} from "@/model/story/marker-content";
+import { createMonsterContent, MONSTER_KIND } from "@/model/story/monster-marker";
+import { createNecropolisContent, NECROPOLIS_KIND } from "@/model/story/necropolis-marker";
 import { Notes } from "@/model/story/notes";
+import { createRuinContent, RUIN_KIND } from "@/model/story/ruin-marker";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
 import type { Good } from "@/types/economy";
 import type { PackedGraph } from "@/types/packed-graph";
@@ -103,6 +119,8 @@ export interface Marker {
   pinned?: boolean;
   name: string;
   note?: string;
+  /** lazily generated content: only the seed is stored until the profile is first read */
+  generated?: MarkerGeneratedContent;
   /** placed by the chronicle: cleared and re-placed when history regenerates */
   chronicle?: boolean;
   /** the historical year the marker belongs to: the historical view hides it before then */
@@ -143,6 +161,7 @@ export type MarkerDetails = {
   year?: number;
   economy?: number;
   stability?: number;
+  generated?: MarkerGeneratedRecipe;
 };
 
 export type MarkerImpactInput = {
@@ -471,6 +490,35 @@ class MarkersModule {
     else delete marker.lock;
   }
 
+  /** Rebuild a marker's generated profile from its recipe, keeping the short note */
+  regenerateGeneratedContent(markerId: number, salt?: string): void {
+    const marker = this.living(markerId);
+    if (!marker.generated) {
+      const created = createGeneratedContent(marker);
+      if (!created) throw new Error(`Marker ${markerId} has no generated profile`);
+      marker.generated = created;
+    }
+
+    const content = marker.generated!;
+    if (content.kind === DUNGEON_KIND) {
+      if (!marker.name || marker.name === "Dungeon") marker.name = dungeonName(marker.cell, options.map.seed);
+      content.seed = options.map.seed;
+      content.version = DUNGEON_VERSION;
+    }
+
+    const html = regenerateGenerated(marker, salt ?? String(Date.now()));
+    if (html === undefined) throw new Error(`Marker ${markerId} has no renderer for ${content.kind}`);
+    Pack.markChanged();
+  }
+
+  /** Backwards-compatible dungeon alias */
+  regenerateDungeonProfile(markerId: number, salt?: string): void {
+    const marker = this.living(markerId);
+    if (marker.type !== "dungeons" && marker.type !== "dungeon" && marker.generated?.kind !== DUNGEON_KIND)
+      throw new Error(`Marker ${markerId} is not a dungeon`);
+    this.regenerateGeneratedContent(markerId, salt);
+  }
+
   /** Set how a marker looks: size (marker), px (icon size), dx and dy (icon shift, %), pin shape, fill and stroke (pin), iconFill and iconStroke. null restores a default */
   setAppearance(markerId: number, appearance: MarkerAppearance): void {
     const marker = this.living(markerId);
@@ -493,21 +541,22 @@ class MarkersModule {
     return marker;
   }
 
-  /** Place a marker at a map point with details: its name, legend note (HTML, as Notes.write takes), icon (an emoji or icon id), chronicle, to mark it as the chronicle's own (cleared on the next history regeneration), year, the historical year it belongs to (the historical view hides it before then), and optional economy (gold/day) and stability (%) overrides. A type from the markers config, such as volcanoes or ruins, generates all three, each replaced by the one given; any other type needs a note. Returns its id */
+  /** Place a marker at a map point with details: its name, legend note (HTML, as Notes.write takes), icon (an emoji or icon id), chronicle, to mark it as the chronicle's own (cleared on the next history regeneration), year, the historical year it belongs to (the historical view hides it before then), optional economy (gold/day) and stability (%) overrides, and an optional lazy generated recipe. A type from the markers config, such as volcanoes or ruins, generates all three, each replaced by the one given; any other type needs a note. Returns its id */
   place(x: number, y: number, type: string, details: MarkerDetails = {}): number {
     if (typeof details !== "object" || details === null || Array.isArray(details))
       throw new Error(
-        "The marker details must be an object: { name, note, icon, chronicle, year, economy, stability }"
+        "The marker details must be an object: { name, note, icon, chronicle, year, economy, stability, generated }"
       );
-    const known = ["name", "note", "icon", "chronicle", "year", "economy", "stability"];
+    const known = ["name", "note", "icon", "chronicle", "year", "economy", "stability", "generated"];
     const unknown = Object.keys(details).find(key => !known.includes(key));
     if (unknown) throw new Error(`Unknown marker detail ${unknown}; known: ${known.join(", ")}`);
-    const { name, note, icon, year, economy, stability } = details;
+    const { name, note, icon, year, economy, stability, generated } = details;
     if (year !== undefined && typeof year !== "number") throw new Error("The marker year must be a number");
     if (economy !== undefined && (typeof economy !== "number" || !Number.isFinite(economy)))
       throw new Error("The marker economy impact must be a number");
     if (stability !== undefined && (typeof stability !== "number" || !Number.isFinite(stability)))
       throw new Error("The marker stability impact must be a number");
+    const recipe = generated === undefined ? undefined : requireGeneratedRecipe(generated);
     const cell = Pack.requireCell(x, y);
     const marker = { x: rn(x, 2), y: rn(y, 2), cell, type: requireName(type) } as Marker;
     if (details.chronicle) marker.chronicle = true;
@@ -521,6 +570,7 @@ class MarkersModule {
     else if (!configured) marker.icon = Icons.glyph("❓");
     const added = this.add(marker);
     if (marker.name) added.name = marker.name; // the config type names the marker as it adds it
+    if (recipe) added.generated = recipe;
     if (note) Notes.write(`marker:${added.i}`, note);
     Pack.markChanged();
     return added.i;
@@ -1346,11 +1396,19 @@ class MarkersModule {
   }
 
   private addDungeon(marker: Marker, cell: number) {
-    const dungeonSeed = `${options.map.seed}${cell}`;
-    const name = "Dungeon";
-    const legend = `<div>Undiscovered dungeon. See <a href="https://watabou.github.io/one-page-dungeon/?seed=${dungeonSeed}" target="_blank">One page dungeon</a></div><iframe style="pointer-events: none;" src="https://watabou.github.io/one-page-dungeon/?seed=${dungeonSeed}" sandbox="allow-scripts allow-same-origin"></iframe>`;
+    const watabouSeed = `${options.map.seed}${cell}`;
+    const name = dungeonName(cell, options.map.seed);
+    const legend = `<div>Undiscovered dungeon. See <a href="https://watabou.github.io/one-page-dungeon/?seed=${watabouSeed}" target="_blank" rel="noopener">One page dungeon</a></div><iframe style="pointer-events: none;" src="https://watabou.github.io/one-page-dungeon/?seed=${watabouSeed}" sandbox="allow-scripts allow-same-origin"></iframe>`;
     marker.name = name;
     marker.note = legend;
+
+    const existing = marker.generated;
+    if (existing?.kind === DUNGEON_KIND) {
+      existing.version = DUNGEON_VERSION;
+      existing.seed = options.map.seed;
+    } else {
+      marker.generated = createDungeonContent();
+    }
   }
 
   private listLakeMonsters({ features }: PackedGraph) {
@@ -1375,6 +1433,8 @@ class MarkersModule {
     } Lake. Truth or lie, folks are afraid to fish in the lake.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BEAST_KIND)
+      marker.generated = { ...createBeastContent(), meta: { habitat: "a freshwater lake", length } };
   }
 
   private listSeaMonsters({ cells, features }: PackedGraph) {
@@ -1389,6 +1449,8 @@ class MarkersModule {
     const legend = `Old sailors tell stories of a gigantic sea monster inhabiting these dangerous waters. Rumors say it can be ${length} ${options.map.units.height.unit} long.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BEAST_KIND)
+      marker.generated = { ...createBeastContent(), meta: { habitat: "the open sea", length } };
   }
 
   private listHillMonsters({ cells }: PackedGraph) {
@@ -1401,11 +1463,12 @@ class MarkersModule {
     const monster = ra(HILL_MONSTER_SPECIES);
     const toponym = Names.getCulture(cells.culture[cell]);
     const name = `${toponym} ${monster}`;
-    const legend = `${ra(RUMOR_SOURCES)} speak of a ${ra(HILL_MONSTER_ADJECTIVES)} ${monster} who inhabits ${toponym} hills and ${ra(
-      HILL_MONSTER_HABITS
-    )}.`;
+    const habit = ra(HILL_MONSTER_HABITS);
+    const legend = `${ra(RUMOR_SOURCES)} speak of a ${ra(HILL_MONSTER_ADJECTIVES)} ${monster} who inhabits ${toponym} hills and ${habit}.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== MONSTER_KIND)
+      marker.generated = { ...createMonsterContent(), meta: { species: monster, habit } };
   }
 
   // Sacred mountains spawn on lonely mountains
@@ -1515,10 +1578,13 @@ class MarkersModule {
       return "angry";
     })(height, biome);
 
-    const name = `${Names.getCulture(culture)} ${ra(BRIGAND_ANIMALS)}`;
+    const animal = ra(BRIGAND_ANIMALS);
+    const name = `${Names.getCulture(culture)} ${animal}`;
     const legend = `A gang of ${locality} ${rw(BRIGAND_TYPES)}.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BANDIT_KIND)
+      marker.generated = { ...createBanditContent(), meta: { gang: animal, locality, maritime: false } };
   }
 
   // Pirates spawn on sea routes
@@ -1543,6 +1609,8 @@ class MarkersModule {
     const legend = "Pirate ships have been spotted in these waters.";
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BANDIT_KIND)
+      marker.generated = { ...createBanditContent(), meta: { maritime: true, locality: "coastal" } };
   }
 
   private listStatues({ cells }: PackedGraph) {
@@ -1577,6 +1645,7 @@ class MarkersModule {
     const legend = `Ruins of an ancient ${ruinType.toLowerCase()}. Untold riches may lie within.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== RUIN_KIND) marker.generated = createRuinContent();
   }
 
   private listLibraries({ cells }: PackedGraph) {
@@ -1809,10 +1878,13 @@ class MarkersModule {
     if (cells.biome[cell] === 11) {
       formation = `Glacial ${formation}`;
     }
+    const status = rw(CAVE_STATUSES);
     const name = `${toponym} ${formation}`;
-    const legend = `The ${name}. Locals claim that it is ${rw(CAVE_STATUSES)}.`;
+    const legend = `The ${name}. Locals claim that it is ${status}.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== CAVE_KIND)
+      marker.generated = { ...createCaveContent(), meta: { formation, status } };
   }
 
   private listPortals({ burgs }: PackedGraph) {
@@ -1855,6 +1927,10 @@ class MarkersModule {
     const legend = "A burial site has been disturbed in this area, causing the dead to rise and attack the living.";
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BURIAL_KIND) {
+      const burialKind = rw(Object.fromEntries(BURIAL_KINDS.map(row => [row.kind, row.weight]))) as BurialKind;
+      marker.generated = { ...createBurialContent(), meta: { burialKind } };
+    }
   }
 
   private listNecropolis({ cells }: PackedGraph) {
@@ -1872,6 +1948,8 @@ class MarkersModule {
 
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== NECROPOLIS_KIND)
+      marker.generated = { ...createNecropolisContent(), meta: { burialType: type } };
   }
 
   private listEncounters({ cells }: PackedGraph) {

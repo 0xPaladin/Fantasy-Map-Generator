@@ -1,4 +1,5 @@
 // Mapping and lifecycle utilities to turn danger markers into active Living World threats and lairs
+import type { MarkerGeneratedRecipe } from "@/model/story/marker-content";
 import type { Marker } from "@/model/story/markers-generator";
 import type { TroubleTheme } from "@/types/living";
 
@@ -98,7 +99,11 @@ export function getLairArchetypeForMarker(type: string): LairArchetypeMapping {
 }
 
 /** Converts a cleared danger marker into a historical ruin landmark, keeping historical continuity */
-export function convertDangerMarkerToRuins(marker: Marker, conquerorName?: string): void {
+export function convertDangerMarkerToRuins(
+  marker: Marker,
+  conquerorName?: string,
+  generated?: MarkerGeneratedRecipe
+): void {
   marker.type = "ruins";
   marker.icon = "🏛️";
   if (!marker.name.toLowerCase().startsWith("ruins")) {
@@ -106,5 +111,6 @@ export function convertDangerMarkerToRuins(marker: Marker, conquerorName?: strin
   }
   const resolution = conquerorName ? `Site cleared and dismantled by ${conquerorName}.` : "Site cleared and pacified.";
   marker.note = marker.note ? `${marker.note}\n\n${resolution}` : resolution;
+  if (generated) marker.generated = generated;
   delete marker.threatId;
 }

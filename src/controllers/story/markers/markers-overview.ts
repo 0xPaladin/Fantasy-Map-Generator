@@ -3,6 +3,7 @@ import { Pack } from "@/model/graph/pack-generator";
 import { Icons } from "@/model/icons";
 import type { Marker } from "@/model/story/markers-generator";
 import { Markers } from "@/model/story/markers-generator";
+import { Notes } from "@/model/story/notes";
 import { Tags } from "@/model/tags";
 import { getMoneySymbol } from "@/model/units";
 import { setMarkersFilter } from "@/renderers/draw-markers";
@@ -548,7 +549,7 @@ function exportMarkers(): void {
       type,
       Icons.glyphText(icon) ?? icon,
       marker.name,
-      marker.note,
+      Notes.getFull({ type: "marker", id: i }, { cache: false }) ?? "",
       state ? state.fullName || state.name : "",
       provinceName(marker),
       culture?.name,

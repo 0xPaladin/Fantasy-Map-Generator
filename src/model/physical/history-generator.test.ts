@@ -981,6 +981,112 @@ describe("Chronicle.generate fall markers", () => {
       expect(pack.markers.some(marker => marker.name.includes(living))).toBe(false);
   });
 
+  it("gives the fallen capital a capital-tier history recipe", () => {
+    Chronicle.generate();
+    const seat = pack.markers.find(marker => marker.name === "Ruins of Old Empire")!;
+    expect(seat.generated).toMatchObject({
+      kind: "ruin",
+      version: 1,
+      seed: options.map.seed,
+      meta: {
+        originalName: "Old Empire",
+        originalPolity: "Old Empire",
+        fallYear: 500,
+        cause: "war",
+        tier: "capital"
+      }
+    });
+  });
+
+  it("gives a fallen province ruin a town or village tier", () => {
+    Chronicle.generate();
+    const burgRuin = pack.markers.find(marker => marker.name === "Ruins of Dale")!;
+    expect(burgRuin.generated?.meta).toMatchObject({
+      originalName: "Dale",
+      originalPolity: "Old Empire",
+      fallYear: 500,
+      tier: "village"
+    });
+  });
+
+  it("gives a fallen seat necropolis a city-of-the-dead history recipe", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.1);
+    (Chronicle as any).placeSeatMarker(1, { name: "Old Empire", capital: 1, center: 1, fallen: 500 });
+
+    const seat = pack.markers.find(marker => marker.type === "necropolises")!;
+    expect(seat.name).toBe("Old Empire Necropolis");
+    expect(seat.generated).toMatchObject({
+      kind: "necropolis",
+      version: 1,
+      seed: options.map.seed,
+      meta: {
+        burialType: "Necropolis",
+        tier: "city-of-the-dead",
+        originalName: "Old Empire",
+        originalPolity: "Old Empire",
+        fallYear: 500,
+        cause: "war"
+      }
+    });
+  });
+
+  it("gives a fallen province necropolis a population-based tier", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.8);
+    const subject = { name: "Old Empire", capital: 1, center: 1, fallen: 500 };
+    (Chronicle as any).placeBurgMarker({ i: 3, cell: 3, name: "Dale", population: 25, culture: 2 }, subject);
+    (Chronicle as any).placeBurgMarker({ i: 4, cell: 6, name: "Grange", population: 4, culture: 2 }, subject);
+
+    const necropolises = pack.markers.filter(marker => marker.type === "necropolises");
+    expect(necropolises).toHaveLength(2);
+    const dale = necropolises.find(marker => marker.name.startsWith("Dale"))!;
+    const grange = necropolises.find(marker => marker.name.startsWith("Grange"))!;
+    expect(dale.generated?.meta).toMatchObject({
+      burialType: "Cemetery",
+      tier: "necropolis",
+      originalName: "Dale",
+      originalPolity: "Old Empire",
+      fallYear: 500,
+      cause: "war"
+    });
+    expect(grange.generated?.meta).toMatchObject({ tier: "cemetery", originalName: "Grange" });
+  });
+
+  it("gives a fallen province disturbed burial a small burial recipe", () => {
+    options.map.cultures.set = "Fantasy";
+    vi.spyOn(Math, "random").mockReturnValue(0.95);
+    (Chronicle as any).placeBurgMarker(
+      { i: 3, cell: 3, name: "Dale", population: 6, culture: 2 },
+      { name: "Old Empire", capital: 1, center: 1, fallen: 500 }
+    );
+
+    const burial = pack.markers.find(marker => marker.type === "disturbed-burials")!;
+    expect(burial.name).toBe("Disturbed Burial of Dale");
+    expect(burial.generated).toMatchObject({
+      kind: "burial",
+      version: 1,
+      seed: options.map.seed,
+      meta: {
+        burialKind: "graveyard",
+        originalName: "Dale",
+        originalPolity: "Old Empire",
+        fallYear: 500,
+        cause: "war"
+      }
+    });
+  });
+
+  it("keeps generated recipes on chronicle fall markers through regeneration", () => {
+    Chronicle.generate();
+    const ruins = pack.markers.filter(marker => marker.type === "ruins");
+    expect(ruins.length).toBeGreaterThan(0);
+    expect(ruins.every(marker => marker.generated?.kind === "ruin")).toBe(true);
+
+    Chronicle.generate();
+    const again = pack.markers.filter(marker => marker.type === "ruins");
+    expect(again.length).toBe(ruins.length);
+    expect(again.every(marker => marker.generated?.kind === "ruin")).toBe(true);
+  });
+
   it("marks the greater burgs with it, naming the burg", () => {
     Chronicle.generate();
     const ruins = pack.markers.filter(marker => marker.type !== "battlefields");

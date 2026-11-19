@@ -106,7 +106,8 @@ The view is read-only: a customization guard stops every editor from changing a 
 
 With **Echoes** on, the chronicle leaves physical traces instead of scattering ruins and battlefields at random:
 
-* **Ruins** at the fallen capitals, and — depending on the _Ruins_ slider — at their greater towns.
+* **Ruins** at the fallen capitals, and — depending on the _Ruins_ slider — at their greater towns. A fallen seat becomes a capital-tier ruin; a fallen town becomes a town or village ruin. Each remembers the fallen polity, the year and the war, and opens a generated ruin profile. See [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation).
+* **Necropolises and disturbed burials** where the fall leaves burial sites instead of ruins. A fallen seat necropolis becomes a city of the dead; a province necropolis scales with the burg, and a disturbed burial gets a small graveyard profile. Each remembers the polity, the year and the war. See [Underground site generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Underground-site-generation).
 * **Battlefields** where the chronicle records a battle.
 * **Notes** on sacked burgs and successor states ("carved from the Vhælen Empire in 812…"), which the existing notes box surfaces on hover.
 * **Renames** on one successor, if enabled.

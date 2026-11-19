@@ -17,11 +17,12 @@ test("cached instructions contain the map rules, operations and data fields", ()
   expect(cached.cache_control).toEqual({ type: "ephemeral" });
 });
 
-// About 3.5 characters per token: keeps the fixed prompt under about 4.7k tokens.
-// The multi-realm (sky/underdark/underwater) networks add their fields and operations; 16_500 still fits the budget.
+// About 3.5 characters per token: keeps the fixed prompt under about 4.9k tokens.
+// The multi-realm networks, creature profiles and the schemes/stash surface add their fields and
+// operations; 17_000 still fits the budget.
 test("cached instructions stay compact", () => {
   const [cached] = systemBlocks();
-  expect(cached.text.length).toBeLessThan(16_500);
+  expect(cached.text.length).toBeLessThan(17_000);
 });
 
 test("generated context matches the codebase and Knowledge Base", () => {

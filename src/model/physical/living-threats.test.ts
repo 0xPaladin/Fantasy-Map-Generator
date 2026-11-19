@@ -3,10 +3,12 @@ import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import type { Province } from "@/model/political/provinces-generator";
 import type { State } from "@/model/political/states-generator";
+import type { Marker } from "@/model/story/markers-generator";
 import type { Faction } from "@/types/factions";
 import type { LivingWorldState } from "@/types/living";
 import {
   ascendFactionToState,
+  convertThreatToRuin,
   migrateLegacyThreats,
   quellTrouble,
   setThreatHost,
@@ -160,6 +162,154 @@ describe("living-threats", () => {
 
     expect(smiteFaction(1)).toBe(true);
     expect(Factions.active().some(f => f.i === faction!.i)).toBe(false);
+  });
+
+  it("turns a cleared threat into a looted ruin with cleared metadata", () => {
+    options.map.seed = "threats-seed";
+    const marker = pack.markers[0] as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.name).toBe("Ruins of Bandit Hideout");
+    expect(marker.generated).toEqual({
+      kind: "ruin",
+      version: 1,
+      seed: "threats-seed",
+      meta: {
+        originalName: "Bandit Hideout",
+        tier: "outpost",
+        cause: "abandonment",
+        looted: true,
+        clearedFrom: "brigands",
+        clearedBy: "Aeloria"
+      }
+    });
+  });
+
+  it("gives a cleared dungeon a village tier and no clearedBy when unknown", () => {
+    options.map.seed = "threats-seed";
+    const marker = { i: 2, type: "dungeons", cell: 1, name: "Old Crypt" } as Marker;
+
+    convertThreatToRuin(marker);
+
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Old Crypt",
+      tier: "village",
+      clearedFrom: "dungeons",
+      looted: true
+    });
+    expect(marker.generated?.meta?.clearedBy).toBeUndefined();
+  });
+
+  it("turns a cleared necropolis into a village ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = { i: 3, type: "necropolises", cell: 1, name: "Old Necropolis" } as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Old Necropolis",
+      tier: "village",
+      clearedFrom: "necropolises",
+      clearedBy: "Aeloria",
+      looted: true,
+      cause: "abandonment"
+    });
+  });
+
+  it("turns a cleared cave into an outpost ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = { i: 4, type: "caves", cell: 1, name: "Aeloran Cave" } as Marker;
+
+    convertThreatToRuin(marker);
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Aeloran Cave",
+      tier: "outpost",
+      clearedFrom: "caves",
+      looted: true
+    });
+  });
+
+  it("turns a cleared monster into an outpost ruin, replacing its monster profile", () => {
+    options.map.seed = "threats-seed";
+    const marker = {
+      i: 5,
+      type: "hill-monsters",
+      cell: 1,
+      name: "Aeloran Ogre",
+      generated: { kind: "monster", version: 1, seed: "threats-seed", meta: { species: "Ogre" } }
+    } as unknown as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.kind).toBe("ruin");
+    expect(marker.generated?.meta).toMatchObject({
+      originalName: "Aeloran Ogre",
+      tier: "outpost",
+      clearedFrom: "hill-monsters",
+      clearedBy: "Aeloria",
+      looted: true
+    });
+  });
+
+  it("turns a cleared beast into an outpost ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = {
+      i: 6,
+      type: "lake-monsters",
+      cell: 1,
+      name: "Loch Ael Monster",
+      generated: { kind: "beast", version: 1, seed: "threats-seed", meta: { habitat: "a freshwater lake" } }
+    } as unknown as Marker;
+
+    convertThreatToRuin(marker);
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.kind).toBe("ruin");
+    expect(marker.generated?.meta).toMatchObject({ clearedFrom: "lake-monsters", tier: "outpost", looted: true });
+  });
+
+  it("turns a cleared pirate crew into an outpost ruin that remembers its type", () => {
+    options.map.seed = "threats-seed";
+    const marker = {
+      i: 7,
+      type: "pirates",
+      cell: 1,
+      name: "Pirates",
+      generated: { kind: "bandit", version: 1, seed: "threats-seed", meta: { maritime: true } }
+    } as unknown as Marker;
+
+    convertThreatToRuin(marker, "Aeloria");
+
+    expect(marker.type).toBe("ruins");
+    expect(marker.generated?.kind).toBe("ruin");
+    expect(marker.generated?.meta).toMatchObject({
+      clearedFrom: "pirates",
+      clearedBy: "Aeloria",
+      tier: "outpost",
+      looted: true
+    });
+  });
+
+  it("anchors a faction to a monster danger marker", () => {
+    pack.markers = [{ i: 0, type: "hill-monsters", cell: 1, name: "Aeloran Ogre" }] as unknown as typeof pack.markers;
+
+    syncDangerMarkers(mockLiving);
+
+    expect(Factions.active().some(f => f.hq.markerId === 0)).toBe(true);
+  });
+
+  it("anchors a faction to a pirate danger marker", () => {
+    pack.markers = [{ i: 0, type: "pirates", cell: 1, name: "Pirates" }] as unknown as typeof pack.markers;
+
+    syncDangerMarkers(mockLiving);
+
+    expect(Factions.active().some(f => f.hq.markerId === 0)).toBe(true);
   });
 
   it("ascends an ambitious faction into a sovereign state", () => {

@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { MapEntities } from "@/model/map-entities";
+import { generatedDivider, registerGeneratedKind } from "./marker-content";
 import { Notes } from "./notes";
 
+const GENERATED_KIND = "notes-test";
+
 beforeEach(() => {
+  registerGeneratedKind(GENERATED_KIND, {
+    render: (_marker, content) => `<p>Generated ${content.seed}</p>`
+  });
   globalThis.pack = {
     burgs: [0, { i: 1, name: "Vaeltown", note: "A river port" }],
     states: [
@@ -100,6 +106,60 @@ it("collects notes on route zero and omits removed entities", () => {
   pack.burgs[1].removed = true;
   expect(Notes.list().some(entry => entry.key === "route:0")).toBe(true);
   expect(Notes.list().some(entry => entry.key === "burg:1")).toBe(false);
+});
+
+describe("generated notes", () => {
+  const ref = { type: "marker", id: 4 } as const;
+
+  function makeGenerated(seed = "seed") {
+    pack.markers[0].generated = { kind: GENERATED_KIND, version: 1, seed };
+  }
+
+  it("keeps generated content out of the short note and merges it on demand", () => {
+    makeGenerated();
+
+    expect(Notes.get(ref)).toBe("Active volcano");
+    expect(Notes.getFull(ref)).toBe(`Active volcano${generatedDivider(GENERATED_KIND)}<p>Generated seed</p>`);
+    expect(pack.markers[0].generated?.html).toBe("<p>Generated seed</p>");
+  });
+
+  it("lists generated notes without materializing them, and materializes for a full export", () => {
+    pack.markers.push({
+      i: 5,
+      type: "dungeons",
+      name: "Dungeon",
+      generated: { kind: GENERATED_KIND, version: 1, seed: "lazy" }
+    } as (typeof pack.markers)[number]);
+
+    expect(Notes.list().find(entry => entry.key === "marker:5")?.note).toBe("");
+    expect(pack.markers[1].generated?.html).toBeUndefined();
+
+    expect(Notes.listFull().find(entry => entry.key === "marker:5")?.note).toContain("<p>Generated lazy</p>");
+    expect(pack.markers[1].generated?.html).toBe("<p>Generated lazy</p>");
+  });
+
+  it("reads a generated note without caching it for exports", () => {
+    makeGenerated();
+
+    expect(Notes.getFull(ref, { cache: false })).toContain("<p>Generated seed</p>");
+    expect(pack.markers[0].generated?.html).toBeUndefined();
+  });
+
+  it("splits a full note back into the user note and generated html", () => {
+    makeGenerated();
+
+    Notes.setFull(ref, `Changed${generatedDivider(GENERATED_KIND)}<p>Edited</p>`);
+    expect(pack.markers[0].note).toBe("Changed");
+    expect(pack.markers[0].generated?.html).toBe("<p>Edited</p>");
+  });
+
+  it("keeps generated content when only the short note is set", () => {
+    makeGenerated();
+
+    Notes.set(ref, "Changed");
+    expect(pack.markers[0].note).toBe("Changed");
+    expect(pack.markers[0].generated).toBeDefined();
+  });
 });
 
 describe("Notes.write", () => {

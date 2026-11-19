@@ -49,6 +49,10 @@ To report a problem or propose a feature, see [Reporting bugs and suggesting ide
 [Culture traits](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Culture-traits) ·
 [Development](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Development) ·
 [Markers](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Markers) ·
+[Dungeon generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Dungeon-generation) ·
+[Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation) ·
+[Underground sites](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Underground-site-generation) ·
+[Creature generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Creature-generation) ·
 [Journeys](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Journeys) ·
 [Economy](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Economy) ·
 [Goods spread functions](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Goods-spread-functions) ·
