@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as D from "./dungeons";
+import { INHABITANT_GROUPS, INHABITANT_RELATIONS } from "./inhabitants";
+import { TREASURE_CATEGORIES } from "./treasure";
 
 const strings = (value: unknown): string[] => {
   if (typeof value === "string") return [value];
@@ -24,14 +26,14 @@ describe("dungeon table sizes", () => {
     expect(D.DUNGEON_HAZARD_KINDS).toHaveLength(12);
     expect(D.DUNGEON_MONSTERS).toHaveLength(10);
     expect(D.DUNGEON_HUMANOIDS).toHaveLength(10);
-    expect(D.DUNGEON_INHABITANT_GROUPS).toHaveLength(10);
-    expect(D.DUNGEON_INHABITANT_RELATIONS).toHaveLength(6);
-    expect(D.TREASURE_CATEGORIES).toHaveLength(4);
+    expect(INHABITANT_GROUPS).toHaveLength(10);
+    expect(INHABITANT_RELATIONS).toHaveLength(6);
+    expect(TREASURE_CATEGORIES).toHaveLength(4);
   });
 
   it("has treasure weights for every dungeon type and non-global modifier patterns", () => {
     for (const [type, weights] of Object.entries(D.DUNGEON_TREASURE_WEIGHTS)) {
-      expect(Object.keys(weights).sort(), type).toEqual([...D.TREASURE_CATEGORIES].sort());
+      expect(Object.keys(weights).sort(), type).toEqual([...TREASURE_CATEGORIES].sort());
       expect(
         Object.values(weights).every(weight => weight >= 0),
         type
@@ -66,9 +68,9 @@ describe("dungeon table sizes", () => {
   });
 
   it("has weighted inhabitant groups for every dungeon type", () => {
-    const ids = D.DUNGEON_INHABITANT_GROUPS.map(group => group.id);
+    const ids = INHABITANT_GROUPS.map(group => group.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(D.DUNGEON_INHABITANT_GROUPS.every(group => group.label.trim())).toBe(true);
+    expect(INHABITANT_GROUPS.every(group => group.label.trim())).toBe(true);
 
     for (const [type, weights] of Object.entries(D.DUNGEON_INHABITANT_WEIGHTS)) {
       const entries = Object.entries(weights);

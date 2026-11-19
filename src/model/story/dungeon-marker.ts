@@ -7,7 +7,7 @@ import {
   generateDungeonProfile,
   renderDungeonProfile
 } from "@/model/story/dungeon-generator";
-import { type MarkerGeneratedContent, registerGeneratedRenderer } from "@/model/story/marker-content";
+import { type MarkerGeneratedContent, registerGeneratedKind } from "@/model/story/marker-content";
 import type { Marker } from "@/model/story/markers-generator";
 
 export const DUNGEON_KIND = "dungeon";
@@ -46,9 +46,12 @@ export function createDungeonContent(): MarkerGeneratedContent {
 }
 
 export function registerDungeonRenderer(): void {
-  registerGeneratedRenderer(DUNGEON_KIND, (marker: Marker, content: MarkerGeneratedContent) =>
-    renderDungeonProfile(generateDungeonProfile(dungeonContext(marker.cell, content.seed, marker.name)))
-  );
+  registerGeneratedKind(DUNGEON_KIND, {
+    markerTypes: ["dungeons", "dungeon"],
+    create: () => createDungeonContent(),
+    render: (marker: Marker, content: MarkerGeneratedContent, salt) =>
+      renderDungeonProfile(generateDungeonProfile(dungeonContext(marker.cell, content.seed, marker.name), salt ?? ""))
+  });
 }
 
 registerDungeonRenderer();

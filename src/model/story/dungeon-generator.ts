@@ -18,8 +18,6 @@ import {
   DUNGEON_HAZARD_KINDS,
   DUNGEON_HAZARDS,
   DUNGEON_HUMANOIDS,
-  DUNGEON_INHABITANT_GROUPS,
-  DUNGEON_INHABITANT_RELATIONS,
   DUNGEON_INHABITANT_WEIGHTS,
   DUNGEON_LEADER_KINDS,
   DUNGEON_LEADERS,
@@ -40,16 +38,18 @@ import {
   DUNGEON_TYPES,
   type DungeonSize,
   type DungeonTypeId,
-  type InhabitantGroup,
-  type InhabitantGroupId,
   type Safety,
-  type SpecialAreaEntry,
-  TREASURE_CATEGORIES,
-  type TreasureCategory,
-  type TreasureModifier,
-  type TreasureShares,
-  type TreasureWeights
+  type SpecialAreaEntry
 } from "@/data/dungeons";
+import {
+  INHABITANT_GROUPS,
+  INHABITANT_RELATIONS,
+  type InhabitantGroup,
+  type InhabitantGroupId
+} from "@/data/inhabitants";
+import { TREASURE_CATEGORIES, type TreasureShares } from "@/data/treasure";
+import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
+import { annotateTreasureCaches, applyTreasureModifiers, normalizeTreasureShares } from "@/model/story/treasure";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
 
@@ -83,20 +83,6 @@ export interface DungeonArea {
   exits: DungeonExit[];
 }
 
-export interface DungeonRatings {
-  danger: number;
-  treasure: number;
-  scale: number;
-  mystery: number;
-  weirdness: number;
-}
-
-export interface DungeonInhabitants {
-  rating: number;
-  groups: InhabitantGroup[];
-  relationship?: string;
-}
-
 export interface DungeonProfile {
   name: string;
   size: DungeonSize;
@@ -106,8 +92,8 @@ export interface DungeonProfile {
   safety: Safety;
   type: DungeonTypeId;
   overview: { label: string; value: string }[];
-  ratings: DungeonRatings;
-  inhabitants: DungeonInhabitants;
+  ratings: SiteRatings;
+  inhabitants: SiteInhabitants;
   treasure: { shares: TreasureShares };
   areas: DungeonArea[];
   rumors: string[];
@@ -368,13 +354,13 @@ const countMatching = (values: readonly string[], pattern: RegExp): number =>
 
 function chooseInhabitantGroup(rng: Rng, type: DungeonTypeId, excluded?: InhabitantGroupId): InhabitantGroup {
   const weights = DUNGEON_INHABITANT_WEIGHTS[type];
-  const weighted = DUNGEON_INHABITANT_GROUPS.filter(group => group.id !== excluded)
+  const weighted = INHABITANT_GROUPS.filter(group => group.id !== excluded)
     .map(group => ({ value: group, weight: weights[group.id] ?? 0 }))
     .filter(({ weight }) => weight > 0);
 
   if (weighted.length) return pickWeighted(rng, weighted);
-  const fallback = DUNGEON_INHABITANT_GROUPS.filter(group => group.id !== excluded);
-  return pick(rng, fallback.length ? fallback : DUNGEON_INHABITANT_GROUPS);
+  const fallback = INHABITANT_GROUPS.filter(group => group.id !== excluded);
+  return pick(rng, fallback.length ? fallback : INHABITANT_GROUPS);
 }
 
 function inhabitantLabel(group: InhabitantGroup, cultureName: string): string {
@@ -382,39 +368,6 @@ function inhabitantLabel(group: InhabitantGroup, cultureName: string): string {
   if (group.id === "humans") return culture ? `${culture} humans` : group.label;
   if (group.id === "humanoids") return culture ? `${culture} humanoids` : group.label;
   return group.label;
-}
-
-function applyTreasureModifiers(
-  weights: TreasureWeights,
-  modifiers: readonly TreasureModifier[],
-  values: readonly string[]
-): void {
-  for (const { pattern, weights: changes } of modifiers) {
-    if (!values.some(value => pattern.test(value))) continue;
-    for (const [category, amount] of Object.entries(changes) as [TreasureCategory, number][]) {
-      weights[category] = Math.max(0, weights[category] + amount);
-    }
-  }
-}
-
-function normalizeTreasureShares(weights: TreasureWeights): TreasureShares {
-  const total = TREASURE_CATEGORIES.reduce((sum, category) => sum + Math.max(0, weights[category]), 0);
-  if (!total) return { bullion: 25, regalia: 25, art: 25, relics: 25 };
-
-  const exact = TREASURE_CATEGORIES.map((category, order) => {
-    const value = (Math.max(0, weights[category]) / total) * 100;
-    return { category, order, floor: Math.floor(value), fraction: value - Math.floor(value) };
-  });
-  const shares = {} as TreasureShares;
-  let assigned = 0;
-  for (const { category, floor } of exact) {
-    shares[category] = floor;
-    assigned += floor;
-  }
-
-  const order = [...exact].sort((a, b) => b.fraction - a.fraction || a.order - b.order);
-  for (let index = 0; index < 100 - assigned; index++) shares[order[index].category]++;
-  return shares;
 }
 
 function treasureComposition(
@@ -437,24 +390,6 @@ function treasureComposition(
   return normalizeTreasureShares(weights);
 }
 
-function pickTreasureCategory(rng: Rng, shares: TreasureShares): TreasureCategory {
-  return pickWeighted(
-    rng,
-    TREASURE_CATEGORIES.filter(category => shares[category] > 0).map(category => ({
-      value: category,
-      weight: shares[category]
-    }))
-  );
-}
-
-function annotateTreasureCaches(rng: Rng, areas: DungeonArea[], shares: TreasureShares): void {
-  for (const area of areas) {
-    area.discoveries = area.discoveries.map(discovery =>
-      /treasure cache/i.test(discovery) ? `${discovery} [${capitalize(pickTreasureCategory(rng, shares))}]` : discovery
-    );
-  }
-}
-
 function rollInhabitants(
   rng: Rng,
   type: DungeonTypeId,
@@ -462,7 +397,7 @@ function rollInhabitants(
   areaCount: number,
   areas: DungeonArea[],
   cultureName: string
-): DungeonInhabitants {
+): SiteInhabitants {
   const first = chooseInhabitantGroup(rng, type);
   const groups = [first];
   if (rng.chance(0.5)) groups.push(chooseInhabitantGroup(rng, type, first.id));
@@ -475,7 +410,7 @@ function rollInhabitants(
   return {
     rating,
     groups: groups.map(group => ({ ...group, label: inhabitantLabel(group, cultureName) })),
-    relationship: groups.length === 2 ? pick(rng, DUNGEON_INHABITANT_RELATIONS) : undefined
+    relationship: groups.length === 2 ? pick(rng, INHABITANT_RELATIONS) : undefined
   };
 }
 
@@ -489,7 +424,7 @@ function rollRatings(
   accessibility: string,
   builder: string,
   areas: DungeonArea[]
-): DungeonRatings {
+): SiteRatings {
   const dangers = areas.flatMap(area => area.dangers);
   const discoveries = areas.flatMap(area => area.discoveries);
   const areaTypes = areas.map(area => area.type);

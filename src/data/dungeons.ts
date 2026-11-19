@@ -1,5 +1,7 @@
 // Generic dungeon tables for marker profiles. The procedure follows the FotF work; every string is original.
 import { ALIGNMENTS, type Alignment } from "@/data/culture-traits";
+import type { InhabitantGroupId } from "@/data/inhabitants";
+import type { TreasureModifier, TreasureWeights } from "@/data/treasure";
 
 export type Safety = "safe" | "unsafe" | "dangerous" | "perilous";
 export type DungeonSize = "small" | "medium" | "large" | "huge";
@@ -1827,36 +1829,6 @@ export const DUNGEON_RUMOR_TEMPLATES = [
   "A drunken guide swears the entrance to [name] moves when no one looks."
 ] as const;
 
-export type InhabitantGroupId =
-  | "humans"
-  | "humanoids"
-  | "beasts"
-  | "monsters"
-  | "undead"
-  | "constructs"
-  | "outsiders"
-  | "fey"
-  | "plants"
-  | "vermin";
-
-export interface InhabitantGroup {
-  id: InhabitantGroupId;
-  label: string;
-}
-
-export const DUNGEON_INHABITANT_GROUPS: readonly InhabitantGroup[] = [
-  { id: "humans", label: "Humans" },
-  { id: "humanoids", label: "Humanoids" },
-  { id: "beasts", label: "Beasts" },
-  { id: "monsters", label: "Monsters" },
-  { id: "undead", label: "Undead" },
-  { id: "constructs", label: "Constructs" },
-  { id: "outsiders", label: "Outsiders" },
-  { id: "fey", label: "Fey & spirits" },
-  { id: "plants", label: "Plants & fungi" },
-  { id: "vermin", label: "Vermin & swarms" }
-];
-
 /** Relative odds of each top-level group in a dungeon type; omitted groups are rare */
 export const DUNGEON_INHABITANT_WEIGHTS: Record<DungeonTypeId, Partial<Record<InhabitantGroupId, number>>> = {
   lair: {
@@ -1891,25 +1863,6 @@ export const DUNGEON_INHABITANT_WEIGHTS: Record<DungeonTypeId, Partial<Record<In
     vermin: 1
   }
 };
-
-export const DUNGEON_INHABITANT_RELATIONS = [
-  "hostile",
-  "uneasy truce",
-  "master and servants",
-  "predator and prey",
-  "competing for the same resource",
-  "unaware of each other"
-] as const;
-
-export const TREASURE_CATEGORIES = ["bullion", "regalia", "art", "relics"] as const;
-export type TreasureCategory = (typeof TREASURE_CATEGORIES)[number];
-export type TreasureShares = Record<TreasureCategory, number>;
-export type TreasureWeights = TreasureShares;
-
-export interface TreasureModifier {
-  pattern: RegExp;
-  weights: Partial<TreasureWeights>;
-}
 
 /** Base share weights by dungeon type; normalized to 100 by the generator */
 export const DUNGEON_TREASURE_WEIGHTS: Record<DungeonTypeId, TreasureWeights> = {

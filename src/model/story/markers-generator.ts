@@ -50,15 +50,14 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
-import { generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
+import { createDungeonContent, DUNGEON_KIND, DUNGEON_VERSION, dungeonName } from "@/model/story/dungeon-marker";
 import {
-  createDungeonContent,
-  DUNGEON_KIND,
-  DUNGEON_VERSION,
-  dungeonContext,
-  dungeonName
-} from "@/model/story/dungeon-marker";
-import type { MarkerGeneratedContent } from "@/model/story/marker-content";
+  createGeneratedContent,
+  type MarkerGeneratedContent,
+  type MarkerGeneratedRecipe,
+  regenerateGenerated,
+  requireGeneratedRecipe
+} from "@/model/story/marker-content";
 import { Notes } from "@/model/story/notes";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
 import type { Good } from "@/types/economy";
@@ -154,6 +153,7 @@ export type MarkerDetails = {
   year?: number;
   economy?: number;
   stability?: number;
+  generated?: MarkerGeneratedRecipe;
 };
 
 export type MarkerImpactInput = {
@@ -482,23 +482,33 @@ class MarkersModule {
     else delete marker.lock;
   }
 
-  /** Rebuild a dungeon marker's profile from its cell, keeping the short note and any custom name */
+  /** Rebuild a marker's generated profile from its recipe, keeping the short note */
+  regenerateGeneratedContent(markerId: number, salt?: string): void {
+    const marker = this.living(markerId);
+    if (!marker.generated) {
+      const created = createGeneratedContent(marker);
+      if (!created) throw new Error(`Marker ${markerId} has no generated profile`);
+      marker.generated = created;
+    }
+
+    const content = marker.generated!;
+    if (content.kind === DUNGEON_KIND) {
+      if (!marker.name || marker.name === "Dungeon") marker.name = dungeonName(marker.cell, options.map.seed);
+      content.seed = options.map.seed;
+      content.version = DUNGEON_VERSION;
+    }
+
+    const html = regenerateGenerated(marker, salt ?? String(Date.now()));
+    if (html === undefined) throw new Error(`Marker ${markerId} has no renderer for ${content.kind}`);
+    Pack.markChanged();
+  }
+
+  /** Backwards-compatible dungeon alias */
   regenerateDungeonProfile(markerId: number, salt?: string): void {
     const marker = this.living(markerId);
     if (marker.type !== "dungeons" && marker.type !== "dungeon" && marker.generated?.kind !== DUNGEON_KIND)
       throw new Error(`Marker ${markerId} is not a dungeon`);
-
-    if (!marker.name || marker.name === "Dungeon") marker.name = dungeonName(marker.cell, options.map.seed);
-    const context = dungeonContext(marker.cell, options.map.seed, marker.name);
-    const profile = generateDungeonProfile(context, salt ?? String(Date.now()));
-
-    marker.generated = {
-      kind: DUNGEON_KIND,
-      version: DUNGEON_VERSION,
-      seed: options.map.seed,
-      html: renderDungeonProfile(profile)
-    };
-    Pack.markChanged();
+    this.regenerateGeneratedContent(markerId, salt);
   }
 
   /** Set how a marker looks: size (marker), px (icon size), dx and dy (icon shift, %), pin shape, fill and stroke (pin), iconFill and iconStroke. null restores a default */
@@ -523,21 +533,22 @@ class MarkersModule {
     return marker;
   }
 
-  /** Place a marker at a map point with details: its name, legend note (HTML, as Notes.write takes), icon (an emoji or icon id), chronicle, to mark it as the chronicle's own (cleared on the next history regeneration), year, the historical year it belongs to (the historical view hides it before then), and optional economy (gold/day) and stability (%) overrides. A type from the markers config, such as volcanoes or ruins, generates all three, each replaced by the one given; any other type needs a note. Returns its id */
+  /** Place a marker at a map point with details: its name, legend note (HTML, as Notes.write takes), icon (an emoji or icon id), chronicle, to mark it as the chronicle's own (cleared on the next history regeneration), year, the historical year it belongs to (the historical view hides it before then), optional economy (gold/day) and stability (%) overrides, and an optional lazy generated recipe. A type from the markers config, such as volcanoes or ruins, generates all three, each replaced by the one given; any other type needs a note. Returns its id */
   place(x: number, y: number, type: string, details: MarkerDetails = {}): number {
     if (typeof details !== "object" || details === null || Array.isArray(details))
       throw new Error(
-        "The marker details must be an object: { name, note, icon, chronicle, year, economy, stability }"
+        "The marker details must be an object: { name, note, icon, chronicle, year, economy, stability, generated }"
       );
-    const known = ["name", "note", "icon", "chronicle", "year", "economy", "stability"];
+    const known = ["name", "note", "icon", "chronicle", "year", "economy", "stability", "generated"];
     const unknown = Object.keys(details).find(key => !known.includes(key));
     if (unknown) throw new Error(`Unknown marker detail ${unknown}; known: ${known.join(", ")}`);
-    const { name, note, icon, year, economy, stability } = details;
+    const { name, note, icon, year, economy, stability, generated } = details;
     if (year !== undefined && typeof year !== "number") throw new Error("The marker year must be a number");
     if (economy !== undefined && (typeof economy !== "number" || !Number.isFinite(economy)))
       throw new Error("The marker economy impact must be a number");
     if (stability !== undefined && (typeof stability !== "number" || !Number.isFinite(stability)))
       throw new Error("The marker stability impact must be a number");
+    const recipe = generated === undefined ? undefined : requireGeneratedRecipe(generated);
     const cell = Pack.requireCell(x, y);
     const marker = { x: rn(x, 2), y: rn(y, 2), cell, type: requireName(type) } as Marker;
     if (details.chronicle) marker.chronicle = true;
@@ -551,6 +562,7 @@ class MarkersModule {
     else if (!configured) marker.icon = Icons.glyph("❓");
     const added = this.add(marker);
     if (marker.name) added.name = marker.name; // the config type names the marker as it adds it
+    if (recipe) added.generated = recipe;
     if (note) Notes.write(`marker:${added.i}`, note);
     Pack.markChanged();
     return added.i;

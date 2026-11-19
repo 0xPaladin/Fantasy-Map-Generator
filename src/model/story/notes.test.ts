@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { MapEntities } from "@/model/map-entities";
-import { generatedDivider, registerGeneratedRenderer } from "./marker-content";
+import { generatedDivider, registerGeneratedKind } from "./marker-content";
 import { Notes } from "./notes";
 
 const GENERATED_KIND = "notes-test";
 
 beforeEach(() => {
-  registerGeneratedRenderer(GENERATED_KIND, (_marker, content) => `<p>Generated ${content.seed}</p>`);
+  registerGeneratedKind(GENERATED_KIND, {
+    render: (_marker, content) => `<p>Generated ${content.seed}</p>`
+  });
   globalThis.pack = {
     burgs: [0, { i: 1, name: "Vaeltown", note: "A river port" }],
     states: [

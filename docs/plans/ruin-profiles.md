@@ -1,6 +1,8 @@
 # Plan — Ruin Profiles and Multi-Site Ruins
 
-Updated: 2026-11-18. Status: **proposal**. Builds on the shipped dungeon profile
+Updated: 2026-11-18. Status: **phase 1 shipped** (shared site plumbing: generated metadata,
+shared treasure/inhabitant types, generic reroll, placement support and the ruin heading).
+Phase 2, the single-site ruin profile, is next. Builds on the shipped dungeon profile
 infrastructure: lazy marker content, the full/short notes split, reroll and exports, the five
 1–10 ratings, inhabitant groups and the four-category treasure mix. The dungeon plan is
 [dungeon-profiles.md](dungeon-profiles.md).
@@ -344,7 +346,7 @@ Before the ruin generator:
 
 ## Build order
 
-1. **Shared site plumbing**
+1. **Shared site plumbing — shipped 2026-11-18**
    - Add `meta` to `MarkerGeneratedContent`.
    - Extract shared rating/inhabitant/treasure types and helpers.
    - Generalize reroll and editor button.

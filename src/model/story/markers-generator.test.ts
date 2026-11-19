@@ -523,6 +523,18 @@ describe("MarkersModule dungeons", () => {
     expect(marker.generated?.html).not.toBe(first);
   });
 
+  it("rerolls through the generic generated-content entry point", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "dungeons", cell: CELL } as Marker;
+    markers.addDungeon(marker, CELL);
+    pack.markers = [marker];
+
+    markers.regenerateGeneratedContent(0, "generic");
+
+    expect(marker.generated?.html).toContain("Alternate dungeon profile");
+  });
+
   it("backfills an older dungeon marker and its generic name", async () => {
     await import("./markers-generator");
     const markers = Markers as any;

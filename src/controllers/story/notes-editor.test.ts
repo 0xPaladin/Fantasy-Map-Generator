@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/ui/map/highlight", () => ({ highlightElement: () => {} }));
 vi.mock("@/ui/tooltips", () => ({ tip: () => {}, loadingTip: { start: vi.fn(), end: vi.fn() } }));
 
-import { generatedDivider, registerGeneratedRenderer } from "@/model/story/marker-content";
+import { generatedDivider, registerGeneratedKind } from "@/model/story/marker-content";
 import { Notes } from "@/model/story/notes";
 import { Dialog } from "@/ui/dialog/dialog";
 import { NotesEditor } from "./notes-editor";
@@ -15,7 +15,9 @@ const burg = { type: "burg", id: 1 } as const;
 const GENERATED_KIND = "notes-editor-test";
 
 beforeEach(() => {
-  registerGeneratedRenderer(GENERATED_KIND, (_marker, content) => `<p>Generated ${content.seed}</p>`);
+  registerGeneratedKind(GENERATED_KIND, {
+    render: (_marker, content) => `<p>Generated ${content.seed}</p>`
+  });
   document.body.innerHTML = `<div id="dialogs"></div><div id="notesHeader"></div><div id="notesBody"></div>`;
   w.pack = {
     burgs: [0, { i: 1, name: "Kelmora", note: "<p>old</p>" }, { i: 2, name: "Varr" }],
