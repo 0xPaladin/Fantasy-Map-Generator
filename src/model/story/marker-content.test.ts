@@ -82,6 +82,12 @@ describe("marker generated content", () => {
     expect(generatedDivider("ruin")).toBe("<hr><h3>Ruin profile</h3>");
   });
 
+  it("uses headings for the underworld kinds", () => {
+    expect(generatedDivider("cave")).toBe("<hr><h3>Cave profile</h3>");
+    expect(generatedDivider("burial")).toBe("<hr><h3>Burial profile</h3>");
+    expect(generatedDivider("necropolis")).toBe("<hr><h3>Necropolis profile</h3>");
+  });
+
   it("does not append twice when the note already contains the divider", () => {
     const note = `Short note${generatedDivider(KIND)}<p>Existing</p>`;
     const marker = makeMarker({ note, generated: { kind: KIND, version: 1, seed: "abc" } });

@@ -27,7 +27,13 @@ export interface GeneratedKind {
 
 const kinds = new Map<string, GeneratedKind>();
 const typeToKind = new Map<string, string>();
-const HEADINGS: Record<string, string> = { dungeon: "Dungeon profile", ruin: "Ruin profile" };
+const HEADINGS: Record<string, string> = {
+  dungeon: "Dungeon profile",
+  ruin: "Ruin profile",
+  cave: "Cave profile",
+  burial: "Burial profile",
+  necropolis: "Necropolis profile"
+};
 
 /** Register one generated content kind and the marker types that create it */
 export function registerGeneratedKind(kind: string, handler: GeneratedKind): void {

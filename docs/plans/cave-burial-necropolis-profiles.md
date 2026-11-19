@@ -1,6 +1,7 @@
 # Plan — Cave, Disturbed Burial and Necropolis Profiles
 
-Updated: 2026-11-19. Status: **planned**. Companions:
+Updated: 2026-11-19. Status: **step 1 shipped** (cave/burial data tables, shared context types and
+headings). Steps 2–6 remain. Companions:
 [dungeon-profiles.md](dungeon-profiles.md) and [ruin-profiles.md](ruin-profiles.md). This plan
 extends the same lazy generated-content model to the three remaining underground/burial marker
 kinds:
@@ -263,7 +264,7 @@ Disturbed burial and necropolis impacts stay type-based:
 
 Most plumbing already exists. The expected additions are:
 
-1. Register three generated kinds and headings in `marker-content.ts`.
+1. Add the three headings in `marker-content.ts`; each kind registers when its generator lands.
 2. Add `create` handlers that can infer formation/burial type from an old marker name when meta
    is absent.
 3. Reuse `Markers.regenerateGeneratedContent`; no kind-specific reroll wrapper is needed.
@@ -277,6 +278,7 @@ Most plumbing already exists. The expected additions are:
 |---|---|
 | `src/data/caves.ts` | extents, formations/status reuse, cave zones, hazards, discoveries, exits, inhabitant/treasure weights, rumors/secrets |
 | `src/data/burials.ts` | burial kinds, disturbance causes, wards, burial zones, undead weights, grave-goods treasure, necropolis tiers/sites, rumors/secrets |
+| `src/model/story/underworld-profile.ts` | shared cave/burial/necropolis context and meta types |
 | `src/model/story/cave-generator.ts` | deterministic cave survey, optional dungeon draft, renderer |
 | `src/model/story/burial-generator.ts` | deterministic disturbed-burial profile, optional small crypt draft, renderer |
 | `src/model/story/necropolis-generator.ts` | tiered necropolis profile, sites/sub-dungeons, renderer |
@@ -292,9 +294,9 @@ the three generated kinds and renderers should remain distinct.
 
 ## Build order
 
-1. **Data and shared variant plumbing**
+1. **Data and shared variant plumbing — shipped 2026-11-19**
    - Cave and burial tables, tier/extent/site tables, treasure/inhabitant weights.
-   - Add headings and shared context/meta types; each kind registers when its generator lands.
+   - Added headings and shared context/meta types; each kind registers when its generator lands.
    - Tests: table completeness, weights, no banned source terms, heading entries.
 2. **Cave profiles**
    - Cave generator, renderer, lazy kind, random placement meta.
