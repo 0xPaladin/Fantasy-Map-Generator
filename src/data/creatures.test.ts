@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  BEAST_FORMS,
+  BEAST_HABITATS,
+  BEAST_LAIRS,
   BEAST_NATURES,
+  BEAST_RUMORS,
+  BEAST_SIGNS,
   BODY_PART_PROPERTIES,
   BODY_PARTS,
   CREATURE_ACTIVITIES,
@@ -120,7 +125,12 @@ describe("creature tables", () => {
       CURIO_ADJECTIVES,
       CURIO_ITEMS,
       CURIO_POWERS,
-      CURIO_DRAWBACKS
+      CURIO_DRAWBACKS,
+      BEAST_HABITATS,
+      BEAST_FORMS,
+      BEAST_LAIRS,
+      BEAST_SIGNS,
+      BEAST_RUMORS
     ]) {
       expect(table.length).toBeGreaterThan(0);
     }
@@ -155,7 +165,12 @@ describe("creature tables", () => {
       CURIO_ADJECTIVES,
       CURIO_ITEMS,
       CURIO_POWERS,
-      CURIO_DRAWBACKS
+      CURIO_DRAWBACKS,
+      BEAST_HABITATS,
+      BEAST_FORMS,
+      BEAST_LAIRS,
+      BEAST_SIGNS,
+      BEAST_RUMORS
     }).join("\n");
     expect(text).not.toMatch(/booty|seclusium|gonzo|freebooters|underlands|\bbd\b/i);
   });

@@ -706,3 +706,52 @@ describe("MarkersModule necropolises", () => {
     expect(ensureGenerated(marker)).toContain("Alternate necropolis profile");
   });
 });
+
+describe("MarkersModule beasts", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    options.map.units = { height: { unit: "m" } } as any;
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 10], pop: [0, 5], f: [0, 1] },
+      features: [{}, { type: "lake", name: "Loch Ael" }],
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+    Object.assign(Names, { getCulture: () => "Aeloran", getCultureShort: () => "Aeloran" });
+  });
+
+  it("gives a lake monster a lazy beast recipe and keeps the rumor", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "lake-monsters", cell: 1 } as Marker;
+
+    markers.addLakeMonster(marker, 1);
+
+    expect(marker.name).toBe("Loch Ael Monster");
+    expect(marker.generated).toMatchObject({ kind: "beast", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.habitat).toBe("a freshwater lake");
+    expect(typeof marker.generated?.meta?.length).toBe("number");
+    expect(marker.note).toContain("afraid to fish");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate beast profile");
+  });
+
+  it("gives a sea monster a lazy beast recipe", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "sea-monsters", cell: 1 } as Marker;
+
+    markers.addSeaMonster(marker, 1);
+
+    expect(marker.name).toBe("Aeloran Monster");
+    expect(marker.generated).toMatchObject({ kind: "beast", version: 1, seed: "12345" });
+    expect(marker.generated?.meta?.habitat).toBe("the open sea");
+    expect(typeof marker.generated?.meta?.length).toBe("number");
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate beast profile");
+  });
+});

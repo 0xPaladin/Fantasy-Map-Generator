@@ -1,7 +1,6 @@
 // Shared context and core types for beast, monster and bandit profiles
 import type { CreatureQuantity, CreatureSize } from "@/data/creatures";
 import type { Alignment } from "@/data/culture-traits";
-import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
 
 export type CreatureKind = "beast" | "monster" | "bandit";
 
@@ -46,11 +45,12 @@ export interface BanditContext extends CreatureContext {
   maritime?: boolean;
 }
 
-/** The shared creature core consumed by the three kind generators */
+/** The shared creature identity consumed by the three kind generators */
 export interface CreatureCore {
   size: CreatureSize;
   quantity: CreatureQuantity;
   count: string;
+  natureId: string;
   nature: string;
   alignment: Alignment;
   tags: string[];
@@ -58,6 +58,4 @@ export interface CreatureCore {
   defense: string;
   want: string;
   moves: string[];
-  ratings: SiteRatings;
-  inhabitants: SiteInhabitants;
 }

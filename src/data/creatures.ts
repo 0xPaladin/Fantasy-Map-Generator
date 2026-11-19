@@ -512,3 +512,53 @@ export const CURIO_DRAWBACKS: readonly string[] = [
   "binds the bearer to a promise",
   "grows heavier with use"
 ];
+
+export const BEAST_HABITATS: readonly string[] = [
+  "a freshwater lake",
+  "a river mouth",
+  "coastal shallows",
+  "the open sea",
+  "a reef",
+  "a deep trench"
+];
+
+export const BEAST_FORMS: readonly string[] = [
+  "a serpentine horror",
+  "a many-finned leviathan",
+  "a shelled lurker",
+  "a tentacled mass",
+  "a fanged swimmer",
+  "a scaled bulk",
+  "a pale crawler",
+  "a winged shadow"
+];
+
+export const BEAST_LAIRS: readonly string[] = [
+  "a submerged cave",
+  "a wrecked hull",
+  "a trench below the thermocline",
+  "a rocky island den",
+  "a flooded grotto",
+  "a kelp-choked hollow",
+  "a half-sunken hulk"
+];
+
+export const BEAST_SIGNS: readonly string[] = [
+  "gnawed bones on the shore",
+  "missing boats",
+  "disturbed water",
+  "deep gouges in the rock",
+  "a trail of dragged prey",
+  "scattered scales",
+  "an unnatural silence",
+  "livestock gone from the shallows"
+];
+
+export const BEAST_RUMORS: readonly string[] = [
+  "The people of [culture] will not fish [habitat] after dark.",
+  "A [culture] elder claims [name] is older than the lake itself.",
+  "Boats give [name] a wide berth, and no one blames them.",
+  "They say [name] takes the unwary who stray too close to [habitat].",
+  "A hunter swears [name] is not one beast but many.",
+  "The [biome] around [habitat] goes quiet when [name] rises."
+];

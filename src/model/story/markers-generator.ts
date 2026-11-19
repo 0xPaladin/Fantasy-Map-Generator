@@ -51,6 +51,7 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import { BEAST_KIND, createBeastContent } from "@/model/story/beast-marker";
 import { BURIAL_KIND, createBurialContent } from "@/model/story/burial-marker";
 import { CAVE_KIND, createCaveContent } from "@/model/story/cave-marker";
 import { createDungeonContent, DUNGEON_KIND, DUNGEON_VERSION, dungeonName } from "@/model/story/dungeon-marker";
@@ -1430,6 +1431,8 @@ class MarkersModule {
     } Lake. Truth or lie, folks are afraid to fish in the lake.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BEAST_KIND)
+      marker.generated = { ...createBeastContent(), meta: { habitat: "a freshwater lake", length } };
   }
 
   private listSeaMonsters({ cells, features }: PackedGraph) {
@@ -1444,6 +1447,8 @@ class MarkersModule {
     const legend = `Old sailors tell stories of a gigantic sea monster inhabiting these dangerous waters. Rumors say it can be ${length} ${options.map.units.height.unit} long.`;
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BEAST_KIND)
+      marker.generated = { ...createBeastContent(), meta: { habitat: "the open sea", length } };
   }
 
   private listHillMonsters({ cells }: PackedGraph) {
