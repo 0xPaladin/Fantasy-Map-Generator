@@ -25,6 +25,7 @@ import { Military } from "@/model/political/military-generator";
 import { Stability } from "@/model/political/stability";
 import { Development } from "@/model/society/development-generator";
 import { getCellPoint } from "@/model/story/journeys/journey-places";
+import { Schemes } from "@/model/story/schemes-generator";
 import { getMoneySymbol } from "@/model/units";
 import { drawLivingOverlay, removeLivingOverlay } from "@/renderers/draw-living-overlay";
 import { Layers } from "@/renderers/layers";
@@ -39,8 +40,10 @@ import type {
   StatePolitySim
 } from "@/types/living";
 import { SEASON_NAMES } from "@/types/living";
+import type { Scheme } from "@/types/schemes";
 import { dialogState } from "@/ui/dialog/state";
 import { zoomTo } from "@/ui/map/zoom";
+import { renderSchemeCard } from "@/ui/schemes-card";
 import { escapeHtml, findEl, getPointer } from "@/utils";
 import { t } from "@/utils/i18n";
 
@@ -244,6 +247,7 @@ const TEMPLATE = /* html */ `
       <button id="livingHudStepYear" type="button" title="Step one year">⏩</button>
       <button id="livingHudPlay" type="button" title="Play one season per second">▶</button>
       <button id="livingHudPlay4" type="button" title="Play four seasons per second">▶▶</button>
+      <button id="livingHudSchemes" type="button" title="Villain schemes (god view)">🗡</button>
       <button id="livingHudDate" type="button"></button>
       <span id="livingHudEschaton" class="livingHudEschaton"></span>
       <button id="livingHudClose" type="button" title="Close Living World">☓</button>
@@ -273,6 +277,7 @@ const HERO_DOCTRINE_LABELS: Record<HeroDoctrine, string> = {
 let playing = 0;
 let timer: number | null = null;
 let selected: Selection | null = null;
+let showSchemes = false;
 let lastFitTarget: { label: string; tags: MissionTag[] } | null = null;
 let dragOrigin: { x: number; y: number; left: number; top: number } | null = null;
 
@@ -304,6 +309,7 @@ function close(): void {
   const inspector = findEl(INSPECTOR_ID);
   if (inspector) inspector.remove();
   selected = null;
+  showSchemes = false;
   playing = 0;
   stopTimer();
 }
@@ -333,6 +339,11 @@ function bindControls(): void {
   findEl("livingHudStepYear")?.addEventListener("click", () => step(4));
   findEl("livingHudPlay")?.addEventListener("click", () => play(1));
   findEl("livingHudPlay4")?.addEventListener("click", () => play(4));
+  findEl("livingHudSchemes")?.addEventListener("click", () => {
+    showSchemes = !showSchemes;
+    if (showSchemes) selected = null;
+    renderInspector();
+  });
   findEl("livingHudDate")?.addEventListener("click", () => void Controllers.LegendsOverview.open());
   findEl("livingHudClose")?.addEventListener("click", close);
 
@@ -608,6 +619,7 @@ function rememberProvinceTarget(provinceId: number): void {
 function selectMarker(markerId: number): void {
   const marker = (pack.markers ?? []).find(entry => entry?.i === markerId);
   if (marker) rememberTarget(`Fit for ${marker.name ?? "the site"}`, ["ruin", "wild"]);
+  showSchemes = false;
   selected = { kind: "marker", id: markerId };
   renderInspector();
 }
@@ -619,6 +631,7 @@ function selectState(stateId: number): void {
     return Boolean(sim?.trouble || hostileFactionInProvince(p.i));
   });
   if (province) rememberProvinceTarget(province.i);
+  showSchemes = false;
   selected = { kind: "state", id: stateId };
   renderInspector();
 }
@@ -628,17 +641,20 @@ function selectBurg(burgId: number): void {
   if (provId && (Stability.getProvince(provId)?.stability ?? 1) < 0.4) {
     rememberTarget("Fit for unrest", ["social", "order"]);
   }
+  showSchemes = false;
   selected = { kind: "burg", id: burgId };
   renderInspector();
 }
 
 function selectProvince(provinceId: number): void {
   rememberProvinceTarget(provinceId);
+  showSchemes = false;
   selected = { kind: "province", id: provinceId };
   renderInspector();
 }
 
 function selectCell(cellId: number): void {
+  showSchemes = false;
   selected = { kind: "cell", id: cellId };
   renderInspector();
 }
@@ -664,6 +680,13 @@ function validateSelection(): void {
 function renderInspector(): void {
   const panel = findEl(INSPECTOR_ID);
   if (!panel) return;
+
+  if (showSchemes) {
+    panel.style.display = "block";
+    panel.innerHTML = `<button type="button" class="livingInspectorClose" data-inspector="close" title="Close Inspector">✕</button>${renderSchemesCard()}`;
+    bindInspectorButtons(panel);
+    return;
+  }
 
   if (!selected) {
     panel.innerHTML = `<button type="button" class="livingInspectorClose" data-inspector="close" title="Close Inspector">✕</button><div class="livingPlaceholder">Click a state, burg, hero or landmark to inspect it.</div>`;
@@ -897,6 +920,21 @@ function renderStateCard(stateId: number): string {
       ${hasFactions ? `<button type="button" data-god="smite-state-faction" data-state="${stateId}">Smite Faction</button>` : ""}
       ${canSpawnStateFaction ? `<button type="button" data-god="spawn-state-faction" data-state="${stateId}">Spawn Faction</button>` : ""}
     </div>`;
+}
+
+function renderSchemesCard(): string {
+  const schemes = [...Schemes.ensureSchemes()].sort((a, b) => {
+    const rank = (scheme: Scheme) => (scheme.status === "active" ? 0 : scheme.status === "collapsed" ? 1 : 2);
+    return rank(a) - rank(b) || a.i - b.i;
+  });
+  if (!schemes.length) {
+    return `<div class="livingInspectorTitle">Villain Schemes</div><div class="livingPlaceholder">No mastermind has risen yet.</div>`;
+  }
+
+  const active = schemes.filter(scheme => scheme.status === "active").length;
+  return `<div class="livingInspectorTitle">Villain Schemes</div>
+    <div class="livingMuted">${active} active · ${schemes.length - active} closed · god view</div>
+    ${schemes.map(renderSchemeCard).join("")}`;
 }
 
 function renderRuler(ruler: HistoricalFigure | undefined, _age?: number): string {
@@ -1475,6 +1513,7 @@ function zoomToLocation(cell?: number, burgId?: number): void {
 function bindInspectorButtons(panel: HTMLElement): void {
   panel.querySelector<HTMLElement>("[data-inspector='close']")?.addEventListener("click", () => {
     selected = null;
+    showSchemes = false;
     panel.style.display = "none";
   });
 
@@ -1534,6 +1573,9 @@ function bindInspectorButtons(panel: HTMLElement): void {
           break;
         case "regiments":
           void Controllers.RegimentsOverview.open(id);
+          break;
+        case "figure":
+          void Controllers.CharactersEditor.openDetails(id);
           break;
       }
     });
@@ -1597,6 +1639,7 @@ function runIntervention(button: HTMLElement): void {
   const stateId = Number(button.dataset.state ?? 0);
   const burgId = Number(button.dataset.burg ?? 0);
   const provId = Number(button.dataset.province ?? 0);
+  const schemeId = Number(button.dataset.scheme ?? 0);
   let ok = false;
   let message = "";
 
@@ -1750,6 +1793,22 @@ function runIntervention(button: HTMLElement): void {
       }
       break;
     }
+    case "scheme-force":
+      ok = Living.forceSchemeStep(schemeId);
+      message = ok ? "The active step is forced to completion." : "The scheme cannot advance.";
+      break;
+    case "scheme-expose":
+      ok = Living.exposeScheme(schemeId);
+      message = ok ? "The scheme stands exposed." : "The scheme is already exposed or closed.";
+      break;
+    case "scheme-abort":
+      ok = Living.abortScheme(schemeId);
+      message = ok ? "The scheme is abandoned." : "The scheme cannot be abandoned.";
+      break;
+    case "scheme-reroll":
+      ok = Living.rerollScheme(schemeId);
+      message = ok ? "The scheme is re-rolled around its mastermind." : "No valid mastermind remains for a re-roll.";
+      break;
     default:
       return;
   }
@@ -1776,6 +1835,7 @@ function inspect(kind: Selection["kind"], id: number): void {
   else if (kind === "burg") selectBurg(id);
   else if (kind === "province") selectProvince(id);
   else {
+    showSchemes = false;
     selected = { kind, id } as Selection;
     renderInspector();
   }

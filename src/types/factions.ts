@@ -101,6 +101,8 @@ export interface Faction {
   projectQueue?: FactionQueuedProject[];
   /** User-configured daily revenue/cost adjustments */
   adjustments?: { name: string; value: number }[];
+  /** Sim-owned daily revenue/cost lines (scheme pushes, hazards); merged with the user's where the economy reads them */
+  simAdjustments?: { name: string; value: number }[];
 
   // Identity & Visuals
   color: string;
@@ -239,7 +241,7 @@ export interface FactionEconomyBreakdown {
   revenueLines: FactionRevenueLine[];
   /** Total daily revenue collected across active nodes and adjustments */
   collectedDaily: number;
-  /** Sum of user daily revenue adjustments */
+  /** Sum of daily revenue/cost adjustments, user and sim-owned */
   adjustmentsDaily: number;
   /** Daily revenue allocated to queued asset construction */
   projectDaily: number;

@@ -10,6 +10,7 @@ import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { Military, syncRegimentTotals } from "@/model/political/military-generator";
 import { noFinance } from "@/model/political/states-generator";
+import { Characters } from "@/model/society/characters";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
 import type { Good } from "@/types/economy";
 import type { Faction } from "@/types/factions";
@@ -4388,5 +4389,42 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
       expect(living.provinces[2]?.trouble?.severity).toBe("flavor");
       expect(thisTickNews.some(n => n.kind === "trouble")).toBe(false);
     });
+  });
+
+  it("absorbs a conquered state into the victor", () => {
+    const living = Living.init();
+
+    expect(Living.absorbState(2, 1)).toBe(true);
+
+    expect(pack.states[2].removed).toBe(true);
+    expect(living.states[2]).toBeUndefined();
+    expect(pack.cells.state[3]).toBe(1);
+    expect(pack.burgs[2].state).toBe(1);
+    expect(pack.provinces[2].state).toBe(1);
+    expect(living.recentNews.some(item => item.text.includes("absorbs"))).toBe(true);
+  });
+
+  it("puts a villain on a state's throne", () => {
+    const living = Living.init();
+    const villain = Characters.add({ name: "Usurper", culture: 2, birth: 940 });
+
+    expect(Living.usurpThrone(2, villain.i)).toBe(true);
+
+    expect(living.states[2].rulerId).toBe(villain.i);
+    expect(
+      villain.roles.some(role => role.type === "ruler" && role.target.kind === "state" && role.target.id === 2)
+    ).toBe(true);
+    expect(pack.states[2].economy.simStabilityAdjustments).toContainEqual({ name: "Usurpation", value: -10 });
+    expect(living.recentNews[0].text).toContain("seizes the crown");
+  });
+
+  it("breaches a seal into blight troubles", () => {
+    const living = Living.init();
+
+    Living.breachDoom(1, 1);
+
+    expect(living.provinces[1].trouble?.id).toBe("leyline_blight");
+    expect(living.eschaton).toBeGreaterThan(0);
+    expect(living.economyDirty).toBe(true);
   });
 });

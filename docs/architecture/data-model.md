@@ -267,6 +267,7 @@ Non-territorial organizations stored as an array of objects with strict element 
 - `alignment`, `values`: `Alignment`, `string[]` - the ethos it follows, rolled from its culture
 - `expansionism`: `number` - `0.2..2.0`, how hard it pushes outward; `expansionScope`: `FactionExpansionScope` - `local`, `province`, `state`, `culture`, `religion` or `global`
 - `sovereignAmbition`, `stateForm?`, `stateRosterId?` - whether it can ascend to a state, and the form and roster it takes then
+- `adjustments`, `simAdjustments?`: `{ name, value }[]` - user and sim-owned daily revenue/cost lines. The economy sums both into `adjustmentsDaily`, and negative lines lower the day balance. Scheme pushes post a one-season `Scheme N: <goal>` expense here (see [Villain schemes](#villain-schemes))
 - `foundedYear`, `leaderId?`, `memberIds`, `candidateIds?` - founding year and its people, drawn from `pack.history.figures`
 - `hq`: `FactionHq` - `{ cell, burgId?, markerId?, provinceId?, maritime?, fortified, pillaged?, influence?, secrecy, personnel?, hostAdjustments?, assets: string[], sim?: BurgSimState }` (`influence` 0–100, defaults to 70; `pillaged` marks a razed urban or wilderness stronghold)
 - `outposts`: `FactionOutpost[]` - `{ burgId, cell, tier, influence, secrecy, personnel?, hostAdjustments?, assets: string[], establishedYear, pillaged?, sim?: BurgSimState }`
@@ -723,6 +724,16 @@ A hero sheet (`HeroSheet`) holds the compact character stat block:
 - `doctrine`, `temperament`, `cooldownUntil`: optional seasonal-play fields
 
 Characters do **not** use `FigureSkills` (`m/w/s/c`). Those fields survive on old saves only until migration, which builds `hero.actions` and `hero.attributes` from them.
+
+## Villain schemes
+
+Generated with the chronicle and stored beside it on `pack.history`, so both travel in the same `.map` record (57):
+
+- `schemes?: Scheme[]` - one per elected mastermind. A scheme has `i`, `goal` (one of seven ids), `mastermind` (a `HistRef` to the state, religion or faction), `keystone` (the ultimate target: `state:<id>`, `religion:<id>` or `marker:<id>`), `villainFigure` (an id into `pack.history.figures`), `template` (the instantiated step order), `secrecy` (`0..100`, a consequence gate only), optional `exposed`, `steps`, `status` (`active | complete | collapsed`) and `startedYear`.
+- `relics?: Relic[]` - `i`, `name`, `kind`, `at: { cell, markerId? }`, optional `holder: HistRef`, `tags`. `history.relics` is the only registry; `seize_relic` steps point at entries by `relicId`.
+- A **step** (`SchemeStep`) has `verb` (one of the twelve scheme verbs), `targets: HistRef[]`, optional `cell` and `duration` (seasonal channel), runtime-owned `progress` (channel seasons left) and `attempts` (paid pushes spent), `status` (`pending | active | done | failed`) and optional `relicId`. Targets are always existing entities: figures, states, religions, factions or burgs.
+
+Generation runs the `schemes` pipeline step after `history`, so rulers, faction leaders and religions all exist. The runtime lives in [`living-schemes.ts`](../../src/model/physical/living-schemes.ts) and runs once a season from `Living.tick()`, between the silent background sync and the notable-events phase: each active scheme checks its step's world predicate first, then the mastermind may push it once that season. A push posts a **one-season daily expense line**, `Scheme N: <goal>`, to the state's `economy.simAdjustments` or the faction's `simAdjustments` (`seasonal cost / 90`), and increments the step's `attempts`; channel verbs also decrement `progress`. There is no stockpile debit — state `treasury` is the last run's day balance, and a faction exposes `dayBalance` through `Living.getFactionYieldBreakdown`. A mastermind whose day balance cannot absorb the line stalls, and the next scheme tick clears the line before another push. Dead villains pass the design to a lieutenant at reduced progress or the scheme collapses, dead or destroyed targets are replaced from the map, and at zero secrecy the scheme is `exposed`. When the last step resolves, the goal's end state runs through existing machinery: a living deity (`Religions.setDeity` or a new faith via `Religions.add`), an `immortal` tag the aging pass respects, annexation through `Living.absorbState` or faction ascension, `Religions.remove`, `Living.usurpThrone`, a tagged puppet court, or `Living.breachDoom` seeding drain troubles and raising the eschaton. Old saves simply have no schemes.
 
 ## Legends
 

@@ -662,7 +662,10 @@ export function computeFactionEconomy(
   const revenueLines = [...byKey.values()].map(line => ({ ...line, daily: rn(line.daily, 2) }));
   const streamDaily = revenueLines.reduce((sum, line) => sum + line.daily, 0);
   const adjustmentsDaily = rn(
-    (faction.adjustments ?? []).reduce((sum, line) => sum + (Number(line.value) || 0), 0),
+    [...(faction.adjustments ?? []), ...(faction.simAdjustments ?? [])].reduce(
+      (sum, line) => sum + (Number(line.value) || 0),
+      0
+    ),
     2
   );
   const collectedDaily = rn(streamDaily + adjustmentsDaily, 2);
