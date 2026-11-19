@@ -39,6 +39,8 @@ Ruins use the same lazy mechanism with their own profile: tier, original identit
 
 Caves, disturbed burials and necropolises also carry lazy profiles, but keep their own identities: a cave is a natural survey with an optional lair draft, a disturbed burial is an active undead hazard with grave goods, and a necropolis is a tiered city of the dead with a few capped tomb sub-dungeons. History fall markers and cleared threats are wired in too; cleared sites still become ruins. Use the same reroll button to build a profile for an older marker. See [Underground site generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Underground-site-generation) for the full procedure.
 
+Beasts, monsters and bandits — the lake/sea monsters, hill monsters, brigands and pirates — carry creature profiles: size and quantity, nature, tags, attack and defense prompts, a want and moves, plus ratings, inhabitants and treasure. A beast yields inherent harvest, a monster hoards and may carry a curio, and a bandit gang has a leader, a base and carried/stashed loot. These are prompt sheets, not stat blocks. Cleared threats still become ruins. Use the same reroll button to build a profile for an older marker. See [Creature generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Creature-generation) for the full procedure.
+
 
 You can create an image preview using the <> button and text similar to this:
 
@@ -61,21 +63,21 @@ Criteria and types of randomly added markers are defined in the generator and ca
 
 * Battlefields: These are areas within a state that have a noticeable population, found in mid-elevation regions.
 * Bridges: These are found in cities located near rivers, especially where the river is not close to the ocean and the water flow is significant. The busier a city's trade, the likelier its bridge.
-* Brigands: Roads with high activity, usually where there’s a strong cultural presence, may attract outlaws. They favor roads of busy markets through poor land.
+* Brigands: Roads with high activity, usually where there's a strong cultural presence, may attract outlaws. They favor roads of busy markets through poor land. Each gang carries a generated profile; see [Creature generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Creature-generation).
 * Canoes: These appear in regions with rivers, representing local watercraft.
 * Circuses: Found in cultural areas with developed roads, particularly near or around sea level.
 * Dances: These events take place in towns with a moderately sized population.
 * Dungeons: Isolated and sparsely populated regions often feature these hidden or abandoned places.
-* Hill Monsters: These creatures are found in highland areas where there is some population present.
+* Hill Monsters: These creatures are found in highland areas where there is some population present. Each carries a generated profile; see [Creature generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Creature-generation).
 * Hot Springs: Located in elevated regions, these natural thermal baths are found in hilly or mountainous areas.
 * Inns: These rest stops appear along busy roads in well-populated areas, more often in busy markets.
 * Jousts: Held in larger towns, especially in places with a robust population.
-* Lake Monsters: Found in freshwater lakes, representing mythical creatures.
+* Lake Monsters: Found in freshwater lakes, representing mythical creatures. Each carries a generated profile; see [Creature generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Creature-generation).
 * Lighthouses: These are positioned along coastlines with good access to the sea and a large number of water routes.
 * Migrations: These occur in sparsely populated midland regions where people or animals move.
 * Mines: Found in towns on an ore or mineral deposit, far more often on valuable ones such as gold, silver or gemstones. A town that extracts nothing from its deposit has an old, played-out mine.
 * Mirage: Seen in hot desert regions, these are illusions caused by extreme heat and light conditions.
-* Pirates: Found on the open sea along major shipping routes, representing maritime outlaws. They favor routes between busy markets.
+* Pirates: Found on the open sea along major shipping routes, representing maritime outlaws. They favor routes between busy markets. Each crew carries a generated profile; see [Creature generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Creature-generation).
 * Portals: These mystical gateways appear in the oldest towns.
 * Rifts: Occur in sparsely populated biomes that are still somewhat habitable, representing splits in the earth.
 * Ruins: Found in mid-elevation cultural areas, these represent remnants of past civilizations. Each ruin carries a generated profile; see [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation).
@@ -83,7 +85,7 @@ Criteria and types of randomly added markers are defined in the generator and ca
 * Sacred Mountains: Found in high mountain regions, close to cultural areas, these are considered spiritually important.
 * Sacred Palm Groves: Found in desert regions with cultural significance and some population, connected by roads.
 * Sacred Pineries: These are located in cultural areas within boreal forests.
-* Sea Monsters: Mythical creatures found in the ocean along busy sea routes.
+* Sea Monsters: Mythical creatures found in the ocean along busy sea routes. Each carries a generated profile; see [Creature generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Creature-generation).
 * Statues: These monuments appear in low to mid-elevation regions.
 * Volcanoes: Found in very high mountain regions, representing active or dormant volcanic activity.
 * Waterfalls: Located in hilly or mountainous areas with rivers, especially where there’s a sharp drop in terrain nearby.

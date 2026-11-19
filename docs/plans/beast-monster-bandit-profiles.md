@@ -1,8 +1,8 @@
 # Plan — Beast, Monster and Bandit Profiles
 
-Updated: 2026-11-19. Status: **steps 1–5 shipped** (creature/bandit data tables, shared context/core
-types and headings; beast profiles; monster profiles; bandit profiles; lifecycle and integration
-verification). Step 6 remains. Companions:
+Updated: 2026-11-19. Status: **all planned steps shipped** (creature/bandit data tables, shared
+context/core types and headings; beast profiles; monster profiles; bandit profiles; lifecycle and
+integration verification; wiki, data-model and migration docs). Companions:
 [dungeon-profiles.md](dungeon-profiles.md), [ruin-profiles.md](ruin-profiles.md) and
 [cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md). This plan extends the
 same lazy generated-content model to the living threat markers:
@@ -294,10 +294,11 @@ the three generated kinds and renderers should remain distinct.
    - Verified cleared threats still become ruins with `clearedFrom`.
    - Verified living-threat mappings, astral readings, locked markers and old-map reroll.
    - Tests: cleared conversion, locked markers, old-map backfill, exports render without caching.
-6. **Docs and migration**
-   - Wiki coverage for beasts, monsters and bandits; link from Markers and Living World.
-   - Update `docs/architecture/data-model.md` for the new meta keys.
-   - Document old-map reroll backfill; no eager migration.
+6. **Docs and migration — shipped 2026-11-19**
+   - Added `docs/wiki/Creature-generation.md`; linked from Markers, Living World, Home and the
+     dungeon/ruin/underground guides.
+   - Updated `docs/architecture/data-model.md` for the new meta keys.
+   - Documented old-map reroll backfill; no eager migration.
 
 ## Tests
 
@@ -329,12 +330,11 @@ the three generated kinds and renderers should remain distinct.
 
 ## Docs
 
-- Add user-facing coverage for the three profiles, either one combined
-  `Creature-generation.md` page or separate beast/monster/bandit pages.
-- Link from `Markers.md` and `Living-World.md`.
-- Update `docs/architecture/data-model.md` with the new `generated.meta` keys.
-- State that old maps backfill through the marker editor reroll button, not during load.
-- Keep the cleared-threat rule explicit: active beasts/monsters/bandits have their own profiles;
+- `docs/wiki/Creature-generation.md` covers beasts, monsters and bandits in one combined page.
+- Linked from `Markers.md`, `Living-World.md`, `Home.md` and the dungeon/ruin/underground guides.
+- `docs/architecture/data-model.md` documents the new `generated.meta` keys.
+- Old maps backfill through the marker editor reroll button, not during load.
+- The cleared-threat rule is explicit: active beasts/monsters/bandits have their own profiles;
   cleared ones become ruins.
 
 ## Licensing and generic vocabulary
