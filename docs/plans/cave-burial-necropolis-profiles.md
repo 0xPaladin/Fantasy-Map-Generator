@@ -1,8 +1,8 @@
 # Plan — Cave, Disturbed Burial and Necropolis Profiles
 
-Updated: 2026-11-19. Status: **steps 1–5 shipped** (cave/burial data tables, shared context types and
-headings; cave profiles; disturbed-burial profiles; tiered necropolis profiles; history fall
-metadata and lifecycle verification). Step 6 remains. Companions:
+Updated: 2026-11-19. Status: **all planned steps shipped** (cave/burial data tables, shared context
+types and headings; cave profiles; disturbed-burial profiles; tiered necropolis profiles; history
+fall metadata and lifecycle verification; wiki, data-model and migration docs). Companions:
 [dungeon-profiles.md](dungeon-profiles.md) and [ruin-profiles.md](ruin-profiles.md). This plan
 extends the same lazy generated-content model to the three remaining underground/burial marker
 kinds:
@@ -314,11 +314,11 @@ the three generated kinds and renderers should remain distinct.
    - History seat/province necropolis and disturbed-burial meta.
    - Verified cleared threats still become ruins with `clearedFrom`.
    - Tests: history tiers, chronicle replacement, locked markers, old-map reroll.
-6. **Docs and migration**
-   - Wiki coverage for caves, disturbed burials and necropolises; link from Markers, History and
-     Living World.
-   - Update `docs/architecture/data-model.md` for the new meta keys.
-   - Document old-map reroll backfill; no eager migration.
+6. **Docs and migration — shipped 2026-11-19**
+   - Added `docs/wiki/Underground-site-generation.md`; linked from Markers, History, Living World,
+     Home and Ruin generation.
+   - Updated `docs/architecture/data-model.md` for the new meta keys.
+   - Documented old-map reroll backfill; no eager migration.
 
 ## Tests
 
@@ -351,13 +351,12 @@ the three generated kinds and renderers should remain distinct.
 
 ## Docs
 
-- Add user-facing coverage for the three profiles, either one combined
-  `Underground-site-generation.md` page or separate cave/burial/necropolis pages.
-- Link from `Markers.md`, `History.md` and `Living-World.md`.
-- Update `docs/architecture/data-model.md` with the new `generated.meta` keys.
-- State that old maps backfill through the marker editor reroll button, not during load.
-- Keep the cleared-threat rule explicit: active caves/burials/necropolises have their own
-  profiles; cleared ones become ruins.
+- `docs/wiki/Underground-site-generation.md` covers caves, disturbed burials and necropolises.
+- Linked from `Markers.md`, `History.md`, `Living-World.md`, `Home.md` and `Ruin-generation.md`.
+- `docs/architecture/data-model.md` documents the new `generated.meta` keys.
+- Old maps backfill through the marker editor reroll button, not during load.
+- The cleared-threat rule is explicit: active caves/burials/necropolises have their own profiles;
+  cleared ones become ruins.
 
 ## Risks and open questions
 

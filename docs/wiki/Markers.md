@@ -37,6 +37,8 @@ Opening a newly generated dungeon marker's note also builds an alternate text pr
 
 Ruins use the same lazy mechanism with their own profile: tier, original identity, fall, present state, sites, surface zones, ratings, inhabitants, treasure mix, secrets and rumors. An outpost or village is a single site; a town, city or fallen capital is a multi-site complex, and a few of its sites can hold inline sub-dungeons. Random ruins, history's fall markers and cleared Living World threats all get a profile. Use the same reroll button to build one for an older ruin; its short note and name stay as they are. See [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation) for the full procedure.
 
+Caves, disturbed burials and necropolises also carry lazy profiles, but keep their own identities: a cave is a natural survey with an optional lair draft, a disturbed burial is an active undead hazard with grave goods, and a necropolis is a tiered city of the dead with a few capped tomb sub-dungeons. History fall markers and cleared threats are wired in too; cleared sites still become ruins. Use the same reroll button to build a profile for an older marker. See [Underground site generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Underground-site-generation) for the full procedure.
+
 
 You can create an image preview using the <> button and text similar to this:
 
@@ -91,8 +93,8 @@ Criteria and types of randomly added markers are defined in the generator and ca
 * Customs houses: at most one where a road crosses into a state the other trades with under tariffs, more often on the borders with the most tariffs.
 * Guild halls: burgs famed for a manufactured good, placed before mines so a mining town can keep its guild. A burg is famed when it leads the good's makers across the world and in its state, and the good is a real part of its work.
 * Merchant houses: market centers, more often those whose market margin earns the most.
-* Caves: populated cells at height 50 and above.
-* Disturbed burials: populated land cells. Fantasy culture sets only.
-* Necropolises: land cells with almost no population.
+* Caves: populated cells at height 50 and above. Each cave carries a generated survey; see [Underground site generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Underground-site-generation).
+* Disturbed burials: populated land cells. Fantasy culture sets only. Each carries a generated burial profile; see [Underground site generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Underground-site-generation).
+* Necropolises: land cells with almost no population. Each carries a generated necropolis profile; see [Underground site generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Underground-site-generation).
 * Encounters: populated land cells.
 * Party: a single movable marker placed in a burg, meant to track the current location of an adventuring party.

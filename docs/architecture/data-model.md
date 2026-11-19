@@ -382,15 +382,15 @@ Markers data is stored as an unordered array of objects (so element id is _not_ 
 - `lock`: `boolean` - `true` if marker is locked (not affected by regeneration). Optional
 - `note`: `string` - optional. The user's note (legend) about the marker, as html. Removed with it
 - `generated`: `object` - optional. Lazily generated content, stored as `{ kind, version, seed, meta?, html? }`:
-  - `kind`: `string` - the generator that owns the content, e.g. `dungeon` or `ruin`
+  - `kind`: `string` - the generator that owns the content, e.g. `dungeon`, `ruin`, `cave`, `burial` or `necropolis`
   - `version`: `number` - generator output version, for invalidating cached html
   - `seed`: `string` - stable generator input; enough to rebuild the html
-  - `meta`: `object` - optional small generator input; values are strings, numbers or booleans. Dungeons leave it empty. Ruins use it for history and cleared-threat context: `tier`, `originalName`, `originalPolity`, `fallYear`, `cause`, `looted`, `clearedBy` and `clearedFrom`
+  - `meta`: `object` - optional small generator input; values are strings, numbers or booleans. Dungeons leave it empty. Ruins use `tier`, `originalName`, `originalPolity`, `fallYear`, `cause`, `looted`, `clearedBy` and `clearedFrom`. Caves use `formation`, `status` and `extent`. Burials use `burialKind`, `disturbance` and the history keys. Necropolises use `burialType`, `tier` and the history keys
   - `html`: `string` - optional rendered notes-subset HTML. Absent until the content is first read; once present it is saved with the marker
 - `economy`: `number` - optional. Per-marker daily economy adjustment override for its province (gold/day); absent uses the marker type's default (`MARKER_IMPACTS`)
 - `stability`: `number` - optional. Per-marker provincial stability adjustment override (percentage points); absent uses the marker type's default (`MARKER_IMPACTS`)
 
-Older maps have no `generated` field; dungeons and ruins gain their first recipe through the marker editor's reroll button.
+Older maps have no `generated` field; dungeons, ruins, caves, disturbed burials and necropolises gain their first recipe through the marker editor's reroll button.
 
 ## Labels
 
