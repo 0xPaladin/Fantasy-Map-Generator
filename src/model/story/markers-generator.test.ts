@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BURIAL_KINDS } from "@/data/burials";
 import { Goods } from "@/model/economy/goods-generator";
 import { Names } from "@/model/society/names-generator";
 import { ensureGenerated } from "./marker-content";
@@ -619,5 +620,36 @@ describe("MarkersModule caves", () => {
       economy: 0,
       stability: -2
     });
+  });
+});
+
+describe("MarkersModule disturbed burials", () => {
+  beforeEach(() => {
+    options.map.seed = "12345";
+    globalThis.pack = {
+      cells: { culture: [0, 1], biome: [0, 1], h: [0, 30], pop: [0, 5] },
+      cultures: [{ i: 0 }, { i: 1, name: "Aeloran" }],
+      biomes: [
+        { i: 0, name: "" },
+        { i: 1, name: "Forest" }
+      ],
+      markers: []
+    } as any;
+  });
+
+  it("gives a random disturbed burial a lazy burial recipe and keeps the short note", async () => {
+    await import("./markers-generator");
+    const markers = Markers as any;
+    const marker = { i: 0, type: "disturbed-burials", cell: 1 } as Marker;
+
+    markers.addDisturbedBurial(marker, 1);
+
+    expect(marker.name).toBe("Disturbed Burial");
+    expect(marker.note).toContain("the dead to rise");
+    expect(marker.generated).toMatchObject({ kind: "burial", version: 1, seed: "12345" });
+    const burialKind = marker.generated?.meta?.burialKind as string;
+    expect(BURIAL_KINDS.some(row => row.kind === burialKind)).toBe(true);
+    expect(marker.generated?.html).toBeUndefined();
+    expect(ensureGenerated(marker)).toContain("Alternate burial profile");
   });
 });

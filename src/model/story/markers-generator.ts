@@ -1,4 +1,5 @@
 import { mean } from "d3";
+import { BURIAL_KINDS, type BurialKind } from "@/data/burials";
 import {
   BRIDGE_ADJECTIVES,
   BRIGAND_ANIMALS,
@@ -50,6 +51,7 @@ import { Icons } from "@/model/icons";
 import type { Burg } from "@/model/political/burgs-generator";
 import { States } from "@/model/political/states-generator";
 import { Names } from "@/model/society/names-generator";
+import { BURIAL_KIND, createBurialContent } from "@/model/story/burial-marker";
 import { CAVE_KIND, createCaveContent } from "@/model/story/cave-marker";
 import { createDungeonContent, DUNGEON_KIND, DUNGEON_VERSION, dungeonName } from "@/model/story/dungeon-marker";
 import {
@@ -1911,6 +1913,10 @@ class MarkersModule {
     const legend = "A burial site has been disturbed in this area, causing the dead to rise and attack the living.";
     marker.name = name;
     marker.note = legend;
+    if (marker.generated?.kind !== BURIAL_KIND) {
+      const burialKind = rw(Object.fromEntries(BURIAL_KINDS.map(row => [row.kind, row.weight]))) as BurialKind;
+      marker.generated = { ...createBurialContent(), meta: { burialKind } };
+    }
   }
 
   private listNecropolis({ cells }: PackedGraph) {

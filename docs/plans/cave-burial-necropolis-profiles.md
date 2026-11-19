@@ -1,7 +1,8 @@
 # Plan — Cave, Disturbed Burial and Necropolis Profiles
 
-Updated: 2026-11-19. Status: **steps 1–2 shipped** (cave/burial data tables, shared context types and
-headings; cave profiles, lazy kind and random placement). Steps 3–6 remain. Companions:
+Updated: 2026-11-19. Status: **steps 1–3 shipped** (cave/burial data tables, shared context types and
+headings; cave profiles; disturbed-burial profiles, lazy kinds and random placement). Steps 4–6
+remain. Companions:
 [dungeon-profiles.md](dungeon-profiles.md) and [ruin-profiles.md](ruin-profiles.md). This plan
 extends the same lazy generated-content model to the three remaining underground/burial marker
 kinds:
@@ -302,7 +303,7 @@ the three generated kinds and renderers should remain distinct.
    - Cave generator, renderer, lazy kind, random placement meta.
    - Optional capped dungeon draft for lair/deep caves.
    - Tests: determinism, formation/status agreement, impact keywords, note size, optional dungeon.
-3. **Disturbed burial profiles**
+3. **Disturbed burial profiles — shipped 2026-11-19**
    - Burial generator, renderer, lazy kind, random placement.
    - Optional small crypt draft; Fantasy gating unchanged.
    - Tests: active undead danger, grave-goods mix, disturbance causes, note size.
