@@ -87,7 +87,20 @@ import {
   TAX_DRIFT
 } from "@/model/physical/living-fiscal";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
-import { advanceStash, factionStashTarget, stateStashTarget } from "@/model/physical/living-stash";
+import {
+  advanceStash,
+  dominantStashPart,
+  factionStashMix,
+  factionStashTarget,
+  STASH_LOOT_SHARE,
+  STASH_NEWS_TIERS,
+  seizeStash,
+  stashMonthsHeld,
+  stashPartLabel,
+  stateDailySurplus,
+  stateStashMix,
+  stateStashTarget
+} from "@/model/physical/living-stash";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
@@ -1604,8 +1617,39 @@ class LivingModel {
               figure => figure.i === rulerId && !figure.removed && figure.death === undefined
             );
       const values = pack.cultures?.[state.culture ?? 0]?.values ?? [];
-      state.economy.stash = advanceStash(state.economy.stash, stateStashTarget(state, ruler, values));
+      const previous = state.economy.stash;
+      const dailySurplus = stateDailySurplus(state);
+      const next = advanceStash(previous, stateStashTarget(state, ruler, values));
+      state.economy.stash = next;
+      this.pushStashNews(state.name, previous, next, dailySurplus, living, {
+        kind: "develop",
+        cell: state.center,
+        stateId: state.i
+      });
     }
+  }
+
+  /** A great hoard crossing a year or more of surplus is worth a dispatch. */
+  private pushStashNews(
+    name: string,
+    previous: number | undefined,
+    next: number,
+    dailySurplus: number,
+    living: LivingWorldState,
+    where: { kind: LivingNewsKind; cell?: number; stateId?: number; burgId?: number }
+  ): void {
+    const before = stashMonthsHeld(previous, dailySurplus);
+    const after = stashMonthsHeld(next, dailySurplus);
+    const tier = STASH_NEWS_TIERS.find(crossing => before < crossing && after >= crossing);
+    if (tier === undefined) return;
+
+    this.pushNews(living, {
+      ...where,
+      text:
+        tier >= 36
+          ? `${name} has amassed a hoard worth years of its surplus.`
+          : `${name} now keeps a year's surplus in treasure.`
+    });
   }
 
   syncProvinces(living: LivingWorldState): void {
@@ -2100,6 +2144,8 @@ class LivingModel {
       });
     }
 
+    this.seizeFactionStash(state, faction, isHq ? 0.25 : 0.1, living, targetCell, burg?.i, location);
+
     if (isHq) this.relocateOrDissolveFaction(state, faction, living);
 
     // Drop any partial suppression work the agenda still names.
@@ -2119,6 +2165,33 @@ class LivingModel {
         }
       }
     }
+  }
+
+  /** A razed faction node gives up part of the organization's hoard. */
+  private seizeFactionStash(
+    state: State,
+    faction: Faction,
+    share: number,
+    living: LivingWorldState,
+    cell: number,
+    burgId: number | undefined,
+    where: string
+  ): void {
+    if (!state?.i || state.removed || !state.economy || !faction?.i || faction.removed) return;
+    const loot = seizeStash(faction.stash, share);
+    if (loot.seized <= 0) return;
+    faction.stash = loot.remaining;
+    if (loot.kept <= 0) return;
+
+    state.economy.stash = Math.round(((state.economy.stash ?? 0) + loot.kept) * 100) / 100;
+    const part = stashPartLabel(dominantStashPart(factionStashMix(faction.category)));
+    this.pushNews(living, {
+      kind: "faction",
+      text: `${state.name} seized ${Math.round(loot.kept)} ${getMoneyUnit(loot.kept !== 1)} of ${faction.name}'s ${part} in ${where}.`,
+      cell,
+      stateId: state.i,
+      ...(burgId !== undefined ? { burgId } : {})
+    });
   }
 
   /** After an urban HQ falls: relocate to the strongest outpost, or dissolve the faction. */
@@ -2810,7 +2883,7 @@ class LivingModel {
   }
 
   /** A faction's season adds to its patrimony from the same day balance. */
-  private applyFactionStash(faction: Faction, breakdown: FactionYieldBreakdown): void {
+  private applyFactionStash(faction: Faction, breakdown: FactionYieldBreakdown, living: LivingWorldState): void {
     if (!canReadUpstreamEconomy()) return;
     const leader =
       faction.leaderId === undefined
@@ -2818,7 +2891,15 @@ class LivingModel {
         : pack.history?.figures?.find(
             figure => figure.i === faction.leaderId && !figure.removed && figure.death === undefined
           );
-    faction.stash = advanceStash(faction.stash, factionStashTarget(faction, breakdown.economy.dayBalance, leader));
+    const previous = faction.stash;
+    const dailySurplus = Math.max(0, breakdown.economy.dayBalance);
+    const next = advanceStash(previous, factionStashTarget(faction, dailySurplus, leader));
+    faction.stash = next;
+    this.pushStashNews(faction.name, previous, next, dailySurplus, living, {
+      kind: "faction",
+      cell: faction.hq.cell,
+      ...(faction.hq.burgId !== undefined ? { burgId: faction.hq.burgId } : {})
+    });
   }
 
   /** Bankruptcy: disband the newest block, not the whole regiment. */
@@ -2862,7 +2943,7 @@ class LivingModel {
         charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
       }
       this.applyFactionTreasury(faction, living);
-      this.applyFactionStash(faction, breakdown);
+      this.applyFactionStash(faction, breakdown, living);
       this.applyFactionStabilityDrift(faction, breakdown, living);
       this.musterFactionBlock(faction, living);
       this.stepFactionProject(faction, living);
@@ -4860,10 +4941,56 @@ class LivingModel {
     if (target !== undefined) this.moveRegimentTo(regiment, target, state.i, key, occupancy);
   }
 
+  /** Carry off part of a beaten state's stash; half is kept and half is lost in the taking. */
+  private seizeStateStash(
+    victimId: number,
+    winnerId: number,
+    share: number,
+    verb: string,
+    burg: Burg,
+    living: LivingWorldState
+  ): void {
+    const victim = pack.states[victimId];
+    const winner = pack.states[winnerId];
+    if (
+      !victim?.i ||
+      victim.removed ||
+      !victim.economy ||
+      !winner?.i ||
+      winner.removed ||
+      !winner.economy ||
+      victimId === winnerId
+    ) {
+      return;
+    }
+
+    const loot = seizeStash(victim.economy.stash, share);
+    if (loot.seized <= 0) return;
+    victim.economy.stash = loot.remaining;
+    if (loot.kept <= 0) return;
+
+    winner.economy.stash = Math.round(((winner.economy.stash ?? 0) + loot.kept) * 100) / 100;
+    const part = stashPartLabel(dominantStashPart(stateStashMix(victim.form)));
+    this.pushNews(living, {
+      kind: "conquest",
+      text: `${winner.name} ${verb} ${burg.name ?? "a settlement"} and seized ${Math.round(loot.kept)} ${getMoneyUnit(
+        loot.kept !== 1
+      )} of ${victim.name}'s ${part}.`,
+      cell: burg.cell,
+      stateId: winner.i,
+      burgId: burg.i
+    });
+  }
+
   /** §5.3 city capture: half the people, reset HP, raze or plunder works per policy. */
   private captureCity(state: State, burg: Burg, living: LivingWorldState, policy: string = "occupy"): void {
     const previousStateId = burg.state ?? 0;
     const wasCapital = Boolean(burg.capital);
+    const stashShare = STASH_LOOT_SHARE[policy as keyof typeof STASH_LOOT_SHARE] ?? 0;
+    if (stashShare > 0) {
+      const verb = policy === "raze" ? "razed" : policy === "sack" ? "sacked" : "looted";
+      this.seizeStateStash(previousStateId, state.i, stashShare, verb, burg, living);
+    }
     this.annexBurg(state.i, burg, true);
     this.logConquest(state, burg, true);
 

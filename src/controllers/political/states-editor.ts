@@ -545,10 +545,10 @@ function renderStatesPage(view: TableView<State>): void {
     const stashTip = sentences(
       EconomyTerms.stash(),
       stash.hasStash
-        ? t("Nature: {{nature}}, about {{months}} months of surplus", {
+        ? `${t("Nature: {{nature}}, about {{months}} months of surplus", {
             nature: t(stash.nature),
             months: rn(stash.targetMonths, 1)
-          })
+          })} ${EconomyTerms.stashComposition(stash.mix)}`
         : t("No stash yet"),
       EconomyTerms.open()
     );

@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { State } from "@/model/political/states-generator";
 import type { Faction } from "@/types/factions";
 import {
   advanceStash,
+  dominantStashPart,
   factionBaseHoardMonths,
   factionStashLabel,
+  factionStashMix,
   factionStashSummary,
   factionStashTarget,
   INITIAL_STASH_SHARE,
@@ -12,13 +14,20 @@ import {
   MIN_STASH_MONTHS,
   STASH_DECAY,
   STASH_GROWTH,
+  STASH_LOOT_SHARE,
   STASH_MONTH_DAYS,
+  seizeStash,
+  stashComposition,
   stashMonths,
+  stashMonthsHeld,
   stashMultiplier,
+  stashPartLabel,
   stashTarget,
   stateBaseHoardMonths,
   stateDailySurplus,
+  stateHasMuseum,
   stateStashLabel,
+  stateStashMix,
   stateStashSummary,
   stateStashTarget
 } from "./living-stash";
@@ -37,6 +46,8 @@ const state = (overrides: Partial<State> = {}): State =>
 
 const faction = (overrides: Partial<Faction> = {}): Faction =>
   ({ category: "commercial", values: [], ...overrides }) as Faction;
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("living stash", () => {
   it("reads a state's daily surplus and ignores debt", () => {
@@ -119,26 +130,68 @@ describe("living stash", () => {
     expect(factionStashLabel("martial")).toBe("War chest");
   });
 
+  it("splits a stash into bullion, art, regalia and relics", () => {
+    expect(stateStashMix("Monarchy")).toEqual({ bullion: 30, art: 30, regalia: 35, relics: 5 });
+    expect(stateStashMix("Monarchy", true)).toEqual({ bullion: 20, art: 40, regalia: 35, relics: 5 });
+    expect(factionStashMix("commercial")).toEqual({ bullion: 60, art: 20, regalia: 15, relics: 5 });
+    expect(factionStashMix("religious")).toEqual({ bullion: 10, art: 20, regalia: 20, relics: 50 });
+
+    expect(stashComposition(1000, { bullion: 60, art: 20, regalia: 15, relics: 5 })).toEqual({
+      bullion: 600,
+      art: 200,
+      regalia: 150,
+      relics: 50
+    });
+    expect(dominantStashPart(factionStashMix("underworld"))).toBe("bullion");
+    expect(dominantStashPart(factionStashMix("religious"))).toBe("relics");
+    expect(stashPartLabel("regalia")).toBe("crown regalia");
+  });
+
+  it("seizes a share of a stash, keeping half and losing the rest", () => {
+    expect(seizeStash(1000, STASH_LOOT_SHARE.sack)).toEqual({
+      seized: 200,
+      kept: 100,
+      lost: 100,
+      remaining: 800
+    });
+    expect(seizeStash(undefined, 0.5)).toEqual({ seized: 0, kept: 0, lost: 0, remaining: 0 });
+    expect(seizeStash(100, 2)).toEqual({ seized: 100, kept: 50, lost: 50, remaining: 0 });
+  });
+
+  it("finds a museum in the state capital", () => {
+    vi.stubGlobal("pack", {
+      states: [{ i: 0 }, { i: 1, capital: 1 }],
+      history: { living: { burgs: { 1: { civBuildings: ["museum"] } } } }
+    });
+    expect(stateHasMuseum(1)).toBe(true);
+    expect(stateHasMuseum(0)).toBe(false);
+  });
+
   it("summarizes a stock in months of its current surplus", () => {
     const kingdom = state();
     kingdom.economy.stash = 27000;
-    expect(stateStashSummary(kingdom)).toEqual({
+    const summary = stateStashSummary(kingdom);
+    expect(summary).toMatchObject({
       value: 27000,
       hasStash: true,
       months: 18,
       targetMonths: 18,
       nature: "Royal collection"
     });
+    expect(summary.composition).toEqual({ bullion: 8100, art: 8100, regalia: 9450, relics: 1350 });
 
     const company = faction({ stash: 4320 });
-    expect(factionStashSummary(company, 8)).toEqual({
+    const companySummary = factionStashSummary(company, 8);
+    expect(companySummary).toMatchObject({
       value: 4320,
       hasStash: true,
       months: 18,
       targetMonths: 18,
       nature: "Commercial reserves"
     });
+    expect(companySummary.composition).toEqual({ bullion: 2592, art: 864, regalia: 648, relics: 216 });
 
     expect(stateStashSummary(state()).hasStash).toBe(false);
+    expect(stashMonthsHeld(27000, 50)).toBe(18);
   });
 });

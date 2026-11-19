@@ -188,10 +188,10 @@ function renderExpensesPanel(faction: Faction, breakdown: FactionYieldBreakdown)
     : t("Stash: no patrimony yet; the first Living World tick seeds it");
   const stashTip = `${EconomyTerms.stash()} ${
     stash.hasStash
-      ? t("Nature: {{nature}}, about {{months}} months of surplus", {
+      ? `${t("Nature: {{nature}}, about {{months}} months of surplus", {
           nature: t(stash.nature),
           months: rn(stash.targetMonths, 1)
-        })
+        })} ${EconomyTerms.stashComposition(stash.mix)}`
       : ""
   }`;
 
@@ -626,10 +626,10 @@ function renderFactionsPage(view: TableView<Faction>): void {
         <span data-col="income" style="text-align: center;">${formatDailyIncome(breakdown.dailyIncome)}</span>
         <span data-col="stash" style="text-align: center;" data-tip="${escapeHtml(
           stash.hasStash
-            ? t("{{nature}}: about {{months}} months of surplus", {
+            ? `${t("{{nature}}: about {{months}} months of surplus", {
                 nature: t(stash.nature),
                 months: rn(stash.targetMonths, 1)
-              })
+              })} ${EconomyTerms.stashComposition(stash.mix)}`
             : t("No stash yet")
         )}">${stash.hasStash ? formatPrice(stash.value) : "-"}</span>
         <span data-col="prosperity" style="text-align: center;">${renderProsperityPercent(breakdown.prosperity)}</span>

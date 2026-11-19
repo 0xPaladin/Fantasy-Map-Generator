@@ -1,6 +1,6 @@
 # Plan — State and Faction Stash (Patrimony)
 
-**Status:** Slices 1 and 2 delivered. Slice 3 (composition and events) and Slice 4 (prestige effects) pending.
+**Status:** Slices 1–3 delivered. Slice 4 (prestige effects) pending.
 **Goal:** Give states and factions a **stash** — a separate stock of accumulated patrimony: crown jewels, regalia, museums, commissioned art, relics and vaults of bullion. It is not a spending balance. It reflects how much wealth a culture or leader would keep rather than circulate, and it grows from the positive daily balance over a horizon set by that nature.
 
 ---
@@ -93,7 +93,7 @@ Examples:
 
 - `state.economy.stash?: number` — accumulated patrimony, separate from `treasury`.
 - `faction.stash?: number` — the same for a faction.
-- No other fields in slice 1. Composition and event history come later.
+- No other stored fields: composition, loot and transfer are derived from the form/category and current stock.
 - Saves without the field load unchanged; the first Living tick seeds it.
 
 ---
@@ -132,6 +132,8 @@ Examples:
 - A `museum` building shifts the art share upward; a future Crown Jewels work could add regalia.
 - News dispatches for great hoards and famous collections.
 
+**Delivery notes:** `StashSummary` now carries a `mix` and a `composition`; states split by form, factions by category, and a museum in the state capital moves ten points from bullion to art. `seizeStash` takes a share, the victor keeps half and the rest is lost. City captures take 10/20/30% on loot/sack/raze; razing a faction node takes 10% (outpost) or 25% (HQ); a faction's stash transfers to its new state on ascension; a fallen state leaves 35% of its remaining stash to its remnant faction. Crossing 24 or 36 months of surplus produces a hoard dispatch. UI tooltips show the four shares.
+
 ### Slice 4 — Prestige and temptation
 
 - Derived `splendor = stash / max(1, annualSurplus)`.
@@ -142,8 +144,8 @@ Examples:
 
 ## 7. Tests
 
-- `living-stash.test.ts`: surplus, base months, multipliers, clamps, target, seed, growth, decay, anarchy/neutral, missing traits, labels and summaries.
-- `living-generator.test.ts`: a state seeds and then grows its stash across ticks; a faction seeds its stash after a seasonal economy step.
+- `living-stash.test.ts`: surplus, base months, multipliers, clamps, target, seed, growth, decay, anarchy/neutral, missing traits, labels, summaries, composition, museum shift, seizure and hoard labels.
+- `living-generator.test.ts`: a state seeds and then grows its stash across ticks; a faction seeds its stash after a seasonal economy step; city sack, faction-node pillage, ascension transfer and remnant inheritance.
 - `states-editor.test.ts` / `factions-editor.test.ts`: the Stash column and Manage readout render, including a set value.
 - `living-hud.test.ts`: the state card survives packs without an economy object (old mocks and saves).
 
@@ -163,6 +165,6 @@ Examples:
 
 - Keep the soft stock, or later add a hard ledger that diverts treasury?
 - Should old maps always seed at 50%, or start at 0 and grow?
-- Should prestige and corruption effects ship in slice 2 or wait for slice 4?
+- Should prestige and corruption effects ship in slice 4, or wait until the numbers have been played with?
 - Composition: derive it on demand, or store it once events can alter individual shares?
 - Should war, rebellion or bankruptcy force a partial liquidation, or remain purely narrative?

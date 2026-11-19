@@ -47,6 +47,36 @@ const FACTION_STASH_LABELS: Record<FactionCategory, string> = {
   adventuring: "Relics and curios"
 };
 
+export type StashPart = "bullion" | "art" | "regalia" | "relics";
+export type StashMix = Record<StashPart, number>;
+export type StashComposition = Record<StashPart, number>;
+
+const STATE_STASH_MIX: Record<string, StashMix> = {
+  Monarchy: { bullion: 30, art: 30, regalia: 35, relics: 5 },
+  Theocracy: { bullion: 10, art: 20, regalia: 20, relics: 50 },
+  Republic: { bullion: 30, art: 40, regalia: 20, relics: 10 },
+  Union: { bullion: 40, art: 30, regalia: 20, relics: 10 },
+  Anarchy: { bullion: 0, art: 0, regalia: 0, relics: 0 }
+};
+
+const FACTION_STASH_MIX: Record<FactionCategory, StashMix> = {
+  commercial: { bullion: 60, art: 20, regalia: 15, relics: 5 },
+  underworld: { bullion: 70, art: 15, regalia: 10, relics: 5 },
+  religious: { bullion: 10, art: 20, regalia: 20, relics: 50 },
+  political: { bullion: 20, art: 30, regalia: 40, relics: 10 },
+  martial: { bullion: 45, art: 10, regalia: 30, relics: 15 },
+  adventuring: { bullion: 20, art: 20, regalia: 15, relics: 45 }
+};
+
+const DEFAULT_STATE_MIX: StashMix = { bullion: 30, art: 30, regalia: 25, relics: 15 };
+const DEFAULT_FACTION_MIX: StashMix = { bullion: 40, art: 25, regalia: 20, relics: 15 };
+
+/** How much of a beaten polity's stash a capture or pillage can carry off */
+export const STASH_LOOT_SHARE = { loot: 0.1, sack: 0.2, raze: 0.3 } as const;
+
+/** Months-of-surplus crossings worth a hoard dispatch */
+export const STASH_NEWS_TIERS = [24, 36] as const;
+
 const AVARICE_VICES = ["greedy", "stingy", "selfish", "boastful", "domineering", "paranoid"];
 const STEWARD_VIRTUES = ["thrifty", "temperate", "prudent", "methodical", "disciplined", "meticulous"];
 const OPEN_HAND_VIRTUES = ["generous", "charitable", "selfless", "compassionate", "kind"];
@@ -100,10 +130,71 @@ export function factionBaseHoardMonths(category: FactionCategory): number {
   return FACTION_BASE_MONTHS[category] ?? FACTION_BASE_MONTHS.commercial;
 }
 
+/** A state's stash shares; a museum moves ten points from bullion into art */
+export function stateStashMix(form: string | undefined, hasMuseum = false): StashMix {
+  const base = STATE_STASH_MIX[form ?? ""] ?? DEFAULT_STATE_MIX;
+  const mix = { ...base };
+  if (hasMuseum && mix.bullion > 0) {
+    const shift = Math.min(10, mix.bullion);
+    mix.bullion -= shift;
+    mix.art += shift;
+  }
+  return mix;
+}
+
+export function factionStashMix(category: FactionCategory): StashMix {
+  return { ...(FACTION_STASH_MIX[category] ?? DEFAULT_FACTION_MIX) };
+}
+
+/** Split a total into the four kinds of treasure */
+export function stashComposition(value: number, mix: StashMix): StashComposition {
+  const total = Math.max(0, value);
+  const weight = mix.bullion + mix.art + mix.regalia + mix.relics || 1;
+  const part = (share: number) => Math.round(((total * share) / weight) * 100) / 100;
+  return {
+    bullion: part(mix.bullion),
+    art: part(mix.art),
+    regalia: part(mix.regalia),
+    relics: part(mix.relics)
+  };
+}
+
+export function dominantStashPart(mix: StashMix): StashPart {
+  return (Object.keys(mix) as StashPart[]).reduce((best, part) => (mix[part] > mix[best] ? part : best), "bullion");
+}
+
+export function stashPartLabel(part: StashPart): string {
+  switch (part) {
+    case "art":
+      return "commissioned art";
+    case "regalia":
+      return "crown regalia";
+    case "relics":
+      return "sacred relics";
+    default:
+      return "vaults of bullion";
+  }
+}
+
+/** Whether the state's capital has a museum among its completed works */
+export function stateHasMuseum(stateId: number): boolean {
+  if (!stateId || typeof pack === "undefined") return false;
+  const capital = pack.states?.[stateId]?.capital;
+  const civ = capital ? pack.history?.living?.burgs?.[capital]?.civBuildings : undefined;
+  return Boolean(civ?.includes("museum"));
+}
+
 /** What a stable polity's patrimony is worth at its current daily surplus */
 export function stashTarget(dailySurplus: number, months: number): number {
   const daily = Number.isFinite(dailySurplus) ? Math.max(0, dailySurplus) : 0;
   return Math.round(daily * STASH_MONTH_DAYS * Math.max(0, months) * 100) / 100;
+}
+
+/** How many months of the current daily surplus a stock is worth */
+export function stashMonthsHeld(stash: number | undefined, dailySurplus: number): number {
+  const value = Math.max(0, Number(stash ?? 0));
+  const daily = Number.isFinite(dailySurplus) ? Math.max(0, dailySurplus) : 0;
+  return daily > 0 ? Math.round((value / (daily * STASH_MONTH_DAYS)) * 10) / 10 : 0;
 }
 
 /**
@@ -117,6 +208,26 @@ export function advanceStash(current: number | undefined, target: number): numbe
   const stash = Math.max(0, current as number);
   const response = safeTarget > stash ? STASH_GROWTH : STASH_DECAY;
   return Math.round((stash + (safeTarget - stash) * response) * 100) / 100;
+}
+
+export interface StashSeizure {
+  seized: number;
+  kept: number;
+  lost: number;
+  remaining: number;
+}
+
+/** Take a share of a stash; the victor keeps half by default and the rest is destroyed */
+export function seizeStash(stash: number | undefined, share: number, keepShare = 0.5): StashSeizure {
+  const value = Math.max(0, Number(stash ?? 0));
+  const seized = Math.round(value * minmax(share, 0, 1) * 100) / 100;
+  const kept = Math.round(seized * minmax(keepShare, 0, 1) * 100) / 100;
+  return {
+    seized,
+    kept,
+    lost: Math.round((seized - kept) * 100) / 100,
+    remaining: Math.round((value - seized) * 100) / 100
+  };
 }
 
 /** A state's day balance before any later treasury edits */
@@ -163,27 +274,43 @@ export interface StashSummary {
   /** The nature-driven target in months */
   targetMonths: number;
   nature: string;
+  mix: StashMix;
+  composition: StashComposition;
 }
 
 function summarize(
   stash: number | undefined,
   dailySurplus: number,
   targetMonths: number,
-  nature: string
+  nature: string,
+  mix: StashMix
 ): StashSummary {
   const value = Math.max(0, Number(stash ?? 0));
-  const daily = Number.isFinite(dailySurplus) ? Math.max(0, dailySurplus) : 0;
-  const months = daily > 0 ? Math.round((value / (daily * STASH_MONTH_DAYS)) * 10) / 10 : 0;
-  return { value, hasStash: stash !== undefined, months, targetMonths, nature };
+  return {
+    value,
+    hasStash: stash !== undefined,
+    months: stashMonthsHeld(value, dailySurplus),
+    targetMonths,
+    nature,
+    mix,
+    composition: stashComposition(value, mix)
+  };
 }
 
 export function stateStashSummary(
-  state: Pick<State, "form"> & { economy?: State["economy"] },
+  state: Pick<State, "form"> & { i?: number; economy?: State["economy"] },
   figure?: StashFigure,
   values: StashValues = []
 ): StashSummary {
   const targetMonths = stashMonths(stateBaseHoardMonths(state.form), figure, values);
-  return summarize(state.economy?.stash, stateDailySurplus(state), targetMonths, stateStashLabel(state.form));
+  const hasMuseum = state.i ? stateHasMuseum(state.i) : false;
+  return summarize(
+    state.economy?.stash,
+    stateDailySurplus(state),
+    targetMonths,
+    stateStashLabel(state.form),
+    stateStashMix(state.form, hasMuseum)
+  );
 }
 
 export function factionStashSummary(
@@ -192,5 +319,11 @@ export function factionStashSummary(
   figure?: StashFigure
 ): StashSummary {
   const targetMonths = stashMonths(factionBaseHoardMonths(faction.category), figure, faction.values ?? []);
-  return summarize(faction.stash, dailySurplus, targetMonths, factionStashLabel(faction.category));
+  return summarize(
+    faction.stash,
+    dailySurplus,
+    targetMonths,
+    factionStashLabel(faction.category),
+    factionStashMix(faction.category)
+  );
 }

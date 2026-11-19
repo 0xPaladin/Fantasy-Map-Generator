@@ -1772,6 +1772,9 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       pack.burgs[2].capital = 0;
       pack.states[1].military = [makeRegiment(0, 7)];
       const living = Living.init();
+      const ruler = pack.history.figures?.find(figure => figure.i === living.states[1].rulerId);
+      if (ruler) ruler.alignment = "evil"; // sack: carry off part of the defender's stash
+      pack.states[2].economy.stash = 1000;
       Living.forceWar(1, 2);
 
       expect(Living.conquerBurg(1, 2)).toBe(true);
@@ -1780,6 +1783,8 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
       expect(pack.burgs[2].state).toBe(1);
       expect(b2.hp).toBe(100);
       expect(b2.conqueredBy).toBe(1);
+      expect(pack.states[2].economy.stash).toBeLessThan(1000);
+      expect(pack.states[1].economy.stash ?? 0).toBeGreaterThan(0);
     });
 
     it("builds the siege garrison from the roster and scales it with walls", () => {
@@ -2345,9 +2350,13 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
           hq: { cell: 2, burgId: 3, fortified: false, secrecy: 0, assets: [] },
           outposts: [{ burgId: 1, cell: 5, tier: 2, influence: 10, secrecy: 0, assets: [], establishedYear: 1000 }]
         });
+        faction.stash = 1000;
+        const stateStashBefore = pack.states[1].economy.stash ?? 0;
 
         expect(Living.assaultFactionNode(1, faction.i, "outpost:1")).toBe(true);
         expect(faction.outposts[0].pillaged).toBe(true);
+        expect(faction.stash).toBeLessThan(1000);
+        expect(pack.states[1].economy.stash ?? 0).toBeGreaterThan(stateStashBefore);
         expect(Living.getState().recentNews.some(item => item.text.includes("razed"))).toBe(true);
       });
 
@@ -3769,6 +3778,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     pack.cells.development[4] = SOVEREIGN_DEVELOPMENT;
 
     // Direct ascension test: ascendFactionToState
+    raiderFaction.stash = 500;
     const stateCountBefore = pack.states.length;
     const ascStateId = Living.ascendFactionToState(raiderFaction.i, 2);
     expect(ascStateId).not.toBeNull();
@@ -3777,6 +3787,8 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     const createdState = pack.states[ascStateId!];
     expect(createdState.name).toBe("Ironfang Warband");
     expect(createdState.formName).toBe("Warband Realm");
+    expect(createdState.economy.stash).toBe(500);
+    expect(raiderFaction.stash).toBe(0);
     expect(raiderFaction.allegiance).toBe("state_arm");
     expect(raiderFaction.patronStateId).toBe(ascStateId);
   });
@@ -3784,6 +3796,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
   it("spawns remnant faction on state collapse with inherited identity and hostilities", () => {
     Living.init();
     const fallenState = pack.states[1];
+    fallenState.economy.stash = 1000;
 
     const remnant = Living.spawnRemnantFaction(fallenState, 2);
     expect(remnant).not.toBeNull();
@@ -3793,6 +3806,8 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
     expect(remnant!.allegiance).toBe("hostile");
     expect(remnant!.sovereignAmbition).toBe(true);
     expect(remnant!.stateRelations[2]).toBe("Enemy");
+    expect(remnant!.stash).toBe(350);
+    expect(fallenState.economy.stash).toBe(0);
   });
 
   describe("Fiscal policy (living-fmg-native Phase 3)", () => {

@@ -238,22 +238,30 @@ function renderStateCards(
       )
     : card(t("Day Balance"), "—", [t("Neutrals collect no taxes")], EconomyTerms.stateTreasury());
   const stash = stateId ? stateStashSummary(pack.states[stateId], stateRuler(stateId), cultureValues(stateId)) : null;
+  const stashTooltip = stash
+    ? stash.hasStash
+      ? sentences(
+          EconomyTerms.stash(),
+          t("Nature: {{nature}}, about {{months}} months of surplus", {
+            nature: t(stash.nature),
+            months: rn(stash.targetMonths, 1)
+          }),
+          EconomyTerms.stashComposition(stash.mix)
+        )
+      : sentences(EconomyTerms.stash(), t("This map has not run the Living World yet"))
+    : "";
   const stashCard = stash
     ? card(
         t("Stash"),
         stash.hasStash ? formatPrice(stash.value) : "-",
         stash.hasStash
-          ? [stash.months > 0 ? EconomyTerms.stashMonths(stash.months) : t("Empty"), t(stash.nature)]
+          ? [
+              stash.months > 0 ? EconomyTerms.stashMonths(stash.months) : t("Empty"),
+              t(stash.nature),
+              EconomyTerms.stashComposition(stash.mix)
+            ]
           : [t("No stash yet"), t("Seeded on the first Living World tick")],
-        sentences(
-          EconomyTerms.stash(),
-          stash.hasStash
-            ? t("Nature: {{nature}}, about {{months}} months of surplus", {
-                nature: t(stash.nature),
-                months: rn(stash.targetMonths, 1)
-              })
-            : t("This map has not run the Living World yet")
-        )
+        stashTooltip
       )
     : "";
   const populationRank = stateRank(stateId, id => {
