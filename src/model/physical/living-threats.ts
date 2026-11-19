@@ -929,13 +929,16 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
 
   if (newStateId !== null) {
     const newState = pack.states?.[newStateId];
+    const carriedStash = Math.max(0, Number(faction.stash ?? 0));
     if (newState) {
       newState.name = faction.name;
       newState.formName = faction.stateForm;
       newState.fullName = faction.stateForm ? `${faction.stateForm} of ${newState.name}` : faction.name;
       newState.color = faction.color;
       newState.economy.treasury = faction.treasury;
+      newState.economy.stash = Math.round(((newState.economy.stash ?? 0) + carriedStash) * 100) / 100;
       newState.military = [...(faction.military ?? [])];
+      faction.stash = 0;
 
       if (faction.leaderId) {
         const sSim = living.states?.[newStateId];
@@ -950,7 +953,9 @@ export function ascendFactionToState(factionId: number, targetBurgId?: number): 
 
     pushNews(living, {
       kind: "faction",
-      text: `${faction.name} has proclaimed sovereign independence, founding ${newState?.fullName ?? "a new realm"}!`,
+      text: `${faction.name} has proclaimed sovereign independence, founding ${newState?.fullName ?? "a new realm"}!${
+        carriedStash > 0 ? " Its hoard travels with the new crown." : ""
+      }`,
       cell: targetCell,
       stateId: newStateId,
       burgId: targetBurg?.i
@@ -967,6 +972,7 @@ export function spawnRemnantFaction(fallenState: State, conquerorStateId?: numbe
   if (conquerorStateId) {
     stateRelations[conquerorStateId] = "Enemy";
   }
+  const inheritedStash = Math.max(0, Number(fallenState.economy?.stash ?? 0));
 
   const remnant = Factions.add({
     name: `${fallenState.name} Restoration Front`,
@@ -993,10 +999,18 @@ export function spawnRemnantFaction(fallenState: State, conquerorStateId?: numbe
     stateRelations
   });
 
+  const carriedStash = Math.round(inheritedStash * 0.35 * 100) / 100;
+  if (carriedStash > 0) {
+    remnant.stash = carriedStash;
+    if (fallenState.economy) fallenState.economy.stash = 0;
+  }
+
   const living = getHost().getState();
   pushNews(living, {
     kind: "faction",
-    text: `Loyalists of the fallen ${fallenState.name} formed the ${remnant.name}!`,
+    text: `Loyalists of the fallen ${fallenState.name} formed the ${remnant.name}!${
+      carriedStash > 0 ? ` They carried ${carriedStash} of the old treasure into hiding.` : ""
+    }`,
     cell: fallenState.center || 0,
     stateId: conquerorStateId
   });

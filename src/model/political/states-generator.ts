@@ -89,6 +89,8 @@ export interface StateFinance {
   spent: Record<Expense, number>; // what each expense bought in the last run
   pocketed: number; // what officials pocketed in the last run
   treasury: number;
+  /** Accumulated patrimony, separate from the day's spending balance */
+  stash?: number;
   tariffs: TariffRule[];
 }
 

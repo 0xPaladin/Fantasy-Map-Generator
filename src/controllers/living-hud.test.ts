@@ -413,6 +413,10 @@ describe("LivingHud", () => {
       { level: 0, name: "Paleolithic" },
       { level: 40, name: "Renaissance" }
     ] as never;
+    (pack.states[1] as unknown as { economy: { treasury: number; stash: number } }).economy = {
+      treasury: 10,
+      stash: 5000
+    };
 
     openHud();
     LivingHud.inspect("state", 1);
@@ -420,6 +424,7 @@ describe("LivingHud", () => {
     const panel = document.getElementById("livingInspector")!;
     expect(panel.textContent).toContain("Upstream economy");
     expect(panel.textContent).toContain("Renaissance");
+    expect(panel.textContent).toContain("stash");
     expect(panel.querySelector('[data-open="budget"]')).toBeTruthy();
     state.living.states = {} as never;
   });

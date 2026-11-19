@@ -26,7 +26,7 @@ A **state** card shows:
 - **Ruler** — name, culture, alignment, virtues and vices.
 - **Fiscal policy** — the ruler's target for each budget line, corruption and the sales/head tax, with the current value (`45→62`). Each line can be pinned (🔒) so the ruler cannot drift it; God mode does this by clicking a chip.
 - **Public works** — the work under construction and each finished work with its daily line (e.g. `Aqueduct +3/day`).
-- **Upstream economy** — treasury (stock Day Balance; opens the State Budget), prosperity (opens the Economy dialog), stability (opens the Stability overview), the people's mean development with its era, and the forces' upkeep with its battle multiplier.
+- **Upstream economy** - treasury (stock Day Balance; opens the State Budget), stash (accumulated patrimony, with its months of surplus), prosperity (opens the Economy dialog), stability (opens the Stability overview), the people's mean development with its era, and the forces' upkeep with its battle multiplier.
 - **Agenda** and **suppression targets**.
 - **Manage** — opens the stock Provinces, Burgs and Regiments editors filtered to this state.
 - **Issues & Crises** — **Instability** (provinces at or below 55% stability, each marked `⚠️`, with `🔥[seasons]` beside a rebelling province), dangerous factions, troubles (with daily drain), casus belli claims and grudges.
@@ -38,7 +38,7 @@ A **province** or **burg** card shows stock stability (`Stability N%`), active r
 
 A **cell** card shows biome, owner state/province/burg, development with its era, prosperity, deposit, the Builder improvement (or pillage), and what its people produce a day by good.
 
-The native editors show the same data: the **Stability Overview** (for a state, and for each province from the Provinces Editor) exposes user-owned `stabilityAdjustments` alongside sim-owned `simStabilityAdjustments` (`Of which the Living World`); clicking a province's stability in the **Provinces Editor** opens that province's own breakdown, listing its burgs where the state overview lists its provinces; the **Burgs Editor** adds a Living World summary (construction, buildings, outposts); the **Factions Editor** shows Treasury, Trade and Forces; and the **Provinces Editor** displays stability and trouble flavor/drain status.
+The native editors show the same data: the **Stability Overview** (for a state, and for each province from the Provinces Editor) exposes user-owned `stabilityAdjustments` alongside sim-owned `simStabilityAdjustments` (`Of which the Living World`); clicking a province's stability in the **Provinces Editor** opens that province's own breakdown, listing its burgs where the state overview lists its provinces; the **Burgs Editor** adds a Living World summary (construction, buildings, outposts); the **Factions Editor** shows Treasury, Stash, Trade and Forces; and the **Provinces Editor** displays stability and trouble flavor/drain status.
 
 ### What the simulation does
 
@@ -78,6 +78,7 @@ The simulation sits on the map's own economy: goods, markets, prices, taxes, bud
 
 - **The run feeds the sim.** Improvements and pillage change rural output; buildings change manufacturing; prosperity sways the court's happiness and a well-served court adds culture and faith to the Living World's own tallies; a burg's scholarly goods support its research-free era.
 - **The sim feeds the run.** Each spring, or when `economyDirty` is set, the economy is regenerated while `state.economy.treasury` and `burg.treasury` remain honest stock Day Balances (never overwritten with a 90-day reserve).
+- **Patrimony.** States and factions also accumulate a `stash` of crown jewels, art, relics and bullion from positive daily surpluses. It is separate from the treasury and is not spent; its target horizon comes from the state form or faction category, bent by ruler traits and culture values. Sacks, razed faction nodes and collapsed states move or lose part of it, and great hoards make the news ticker. Its splendor adds a little state stability or faction influence, tempts officials and can be sold at a loss from the Economy or Manage dialog. See [Economy](Economy.md#treasuries).
 - **Sim-owned lines.** Public works, drain troubles, rebellions, pacification and hostile raids write named `simAdjustments` (economy) and `simStabilityAdjustments` (state/province stability) — separate from the player's own adjustment lines, which are never touched. The economy and stability calculations merge them automatically.
 - **Rulers lean on the run.** Their traits drift the stored corruption, court, administration and infrastructure budgets, and their martial bent keeps troops keen; audits cut graft into the treasury, and sabotage spoils a deposit's output.
 

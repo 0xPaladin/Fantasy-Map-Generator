@@ -1,5 +1,6 @@
 import { Pack } from "@/model/graph/pack-generator";
 import { stateCorruption } from "@/model/physical/living-rulers";
+import { stashCorruptionTemptation, stateStashSplendor } from "@/model/physical/living-stash";
 import type { Burg } from "@/model/political/burgs-generator";
 import type { State } from "@/model/political/states-generator";
 import { getDecima } from "@/model/units";
@@ -46,7 +47,7 @@ class CorruptionModule {
   /** The state's official corruption budget as its ruler leaves it (§5.2) */
   effectiveBudget(state: State): number {
     if (!state?.i) return 0;
-    return stateCorruption(state);
+    return Math.min(100, stateCorruption(state) + stashCorruptionTemptation(stateStashSplendor(state)));
   }
 
   /** The state's before administration, weighed as ofState */

@@ -109,7 +109,7 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 **Files:** `src/controllers/political/factions-editor.ts`, `src/locales/en.json` (+ other locales as translated), test `factions-editor.test.ts`
 
 1. **Ledger** (Revenue | Expenses card): under the required-upkeep line (`:167`) add `Personnel: {{staff}} staff · {{guards}} guards`; per-bucket tooltip (`:125`) gains the effective headcount driving that bucket.
-2. **HQ & Outposts tab** (`:1182`): a Personnel column showing `required + extra → effective` (e.g. `4+7=11`), tipped with the split; node edit fields for extraStaff / extraGuards (number inputs, min 0) and hostAdjustments gold/stability (signed number inputs) — god mode resizes payroll and host impact per node.
+2. **HQ & Outposts tab**: a **Staff** and a **Guards** column (each `asset requirement + extra = effective`, number inputs, min 0), a **Host Adj.** column after **Host Impact** (flat gold/stability inputs), and a clickable **Burg** name that opens the Burg Editor — god mode resizes payroll and host impact per node.
 3. **Notes:** free-hand `<textarea>` at the bottom of the manage dialog, below the tab panels and before the dialog buttons — bound to `faction.note`, saved on input like the other inline fields. The overview row tooltip shows a short note excerpt when set.
 4. **Factions Overview:** no new column; personnel and notes stay in the manage dialog.
 
@@ -118,7 +118,7 @@ Stock category budgets should keep landing provisions in the same 50–80% band;
 ### 5.1 Phase 3 delivery notes
 
 - Ledger: `Personnel: {{staff}} staff · {{guards}} guards` line under the required-upkeep line (refreshed with the ledger); each bucket tooltip ends with the driving headcount (`{{n}} staff` / `{{n}} guards`).
-- HQ & Outposts table gained a **Personnel** column: per node it shows `crew+extra = effective` staff and guards plus a `Host +🪙 +%` line — four number inputs (`nodeStaffInput`, `nodeGuardsInput`, `nodeHostGoldInput`, `nodeHostStabInput`), disabled on pillaged nodes, saved on change and re-rendered like the influence inputs.
+- HQ & Outposts table: separate **Staff** and **Guards** columns (`crew/garrison + extra = effective`, editable extras, disabled on pillaged nodes), a **Host Adj.** column after **Host Impact** for the flat gold/stability inputs, and the Burg name links to the Burg Editor (`Controllers.BurgEditor.open`).
 - Free-hand notes: a `factionNotesInput` textarea at the bottom of the manage dialog bound to `faction.note` on input; the overview's HQ tooltip appends a ~60-char excerpt.
 - No locale edits: `en.json` intentionally keeps only strings that differ from their key (`i18n.ts` falls back to the English key), so the new strings are live for English and open for translators; `Click to zoom to HQ` was likewise never in the catalog.
 - Tests: a jsdom pass over the real manage dialog — seeded extras render, staff extras and host gold/stability save per node (HQ and outpost), the payroll line renders, and notes bind to `faction.note`.
