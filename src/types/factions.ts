@@ -128,6 +128,8 @@ export interface Faction {
 
   // Economy, Diplomacy & Military
   treasury: number;
+  /** Accumulated patrimony (crown jewels, art, relics), not the spending balance */
+  stash?: number;
   influence: number;
   rosterId?: string;
   military: Regiment[];

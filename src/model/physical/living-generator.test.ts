@@ -6,6 +6,7 @@ import { currentContent } from "@/data/roster-store";
 import { Deals } from "@/model/economy/deals";
 import { Markets } from "@/model/economy/markets-generator";
 import { nextRosterUnitInCategory, requiredDevelopmentFor } from "@/model/physical/living-armies";
+import { factionStashTarget, stateStashTarget } from "@/model/physical/living-stash";
 import type { Burg } from "@/model/political/burgs-generator";
 import { Factions } from "@/model/political/factions-generator";
 import { Military, syncRegimentTotals } from "@/model/political/military-generator";
@@ -1244,6 +1245,29 @@ describe("Living (Slices 1-4: Data Model, Seasonal Tick, Capacity, Projects, War
 
       expect(pack.states[1].economy.treasury).toBe(77);
       expect(burg.treasury).toBe(12);
+    });
+
+    it("seeds and grows a state's stash from its day balance", () => {
+      const state = pack.states[1];
+      state.form = "Monarchy";
+      state.culture = 1;
+      pack.cultures[1]!.values = [];
+      pack.markets = [];
+      pack.deals = [[1, 1, 1, 0, 1, 1, 0, 0, 0]] as unknown as typeof pack.deals;
+      state.economy.collected = 100;
+      state.economy.pocketed = 10;
+      state.economy.spent = { court: 20, administration: 10, infrastructure: 10, military: 10 };
+      delete state.economy.stash;
+
+      const target = stateStashTarget(state, undefined, []);
+      const living = Living.init();
+      Living.tick(1);
+
+      expect(state.economy.stash).toBeCloseTo(target * 0.5, 2);
+
+      Living.tick(1);
+      expect(state.economy.stash).toBeCloseTo(target * 0.5 + (target - target * 0.5) * 0.25, 2);
+      expect(living.season).toBeGreaterThan(0);
     });
 
     it("re-runs the upstream economy once the dirty flag is raised", () => {
@@ -3621,6 +3645,7 @@ describe("Living World Factions (Phase 3: Economy, Agendas, Military, Raids & As
 
     expect(breakdown.upstreamGold).toBeGreaterThan(0);
     expect(faction.treasury).toBeCloseTo(initTreasury + expectedNet, 2);
+    expect(faction.stash).toBeCloseTo(factionStashTarget(faction, breakdown.economy.dayBalance) * 0.5, 2);
   });
 
   it("handles autonomous agendas: expands outposts and Clashes in contested burgs", () => {

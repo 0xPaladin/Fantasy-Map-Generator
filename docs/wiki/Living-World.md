@@ -76,6 +76,7 @@ The simulation sits on the map's own economy: goods, markets, prices, taxes, bud
 
 - **The run feeds the sim.** Improvements and pillage change rural output; buildings change manufacturing; prosperity sways the court's happiness and a well-served court adds culture and faith to the Living World's own tallies; a burg's scholarly goods support its research-free era.
 - **The sim feeds the run.** Each spring, or when `economyDirty` is set, the economy is regenerated while `state.economy.treasury` and `burg.treasury` remain honest stock Day Balances (never overwritten with a 90-day reserve).
+- **Patrimony.** States and factions also accumulate a `stash` of crown jewels, art, relics and bullion from positive daily surpluses. It is separate from the treasury and is not spent; its target horizon comes from the state form or faction category, bent by ruler traits and culture values. See [Economy](Economy.md#treasuries).
 - **Sim-owned lines.** Public works, drain troubles, rebellions, pacification and hostile raids write named `simAdjustments` (economy) and `simStabilityAdjustments` (state/province stability) — separate from the player's own adjustment lines, which are never touched. The economy and stability calculations merge them automatically.
 - **Rulers lean on the run.** Their traits drift the stored corruption, court, administration and infrastructure budgets, and their martial bent keeps troops keen; audits cut graft into the treasury, and sabotage spoils a deposit's output.
 

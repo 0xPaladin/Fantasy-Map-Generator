@@ -87,6 +87,7 @@ import {
   TAX_DRIFT
 } from "@/model/physical/living-fiscal";
 import { AUDIT_CORRUPTION_CUT, auditRecovery, rulerBias, stateEconomyModifiers } from "@/model/physical/living-rulers";
+import { advanceStash, factionStashTarget, stateStashTarget } from "@/model/physical/living-stash";
 import { type Burg, Burgs } from "@/model/political/burgs-generator";
 import { ensureFactionNodeSim, Factions, syncFactionState } from "@/model/political/factions-generator";
 import {
@@ -1030,6 +1031,7 @@ class LivingModel {
     this.syncTroubleLines(living);
     this.syncFactionSubversionLines();
     this.stepEconomy(living);
+    this.stepStateStash(living);
     this.stepDiplomacyTimers(living);
     this.stepTactical(living);
     this.stepMobileBurgs(living);
@@ -1581,6 +1583,28 @@ class LivingModel {
     for (const state of pack.states) {
       if (!state?.i || state.removed) continue;
       if (Number(state.economy?.treasury) < 0) this.settleDebt(state, living);
+    }
+  }
+
+  /** A season's surplus becomes a lasting patrimony, separate from the treasury. */
+  private stepStateStash(living: LivingWorldState): void {
+    if (!canReadUpstreamEconomy()) return;
+    for (const state of pack.states) {
+      if (!state?.i || state.removed) continue;
+      if (state.form === "Anarchy") {
+        state.economy.stash = 0;
+        continue;
+      }
+
+      const rulerId = living.states[state.i]?.rulerId;
+      const ruler =
+        rulerId === undefined
+          ? undefined
+          : pack.history?.figures?.find(
+              figure => figure.i === rulerId && !figure.removed && figure.death === undefined
+            );
+      const values = pack.cultures?.[state.culture ?? 0]?.values ?? [];
+      state.economy.stash = advanceStash(state.economy.stash, stateStashTarget(state, ruler, values));
     }
   }
 
@@ -2785,6 +2809,18 @@ class LivingModel {
     if (faction.treasury < 0) this.settleFactionDebt(faction, living);
   }
 
+  /** A faction's season adds to its patrimony from the same day balance. */
+  private applyFactionStash(faction: Faction, breakdown: FactionYieldBreakdown): void {
+    if (!canReadUpstreamEconomy()) return;
+    const leader =
+      faction.leaderId === undefined
+        ? undefined
+        : pack.history?.figures?.find(
+            figure => figure.i === faction.leaderId && !figure.removed && figure.death === undefined
+          );
+    faction.stash = advanceStash(faction.stash, factionStashTarget(faction, breakdown.economy.dayBalance, leader));
+  }
+
   /** Bankruptcy: disband the newest block, not the whole regiment. */
   private settleFactionDebt(faction: Faction, living: LivingWorldState): void {
     faction.treasury = 0;
@@ -2826,6 +2862,7 @@ class LivingModel {
         charters.set(patron, (charters.get(patron) ?? 0) + breakdown.charterTithe);
       }
       this.applyFactionTreasury(faction, living);
+      this.applyFactionStash(faction, breakdown);
       this.applyFactionStabilityDrift(faction, breakdown, living);
       this.musterFactionBlock(faction, living);
       this.stepFactionProject(faction, living);

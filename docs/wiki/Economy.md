@@ -103,6 +103,8 @@ So 🟡 1 is a lot of money for one person and modest for a town. The anchor is 
 
 Both balances are one day's money, recomputed with the economy. When the _Living World_ runs, a season of those flows is banked onto a persistent reserve instead: see [The Living World economy](#the-living-world-economy).
 
+A state or faction may also keep a **stash**: accumulated patrimony such as crown jewels, regalia, museum pieces, commissioned art, relics or vaults of bullion. It is not part of the spending balance and is never drawn on for daily needs. Its size follows a nature-driven number of months of positive daily surplus — longer for a thrifty or greedy court, shorter for a generous or spendthrift one — and it eases toward that target over the seasons. A hard year does not erase it at once. The stash is stored on the state's economy and on the faction, and the first Living World tick seeds an older map at half its target.
+
 ## Taxes and tariffs
 
 Every state sets these in its taxes dialog (_Tools_ → _States_, click a Prosperity value to open the state's Economy dialog, then the bank button on its Revenue or Expenses card):
@@ -201,6 +203,7 @@ The [Living World](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Livin
 - **Improvements and pillage.** Land worked by a Builder improvement produces more: a **farm** or **pasture** `+35%` for its goods, a **mine** `+40%`, a quarry, plantation, camp, lumber mill or fishing boats `+40%`, more with the right technology, and a **trading post** `+20%` rural earnings. A pillaged cell keeps only a quarter of its output until it is restored.
 - **Buildings.** A burg's **workshop** adds `15%` to its manufactures, a **windmill** `10%`, a **factory** `35%`, a forge `20%` on metal and arms, an armory forge `25%` on arms and artillery.
 - **Treasuries.** The Living World reruns the economy each spring or when the map changes, and banks a season's flows — ninety days — onto a lasting reserve: a state's collected taxes less corruption and spending, a burg's product less its poll tax. That reserve funds production, armies and diplomacy, and a state that runs out disbands its newest block.
+- **Patrimony.** States and factions keep a separate **stash** of crown jewels, art, relics and bullion. It follows a nature-driven number of months of positive daily surplus, grows or fades gradually, and is not spent; a generous culture keeps less, a greedy or thrifty one more. See [Treasuries](#treasuries).
 - **Charters.** Factions that live off the economy pay their patron state a share, and their tithes appear as a named line, **Chartered Faction Tithes**, in the state's Revenue card.
 - **Rulers.** A ruler's [traits](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Characters) tell on the state's books: a just, diligent ruler curbs officials' cut by a few points and gets more out of administration; a pious one gets more out of the court; a cruel or greedy one lets corruption rise; a martial one keeps troops keen. Their **magistrate** specialist helps with the graft and the works.
 - **Actions.** An **audit** cuts the state's official corruption and recovers the graft officials held into the treasury; **sabotage** pillages a working, spoiling its output until it is rebuilt.
