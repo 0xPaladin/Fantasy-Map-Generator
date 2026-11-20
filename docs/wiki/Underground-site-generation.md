@@ -12,7 +12,7 @@ Each marker keeps its familiar short note and adds an **alternate text profile**
 | **Disturbed burials** | `burial` | Who was buried, what disturbed them, wards, rising dead and grave goods |
 | **Necropolises** | `necropolis` | Tiered burial complex, sites, catacombs, tombs and the silent dead |
 
-All three share the five 1–10 ratings, the 1–6 inhabitant encounter rating, the four-category treasure mix, secrets and rumors. See [Dungeon generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Dungeon-generation) and [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation) for the shared rating, inhabitant and treasure rules.
+All three share the five 1-10 ratings, the 1-6 inhabitant encounter rating, the four-category treasure mix, secrets and rumors. Treasure caches carry dice scaled to the site's Treasure rating, just like dungeons and ruins. See [Dungeon generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Dungeon-generation) and [Ruin generation](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Ruin-generation) for the shared rating, inhabitant and treasure rules.
 
 ### Caves
 

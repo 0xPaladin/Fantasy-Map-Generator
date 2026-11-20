@@ -551,8 +551,6 @@ export function generateDungeonProfile(
   const areaSource = type === "lair" ? randomAreaType(rng, "lair") : type;
   const areas = buildAreas(rng, areaSource, areaCount, tokens, outcome.modifier);
   const treasure = { shares: treasureComposition(type, builder, overview, themes, areas) };
-  annotateTreasureCaches(rng, areas, treasure.shares);
-  const inhabitants = rollInhabitants(rng, type, size.size, areaCount, areas, context.cultureName);
   const ratings = rollRatings(
     size.size,
     areaCount,
@@ -564,6 +562,8 @@ export function generateDungeonProfile(
     builder,
     areas
   );
+  annotateTreasureCaches(rng, areas, treasure.shares, ratings.treasure);
+  const inhabitants = rollInhabitants(rng, type, size.size, areaCount, areas, context.cultureName);
   const rumors = rollRumors(rng, tokens);
 
   return {

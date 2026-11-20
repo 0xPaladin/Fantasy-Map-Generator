@@ -57,7 +57,6 @@ describe("creature tables", () => {
     for (const row of CREATURE_SIZES) {
       expect(row.scale).toBeGreaterThanOrEqual(1);
       expect(row.scale).toBeLessThanOrEqual(10);
-      expect([4, 6, 8, 10, 12]).toContain(row.lootDie);
       expect(row.encounterBase).toBeGreaterThanOrEqual(1);
       expect(row.encounterBase).toBeLessThanOrEqual(6);
     }
@@ -71,7 +70,7 @@ describe("creature tables", () => {
 
     expect(CREATURE_WEALTH).toHaveLength(6);
     expect(CREATURE_WEALTH.reduce((sum, row) => sum + row.weight, 0)).toBe(100);
-    for (const row of CREATURE_WEALTH) expect(row.lootDie).toBeGreaterThanOrEqual(0);
+    for (const row of CREATURE_WEALTH) expect(row.rank).toBeGreaterThanOrEqual(0);
   });
 
   it("gives every nature treasure weights and inhabitant weights", () => {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { CREATURE_WEALTH } from "@/data/creatures";
 import { TREASURE_CATEGORIES } from "@/data/treasure";
 import type { BanditContext } from "@/model/story/creature-profile";
 import { generateBanditProfile, renderBanditProfile } from "./bandit-generator";
@@ -52,8 +51,6 @@ describe("bandit generator", () => {
 
       expect(profile.loot.length).toBeGreaterThanOrEqual(1);
       expect(profile.moves.length).toBeGreaterThanOrEqual(3);
-      const wealthRow = CREATURE_WEALTH.find(row => row.wealth === profile.wealth)!;
-      expect(profile.lootDie).toBe(wealthRow.lootDie);
     }
   });
 

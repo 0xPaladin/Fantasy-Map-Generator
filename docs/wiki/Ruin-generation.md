@@ -74,7 +74,7 @@ The present state rolls three independent facts:
 
 ### Surface zones
 
-Zones are a scene-level map, not a room-by-room dungeon draft. Each zone rolls a type from the ruin's origin, a condition, an optional discovery, an optional danger and one or two exits. Discoveries can be features, finds or a treasure cache; a cache is tagged with one of the four treasure categories.
+Zones are a scene-level map, not a room-by-room dungeon draft. Each zone rolls a type from the ruin's origin, a condition, an optional discovery, an optional danger and one or two exits. Discoveries can be features, finds or a treasure cache; a cache is tagged with one of the four treasure categories, and its dice scale with the ruin's Treasure rating.
 
 ### Ratings
 

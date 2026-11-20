@@ -2,7 +2,9 @@
 
 Updated: 2026-11-19. Status: **all planned steps shipped** (creature/bandit data tables, shared
 context/core types and headings; beast profiles; monster profiles; bandit profiles; lifecycle and
-integration verification; wiki, data-model and migration docs). Companions:
+integration verification; wiki, data-model and migration docs). Revision 2026-11-19: dropped the
+loot die — the treasure rating now drives loot magnitude/count and scales dungeon/ruin cache dice.
+Companions:
 [dungeon-profiles.md](dungeon-profiles.md), [ruin-profiles.md](ruin-profiles.md) and
 [cave-burial-necropolis-profiles.md](cave-burial-necropolis-profiles.md). This plan extends the
 same lazy generated-content model to the living threat markers:
@@ -53,8 +55,8 @@ but its prose and stat blocks must not be copied.
 5. **Loot has context.** Adapt the source's inherent / carried / stashed / in-lair distinction:
    beasts yield harvest from their bodies; bandits carry and stash raid loot; monsters hoard.
    The four-category mix still describes the value split; the forms are prompts.
-6. **A loot die, not silver math.** Keep a size/wealth-driven loot die as a dice prompt
-   (d4–d12), like dungeon treasure caches. Do not convert to exact coin values.
+6. **The treasure rating drives the loot, not a die.** Drop the loot die; the size/wealth-driven
+   treasure rating sets the haul's magnitude and count, and scales dungeon/ruin cache dice. No silver math.
 7. **Optional curio, not full magic items.** Wealthy monsters and bandit leaders can roll one
    named curio with a single power prompt and a drawback. Full enchantment math is out of scope.
 8. **History does not place these.** No chronicle wiring is needed. Cleared threats keep the
@@ -93,7 +95,7 @@ The core adapts the source's creature-creation sequence into prompts:
    scavenger, stalker, brute, caster, undead, aberration, etc. Hill monsters can roll a beastly
    nature; bandits are organized humanoids.
 2. **Size and quantity.** Descriptive size (tiny, small, medium, large, huge) and quantity
-   (solitary, group, mob, throng). These drive the Scale rating, the loot die and the encounter
+   (solitary, group, mob, throng). These drive the Scale rating, the treasure rating and the encounter
    rating. No HP is generated.
 3. **Alignment.** Read the cell culture's prevailing alignment, then roll the creature's
    alignment from a generic column table. Bandits lean chaotic/evil; beasts lean neutral.
@@ -114,7 +116,7 @@ treasure are derived from the core plus the kind's territory/loot context.
 | Rating | Derived from |
 |---|---|
 | **Danger** | size, quantity, nature, attack forms, tags (terrifying/toxic/magical), leader |
-| **Treasure** | loot die, loot context, hoarder tag, wealth (bandits), caches |
+| **Treasure** | size/wealth, hoarder tag, loot context, caches |
 | **Scale** | size and quantity; a throng or huge creature scales high |
 | **Mystery** | magical/aberrant tags, hidden lair, unknown species, curio |
 | **Weirdness** | magical/undead/aberrant tags, strange features, breath/element |
@@ -147,7 +149,7 @@ or functional parts) and Relics (charms, curative organs, talismans); Bullion an
 near zero. Meat/rations are supplies, not counted in the mix. A hoarder beast can also have a
 small stash of victims' gear in its lair.
 
-The loot die is driven by size. Body-part prompts roll a part and a property (ingredient,
+The treasure rating is driven by size and hoarding and sets the harvest count. Body-part prompts roll a part and a property (ingredient,
 decorative, protective, poison, curative, charm) as descriptive text, not silver values.
 
 ### Optional lair draft
@@ -175,7 +177,7 @@ from victims, and possibly one curio. The four-category mix biases toward Regali
 with some Bullion. A hoarder tag rolls the loot twice (cache + lair) as prompts. Victims' gear
 can appear as personal items.
 
-The loot die is driven by size, raised for hoarder/wealthy natures.
+The treasure rating is driven by size, raised for hoarder/wealthy natures, and sets the hoard count.
 
 ### Optional curio
 
@@ -210,7 +212,7 @@ locality and gang type, then adds a leader, camp/ship and raid pattern.
 Bandits **carry and stash** raid loot. The loot context is carried/stashed: coin, trade goods,
 contraband, personal items, gems/jewelry, and possibly one curio for the leader. The four-category
 mix biases toward Bullion and Art/Regalia depending on wealth. Wealth is rolled (penniless, poor,
-mediocre, comfortable, wealthy, fabulous) and drives the loot die. Captives or prisoners can
+mediocre, comfortable, wealthy, fabulous) and drives the treasure rating. Captives or prisoners can
 appear as a secondary inhabitant group.
 
 ### Optional base draft
@@ -244,7 +246,8 @@ Most plumbing already exists. The expected additions are:
 
 1. Add the three headings in `marker-content.ts`; each kind registers when its generator lands.
 2. Add a shared creature core and context/meta types.
-3. Add loot-context and loot-die helpers alongside the existing treasure helpers; reuse
+3. Add loot-context and treasure-rating helpers (`treasureCacheDice`, `rateTreasureCache`,
+   `treasureBand`) alongside the existing treasure helpers; reuse
    `normalizeTreasureShares`, `applyTreasureModifiers` and `pickTreasureCategory`.
 4. Add `create` handlers that infer species/locality from an old marker name/note when meta is
    absent.
@@ -256,7 +259,7 @@ Most plumbing already exists. The expected additions are:
 
 | File | Purpose |
 |---|---|
-| `src/data/creatures.ts` | size/quantity, natures, tags, attack/defense prompts, wants/moves, details, alignment columns, loot-die and wealth tables, loot-context forms, body-part/trinket/gem/jewelry/rarity prompts, curio name templates |
+| `src/data/creatures.ts` | size/quantity, natures, tags, attack/defense prompts, wants/moves, details, alignment columns, wealth-rank tables, loot-context forms, body-part/trinket/gem/jewelry/rarity prompts, curio name templates |
 | `src/data/bandits.ts` | gang sizes, composition, leaders/traits, locality, bases, raid patterns, tactics, contraband |
 | `src/model/story/creature-profile.ts` | shared creature context/meta types and `CreatureCore` |
 | `src/model/story/creature-generator.ts` | shared creature core: size/quantity/nature/tags/attack/want/moves/ratings/inhabitants |
@@ -275,7 +278,7 @@ the three generated kinds and renderers should remain distinct.
 ## Build order
 
 1. **Data and shared creature plumbing — shipped 2026-11-19**
-   - Creature and bandit tables, loot-die/wealth/loot-context tables, curio prompts.
+   - Creature and bandit tables, wealth-rank/loot-context tables, curio prompts.
    - Added headings and shared context/core types; each kind registers when its generator lands.
    - Tests: table completeness, weights, no banned source terms, heading entries.
 2. **Beast profiles — shipped 2026-11-19**
@@ -319,7 +322,7 @@ the three generated kinds and renderers should remain distinct.
   - curio is a single named prompt with a drawback, not a full magic item
   - optional lair draft stays small/medium
 - Bandit tests:
-  - locality/maritime agreement; wealth drives the loot die
+  - locality/maritime agreement; wealth drives the treasure rating
   - leader present for organized gangs; captives can be a secondary group
   - optional base draft stays small
 - Marker/lifecycle tests:
@@ -350,7 +353,7 @@ Required substitutions in code, output and wiki:
 | Source term | Generic output |
 |---|---|
 | `BOOTY` / booty | `loot`, `treasure`, `spoils`, `harvest` |
-| `bd` / booty die | `loot die` / `treasure roll` |
+| `bd` / booty die | `treasure rating` (the die was dropped) |
 | `SEIZE BOOTY` | `Loot` |
 | `INHERENT` | `Harvest` |
 | `CARRIED` / `STASHED` / `IN LAIR` | `Carried` / `Stashed` / `Lair` |

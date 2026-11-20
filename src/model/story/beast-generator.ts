@@ -18,7 +18,7 @@ import { clamp, pick, rollCreatureCore, rollCreatureInhabitants } from "@/model/
 import type { BeastContext } from "@/model/story/creature-profile";
 import { type DungeonProfile, generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
 import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
-import { normalizeTreasureShares } from "@/model/story/treasure";
+import { normalizeTreasureShares, treasureBand } from "@/model/story/treasure";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
 
@@ -44,7 +44,6 @@ export interface BeastProfile {
   inhabitants: SiteInhabitants;
   treasure: { shares: TreasureShares };
   harvest: string[];
-  lootDie: number;
   dungeon?: DungeonProfile;
   rumors: string[];
 }
@@ -52,10 +51,9 @@ export interface BeastProfile {
 const fill = (text: string, values: Record<string, string>): string =>
   text.replace(/\[(culture|name|habitat|biome)\]/gi, (_match, key: string) => values[key.toLowerCase()] ?? "");
 
-function rollHarvest(rng: Rng): string[] {
+function rollHarvest(rng: Rng, count: number): string[] {
   const parts = [...BODY_PARTS];
   const harvest: string[] = [];
-  const count = rng.int(2, 3);
   while (harvest.length < count && parts.length) {
     const part = parts.splice(rng.int(0, parts.length - 1), 1)[0];
     harvest.push(`${part} (${pick(rng, BODY_PART_PROPERTIES)})`);
@@ -69,7 +67,6 @@ function rollRatings(
   quantityRow: (typeof CREATURE_QUANTITIES)[number],
   nature: (typeof BEAST_NATURES)[number],
   hoarder: boolean,
-  lootDie: number,
   habitat: string
 ): SiteRatings {
   const has = (tag: string) => core.tags.includes(tag);
@@ -84,7 +81,7 @@ function rollRatings(
     1,
     10
   );
-  const treasure = clamp(1 + (lootDie >= 8 ? 1 : 0) + (hoarder ? 2 : 0), 1, 10);
+  const treasure = clamp(1 + Math.floor(sizeRow.scale / 3) + (hoarder ? 2 : 0), 1, 10);
   const scale = clamp(sizeRow.scale + (core.quantity === "mob" || core.quantity === "throng" ? 1 : 0), 1, 10);
   const mystery = clamp(
     1 +
@@ -151,15 +148,14 @@ export function generateBeastProfile(context: BeastContext, salt = ""): BeastPro
     weights.regalia += 1;
   }
   const treasure = { shares: normalizeTreasureShares(weights) };
-  const harvest = rollHarvest(rng);
-  const lootDie = sizeRow.lootDie;
+  const ratings = rollRatings(core, sizeRow, quantityRow, nature, hoarder, habitat);
+  const harvest = rollHarvest(rng, clamp(ratings.treasure, 2, 4));
   const encounterRating = clamp(
     sizeRow.encounterBase + quantityRow.encounterBonus + (core.tags.includes("leader") ? 1 : 0),
     1,
     6
   );
   const inhabitants = rollCreatureInhabitants(rng, nature.inhabitants, encounterRating, context.cultureName, 0.25);
-  const ratings = rollRatings(core, sizeRow, quantityRow, nature, hoarder, lootDie, habitat);
   const dungeon = rollLairDraft(context, core, hoarder, name, salt);
   const rumors = [
     ...new Set(
@@ -196,7 +192,6 @@ export function generateBeastProfile(context: BeastContext, salt = ""): BeastPro
     inhabitants,
     treasure,
     harvest,
-    lootDie,
     dungeon,
     rumors
   };
@@ -234,7 +229,7 @@ export function renderBeastProfile(profile: BeastProfile): string {
     `<p><strong>Inhabitants</strong> ${profile.inhabitants.rating}/6 (d6 ≤ ${profile.inhabitants.rating} each turn) · ${inhabitants}</p>`,
     `<h4>The beast</h4><p><strong>Form:</strong> ${e(profile.form)}</p><p><strong>Number:</strong> ${e(profile.count)}</p>${length}<p><strong>Alignment:</strong> ${e(profile.alignment)}</p>${tags}<p><strong>Attack:</strong> ${profile.attacks.map(e).join(", ")} · <strong>Defense:</strong> ${e(profile.defense)}</p><p><strong>Want:</strong> ${e(profile.want)}</p><ul>${moves}</ul>`,
     `<h4>Territory</h4><p><strong>Habitat:</strong> ${e(profile.habitat)}</p><p><strong>Lair:</strong> ${e(profile.lair)}</p><ul>${signs}</ul>`,
-    `<h4>Harvest</h4><p><em>Loot die d${profile.lootDie}; the value is in the taking, not the coin.</em></p><ul>${harvest}</ul>`,
+    `<h4>Harvest</h4><p><em>${capitalize(treasureBand(profile.ratings.treasure))} — the value is in the taking, not the coin.</em></p><ul>${harvest}</ul>`,
     dungeon,
     `<h4>Rumors</h4><ul>${rumorList}</ul>`,
     "<p><em>Alternate beast profile.</em></p>"

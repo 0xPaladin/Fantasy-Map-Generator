@@ -47,7 +47,6 @@ describe("beast generator", () => {
       expect(Object.keys(profile.treasure.shares).sort()).toEqual([...TREASURE_CATEGORIES].sort());
 
       expect(profile.harvest.length).toBeGreaterThanOrEqual(2);
-      expect([4, 6, 8, 10, 12]).toContain(profile.lootDie);
       expect(profile.signs.length).toBeGreaterThanOrEqual(1);
       expect(profile.moves.length).toBeGreaterThanOrEqual(3);
     }
