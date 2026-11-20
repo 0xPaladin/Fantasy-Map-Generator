@@ -50,7 +50,10 @@ export function registerDungeonRenderer(): void {
     markerTypes: ["dungeons", "dungeon"],
     create: () => createDungeonContent(),
     render: (marker: Marker, content: MarkerGeneratedContent, salt) =>
-      renderDungeonProfile(generateDungeonProfile(dungeonContext(marker.cell, content.seed, marker.name), salt ?? ""))
+      renderDungeonProfile(
+        generateDungeonProfile(dungeonContext(marker.cell, content.seed, marker.name), salt ?? ""),
+        marker.delve
+      )
   });
 }
 

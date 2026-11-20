@@ -46,6 +46,8 @@ export interface DelveSituation {
   rating: DelveRatingKey;
   /** chipped by success ranks */
   strength: number;
+  /** the dungeon's master; always last in its objective */
+  leader?: boolean;
 }
 
 export interface DelveObjective {

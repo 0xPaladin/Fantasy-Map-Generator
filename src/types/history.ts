@@ -1,6 +1,7 @@
 // The map's chronicle: dated events, fallen realms and eras. See docs/plans/history-generation.md
 import type { Alignment } from "@/data/culture-traits";
 import type { CharacterRelations, HeroProgression, HeroSheet } from "@/types/character";
+import type { DelveRecord } from "@/types/delves";
 import type { Emblem } from "@/types/emblems";
 import type { DisciplineId, HeroArchetypeId, LivingWorldState } from "@/types/living";
 import type { Relic, Scheme } from "@/types/schemes";
@@ -196,6 +197,8 @@ export interface History {
   schemes?: Scheme[];
   /** relics the schemes are built around */
   relics?: Relic[];
+  /** dungeon delves, newest last */
+  delves?: DelveRecord[];
 }
 
 export const emptyHistory = (): History => ({ events: [], realms: [], eras: [] });

@@ -300,10 +300,13 @@ export function runDelve(
 
   const objectivesDone = objectives.filter(entry => entry.status === "done").length;
   const objectivesTotal = objectives.length;
-  const xp = Math.max(
-    0,
-    config.xp.base + objectivesDone * config.alerts[startingAlert].xp - escalation * config.xp.escalationPenalty
-  );
+  const xp =
+    outcome === "defeat"
+      ? 0
+      : Math.max(
+          0,
+          config.xp.base + objectivesDone * config.alerts[startingAlert].xp - escalation * config.xp.escalationPenalty
+        );
 
   if (outcome === "triumph") {
     log("triumph", `${profile.name} is cleared.`);

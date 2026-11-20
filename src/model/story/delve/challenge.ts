@@ -116,7 +116,7 @@ export function resolveChallenge(input: ChallengeInput): ChallengeResult {
         ratingRoll,
         officerMax,
         threatMax,
-        successRanks: critical ? Math.max(1, officerMax) : 1,
+        successRanks: critical ? Math.max(1, officerMax) : Math.max(1, officerMax - threatMax),
         failureRanks: 0
       };
     }

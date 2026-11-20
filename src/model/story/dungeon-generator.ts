@@ -50,6 +50,7 @@ import {
 import { TREASURE_CATEGORIES, type TreasureShares } from "@/data/treasure";
 import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
 import { annotateTreasureCaches, applyTreasureModifiers, normalizeTreasureShares } from "@/model/story/treasure";
+import type { MarkerDelveState } from "@/types/delves";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
 
@@ -582,8 +583,9 @@ export function generateDungeonProfile(
   };
 }
 
-export function renderDungeonProfile(profile: DungeonProfile): string {
+export function renderDungeonProfile(profile: DungeonProfile, delve?: Pick<MarkerDelveState, "status">): string {
   const e = escapeHtml;
+  const cleared = delve?.status === "cleared";
   const overview = profile.overview
     .map(({ label, value }) => `<li><strong>${e(label)}:</strong> ${e(value)}</li>`)
     .join("");
@@ -591,7 +593,9 @@ export function renderDungeonProfile(profile: DungeonProfile): string {
   const areas = profile.areas
     .map(area => {
       const discoveries = area.discoveries.length
-        ? `<br><em>Discoveries:</em> ${area.discoveries.map(e).join("; ")}`
+        ? `<br><em>Discoveries:</em> ${area.discoveries
+            .map(discovery => e(cleared ? discovery.replace(/treasure cache/i, "plundered cache") : discovery))
+            .join("; ")}`
         : "";
       const dangers = area.dangers.length ? `<br><em>Dangers:</em> ${area.dangers.map(e).join("; ")}` : "";
       const exits = area.exits.length
@@ -607,7 +611,7 @@ export function renderDungeonProfile(profile: DungeonProfile): string {
   const rumors = profile.rumors.map(rumor => `<li>${e(rumor)}</li>`).join("");
   const ratings = [
     `<strong>Danger</strong> ${profile.ratings.danger}/10`,
-    `<strong>Treasure</strong> ${profile.ratings.treasure}/10`,
+    `<strong>Treasure</strong> ${cleared ? "0/10 (depleted)" : `${profile.ratings.treasure}/10`}`,
     `<strong>Scale</strong> ${profile.ratings.scale}/10`,
     `<strong>Mystery</strong> ${profile.ratings.mystery}/10`,
     `<strong>Weirdness</strong> ${profile.ratings.weirdness}/10`
@@ -627,6 +631,11 @@ export function renderDungeonProfile(profile: DungeonProfile): string {
     `<p><strong>${capitalize(profile.alignment)}</strong> · <strong>${e(profile.safety)}</strong> · ${e(
       DUNGEON_TYPE_TABLES[profile.type].label
     )}</p>`,
+    cleared
+      ? "<p><strong>Cleared.</strong> The halls are emptied and the caches picked over.</p>"
+      : delve?.status === "weakened"
+        ? "<p><strong>Weakened.</strong> Its master is gone; the survivors keep to the dark.</p>"
+        : "",
     `<p>${ratings}</p>`,
     `<p><strong>Treasure mix</strong> — ${treasureMix}</p>`,
     `<p>${inhabitants}</p>`,

@@ -68,6 +68,7 @@ import { createNecropolisContent, NECROPOLIS_KIND } from "@/model/story/necropol
 import { Notes } from "@/model/story/notes";
 import { createRuinContent, RUIN_KIND } from "@/model/story/ruin-marker";
 import { convertTemperature, getFriendlyHeight } from "@/model/units";
+import type { MarkerDelveState } from "@/types/delves";
 import type { Good } from "@/types/economy";
 import type { PackedGraph } from "@/types/packed-graph";
 import { last } from "@/utils/array-utils";
@@ -131,6 +132,8 @@ export interface Marker {
   economy?: number;
   /** optional per-marker provincial stability impact override (percentage points); defaults to the marker type's impact */
   stability?: number;
+  /** delve outcome state; the profile renders depleted when cleared */
+  delve?: MarkerDelveState;
 }
 
 type MarkerConfig = {
@@ -506,8 +509,10 @@ class MarkersModule {
       content.version = DUNGEON_VERSION;
     }
 
-    const html = regenerateGenerated(marker, salt ?? String(Date.now()));
+    const appliedSalt = salt ?? String(Date.now());
+    const html = regenerateGenerated(marker, appliedSalt);
     if (html === undefined) throw new Error(`Marker ${markerId} has no renderer for ${content.kind}`);
+    content.meta = { ...content.meta, salt: appliedSalt };
     Pack.markChanged();
   }
 

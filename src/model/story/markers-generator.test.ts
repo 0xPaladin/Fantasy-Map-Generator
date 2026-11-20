@@ -565,6 +565,7 @@ describe("MarkersModule dungeons", () => {
     expect(marker.note).toBe(note);
     expect(marker.generated).toMatchObject({ kind: "dungeon", version: 1, seed: "12345" });
     expect(marker.generated?.html).not.toBe(first);
+    expect(marker.generated?.meta?.salt).toBe("reroll");
   });
 
   it("rerolls through the generic generated-content entry point", async () => {

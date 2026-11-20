@@ -84,12 +84,15 @@ describe("runDelve", () => {
 
   it("awards the XP formula", () => {
     const result = runDelve(profile, party, options);
-    const expected = Math.max(
-      0,
-      DEFAULT_DELVE_CONFIG.xp.base +
-        result.objectivesDone * DEFAULT_DELVE_CONFIG.alerts[result.startingAlert].xp -
-        result.escalation * DEFAULT_DELVE_CONFIG.xp.escalationPenalty
-    );
+    const expected =
+      result.outcome === "defeat"
+        ? 0
+        : Math.max(
+            0,
+            DEFAULT_DELVE_CONFIG.xp.base +
+              result.objectivesDone * DEFAULT_DELVE_CONFIG.alerts[result.startingAlert].xp -
+              result.escalation * DEFAULT_DELVE_CONFIG.xp.escalationPenalty
+          );
     expect(result.xp).toBe(expected);
   });
 
@@ -125,6 +128,18 @@ describe("runDelve", () => {
       })
     ];
     expect(runDelve(profile, weak, { seed: "weak-party", order: "swift" }).outcome).not.toBe("triumph");
+  });
+
+  it("makes a small dungeon easier than a large one", () => {
+    const small = generateDungeonProfile({ ...context, seed: "small-6" });
+    const large = generateDungeonProfile({ ...context, seed: "map-seed" });
+    const wins = (profile: typeof small): number =>
+      Array.from(
+        { length: 40 },
+        (_, index) => runDelve(profile, party, { seed: `scale-${index}`, order: "swift" }).outcome === "triumph"
+      ).filter(Boolean).length;
+
+    expect(wins(small)).toBeGreaterThan(wins(large));
   });
 
   it("rejects an empty or oversized party", () => {

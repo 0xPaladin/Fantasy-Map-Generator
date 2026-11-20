@@ -1,6 +1,6 @@
 # Plan — Dungeon Delves: Send a Party, Resolve the Dungeon
 
-**Status:** In progress — phase 1 (engine core) delivered 2026-11-20
+**Status:** In progress — phases 1–2 (engine core, application) delivered 2026-11-20
 **Goal:** Let the player form a **party of heroes** and send it to explore or clean out a **dungeon marker**. A delve is resolved by a seeded, high-level mission engine — one opposed-dice challenge per situation, a Mythic-style scene framer, a progress roll between objectives and an alert ladder — adapted from the author's `solo-engine` `run-mission` runner. No room-by-room tactics and no new stat blocks: the dungeon's existing profile is the opposition's stat sheet, the heroes' existing sheets are the party's, and every outcome lands on systems that already exist (hero condition, XP, marker state, chronicle, news).
 
 ---
@@ -257,3 +257,16 @@ FMG's hero dice ladder already descends from the same engine's WAC character mod
 - **Tests**: 32 cases across `challenge.test.ts`, `progress.test.ts`, `situations.test.ts` and `engine.test.ts` — determinism, crit/twist/failure bands, reroll economics, DM sources, alert and rating die steps, scene framing, progress mapping, objective counts and leader placement, loot-free invariants, XP formula, objective caps and party validation. Suite green; `tsc --noEmit` clean; Biome clean.
 
 No persisted fields yet: `pack.history.delves` and `Marker.delve` are typed but land with the application layer in phase 2, together with the marker-note append, hero-condition write-back and chronicle/news.
+
+### Phase 2 — application (delivered 2026-11-20)
+
+- **Types**: `DelveSituation.leader` marks the master; `History.delves?: DelveRecord[]` and `Marker.delve?: MarkerDelveState` are now persisted (the marker is serialized wholesale, the history record travels in `.map` record 57). Old saves gain both lazily.
+- **`src/model/story/delve/apply.ts`**: `DelveHost` (marker/figure/history/tick/year plus optional news and chronicle pushes) with a global default host reading the map and `Chronicle`; `delveHeroFromFigure` reads action dice, attributes, condition, disciplines, virtues and vices; `runDelveAtMarker` rebuilds the profile from the marker recipe (including the persisted reroll salt), seeds the engine from `${mapSeed}:delve:${cell}:${party}:${tick}`, and writes everything back.
+- **Write-back**: Resolve/Stamina clamp to the sheet maxima, new injuries become `wounded` for two seasons, downed heroes get `downUntilTick = tick + 2`, standing participants earn XP and level through `applyHeroLevels`; loot becomes inventory lines dealt round-robin, and a defeat carries nothing home. A `deed` chronicle event names the party and dungeon, `pushNews` fires when a living host is attached, and `Pack.markChanged()` bumps the revision.
+- **Marker state and rendering**: a triumph sets `cleared` (with `clearedYear`); a retreat or defeat that overcame the leader sets `weakened`; the cached profile html is dropped after each delve so `renderDungeonProfile(profile, marker.delve)` rebuilds with a "Cleared"/"Weakened" line, `Treasure 0/10 (depleted)` and `plundered cache` entries. The note keeps exactly one "Delve record" section, replaced per delve.
+- **Reroll consistency**: `regenerateGeneratedContent` now stores its salt in `generated.meta.salt`, so a rerolled profile regenerates identically for later delves; the marker test asserts it.
+- **Tuning correction from the WAC reference**: a normal success now scores `officerMax − threatMax` ranks (minimum 1), not a flat 1, matching solo-engine's `challengeRoll.js`; the small-dungeon scenario tests depend on it.
+- **Tests**: 6 application cases (`apply.test.ts`) — triumph clears and logs the deed, retreat keeps the bag without clearing, defeat downs the party and loses the bag, the note replaces rather than grows, and invalid figures/markers throw. `engine.test.ts` adds the outcome-distribution check that a small dungeon is easier than a large one. 38 delve tests green; full `tsc --noEmit` clean.
+- **Docs**: `docs/architecture/data-model.md` now documents `marker.delve`, `history.delves`, the hero write-back and the note record.
+
+News remains host-only by default: the Living HUD wires `setDelveHost` with `pushNews`/`pushHistory` when the player surface lands in phase 3.

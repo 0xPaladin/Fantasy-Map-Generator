@@ -53,7 +53,7 @@ describe("resolveChallenge", () => {
     expect(result.kind).toBe("success");
     expect(result.officerMax).toBe(6);
     expect(result.threatMax).toBe(2);
-    expect(result.successRanks).toBe(1);
+    expect(result.successRanks).toBe(4);
     expect(result.resolveLoss).toBe(0);
   });
 

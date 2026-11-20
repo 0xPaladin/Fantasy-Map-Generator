@@ -137,7 +137,10 @@ function situationsForArea(
   }
 
   const leader = leaderDanger
-    ? { situation: makeSituation("fight", leaderDanger, area, ratings, groupTags, 1), areaType: area.type }
+    ? {
+        situation: { ...makeSituation("fight", leaderDanger, area, ratings, groupTags, 1), leader: true },
+        areaType: area.type
+      }
     : undefined;
   return { regular, leader };
 }
