@@ -491,12 +491,69 @@ export function openCharacterDetails(characterId: number): void {
     void Controllers.DelveScreen.openPartyPickerForCharacter(characterId);
   });
 
+  const locationKind = findEl<HTMLSelectElement>("characterLocationKind");
+  locationKind?.addEventListener("change", () => {
+    const target = ensureEl<HTMLSelectElement>("characterLocationTarget");
+    target.innerHTML = locationOptions(locationKind.value as CharacterLocationKind)
+      .map(option => `<option value="${option.cell}">${escapeHtml(option.name)}</option>`)
+      .join("");
+    target.disabled = locationKind.value === "none";
+  });
+
   const promote = findEl("promoteCharacterButton");
   promote?.addEventListener("click", () => {
     Characters.promoteToHero(characterId);
     refreshCharacters();
     openCharacterDetails(characterId);
   });
+}
+
+type CharacterLocationKind = "none" | "burg" | "marker";
+
+interface LocationOption {
+  cell: number;
+  name: string;
+}
+
+function locationOptions(kind: CharacterLocationKind): LocationOption[] {
+  if (kind === "burg") {
+    return (pack.burgs ?? [])
+      .filter(burg => burg?.i && !burg.removed && Number.isFinite(burg.cell))
+      .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+      .map(burg => ({ cell: burg.cell, name: burg.name ?? "" }));
+  }
+  if (kind === "marker") {
+    return (pack.markers ?? [])
+      .filter(marker => marker?.name && Number.isFinite(marker.cell))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(marker => ({ cell: marker.cell, name: marker.name }));
+  }
+  return [];
+}
+
+/** A legacy raw cell that belongs to no burg or marker reads as no location. */
+function locationKindFor(cell?: number): CharacterLocationKind {
+  if (cell === undefined) return "none";
+  if (locationOptions("burg").some(option => option.cell === cell)) return "burg";
+  if (locationOptions("marker").some(option => option.cell === cell)) return "marker";
+  return "none";
+}
+
+function locationFields(cell?: number): string {
+  const kind = locationKindFor(cell);
+  const options = locationOptions(kind)
+    .map(
+      option =>
+        `<option value="${option.cell}" ${option.cell === cell ? "selected" : ""}>${escapeHtml(option.name)}</option>`
+    )
+    .join("");
+
+  return `<label style="flex:1; display:flex; flex-direction:column;">${t("Location")}<select id="characterLocationKind">
+      <option value="none" ${kind === "none" ? "selected" : ""}>${t("None")}</option>
+      <option value="burg" ${kind === "burg" ? "selected" : ""}>${t("Burg")}</option>
+      <option value="marker" ${kind === "marker" ? "selected" : ""}>${t("Marker")}</option>
+    </select></label>
+    <label style="flex:2; display:flex; flex-direction:column;">${t("Place")}<select id="characterLocationTarget" ${kind === "none" ? "disabled" : ""}>${options}</select></label>`;
 }
 
 function renderDetails(character: HistoricalFigure): string {
@@ -527,7 +584,9 @@ function renderDetails(character: HistoricalFigure): string {
           <label style="flex: 1; display: flex; flex-direction: column;">${t("Birth")}<input id="characterBirth" type="number" value="${character.birth}" style="width: 100%;" /></label>
           <label style="flex: 1; display: flex; flex-direction: column;">${t("Death")}<input id="characterDeath" type="number" value="${character.death ?? ""}" style="width: 100%;" /></label>
           <label style="flex: 1; display: flex; flex-direction: column;">${t("Gender")}<input id="characterGender" value="${escapeHtml(character.gender ?? "")}" style="width: 100%;" /></label>
-          <label style="flex: 1; display: flex; flex-direction: column;">${t("Cell")}<input id="characterCell" type="number" value="${character.cell ?? ""}" style="width: 100%;" /></label>
+        </div>
+        <div style="display: flex; gap: 6px; margin-bottom: 4px;">
+          ${locationFields(character.cell)}
         </div>
         <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 4px;">
           <label><input id="characterManual" type="checkbox" ${character.manual ? "checked" : ""}/> ${t("Manual")}</label>
@@ -689,6 +748,13 @@ function readOptionalNumber(id: string): number | undefined {
   return Number.isFinite(value) ? value : undefined;
 }
 
+function readLocationCell(): number | undefined {
+  const kind = findEl<HTMLSelectElement>("characterLocationKind")?.value as CharacterLocationKind | undefined;
+  if (!kind || kind === "none") return undefined;
+  const value = Number(findEl<HTMLSelectElement>("characterLocationTarget")?.value);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 function readText(id: string): string {
   return findEl<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(id)?.value.trim() ?? "";
 }
@@ -799,7 +865,7 @@ function saveCharacter(characterId: number): void {
     birth: readNumber("characterBirth", character.birth),
     death: readOptionalNumber("characterDeath"),
     gender: readText("characterGender") || undefined,
-    cell: readOptionalNumber("characterCell"),
+    cell: readLocationCell(),
     manual: Boolean(findEl<HTMLInputElement>("characterManual")?.checked),
     lock: Boolean(findEl<HTMLInputElement>("characterLock")?.checked),
     tags: readList("characterTags"),

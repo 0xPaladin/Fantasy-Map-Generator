@@ -11,7 +11,7 @@ A background character carries identity and story, but no stat block:
 * name, culture, birth and death;
 * dated roles (`ruler`, `general`, `prophet`, `rebel`, `adventurer`, `specialist`, `agent`) with a target;
 * alignment, virtues and vices;
-* last known cell, captor, tags and notes;
+* last known location, chosen from a burg or a marker, plus captor, tags and notes;
 * a relationship matrix toward factions, states and other characters.
 
 The Characters table adds a **Villain** column: **Yes** marks an elected mastermind, and clicking it opens their scheme sheet. See [Villains](https://github.com/0xPaladin/Fantasy-Map-Generator/wiki/Villains).

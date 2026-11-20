@@ -234,6 +234,43 @@ describe("CharactersEditor", () => {
     expect(Number(stamina.value)).toBeGreaterThan(0);
   });
 
+  it("edits a character's location as a burg or marker pairing", () => {
+    pack.burgs = [{ i: 0 }, { i: 1, name: "Aelor", cell: 12 }] as unknown as typeof pack.burgs;
+    pack.markers = [
+      { i: 0, type: "ruins", icon: "ruins", x: 0, y: 0, cell: 33, name: "Old Barrow" }
+    ] as unknown as typeof pack.markers;
+
+    const character = Characters.add({ name: "Mara", culture: 1, birth: 940, manual: true });
+    openCharacterDetails(character.i);
+
+    const kind = document.querySelector<HTMLSelectElement>("#characterLocationKind")!;
+    const target = document.querySelector<HTMLSelectElement>("#characterLocationTarget")!;
+    expect(kind.value).toBe("none");
+    expect(target.disabled).toBe(true);
+
+    kind.value = "marker";
+    kind.dispatchEvent(new Event("change"));
+    expect(target.disabled).toBe(false);
+    expect([...target.options].map(option => option.textContent)).toContain("Old Barrow");
+
+    target.value = "33";
+    document.querySelector<HTMLElement>("#saveCharacterButton")!.click();
+    expect(Characters.get(character.i)?.cell).toBe(33);
+
+    openCharacterDetails(character.i);
+    expect(document.querySelector<HTMLSelectElement>("#characterLocationKind")!.value).toBe("marker");
+    expect(document.querySelector<HTMLSelectElement>("#characterLocationTarget")!.value).toBe("33");
+
+    const burgKind = document.querySelector<HTMLSelectElement>("#characterLocationKind")!;
+    const burgTarget = document.querySelector<HTMLSelectElement>("#characterLocationTarget")!;
+    burgKind.value = "burg";
+    burgKind.dispatchEvent(new Event("change"));
+    burgTarget.value = "12";
+    document.querySelector<HTMLElement>("#saveCharacterButton")!.click();
+
+    expect(Characters.get(character.i)?.cell).toBe(12);
+  });
+
   it("offers a hero the delve flow from the sheet", () => {
     const character = Characters.add({ name: "Mara", culture: 1, birth: 940, hero: true, manual: true });
     openCharacterDetails(character.i);
