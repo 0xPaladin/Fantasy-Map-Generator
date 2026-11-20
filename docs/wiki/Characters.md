@@ -22,11 +22,11 @@ A background character can be promoted to a hero at any time.
 
 Promoting a character adds the compact **hero sheet**:
 
-* **Attributes** — `might`, `agility`, `wits` and `presence`, each rated `-1..+2`; every point is a flat `+1`;
+* **Attributes** — `might`, `agility`, `wits` and `presence`, each rated `-1..+2`; every point is a flat `+1`. A new hero rolls one of three balanced spreads — `2,-1,-1,0`, `1,1,-1,-1` or `1,-1,0,0` — shuffled across the four, so every spread sums to zero;
 * **Actions** — all twelve actions rated `d4`, `d6`, `d8`, `d10` or `d12`;
 * **Abilities** and **inventory**;
 * **XP** and **progression**;
-* **Condition** — Resolve, Stamina, maximums, injuries, down state and Push;
+* **Condition** — Resolve, Stamina, maximums, injuries, down state and Push. A new hero starts at full Resolve and Stamina, at the archetype's level-1 maxima;
 * **Doctrine**, temperament and cooldown.
 
 The sheet lives on `Character.hero`. Hero vitals live on `hero.condition`. A character without `hero` is a background character.

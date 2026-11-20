@@ -112,6 +112,23 @@ export function heroStartingPackage(id: HeroArchetypeId): HeroStartingPackage {
   };
 }
 
+/** Balanced attribute budgets: every spread sums to zero, so no hero is simply better. */
+export const HERO_ATTRIBUTE_SPREADS: readonly (readonly [number, number, number, number])[] = [
+  [2, -1, -1, 0],
+  [1, 1, -1, -1],
+  [1, -1, 0, 0]
+];
+
+/** One spread picked at random and shuffled across might, agility, wits and presence. */
+export function rollHeroAttributes(rng: Rng): CharacterAttributes {
+  const values = [...rng.choice(HERO_ATTRIBUTE_SPREADS)];
+  for (let index = values.length - 1; index > 0; index--) {
+    const swap = rng.int(0, index);
+    [values[index], values[swap]] = [values[swap], values[index]];
+  }
+  return { might: values[0], agility: values[1], wits: values[2], presence: values[3] };
+}
+
 /** Legacy M/W/S/C rating to a die step. */
 export function dieForRating(rating: number): Die {
   if (rating <= 0) return "d4";

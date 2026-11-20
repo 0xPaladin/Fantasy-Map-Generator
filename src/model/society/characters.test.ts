@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { HERO_STARTING_PACKAGES } from "@/data/character-actions";
+import { HERO_ATTRIBUTE_SPREADS, HERO_STARTING_PACKAGES } from "@/data/character-actions";
 import { Characters } from "@/model/society/characters";
 import type { Faction } from "@/types/factions";
 import { emptyHistory, type HistoricalRole } from "@/types/history";
@@ -110,7 +110,10 @@ describe("Characters", () => {
     expect(hero?.vices).toEqual(["proud"]);
     expect(hero?.roles).toEqual(character.roles);
     expect(hero?.hero?.archetype).toBe("priest");
-    expect(hero?.hero?.attributes).toEqual(HERO_STARTING_PACKAGES.priest.attributes);
+    const allowed = HERO_ATTRIBUTE_SPREADS.map(spread => [...spread].sort((a, b) => a - b));
+    const attributes = Object.values(hero!.hero!.attributes).sort((a, b) => a - b);
+    expect(allowed.some(spread => spread.every((value, index) => value === attributes[index]))).toBe(true);
+    expect(hero?.hero?.condition?.resolve).toBeGreaterThan(0);
     expect(hero?.hero?.actions).toEqual(HERO_STARTING_PACKAGES.priest.actions);
     expect(hero?.hero?.abilities).toEqual([HERO_STARTING_PACKAGES.priest.ability]);
 

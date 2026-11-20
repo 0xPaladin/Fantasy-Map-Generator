@@ -1,11 +1,13 @@
 // Characters facade over pack.history.figures. See docs/plans/characters.md.
-import { heroStartingPackage } from "@/data/character-actions";
+import { heroStartingPackage, rollHeroAttributes } from "@/data/character-actions";
 import { inferHeroArchetype } from "@/data/hero-archetypes";
+import { defaultHeroCondition, figureLevel } from "@/data/hero-vitals";
 import { Names } from "@/model/society/names-generator";
 import type { CharacterStatus, HeroSheet } from "@/types/character";
 import type { Faction } from "@/types/factions";
 import type { Character, HistoricalFigure, HistoricalRole } from "@/types/history";
 import type { HeroArchetypeId } from "@/types/living";
+import { createRng } from "@/utils/rng";
 
 export interface NewCharacter extends Omit<Partial<Character>, "i" | "hero"> {
   culture: number;
@@ -27,10 +29,11 @@ function heroSheet(character: HistoricalFigure, archetype?: HeroArchetypeId): He
   const start = heroStartingPackage(packageId);
   return {
     archetype: packageId,
-    attributes: start.attributes,
-    actions: start.actions,
+    attributes: rollHeroAttributes(createRng(`figure:${character.i}:${packageId}`)),
+    actions: { ...start.actions },
     abilities: [start.ability],
-    xp: character.xp ?? 0
+    xp: character.xp ?? 0,
+    condition: defaultHeroCondition(packageId, figureLevel(character.xp ?? 0))
   };
 }
 

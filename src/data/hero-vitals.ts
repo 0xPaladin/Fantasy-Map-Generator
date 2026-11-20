@@ -1,6 +1,27 @@
 // Vitals, temperament and injury rules for Phase 2. See docs/plans/hero-diversity.md.
 import { findHeroPath } from "@/data/hero-archetypes";
+import type { HeroCondition } from "@/types/character";
 import type { HeroArchetypeId, HeroInjury, HeroInjuryKind, HeroTemperament, MissionTag } from "@/types/living";
+
+/** xp needed to enter a level: L1 0, L2 60, L3 140, ... */
+export function xpForHeroLevel(level: number): number {
+  let xp = 0;
+  for (let step = 1; step < Math.max(1, level); step++) xp += 40 + 20 * step;
+  return xp;
+}
+
+/** Hero level from lifetime xp: 40 + 20 × level per level */
+export function figureLevel(xp = 0): number {
+  let level = 1;
+  let remaining = xp;
+  let needed = 40 + 20 * level;
+  while (remaining >= needed && level < 20) {
+    remaining -= needed;
+    level += 1;
+    needed = 40 + 20 * level;
+  }
+  return level;
+}
 
 const VITALS_BUDGETS: readonly (readonly [number, number])[] = [
   [8, 36],
@@ -77,6 +98,22 @@ export function heroMaxVitals(
 
 export function heroTemperamentFor(archetype: HeroArchetypeId): HeroTemperament {
   return { ...HERO_TEMPERAMENTS[archetype] };
+}
+
+/** Fresh vitals at full Resolve and Stamina for a new or rerolled hero. */
+export function defaultHeroCondition(
+  archetype: HeroArchetypeId,
+  level: number,
+  pathPicks: readonly string[] = []
+): HeroCondition {
+  const max = heroMaxVitals(archetype, level, pathPicks);
+  return {
+    resolve: max.maxResolve,
+    stamina: max.maxStamina,
+    maxResolve: max.maxResolve,
+    maxStamina: max.maxStamina,
+    injuries: []
+  };
 }
 
 /** Display tags for the temperament knobs. */

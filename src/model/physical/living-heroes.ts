@@ -18,7 +18,7 @@ import {
 } from "@/data/hero-archetypes";
 import { aspectBonus } from "@/data/hero-aspects";
 import { disciplineBonus, matchingDisciplines } from "@/data/hero-disciplines";
-import { heroMaxVitals, heroTemperamentFor, recoverInjuries } from "@/data/hero-vitals";
+import { figureLevel, heroMaxVitals, heroTemperamentFor, recoverInjuries, xpForHeroLevel } from "@/data/hero-vitals";
 import { valueModifier } from "@/data/saves-helpers";
 import type { Regiment } from "@/model/political/military-generator";
 import { Military } from "@/model/political/military-generator";
@@ -221,25 +221,8 @@ export function findFigure(figureId: number): HistoricalFigure | undefined {
   return Characters.get(figureId);
 }
 
-/** xp needed to enter a level: L1 0, L2 60, L3 140, ... */
-export function xpForHeroLevel(level: number): number {
-  let xp = 0;
-  for (let step = 1; step < Math.max(1, level); step++) xp += 40 + 20 * step;
-  return xp;
-}
-
-/** Hero level from lifetime xp: 40 + 20 × level per level */
-export function figureLevel(xp = 0): number {
-  let level = 1;
-  let remaining = xp;
-  let needed = 40 + 20 * level;
-  while (remaining >= needed && level < 20) {
-    remaining -= needed;
-    level += 1;
-    needed = 40 + 20 * level;
-  }
-  return level;
-}
+/** xp needed to enter a level and the level from lifetime xp live in hero-vitals; re-exported here */
+export { figureLevel, xpForHeroLevel };
 
 /** Old saves receive no retroactive points: absent progression starts at the current level. */
 export function applyHeroLevels(figure: HistoricalFigure): boolean {

@@ -21,7 +21,7 @@ import {
   importCharacterCsv,
   openCharacterDetails
 } from "@/controllers/society/characters-editor";
-import { heroStartingPackage } from "@/data/character-actions";
+import { HERO_ATTRIBUTE_SPREADS, heroStartingPackage } from "@/data/character-actions";
 import { TRAIT_COUNTS } from "@/data/culture-traits";
 import { Characters } from "@/model/society/characters";
 import { parseHistory, serializeHistory } from "@/services/io/epochs-format";
@@ -208,9 +208,30 @@ describe("CharactersEditor", () => {
     const hero = Characters.get(character.i)!.hero!;
     const start = heroStartingPackage("warden");
     expect(hero.archetype).toBe("warden");
-    expect(hero.attributes).toEqual(start.attributes);
+    const allowed = HERO_ATTRIBUTE_SPREADS.map(spread => [...spread].sort((a, b) => a - b));
+    const values = Object.values(hero.attributes).sort((a, b) => a - b);
+    expect(allowed.some(spread => spread.every((value, index) => value === values[index]))).toBe(true);
     expect(hero.actions).toEqual(start.actions);
     expect(hero.abilities).toEqual([start.ability]);
+  });
+
+  it("gives a new hero full Resolve and Stamina from its archetype", () => {
+    const character = Characters.add({
+      name: "Mara",
+      culture: 1,
+      birth: 940,
+      hero: true,
+      archetype: "warden",
+      manual: true
+    });
+    expect(character.hero?.condition?.resolve).toBeGreaterThan(0);
+    expect(character.hero?.condition?.stamina).toBeGreaterThan(0);
+
+    openCharacterDetails(character.i);
+    const resolve = document.querySelector<HTMLInputElement>("#heroResolve")!;
+    const stamina = document.querySelector<HTMLInputElement>("#heroStamina")!;
+    expect(Number(resolve.value)).toBeGreaterThan(0);
+    expect(Number(stamina.value)).toBeGreaterThan(0);
   });
 
   it("offers a hero the delve flow from the sheet", () => {

@@ -5,13 +5,15 @@ import {
   actionCheck,
   attributesFromSkills,
   dieForRating,
+  HERO_ATTRIBUTE_SPREADS,
   HERO_STARTING_PACKAGES,
   heroStartingPackage,
-  legacyActionForPool
+  legacyActionForPool,
+  rollHeroAttributes
 } from "@/data/character-actions";
 import { HERO_ARCHETYPE_IDS } from "@/data/hero-archetypes";
 import { DICE, type Die } from "@/types/character-actions";
-import type { Rng } from "@/utils/rng";
+import { createRng, type Rng } from "@/utils/rng";
 
 function diceOf(): Rng {
   let index = 0;
@@ -58,6 +60,21 @@ describe("character actions", () => {
     const second = heroStartingPackage("warden");
     expect(second.actions.strike).not.toBe("d12");
     expect(second.attributes.might).toBe(2);
+  });
+
+  it("rolls one of the three balanced spreads for a hero", () => {
+    const allowed = HERO_ATTRIBUTE_SPREADS.map(spread => [...spread].sort((a, b) => a - b));
+    const seen = new Set<string>();
+
+    for (let seed = 0; seed < 60; seed++) {
+      const attributes = rollHeroAttributes(createRng(`spread-${seed}`));
+      const values = Object.values(attributes).sort((a, b) => a - b);
+      expect(values.reduce((sum, value) => sum + value, 0)).toBe(0);
+      expect(allowed.some(spread => spread.every((value, index) => value === values[index]))).toBe(true);
+      seen.add(values.join(","));
+    }
+
+    expect(seen.size).toBeGreaterThan(1);
   });
 
   it("maps legacy ratings into dice and attributes", () => {

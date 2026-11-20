@@ -1,9 +1,11 @@
 // Characters editor: the table and the sheet dialog. See docs/plans/characters.md.
 
 import { Controllers } from "@/controllers";
-import { ACTION_DEFS, ACTIONS, DICE, heroStartingPackage } from "@/data/character-actions";
+import { ACTION_DEFS, ACTIONS, DICE, heroStartingPackage, rollHeroAttributes } from "@/data/character-actions";
 import { ALIGNMENTS, type Alignment, rollAlignment, rollFigureTraits, traitsRng } from "@/data/culture-traits";
 import { HERO_ARCHETYPE_IDS, HERO_ARCHETYPES } from "@/data/hero-archetypes";
+import { defaultHeroCondition, figureLevel } from "@/data/hero-vitals";
+import { ensureHeroGuildState } from "@/model/physical/living-heroes";
 import { Characters } from "@/model/society/characters";
 import { Schemes } from "@/model/story/schemes-generator";
 import { Layers } from "@/renderers/layers";
@@ -28,6 +30,7 @@ import {
 import { zoomTo } from "@/ui/map/zoom";
 import { t } from "@/utils/i18n";
 import { ensureEl, findEl } from "@/utils/node-utils";
+import { createRng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
 
 const dialogId = "charactersEditor";
@@ -418,7 +421,7 @@ function rerollTraits(character: HistoricalFigure): void {
   refreshCharacters();
 }
 
-/** Reset the hero's attributes, actions and ability to the selected archetype's starting package */
+/** Reset the hero's attributes, actions, ability and vitals to a fresh archetype roll */
 function rerollHero(characterId: number): void {
   const character = Characters.get(characterId);
   const hero = character?.hero;
@@ -426,13 +429,15 @@ function rerollHero(characterId: number): void {
   const select = findEl<HTMLSelectElement>("characterArchetype");
   const archetype = (select?.value ?? hero.archetype ?? "freeblade") as HeroArchetypeId;
   const start = heroStartingPackage(archetype);
+  const level = figureLevel(hero.xp ?? 0);
   Characters.update(characterId, {
     hero: {
       ...hero,
       archetype,
-      attributes: { ...start.attributes },
+      attributes: rollHeroAttributes(createRng(`hero-reroll:${characterId}:${Date.now()}`)),
       actions: { ...start.actions },
-      abilities: [start.ability]
+      abilities: [start.ability],
+      condition: defaultHeroCondition(archetype, level, hero.progression?.picks)
     }
   });
   refreshCharacters();
@@ -464,6 +469,7 @@ function addCharacter(): void {
 export function openCharacterDetails(characterId: number): void {
   const character = Characters.get(characterId);
   if (!character) return;
+  if (character.hero) ensureHeroGuildState(character);
 
   Dialog.destroy(detailsId);
   document.body.insertAdjacentHTML("beforeend", renderDetails(character));
