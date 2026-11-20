@@ -13,16 +13,15 @@ export interface CreatureSizeRow {
   size: CreatureSize;
   weight: number;
   scale: number;
-  lootDie: number;
   encounterBase: number;
 }
 
 export const CREATURE_SIZES: readonly CreatureSizeRow[] = [
-  { size: "tiny", weight: 10, scale: 1, lootDie: 4, encounterBase: 1 },
-  { size: "small", weight: 30, scale: 3, lootDie: 6, encounterBase: 2 },
-  { size: "medium", weight: 35, scale: 5, lootDie: 8, encounterBase: 3 },
-  { size: "large", weight: 20, scale: 7, lootDie: 10, encounterBase: 4 },
-  { size: "huge", weight: 5, scale: 10, lootDie: 12, encounterBase: 5 }
+  { size: "tiny", weight: 10, scale: 1, encounterBase: 1 },
+  { size: "small", weight: 30, scale: 3, encounterBase: 2 },
+  { size: "medium", weight: 35, scale: 5, encounterBase: 3 },
+  { size: "large", weight: 20, scale: 7, encounterBase: 4 },
+  { size: "huge", weight: 5, scale: 10, encounterBase: 5 }
 ];
 
 export interface CreatureQuantityRow {
@@ -42,16 +41,17 @@ export const CREATURE_QUANTITIES: readonly CreatureQuantityRow[] = [
 export interface CreatureWealthRow {
   wealth: CreatureWealth;
   weight: number;
-  lootDie: number;
+  /** feeds the treasure rating; the rating, not a die, drives the loot */
+  rank: number;
 }
 
 export const CREATURE_WEALTH: readonly CreatureWealthRow[] = [
-  { wealth: "penniless", weight: 15, lootDie: 0 },
-  { wealth: "poor", weight: 25, lootDie: 4 },
-  { wealth: "mediocre", weight: 30, lootDie: 6 },
-  { wealth: "comfortable", weight: 15, lootDie: 8 },
-  { wealth: "wealthy", weight: 10, lootDie: 10 },
-  { wealth: "fabulous", weight: 5, lootDie: 12 }
+  { wealth: "penniless", weight: 15, rank: 0 },
+  { wealth: "poor", weight: 25, rank: 1 },
+  { wealth: "mediocre", weight: 30, rank: 1 },
+  { wealth: "comfortable", weight: 15, rank: 2 },
+  { wealth: "wealthy", weight: 10, rank: 2 },
+  { wealth: "fabulous", weight: 5, rank: 3 }
 ];
 
 export interface CreatureNature {

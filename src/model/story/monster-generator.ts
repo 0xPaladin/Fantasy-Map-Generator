@@ -25,7 +25,7 @@ import {
 import type { MonsterContext } from "@/model/story/creature-profile";
 import { type DungeonProfile, generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
 import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
-import { normalizeTreasureShares } from "@/model/story/treasure";
+import { normalizeTreasureShares, treasureBand } from "@/model/story/treasure";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
 
@@ -53,7 +53,6 @@ export interface MonsterProfile {
   inhabitants: SiteInhabitants;
   treasure: { shares: TreasureShares };
   hoard: string[];
-  lootDie: number;
   curio?: Curio;
   dungeon?: DungeonProfile;
   rumors: string[];
@@ -62,10 +61,9 @@ export interface MonsterProfile {
 const fill = (text: string, values: Record<string, string>): string =>
   text.replace(/\[(culture|name|species|biome|habit)\]/gi, (_match, key: string) => values[key.toLowerCase()] ?? "");
 
-function rollHoard(rng: Rng, hoarder: boolean, hasCurio: boolean): string[] {
+function rollHoard(rng: Rng, count: number, hasCurio: boolean): string[] {
   const forms = LOOT_CONTEXTS.find(row => row.context === "lair")!.forms;
   const pool = [...forms];
-  const count = hoarder ? rng.int(4, 6) : rng.int(2, 4);
   const hoard: string[] = [];
   while (hoard.length < count && pool.length) {
     hoard.push(pool.splice(rng.int(0, pool.length - 1), 1)[0]);
@@ -118,8 +116,7 @@ function rollRatings(
   sizeRow: (typeof CREATURE_SIZES)[number],
   quantityRow: (typeof CREATURE_QUANTITIES)[number],
   nature: (typeof MONSTER_NATURES)[number],
-  hoarder: boolean,
-  lootDie: number
+  hoarder: boolean
 ): SiteRatings {
   const has = (tag: string) => core.tags.includes(tag);
   const danger = clamp(
@@ -134,7 +131,11 @@ function rollRatings(
     1,
     10
   );
-  const treasure = clamp(1 + Math.floor(lootDie / 4) + (hoarder ? 2 : 0) + (nature.dangerBonus >= 2 ? 1 : 0), 1, 10);
+  const treasure = clamp(
+    1 + Math.floor(sizeRow.scale / 3) + (hoarder ? 2 : 0) + (nature.dangerBonus >= 2 ? 1 : 0),
+    1,
+    10
+  );
   const scale = clamp(sizeRow.scale + (core.quantity === "mob" || core.quantity === "throng" ? 1 : 0), 1, 10);
   const mystery = clamp(
     1 +
@@ -177,17 +178,16 @@ export function generateMonsterProfile(context: MonsterContext, salt = ""): Mons
     weights.regalia += 1;
   }
   const treasure = { shares: normalizeTreasureShares(weights) };
-  const lootDie = sizeRow.lootDie;
   const curioEligible = core.tags.includes("magical") || hoarder || core.size === "huge";
   const curio = curioEligible && rng.chance(0.7) ? rollCurio(rng, context.cultureName) : undefined;
-  const hoard = rollHoard(rng, hoarder, Boolean(curio));
+  const ratings = rollRatings(core, sizeRow, quantityRow, nature, hoarder);
+  const hoard = rollHoard(rng, clamp(ratings.treasure, 2, 6), Boolean(curio));
   const encounterRating = clamp(
     sizeRow.encounterBase + quantityRow.encounterBonus + (core.tags.includes("leader") ? 1 : 0),
     1,
     6
   );
   const inhabitants = rollCreatureInhabitants(rng, nature.inhabitants, encounterRating, context.cultureName, 0.3);
-  const ratings = rollRatings(core, sizeRow, quantityRow, nature, hoarder, lootDie);
   const dungeon = rollLairDraft(context, core, hoarder, name, salt);
   const rumors = [
     ...new Set(
@@ -225,7 +225,6 @@ export function generateMonsterProfile(context: MonsterContext, salt = ""): Mons
     inhabitants,
     treasure,
     hoard,
-    lootDie,
     curio,
     dungeon,
     rumors
@@ -266,7 +265,7 @@ export function renderMonsterProfile(profile: MonsterProfile): string {
     `<p><strong>Inhabitants</strong> ${profile.inhabitants.rating}/6 (d6 ≤ ${profile.inhabitants.rating} each turn) · ${inhabitants}</p>`,
     `<h4>The monster</h4><p><strong>Species:</strong> ${e(profile.species)}</p><p><strong>Number:</strong> ${e(profile.count)}</p><p><strong>Alignment:</strong> ${e(profile.alignment)}</p>${tags}<p><strong>Attack:</strong> ${profile.attacks.map(e).join(", ")} · <strong>Defense:</strong> ${e(profile.defense)}</p><p><strong>Want:</strong> ${e(profile.want)}</p><ul>${moves}</ul>`,
     `<h4>Lair and territory</h4><p><strong>Lair:</strong> ${e(profile.lair)}</p><p><strong>Territory:</strong> ${e(profile.territory)}</p><p><strong>Habit:</strong> ${e(profile.habit)}</p><ul>${signs}</ul>`,
-    `<h4>Hoard</h4><p><em>Loot die d${profile.lootDie}.</em></p><ul>${hoard}</ul>${curio}`,
+    `<h4>Hoard</h4><p><em>${capitalize(treasureBand(profile.ratings.treasure))}.</em></p><ul>${hoard}</ul>${curio}`,
     dungeon,
     `<h4>Rumors</h4><ul>${rumorList}</ul>`,
     "<p><em>Alternate monster profile.</em></p>"

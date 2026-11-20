@@ -57,15 +57,42 @@ export function pickTreasureCategory(rng: Rng, shares: TreasureShares): Treasure
   return entries[entries.length - 1].value;
 }
 
-/** Tag each treasure cache in a set of areas with a category from the mix */
+/** Tag each treasure cache in a set of areas with a category from the mix, scaling its dice to the treasure rating */
 export function annotateTreasureCaches<T extends { discoveries: string[] }>(
   rng: Rng,
   areas: T[],
-  shares: TreasureShares
+  shares: TreasureShares,
+  treasureRating: number
 ): void {
   for (const area of areas) {
     area.discoveries = area.discoveries.map(discovery =>
-      /treasure cache/i.test(discovery) ? `${discovery} [${capitalize(pickTreasureCategory(rng, shares))}]` : discovery
+      /treasure cache/i.test(discovery)
+        ? `${rateTreasureCache(discovery, treasureRating)} [${capitalize(pickTreasureCategory(rng, shares))}]`
+        : discovery
     );
   }
+}
+
+/** The cache dice band a treasure rating earns: a pittance rolls small, a hoard rolls big */
+export function treasureCacheDice(rating: number): string {
+  if (rating <= 2) return "1d4";
+  if (rating <= 4) return "1d6+1";
+  if (rating <= 6) return "1d8+1";
+  if (rating <= 8) return "2d6+2";
+  return "3d8+3";
+}
+
+/** Rewrite a treasure cache's dice to the band its rating earns, keeping any category tag */
+export function rateTreasureCache(discovery: string, rating: number): string {
+  const dice = `(${treasureCacheDice(rating)})`;
+  return /\([^)]*\)/.test(discovery) ? discovery.replace(/\([^)]*\)/, dice) : `${discovery} ${dice}`;
+}
+
+/** A plain-language magnitude for a treasure rating, used to describe a haul */
+export function treasureBand(rating: number): string {
+  if (rating <= 2) return "a pittance";
+  if (rating <= 4) return "a modest haul";
+  if (rating <= 6) return "a rich hoard";
+  if (rating <= 8) return "a princely fortune";
+  return "a legendary fortune";
 }

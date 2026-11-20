@@ -46,7 +46,6 @@ describe("monster generator", () => {
       expect(Object.keys(profile.treasure.shares).sort()).toEqual([...TREASURE_CATEGORIES].sort());
 
       expect(profile.hoard.length).toBeGreaterThanOrEqual(2);
-      expect([4, 6, 8, 10, 12]).toContain(profile.lootDie);
       expect(profile.moves.length).toBeGreaterThanOrEqual(3);
     }
   });

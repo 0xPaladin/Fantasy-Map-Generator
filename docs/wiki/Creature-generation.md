@@ -31,7 +31,7 @@ Lake and sea monsters are aquatic beasts. The profile keeps the rolled length an
 
 Beasts yield **inherent harvest**, not coin: hide, meat, organs, teeth/claws, venom, bone. The treasure mix biases toward Art (decorative or functional parts) and Relics (charms, curative organs); Bullion and Regalia stay near zero. Meat and rations are supplies, not counted in the mix. A hoarder beast can also keep a small stash of victims' gear.
 
-The loot die is driven by size. A large, huge or hoarder beast can get one small cave/lair draft; gentle herd beasts and tiny creatures get none.
+The treasure rating is driven by size and hoarding, and sets how much harvest there is. A large, huge or hoarder beast can get one small cave/lair draft; gentle herd beasts and tiny creatures get none.
 
 ### Monsters
 
@@ -47,7 +47,7 @@ A substantial monster lair can get one capped dungeon draft (small or medium), w
 
 Brigands and pirates are humanoid raider gangs. The profile keeps the locality and gang identity, then adds a named leader with a trait, a base, prey and a raid tactic. Pirates are flagged maritime and get a seaborne base.
 
-Bandits **carry and stash** raid loot. Wealth is rolled (penniless to fabulous) and drives the loot die; the mix biases toward Bullion, with Regalia and Art for wealthy crews. Loot prompts include coin, trade goods, gems, jewelry, personal items and contraband. A wealthy leader can carry one curio.
+Bandits **carry and stash** raid loot. Wealth is rolled (penniless to fabulous) and drives the treasure rating; the mix biases toward Bullion, with Regalia and Art for wealthy crews. Loot prompts include coin, trade goods, gems, jewelry, personal items and contraband. A wealthy leader can carry one curio.
 
 A large gang — a company or a crew — can get one small base draft (stronghold on land, lair at sea). A small roadside gang gets none.
 
@@ -56,7 +56,7 @@ A large gang — a company or a crew — can get one small base draft (stronghol
 | Rating | Derived from |
 | --- | --- |
 | **Danger** | size, quantity, nature, attack forms, tags and leader |
-| **Treasure** | loot die, loot context, hoarder tag and wealth |
+| **Treasure** | size or wealth, hoarder tag and loot context |
 | **Scale** | size and quantity, or gang size |
 | **Mystery** | magical/aberrant tags, hidden lair, cunning leader |
 | **Weirdness** | magical/undead tags, strange features, breath, curio |
@@ -72,7 +72,7 @@ The four-category mix describes the value split; the **context** describes where
 | **Stashed** | bandits | coin chests, trade goods, gems, jewelry, rare items |
 | **Lair** | monsters | coin, gems, jewelry, art objects, rare items, curios, victims' gear |
 
-Values stay as dice prompts and the normalized mix; the profiles do not introduce a silver economy.
+The treasure rating sets the haul's magnitude — from a pittance to a legendary fortune — and how many loot entries appear. Values stay as the normalized mix; the profiles do not introduce a silver economy. The same rating scales the dice on treasure caches in dungeons and ruins.
 
 ### Cleared threats
 

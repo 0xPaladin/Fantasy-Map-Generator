@@ -32,7 +32,12 @@ import {
 import { TREASURE_CATEGORIES, type TreasureShares } from "@/data/treasure";
 import { type DungeonProfile, generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
 import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
-import { applyTreasureModifiers, normalizeTreasureShares, pickTreasureCategory } from "@/model/story/treasure";
+import {
+  applyTreasureModifiers,
+  normalizeTreasureShares,
+  pickTreasureCategory,
+  rateTreasureCache
+} from "@/model/story/treasure";
 import type { BurialContext } from "@/model/story/underworld-profile";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
@@ -278,6 +283,10 @@ export function generateBurialProfile(context: BurialContext, salt = ""): Burial
     Boolean(dungeon),
     looted
   );
+  for (const zone of zones) {
+    if (zone.discovery && /treasure cache/i.test(zone.discovery))
+      zone.discovery = rateTreasureCache(zone.discovery, ratings.treasure);
+  }
 
   return {
     name,

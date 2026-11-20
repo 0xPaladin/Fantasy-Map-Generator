@@ -72,7 +72,7 @@ Areas are generated as a connected graph, not a grid:
 
 An area can roll a special area such as a burial vault, underground lake, sealed cellblock or summoning circle. It can also redirect into another dungeon type's tables. Redirects stop after two levels, so the draft always terminates.
 
-Contents decide how many discoveries and dangers an area holds. Discoveries are either **features** (a pit, a slope, a ledge, a carved wall) or **finds** (supplies, a key, a body, a treasure cache). Dangers are leaders, creatures or hazards. Safety shifts the creature roll: safer dungeons lean toward ordinary animals and people, while perilous ones leave more room for monsters. Treasure is left as dice notation, such as `treasure cache (1d6+1)`, rather than converted into a made-up value; each cache is also tagged with its mix category.
+Contents decide how many discoveries and dangers an area holds. Discoveries are either **features** (a pit, a slope, a ledge, a carved wall) or **finds** (supplies, a key, a body, a treasure cache). Dangers are leaders, creatures or hazards. Safety shifts the creature roll: safer dungeons lean toward ordinary animals and people, while perilous ones leave more room for monsters. Treasure is left as dice notation, such as `treasure cache (1d8+1)`, scaled to the dungeon's Treasure rating rather than converted into a made-up value; each cache is also tagged with its mix category.
 
 ### Ratings
 
@@ -105,7 +105,7 @@ The shares always add up to 100%. They start from the dungeon type and then shif
 Treasure mix — Bullion 6% · Regalia 24% · Art 35% · Relics 35%
 ```
 
-A generated `treasure cache` is tagged with one of the categories from the mix, so a chest is not just “treasure”; it is bullion, regalia, art or relics. The dice notation remains the total value. Regalia, art and relics may need the right buyer, and they can carry political or religious consequences that coin does not.
+A generated `treasure cache` is tagged with one of the categories from the mix, so a chest is not just "treasure"; it is bullion, regalia, art or relics. The dice notation, scaled to the Treasure rating, remains the total value. Regalia, art and relics may need the right buyer, and they can carry political or religious consequences that coin does not.
 
 ### Inhabitants
 

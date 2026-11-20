@@ -37,7 +37,7 @@ import {
 import type { BanditContext } from "@/model/story/creature-profile";
 import { type DungeonProfile, generateDungeonProfile, renderDungeonProfile } from "@/model/story/dungeon-generator";
 import type { SiteInhabitants, SiteRatings } from "@/model/story/site-profile";
-import { normalizeTreasureShares } from "@/model/story/treasure";
+import { normalizeTreasureShares, treasureBand } from "@/model/story/treasure";
 import { createRng, type Rng } from "@/utils/rng";
 import { capitalize, escapeHtml } from "@/utils/string-utils";
 
@@ -66,7 +66,6 @@ export interface BanditProfile {
   treasure: { shares: TreasureShares };
   loot: string[];
   wealth: CreatureWealth;
-  lootDie: number;
   contraband: string;
   curio?: Curio;
   dungeon?: DungeonProfile;
@@ -83,11 +82,10 @@ const uniquePicks = <T>(rng: Rng, table: readonly T[], count: number): T[] => {
   return result;
 };
 
-function rollLoot(rng: Rng, lootDie: number, hasCurio: boolean): string[] {
+function rollLoot(rng: Rng, count: number, hasCurio: boolean): string[] {
   const carried = LOOT_CONTEXTS.find(row => row.context === "carried")!.forms;
   const stashed = LOOT_CONTEXTS.find(row => row.context === "stashed")!.forms;
   const pool = [...new Set([...carried, ...stashed])];
-  const count = lootDie === 0 ? 1 : clamp(Math.floor(lootDie / 4) + 2, 2, 6);
   const loot = uniquePicks(rng, pool, count);
   if (hasCurio && !loot.includes("a curio")) loot.push("a curio");
   return loot;
@@ -125,7 +123,7 @@ function rollRatings(
   contraband: string,
   tags: string[],
   wealth: CreatureWealth,
-  lootDie: number,
+  wealthRank: number,
   hasCurio: boolean
 ): SiteRatings {
   const danger = clamp(
@@ -133,7 +131,7 @@ function rollRatings(
     1,
     10
   );
-  const treasure = clamp(1 + Math.floor(lootDie / 4) + (wealth === "wealthy" || wealth === "fabulous" ? 1 : 0), 1, 10);
+  const treasure = clamp(1 + wealthRank + (wealth === "wealthy" || wealth === "fabulous" ? 1 : 0), 1, 10);
   const scale = clamp(2 + gang.encounterBonus * 2, 1, 10);
   const mystery = clamp(
     1 +
@@ -185,7 +183,6 @@ export function generateBanditProfile(context: BanditContext, salt = ""): Bandit
     CREATURE_WEALTH.map(row => ({ value: row, weight: row.weight }))
   );
   const wealth = wealthRow.wealth;
-  const lootDie = wealthRow.lootDie;
   const weights = { ...BANDIT_TREASURE };
   if (wealth === "wealthy" || wealth === "fabulous") {
     weights.regalia += 1;
@@ -200,9 +197,6 @@ export function generateBanditProfile(context: BanditContext, salt = ""): Bandit
     (wealth === "wealthy" || wealth === "fabulous") && rng.chance(0.6)
       ? rollCurio(rng, context.cultureName)
       : undefined;
-  const loot = rollLoot(rng, lootDie, Boolean(curio));
-  const encounterRating = clamp(2 + gang.encounterBonus + 1, 1, 6);
-  const inhabitants = rollCreatureInhabitants(rng, BANDIT_INHABITANTS, encounterRating, context.cultureName, 0.3);
   const ratings = rollRatings(
     gang,
     leaderTrait,
@@ -211,9 +205,12 @@ export function generateBanditProfile(context: BanditContext, salt = ""): Bandit
     contraband,
     tags,
     wealth,
-    lootDie,
+    wealthRow.rank,
     Boolean(curio)
   );
+  const loot = rollLoot(rng, clamp(ratings.treasure, 1, 6), Boolean(curio));
+  const encounterRating = clamp(2 + gang.encounterBonus + 1, 1, 6);
+  const inhabitants = rollCreatureInhabitants(rng, BANDIT_INHABITANTS, encounterRating, context.cultureName, 0.3);
   const dungeon = rollBaseDraft(context, gang, maritime, alignment, name, salt);
   const rumors = [
     ...new Set(
@@ -254,7 +251,6 @@ export function generateBanditProfile(context: BanditContext, salt = ""): Bandit
     treasure,
     loot,
     wealth,
-    lootDie,
     contraband,
     curio,
     dungeon,
@@ -296,7 +292,7 @@ export function renderBanditProfile(profile: BanditProfile): string {
     `<p><strong>Inhabitants</strong> ${profile.inhabitants.rating}/6 (d6 ≤ ${profile.inhabitants.rating} each turn) · ${inhabitants}</p>`,
     `<h4>The gang</h4>${epithet}<p><strong>Number:</strong> ${e(profile.count)}</p><p><strong>Leader:</strong> ${e(profile.leader)} (${e(profile.leaderTrait)})</p><p><strong>Alignment:</strong> ${e(profile.alignment)}</p>${tags}<p><strong>Weapons:</strong> ${profile.weapons.map(e).join(", ")} · <strong>Defense:</strong> ${e(profile.defense)}</p><p><strong>Want:</strong> ${e(profile.want)}</p><ul>${moves}</ul>`,
     `<h4>Base and raids</h4><p><strong>Base:</strong> ${e(profile.base)}</p><p><strong>Prey:</strong> ${e(profile.prey)}</p><p><strong>Tactic:</strong> ${e(profile.tactic)}</p>`,
-    `<h4>Loot</h4><p><em>Wealth ${e(profile.wealth)}; loot die ${profile.lootDie ? `d${profile.lootDie}` : "none"}.</em></p><ul>${loot}</ul><p><strong>Contraband:</strong> ${e(profile.contraband)}</p>${curio}`,
+    `<h4>Loot</h4><p><em>Wealth ${e(profile.wealth)}; ${treasureBand(profile.ratings.treasure)}.</em></p><ul>${loot}</ul><p><strong>Contraband:</strong> ${e(profile.contraband)}</p>${curio}`,
     dungeon,
     `<h4>Rumors</h4><ul>${rumorList}</ul>`,
     "<p><em>Alternate bandit profile.</em></p>"
