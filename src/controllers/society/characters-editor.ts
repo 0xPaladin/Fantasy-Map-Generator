@@ -481,6 +481,9 @@ export function openCharacterDetails(characterId: number): void {
   ensureEl("addRoleButton").addEventListener("click", () => appendRoleRow());
   ensureEl("addRelationButton").addEventListener("click", () => appendRelationRow());
   findEl("rerollHeroButton")?.addEventListener("click", () => rerollHero(characterId));
+  findEl("delveCharacterButton")?.addEventListener("click", () => {
+    void Controllers.DelveScreen.openPartyPickerForCharacter(characterId);
+  });
 
   const promote = findEl("promoteCharacterButton");
   promote?.addEventListener("click", () => {
@@ -569,6 +572,7 @@ function renderDetails(character: HistoricalFigure): string {
         <span style="flex: 1;"></span>
         <button id="cancelCharacterButton" class="btn">${t("Cancel")}</button>
         ${character.hero ? "" : `<button id="promoteCharacterButton" class="btn">${t("Promote to hero")}</button>`}
+        ${character.hero ? `<button id="delveCharacterButton" class="btn">${t("Delve")}</button>` : ""}
         <button id="saveCharacterButton" class="btn">${t("Save")}</button>
       </div>
     </div>`;

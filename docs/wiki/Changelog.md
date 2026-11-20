@@ -16,6 +16,7 @@ Current version of the Fantasy Map Generator is the latest `master` branch. You 
 - Goods Editor: control deposit by min/max population
 - Goods Editor: control deposit clustering
 - Villains: masterminds and their world-altering schemes, a Villains wiki page and a Villain column in the Characters editor
+- Dungeons: send a party of heroes to delve for loot, XP and a cleared marker
 
 **[1.158.0](https://github.com/Azgaar/Fantasy-Map-Generator/releases/tag/v1.158.0) - 2026-11-12**:
 

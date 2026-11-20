@@ -6,8 +6,13 @@ vi.mock("@/renderers/layers", () => ({
 }));
 vi.mock("@/ui/map/zoom", () => ({ zoomTo: vi.fn() }));
 
-const { schemesOpen } = vi.hoisted(() => ({ schemesOpen: vi.fn() }));
-vi.mock("@/controllers", () => ({ Controllers: { SchemesOverview: { open: schemesOpen } } }));
+const { schemesOpen, delveOpen } = vi.hoisted(() => ({ schemesOpen: vi.fn(), delveOpen: vi.fn() }));
+vi.mock("@/controllers", () => ({
+  Controllers: {
+    SchemesOverview: { open: schemesOpen },
+    DelveScreen: { openPartyPickerForCharacter: delveOpen }
+  }
+}));
 
 import {
   CHARACTER_CSV_COLUMNS,
@@ -206,6 +211,15 @@ describe("CharactersEditor", () => {
     expect(hero.attributes).toEqual(start.attributes);
     expect(hero.actions).toEqual(start.actions);
     expect(hero.abilities).toEqual([start.ability]);
+  });
+
+  it("offers a hero the delve flow from the sheet", () => {
+    const character = Characters.add({ name: "Mara", culture: 1, birth: 940, hero: true, manual: true });
+    openCharacterDetails(character.i);
+    delveOpen.mockClear();
+
+    document.querySelector<HTMLElement>("#delveCharacterButton")!.click();
+    expect(delveOpen).toHaveBeenCalledWith(character.i);
   });
 
   it("lays the hero stats out in rows without Push or progression fields", () => {

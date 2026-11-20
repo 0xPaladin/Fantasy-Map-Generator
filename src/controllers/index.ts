@@ -25,6 +25,7 @@ export const Controllers = createRegistry(
     ContextMenu: () => import("@/controllers/context-menu").then(m => m.ContextMenu),
     CsvUpload: () => import("@/controllers/csv-upload").then(m => m.CsvUpload),
     CulturesEditor: () => import("@/controllers/society/cultures-editor").then(m => m.CulturesEditor),
+    DelveScreen: () => import("@/controllers/story/delve-screen").then(m => m.DelveScreen),
     DiplomacyEditor: () => import("@/controllers/political/diplomacy-editor").then(m => m.DiplomacyEditor),
     DevelopmentEditor: () => import("@/controllers/society/development-editor").then(m => m.DevelopmentEditor),
     DiplomacyOverview: () => import("@/controllers/political/diplomacy-overview").then(m => m.DiplomacyOverview),

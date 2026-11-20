@@ -163,6 +163,17 @@ Older maps do not backfill profiles during load. Their dungeons get one when the
 
 Marker CSV and GeoJSON exports include the full profile, including the Watabou note. They render the profile on demand without caching it, so exporting a map does not make its save larger.
 
+### Delving
+
+A dungeon can be explored. Open the marker and press **Delve**, or press **Delve** on a hero's sheet to choose the dungeon from there.
+
+* **Party** — pick one to six living characters. Background characters get a hero sheet when they first delve. Choose a leader, an order and up to four retainers; retainers extend the supply clock and never make checks.
+* **Orders** — **Swift** speeds progress but the dungeon reacts to critical failures; **Cautious** softens both threat dice and grants one free reroll per objective; **Greedy** takes half again the loot but the party breaks at 40% Resolve.
+* **The run** — the party faces objectives drawn from the area draft. Each situation is one opposed roll: the acting hero's action die plus a support die against one **alert** die and one **rating** die — Danger for fights and traps, Mystery for clues and finds, Weirdness for special set pieces. Alert starts from the inhabitants rating and climbs as the party makes noise; the dungeon also answers failed rolls with Resolve loss and injuries.
+* **The report** — the delve resolves atomically and opens a report. **Step** reveals the chronicle one event at a time, **Show all** shows the outcome and the loot.
+* **Outcomes** — a triumph clears the dungeon: the profile shows a depleted Treasure rating and plundered caches, and the state persists. A retreat keeps what the party carries. A defeat downs the heroes for two seasons and loses the bag. Standing heroes earn XP, loot lands in their inventories as coin and named pieces, the marker note gains a **Delve record** section, and the chronicle records a deed.
+* **Cleared and weakened** — a cleared dungeon can be delved again, but finds only a picked-over shell. Slaying the leader without finishing the place leaves it **weakened**: its alert starts one step lower.
+
 ### Limits
 
 * The profile is system-agnostic. Creatures, hazards and treasure are prompts; hit points, damage and exact treasure values are not generated.

@@ -55,6 +55,13 @@ function renderDialog(): void {
     isAstralView() && reading ? `. On this chart: ${reading.reading}` : ""
   }`;
   const canReroll = canGenerateProfile(selectedMarker);
+  const isDungeon =
+    selectedMarker.generated?.kind === "dungeon" ||
+    selectedMarker.type === "dungeons" ||
+    selectedMarker.type === "dungeon";
+  const delveTip = selectedMarker.delve
+    ? t("Send another party into this dungeon")
+    : t("Send a party into this dungeon");
 
   const html = /* html */ `<div id="markerEditor" class="dialog">
     <div id="markerBody" style="padding-bottom: 0.3em">
@@ -130,6 +137,7 @@ function renderDialog(): void {
     <div id="markerBottom">
       ${noteButton("markerNotes", t("Edit free text notes (legend)"))}
       ${canReroll ? `<button id="markerProfileReroll" data-tip="${t("Reroll generated profile")}" class="icon-cw"></button>` : ""}
+      ${isDungeon ? `<button id="markerDelve" class="btn" style="padding: 2px 6px;" data-tip="${delveTip}">${t("Delve")}</button>` : ""}
       <button id="markerRadius" data-tip="${t("Show markers within a radius of this one")}" class="icon-dot-circled"></button>
       <button id="markerLock" class="icon-lock-open" data-lock-tip></button>
       <button id="markerAdd" data-tip="${t("Add additional marker of that type")}" class="icon-plus"></button>
@@ -140,6 +148,10 @@ function renderDialog(): void {
 
   // add listeners — dropped together with the dialog HTML on close
   findEl("markerProfileReroll")?.addEventListener("click", rerollGeneratedProfile);
+  findEl("markerDelve")?.addEventListener(
+    "click",
+    () => void Controllers.DelveScreen.openPartyPicker(selectedMarker.i)
+  );
   ensureEl("markerName").addEventListener("change", changeMarkerName);
   ensureEl("markerType").addEventListener("change", changeMarkerType);
   ensureEl("markerTags").addEventListener("change", changeMarkerTags);

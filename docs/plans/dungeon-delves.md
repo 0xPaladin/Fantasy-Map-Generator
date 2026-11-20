@@ -1,6 +1,6 @@
 # Plan — Dungeon Delves: Send a Party, Resolve the Dungeon
 
-**Status:** In progress — phases 1–2 (engine core, application) delivered 2026-11-20
+**Status:** In progress — phases 1–3 (engine core, application, player surface) delivered 2026-11-20
 **Goal:** Let the player form a **party of heroes** and send it to explore or clean out a **dungeon marker**. A delve is resolved by a seeded, high-level mission engine — one opposed-dice challenge per situation, a Mythic-style scene framer, a progress roll between objectives and an alert ladder — adapted from the author's `solo-engine` `run-mission` runner. No room-by-room tactics and no new stat blocks: the dungeon's existing profile is the opposition's stat sheet, the heroes' existing sheets are the party's, and every outcome lands on systems that already exist (hero condition, XP, marker state, chronicle, news).
 
 ---
@@ -270,3 +270,16 @@ No persisted fields yet: `pack.history.delves` and `Marker.delve` are typed but 
 - **Docs**: `docs/architecture/data-model.md` now documents `marker.delve`, `history.delves`, the hero write-back and the note record.
 
 News remains host-only by default: the Living HUD wires `setDelveHost` with `pushNews`/`pushHistory` when the player surface lands in phase 3.
+
+### Phase 3 — player surface (delivered 2026-11-20)
+
+- **`src/controllers/story/delve-screen.ts`** (registered as `DelveScreen`): the party picker lists every living character, heroes first, with the best three action dice, current Resolve/Stamina and injuries. Selection caps at six; the leader, order and 0–4 retainers are chosen in the footer. Background characters can be picked and gain a hero sheet on their first delve. **Withdraw** cancels before dispatch.
+- **Dispatch** runs `runDelveAtMarker` through a `DelveHost` that reads the map and appends the news item to `pack.history.living.recentNews` via `Living.pushNews` (`kind: "delve"`, new icon and colour in the Living overlay). No Living World means no news, and the delve does not initialize the simulation.
+- **Report** — the engine resolves atomically, so the dialog is a replayable after-action report: the dungeon stat block (ratings, treasure mix, alert start → final, chaos, turns, supplies, objectives, XP), the party's condition strip, and the event chronicle. **Step** reveals one event, **Show all** reveals the rest, and the outcome banner appears only when the log is fully shown. Closing redraws the markers layer.
+- **Entry points**: a **Delve** button in the dungeon marker editor (tooltip flips to "send another party" once delved) and a **Delve** button on every hero sheet that first opens a dungeon chooser and preselects the hero.
+- **News kind**: `LivingNewsKind` gains `"delve"`; `draw-living-overlay.ts` gives it a torch icon and a brown badge colour.
+- **Strings**: the English catalog gains the picker, report, order, alert and outcome keys; the runtime reads status and alert labels through literal `t()` calls.
+- **Tests**: 4 jsdom cases in `delve-screen.test.ts` (party listing and dispatch, step/show-all log, character-sheet dungeon chooser, dungeon-type guard), a marker-editor case for the Delve button, and a characters-editor case for the hero-sheet action. `tsc --noEmit` clean.
+- **Docs**: `docs/wiki/Dungeon-generation.md` gains a **Delving** section (party, orders, the two threat dice, outcomes and the Delve record); the Changelog lists the feature.
+
+Deviation from §9: the engine resolves a delve in one pass, so the screen replays a completed run instead of stepping a live simulation; **Retreat** is the picker's **Withdraw** before dispatch. A live stepper would need the engine to yield mid-run, which the current contract deliberately avoids.

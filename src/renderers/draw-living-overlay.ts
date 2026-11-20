@@ -29,7 +29,8 @@ const NEWS_ICONS: Partial<Record<LivingNewsItem["kind"], string>> = {
   trouble: "🎲",
   lair: "💀",
   tech: "📜",
-  religion: "🕊️"
+  religion: "🕊️",
+  delve: "🕯️"
 };
 
 const NEWS_COLORS: Partial<Record<LivingNewsItem["kind"], string>> = {
@@ -39,7 +40,8 @@ const NEWS_COLORS: Partial<Record<LivingNewsItem["kind"], string>> = {
   lair: "#8b0000",
   trouble: "#b8860b",
   succession: "#6a4c93",
-  religion: "#6a4c93"
+  religion: "#6a4c93",
+  delve: "#8a6d3b"
 };
 
 const OVERLAY_CSS = /* css */ `

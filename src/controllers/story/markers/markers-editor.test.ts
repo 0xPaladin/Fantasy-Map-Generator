@@ -5,7 +5,8 @@ vi.mock("@/model/icons", () => ({
   Icons: { paint: () => ({ fill: "#000000", stroke: "#000000" }), html: () => "" }
 }));
 vi.mock("@/renderers/draw-markers", () => ({ drawMarkers: vi.fn(), setEditedMarker: vi.fn() }));
-vi.mock("@/controllers", () => ({ Controllers: {} }));
+const { delveOpen } = vi.hoisted(() => ({ delveOpen: vi.fn() }));
+vi.mock("@/controllers", () => ({ Controllers: { DelveScreen: { openPartyPicker: delveOpen } } }));
 vi.mock("@/ui/tooltips", () => ({ tip: vi.fn(), clearMainTip: vi.fn() }));
 vi.mock("@/ui/dialog/dialog-helpers", async importActual => ({
   noteButton: (await importActual<typeof import("@/ui/dialog/dialog-helpers")>()).noteButton,
@@ -93,4 +94,30 @@ it("offers the generated reroll for ruins", () => {
 
   MarkersEditor.open(8);
   expect(document.getElementById("markerProfileReroll")).not.toBeNull();
+});
+
+it("sends a party from a dungeon marker", () => {
+  document.body.innerHTML = '<div id="dialogs"></div><svg><svg id="marker9"></svg></svg>';
+  options.app.mode = null;
+  vi.stubGlobal("pack", {
+    markers: [
+      {
+        i: 9,
+        type: "dungeons",
+        name: "Deep Hall",
+        cell: 0,
+        x: 0,
+        y: 0,
+        generated: { kind: "dungeon", version: 1, seed: "12345" }
+      }
+    ]
+  });
+  delveOpen.mockClear();
+
+  MarkersEditor.open(9);
+  const button = document.getElementById("markerDelve");
+  expect(button).not.toBeNull();
+
+  button!.click();
+  expect(delveOpen).toHaveBeenCalledWith(9);
 });

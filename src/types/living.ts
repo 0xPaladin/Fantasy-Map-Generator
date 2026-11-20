@@ -274,7 +274,8 @@ export type LivingNewsKind =
   | "tech"
   | "religion"
   | "faction"
-  | "raid";
+  | "raid"
+  | "delve";
 
 export interface LivingNewsItem {
   tick: number;
