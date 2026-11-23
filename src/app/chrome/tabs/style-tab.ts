@@ -5,11 +5,14 @@ import { t } from "@/utils/i18n";
 import { ensureEl } from "@/utils/node-utils";
 
 const TEMPLATE = /* html */ `
+  <section class="tabsection" data-tab-section="preset" data-tab-label="${t("Preset")}">
   <div class="head">
     <p data-tip="${t("Select a style preset. State labels may required regeneration if font is changed")}">${t("Preset")}:</p>
     <button type="button" id="stylePreset" data-tip="${t("Click to select a style preset")}"></button>
     <button id="addStyleButton" data-tip="${t("Click to save current style as a new preset")}" class="icon-plus sideButton"></button>
   </div>
+  </section>
+  <section class="tabsection" data-tab-section="elements" data-tab-label="${t("Elements")}">
   <div class="head">
     <p data-tip="${t("Select an element to edit its style")}">${t("Element")}:</p>
     <select data-tip="${t("Select an element to edit its style")}" id="styleElementSelect"></select>
@@ -20,6 +23,7 @@ const TEMPLATE = /* html */ `
     <select data-tip="${t("Select element group")}" id="styleGroupSelect"></select>
   </div>
   <div id="styleForm"></div>
+  </section>
 `;
 
 const STYLE = /* css */ `

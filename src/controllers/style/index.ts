@@ -69,6 +69,7 @@ class StyleEditorController {
     }
     const wasActive = findEl("styleTab")?.classList.contains("active");
     App.openTab("styleTab"); // opens the editor through selectTab when the tab was not active
+    if (element) findEl("subtabs")?.querySelector<HTMLButtonElement>('button[data-section="elements"]')?.click();
     if (wasActive) this.render();
     if (element) this.glow(Boolean(group));
   }

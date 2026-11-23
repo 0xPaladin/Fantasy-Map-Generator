@@ -78,6 +78,59 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
+describe("menu sub-tabs", () => {
+  const subtabLabels = () => [...document.querySelectorAll("#subtabs button")].map(button => button.textContent);
+  const section = (id: string) => document.querySelector<HTMLElement>(`[data-tab-section="${id}"]`)!;
+  const sectionMarkup = (id: string, label: string) =>
+    `<section class="tabsection" data-tab-section="${id}" data-tab-label="${label}"><p>${id}</p></section>`;
+
+  // The shell is tested independently of the tab modules, which keep their own markup tests.
+  const seedTabs = () => {
+    document.getElementById("layersContent")!.innerHTML =
+      sectionMarkup("layers", "Layers") + sectionMarkup("views", "Views");
+    document.getElementById("toolsContent")!.innerHTML = [
+      sectionMarkup("edit", "Edit"),
+      sectionMarkup("regenerate", "Regenerate"),
+      sectionMarkup("add", "Add"),
+      sectionMarkup("show", "Show"),
+      sectionMarkup("create", "Create")
+    ].join("");
+    document.getElementById("aboutContent")!.innerHTML =
+      sectionMarkup("about", "About") + sectionMarkup("support", "Support");
+  };
+
+  it("opens the active main tab's sections as sub-tabs", () => {
+    seedTabs();
+    document.getElementById("layersTab")!.click();
+    expect(subtabLabels()).toEqual(["Layers", "Views"]);
+    expect(section("layers").hidden).toBe(false);
+
+    document.querySelector<HTMLButtonElement>('#subtabs button[data-section="views"]')!.click();
+    expect(section("views").hidden).toBe(false);
+    expect(section("layers").hidden).toBe(true);
+
+    document.getElementById("toolsTab")!.click();
+    expect(subtabLabels()).toEqual(["Edit", "Regenerate", "Add", "Show", "Create"]);
+    expect(section("edit").hidden).toBe(false);
+
+    document.querySelector<HTMLButtonElement>('#subtabs button[data-section="regenerate"]')!.click();
+    expect(section("regenerate").hidden).toBe(false);
+    expect(section("edit").hidden).toBe(true);
+  });
+
+  it("shows About's sections and hides the bar for sectionless content", () => {
+    seedTabs();
+    document.getElementById("aboutTab")!.click();
+    expect(subtabLabels()).toEqual(["About", "Support"]);
+
+    document.getElementById("layersTab")!.click();
+    options.app.mode = "heightmap";
+    document.getElementById("toolsTab")!.click();
+    expect(document.getElementById("subtabs")!.style.display).toBe("none");
+    options.app.mode = null;
+  });
+});
+
 describe("options tab bindings", () => {
   it("syncs replacement options and derived readouts after control IDs change", () => {
     options.generation.graph.density = 5;

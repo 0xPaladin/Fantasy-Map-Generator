@@ -48,6 +48,7 @@ export const getLayerByShortcut = (code: string): LayerId | undefined => {
 const ASTRAL_PRESET_IDS = new Set(Object.keys(ASTRAL_PRESETS));
 
 const TEMPLATE = /* html */ `
+  <section class="tabsection" data-tab-section="layers" data-tab-label="${t("Layers")}">
   <div class="head">
     <p data-tip="${t("Select a map layers preset")}">${t("Layers preset")}:</p>
     <select data-tip="${t("Select a map layers preset")}" id="layersPreset" style="width: 45%"></select>
@@ -67,6 +68,8 @@ const TEMPLATE = /* html */ `
   </div>
   <div data-tip="${sentences(t("Click to toggle the layer"), t("Ctrl + click to edit layer style"))}" id="mapLayers"></div>
   <div class="tip">${t("Click to toggle the layer")}. ${t("Ctrl + click to edit layer style")}</div>
+  </section>
+  <section class="tabsection" data-tab-section="views" data-tab-label="${t("Views")}">
   <div id="viewMode" data-tip="${t("Set view mode")}">
     <p>${t("View mode")}:</p>
     <button data-tip="${t("Standard view mode for editing the map")}" id="viewStandard" class="pressed">
@@ -89,6 +92,7 @@ const TEMPLATE = /* html */ `
       ${t("Back to System")}
     </button>
   </div>
+  </section>
 `;
 
 ensureEl("layersContent").innerHTML = TEMPLATE;

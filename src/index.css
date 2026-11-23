@@ -480,6 +480,36 @@ button.options:hover {
   color: white;
 }
 
+#subtabs {
+  display: flex;
+  border-bottom: 1px solid var(--dark-solid);
+  background: var(--bg-main);
+}
+
+#subtabs button {
+  flex: 1 1 0;
+  padding: 0.3em 0.45em;
+  border: none;
+  border-right: 1px solid rgba(0, 0, 0, 0.12);
+  background: transparent;
+  color: var(--header);
+  font-family: var(--sans-serif);
+  font-size: 0.85em;
+  font-weight: bold;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#subtabs button:last-child {
+  border-right: none;
+}
+
+#subtabs button.active,
+#subtabs button:hover {
+  background: var(--header);
+  color: white;
+}
+
 #options p {
   font-style: italic;
   font-weight: bold;

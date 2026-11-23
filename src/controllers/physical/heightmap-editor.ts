@@ -14,6 +14,7 @@ import {
   select
 } from "d3";
 import RgbQuant from "rgbquant";
+import { refreshSubtabs } from "@/app/chrome/options-panel";
 import { Controllers } from "@/controllers";
 import { placeImage } from "@/controllers/physical/image-placement";
 import { heightmapTemplates } from "@/data/heightmap-templates";
@@ -380,6 +381,7 @@ function enterHeightmapEditMode(mode: string, tool?: string): void {
   ensureEl("options").querySelector(".tab > .active")!.classList.remove("active");
   ensureEl("heightmapMenu").style.display = "block";
   ensureEl("toolsTab").classList.add("active");
+  ensureEl("subtabs").style.display = "none";
   ensureEl("heightmapEditMode").innerHTML = mode;
   for (const key of EDITOR_OPTIONS) ensureEl<HTMLInputElement>(key).checked = options.app.heightmapEditor[key];
 
@@ -490,6 +492,7 @@ async function finalizeHeightmap(): Promise<void> {
   if (ensureEl("options").querySelector<HTMLElement>(".tab > button.active")!.id === "toolsTab") {
     ensureEl("toolsContent").style.display = "block";
   }
+  refreshSubtabs();
   ensureEl<HTMLSelectElement>("layersPreset").disabled = false;
   ensureEl("heightmapFinalize").style.display = "none"; // hide finalize button
 

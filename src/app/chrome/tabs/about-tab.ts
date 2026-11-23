@@ -11,6 +11,7 @@ const REPOSITORY = "https://github.com/Azgaar/Fantasy-Map-Generator";
 const WIKI = `${REPOSITORY}/wiki`;
 
 const TEMPLATE = /* html */ `
+  <section class="tabsection" data-tab-section="about" data-tab-label="${t("About")}">
   <div class="aboutActions">
     <button
       id="startTourButton"
@@ -65,6 +66,8 @@ const TEMPLATE = /* html */ `
       })
     )}
   </p>
+  </section>
+  <section class="tabsection" data-tab-section="support" data-tab-label="${t("Support")}">
   <div
     style="
       background-color: #e85b46;
@@ -147,6 +150,7 @@ const TEMPLATE = /* html */ `
       /></a>
     </li>
   </ul>
+  </section>
 `;
 
 ensureEl("aboutContent").innerHTML = TEMPLATE;

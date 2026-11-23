@@ -247,6 +247,7 @@ const LANGUAGE_OPTIONS = Object.entries(LANGUAGES).sort(([a, x], [b, y]) =>
 );
 
 const TEMPLATE = /* html */ `
+  <section class="tabsection" data-tab-section="map" data-tab-label="${t("Map")}">
   <p data-tip="${t("Settings for the next map. Generate a new map to apply them")}">
     ${t("Map settings (apply to new maps)")}:
   </p>
@@ -471,6 +472,8 @@ ${Object.entries(CULTURE_SETS)
       </td>
     </tr>
   </table>
+  </section>
+  <section class="tabsection" data-tab-section="interface" data-tab-label="${t("Interface")}">
   <p data-tip="${t("Interface preferences saved in this browser. Changes apply immediately")}">
     ${t("Interface settings")}:
   </p>
@@ -600,6 +603,8 @@ ${Object.entries(CULTURE_SETS)
       </td>
     </tr>
   </table>
+  </section>
+  <section class="tabsection" data-tab-section="configure" data-tab-label="${t("Configure")}">
   <p data-tip="${t("Open the map configurators or reset all options")}">${t("Configure")}:</p>
   <div style="display: flex; flex-wrap: wrap; gap: 0.3em; margin: 0.3em 0.3em 0">
     <button
@@ -631,6 +636,7 @@ ${Object.entries(CULTURE_SETS)
       ${t("Reset")}
     </button>
   </div>
+  </section>
 `;
 
 const pendingInputs = new WeakMap<HTMLElement, string>();

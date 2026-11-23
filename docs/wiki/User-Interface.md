@@ -142,6 +142,8 @@ By dragging the mouse, or by the navigation keys (right, left, up and down).
 
 FMG menu contains 5 tabs: Layers, Style, Options, Tools and About.
 
+Below the tab row, a second row of **sub-tabs** splits the selected tab into its sections: **Layers** and **Views** for Layers; **Preset** and **Elements** for Style; **Map**, **Interface** and **Configure** for Options; **Edit**, **Regenerate**, **Add**, **Show** and **Create** for Tools; **About** and **Support** for About. Switching the main tab restores the sub-tab you last used there.
+
 Any of the tabs contain the Lower Menu Section.
 
 ## Changing the menu size
@@ -276,7 +278,7 @@ Available presets: Political map, Cultural map, Religions map, Provinces map, Bi
 
 ## View mode
 
-At the top of the Layers tab, the **View mode** row chooses what the map shows: **Standard**, **3D scene**, **Globe** or **Astral**. Standard is the fantasy map; 3D scene and Globe are the three-dimensional views.
+At the top of the **Views** sub-tab in Layers, the **View mode** row chooses what the map shows: **Standard**, **3D scene**, **Globe** or **Astral**. Standard is the fantasy map; 3D scene and Globe are the three-dimensional views.
 
 **Astral** turns the map into a star chart of one chosen sector. Entering it swaps the layer buttons for the Astral list — Core–Rim, Sector Dust, Composition, Nebulae, Population, Dust Density, Star Systems, Remnants, Empires, Sectors, Borders, Hyperlanes, Anomalies and Labels — and applies the Astral style: the void becomes deep space and every burg is drawn as a class-coloured star. There is no galactic core or spiral arm; the map is one sector, not a galaxy.
 

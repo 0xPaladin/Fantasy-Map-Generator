@@ -2,6 +2,7 @@ import { type DriveStep, driver } from "driver.js";
 
 import { ensureEl } from "@/utils/node-utils";
 import "driver.js/dist/driver.css";
+import { refreshSubtabs } from "@/app/chrome/options-panel";
 import { Controllers } from "@/controllers";
 import { App } from "@/ui/app-commands";
 import { Dialog } from "@/ui/dialog/dialog";
@@ -12,6 +13,11 @@ function closeOptionsPanel() {
   if (options && options.style.display !== "none") {
     ensureEl("optionsHide")?.click();
   }
+}
+
+/** The tour targets controls that now live behind a sub-tab. */
+function openSubtab(section: string): void {
+  ensureEl("subtabs").querySelector<HTMLButtonElement>(`button[data-section="${section}"]`)?.click();
 }
 
 let activeTour: ReturnType<typeof driver> | null = null;
@@ -113,6 +119,7 @@ function start() {
         element: "#layersTab",
         onHighlightStarted: () => {
           ensureEl("layersTab")?.click();
+          openSubtab("layers");
         },
         popover: {
           title: t("Layers Tab"),
@@ -124,6 +131,7 @@ function start() {
         element: "#layersPreset",
         onHighlightStarted: () => {
           ensureEl("layersTab")?.click();
+          openSubtab("layers");
         },
         popover: {
           title: t("Layer Presets"),
@@ -137,6 +145,7 @@ function start() {
         element: "#mapLayers",
         onHighlightStarted: () => {
           ensureEl("layersTab")?.click();
+          openSubtab("layers");
         },
         popover: {
           title: t("Toggle Individual Layers"),
@@ -165,6 +174,7 @@ function start() {
         element: "#stylePreset",
         onHighlightStarted: () => {
           ensureEl("styleTab")?.click();
+          openSubtab("preset");
         },
         popover: {
           title: t("Style Presets"),
@@ -178,6 +188,7 @@ function start() {
         element: "#styleElementSelect",
         onHighlightStarted: () => {
           ensureEl("styleTab")?.click();
+          openSubtab("elements");
         },
         popover: {
           title: t("Individual Style Settings"),
@@ -206,6 +217,7 @@ function start() {
         element: "#optionsContent",
         onHighlightStarted: () => {
           ensureEl("optionsTab")?.click();
+          openSubtab("map");
         },
         popover: {
           title: t("Generation Options"),
@@ -220,6 +232,7 @@ function start() {
         onHighlightStarted: () => {
           Dialog.closeAll();
           ensureEl("optionsTab")?.click();
+          openSubtab("configure");
         },
         popover: {
           title: t("Climate"),
@@ -270,6 +283,7 @@ function start() {
         element: "#editHeightmapButton",
         onHighlightStarted: () => {
           ensureEl("toolsTab")?.click();
+          openSubtab("edit");
         },
         popover: {
           title: t("Edit Heightmap"),
@@ -290,6 +304,7 @@ function start() {
           const heightmapMenu = ensureEl("heightmapMenu");
           toolsContent.style.display = "none";
           heightmapMenu.style.display = "block";
+          ensureEl("subtabs").style.display = "none";
         },
         onDeselected: () => {
           hideHeightmapCustomizationPanel();
@@ -436,6 +451,7 @@ function hideHeightmapCustomizationPanel() {
   if (heightmapMenu.style.display !== "block") return;
   heightmapMenu.style.display = "none";
   ensureEl("toolsContent").style.display = "block";
+  refreshSubtabs();
 }
 
 // Let the browser finish the click before Driver.js replaces its popover. Several tour steps

@@ -6,7 +6,7 @@ import { sentences, t } from "@/utils/i18n";
 import { ensureEl } from "@/utils/node-utils";
 
 const TEMPLATE = /* html */ `
-  <div class="separator">${t("Edit")}</div>
+  <section class="tabsection" data-tab-section="edit" data-tab-label="${t("Edit")}">
   <div class="grid">
     <button id="editBiomesButton" data-tip="${t("Biomes Editor")}" data-shortcut="Shift + B">
       ${t("Biomes")}
@@ -119,7 +119,8 @@ const TEMPLATE = /* html */ `
     <button id="editUnitsButton" data-tip="${t("Units Editor")}" data-shortcut="Shift + Q">${t("Units")}</button>
     <button id="editZonesButton" data-tip="${t("Zones Editor")}" data-shortcut="Shift + Z">${t("Zones")}</button>
   </div>
-  <div class="separator">${t("Regenerate")}</div>
+  </section>
+  <section class="tabsection" data-tab-section="regenerate" data-tab-label="${t("Regenerate")}">
   <div id="regenerateFeature" class="grid">
     <button
       id="regenerateBurgs"
@@ -188,7 +189,8 @@ const TEMPLATE = /* html */ `
       ${t("Zones")}
     </button>
   </div>
-  <div class="separator">${t("Add")}</div>
+  </section>
+  <section class="tabsection" data-tab-section="add" data-tab-label="${t("Add")}">
   <div id="addFeature" class="grid">
     <button
       id="addBurgTool"
@@ -221,7 +223,8 @@ const TEMPLATE = /* html */ `
     </button>
     <button id="addRoute" data-tip="${t("Open route creation dialog")}" data-shortcut="Shift + 5">${t("Route")}</button>
   </div>
-  <div class="separator">${t("Show")}</div>
+  </section>
+  <section class="tabsection" data-tab-section="show" data-tab-label="${t("Show")}">
   <div class="grid">
     <button id="overviewCellsButton" data-tip="${t("Cell Details")}" data-shortcut="Shift + E">
       ${t("Cells")}
@@ -240,12 +243,14 @@ const TEMPLATE = /* html */ `
       ${t("Minimap")}
     </button>
   </div>
-  <div class="separator">${t("Create")}</div>
+  </section>
+  <section class="tabsection" data-tab-section="create" data-tab-label="${t("Create")}">
   <div class="grid">
     <button id="openSubmapTool" data-tip="${t("Click to generate a submap from the current viewport")}">${t("Submap")}</button>
     <button id="openTransformTool" data-tip="${t("Click to transform the map")}">${t("Transform")}</button>
     <button id="openWrapTool" data-tip="${t("Adjust cell shapes with a brush")}">${t("Wrap")}</button>
   </div>
+  </section>
 `;
 
 ensureEl("toolsContent").innerHTML = TEMPLATE;
