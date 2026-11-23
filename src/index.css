@@ -827,15 +827,17 @@ input[type="color"]::-webkit-color-swatch-wrapper {
   background-color: var(--header-active);
 }
 
-#toolsContent > .grid {
+#toolsContent .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  margin: 0.2em 0;
+  gap: 0.4em;
+  margin: 0.4em 0;
 }
 
-#toolsContent button {
-  padding: 0.35em 0;
-  margin: 0.16em 0.12em;
+#toolsContent .grid > button {
+  margin: 0;
+  padding: 0.35em 0.15em;
+  background-color: var(--bg-main);
   white-space: normal;
   hyphens: auto;
 }
