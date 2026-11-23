@@ -488,26 +488,39 @@ button.options:hover {
 
 #subtabs button {
   flex: 1 1 0;
-  padding: 0.3em 0.45em;
+  min-width: 0;
+  margin: 0;
+  padding: 0.55em 0.4em;
   border: none;
-  border-right: 1px solid rgba(0, 0, 0, 0.12);
+  border-right: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 0;
   background: transparent;
-  color: var(--header);
+  box-shadow: none;
+  color: #000;
   font-family: var(--sans-serif);
-  font-size: 0.85em;
+  font-size: 0.9em;
   font-weight: bold;
+  line-height: 1.2;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
+  transform: none;
 }
 
 #subtabs button:last-child {
   border-right: none;
 }
 
-#subtabs button.active,
 #subtabs button:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #000;
+}
+
+#subtabs button.active,
+#subtabs button.active:hover {
   background: var(--header);
-  color: white;
+  color: #fff;
 }
 
 #options p {
